@@ -6,16 +6,12 @@ use metadol::lexer::{Lexer, TokenKind};
 
 /// Helper to collect all tokens from input
 fn tokenize(input: &str) -> Vec<(TokenKind, String)> {
-    Lexer::new(input)
-        .map(|t| (t.kind, t.lexeme))
-        .collect()
+    Lexer::new(input).map(|t| (t.kind, t.lexeme)).collect()
 }
 
 /// Helper to get just token kinds
 fn token_kinds(input: &str) -> Vec<TokenKind> {
-    Lexer::new(input)
-        .map(|t| t.kind)
-        .collect()
+    Lexer::new(input).map(|t| t.kind).collect()
 }
 
 // ============================================
@@ -322,66 +318,74 @@ fn test_span_length() {
 #[test]
 fn test_gene_declaration_tokens() {
     let kinds = token_kinds("gene container.exists { }");
-    assert_eq!(kinds, vec![
-        TokenKind::Gene,
-        TokenKind::Identifier,
-        TokenKind::LeftBrace,
-        TokenKind::RightBrace,
-    ]);
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::Gene,
+            TokenKind::Identifier,
+            TokenKind::LeftBrace,
+            TokenKind::RightBrace,
+        ]
+    );
 }
 
 #[test]
 fn test_has_statement_tokens() {
     let kinds = token_kinds("container has identity");
-    assert_eq!(kinds, vec![
-        TokenKind::Identifier,
-        TokenKind::Has,
-        TokenKind::Identifier,
-    ]);
+    assert_eq!(
+        kinds,
+        vec![TokenKind::Identifier, TokenKind::Has, TokenKind::Identifier,]
+    );
 }
 
 #[test]
 fn test_system_version_tokens() {
     let kinds = token_kinds("system univrs.orchestrator @ 0.1.0");
-    assert_eq!(kinds, vec![
-        TokenKind::System,
-        TokenKind::Identifier,
-        TokenKind::At,
-        TokenKind::Version,
-    ]);
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::System,
+            TokenKind::Identifier,
+            TokenKind::At,
+            TokenKind::Version,
+        ]
+    );
 }
 
 #[test]
 fn test_requires_version_tokens() {
     let kinds = token_kinds("requires container.lifecycle >= 0.0.2");
-    assert_eq!(kinds, vec![
-        TokenKind::Requires,
-        TokenKind::Identifier,
-        TokenKind::GreaterEqual,
-        TokenKind::Version,
-    ]);
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::Requires,
+            TokenKind::Identifier,
+            TokenKind::GreaterEqual,
+            TokenKind::Version,
+        ]
+    );
 }
 
 #[test]
 fn test_evolution_tokens() {
     let kinds = token_kinds("evolves container.lifecycle @ 0.0.2 > 0.0.1");
-    assert_eq!(kinds, vec![
-        TokenKind::Evolves,
-        TokenKind::Identifier,
-        TokenKind::At,
-        TokenKind::Version,
-        TokenKind::Greater,
-        TokenKind::Version,
-    ]);
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::Evolves,
+            TokenKind::Identifier,
+            TokenKind::At,
+            TokenKind::Version,
+            TokenKind::Greater,
+            TokenKind::Version,
+        ]
+    );
 }
 
 #[test]
 fn test_because_with_string() {
     let kinds = token_kinds(r#"because "migration support""#);
-    assert_eq!(kinds, vec![
-        TokenKind::Because,
-        TokenKind::String,
-    ]);
+    assert_eq!(kinds, vec![TokenKind::Because, TokenKind::String,]);
 }
 
 // ============================================

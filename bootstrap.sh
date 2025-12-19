@@ -10,7 +10,7 @@ echo "╚═══════════════════════�
 
 # Configuration
 REPO_URL="https://github.com/univrs/metadol.git"
-WORK_DIR="./metadol-work"
+WORK_DIR="."
 BRANCH="remediation/phase-1"
 
 # Colors

@@ -62,6 +62,16 @@ impl Token {
     }
 }
 
+impl Default for Token {
+    fn default() -> Self {
+        Self {
+            kind: TokenKind::Eof,
+            lexeme: String::new(),
+            span: Span::default(),
+        }
+    }
+}
+
 /// The category of a lexical token.
 ///
 /// TokenKind distinguishes between keywords, operators, literals,
@@ -363,13 +373,13 @@ impl<'a> Lexer<'a> {
         // Unknown character - produce error token
         let ch = self.remaining.chars().next().unwrap();
         self.advance(ch.len_utf8());
-        
+
         let error = LexError::UnexpectedChar {
             ch,
             span: Span::new(start_pos, self.position, start_line, start_col),
         };
         self.errors.push(error);
-        
+
         Token::new(
             TokenKind::Error,
             ch.to_string(),
@@ -383,12 +393,12 @@ impl<'a> Lexer<'a> {
             // Skip whitespace
             let before = self.remaining.len();
             self.skip_whitespace();
-            
+
             // Skip comments
             if self.remaining.starts_with("//") {
                 self.skip_line_comment();
             }
-            
+
             // If we didn't skip anything, we're done
             if self.remaining.len() == before {
                 break;
@@ -443,7 +453,12 @@ impl<'a> Lexer<'a> {
                     _ => {
                         let error = LexError::InvalidEscape {
                             ch,
-                            span: Span::new(self.position - 1, self.position + 1, self.line, self.column - 1),
+                            span: Span::new(
+                                self.position - 1,
+                                self.position + 1,
+                                self.line,
+                                self.column - 1,
+                            ),
                         };
                         self.errors.push(error);
                         content.push(ch);
@@ -525,7 +540,7 @@ impl<'a> Lexer<'a> {
     /// Tries to lex a keyword, identifier, or version.
     fn try_keyword_or_identifier(&mut self) -> Option<Token> {
         let first = self.remaining.chars().next()?;
-        
+
         // Check for version number
         if first.is_ascii_digit() {
             return self.try_version();
@@ -584,7 +599,7 @@ impl<'a> Lexer<'a> {
             } else if ch == '.' && dots < 2 {
                 // Check if next char is a digit (version) or not (identifier)
                 let next = self.remaining.chars().nth(1);
-                if next.map_or(false, |c| c.is_ascii_digit()) {
+                if next.is_some_and(|c| c.is_ascii_digit()) {
                     lexeme.push(ch);
                     self.advance(1);
                     dots += 1;

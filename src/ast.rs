@@ -183,7 +183,7 @@ impl Declaration {
     /// Collects all identifiers referenced in this declaration.
     pub fn collect_identifiers(&self) -> Vec<String> {
         let mut ids = vec![self.name().to_string()];
-        
+
         let statements = match self {
             Declaration::Gene(g) => &g.statements,
             Declaration::Trait(t) => &t.statements,
@@ -191,10 +191,12 @@ impl Declaration {
             Declaration::System(s) => &s.statements,
             Declaration::Evolution(_) => return ids,
         };
-        
+
         for stmt in statements {
             match stmt {
-                Statement::Has { subject, property, .. } => {
+                Statement::Has {
+                    subject, property, ..
+                } => {
                     ids.push(subject.clone());
                     ids.push(property.clone());
                 }
@@ -208,7 +210,7 @@ impl Declaration {
                 _ => {}
             }
         }
-        
+
         ids
     }
 
@@ -219,7 +221,7 @@ impl Declaration {
             Declaration::System(s) => &s.statements,
             _ => return vec![],
         };
-        
+
         statements
             .iter()
             .filter_map(|stmt| {
@@ -611,7 +613,7 @@ mod tests {
         let span1 = Span::new(0, 5, 1, 1);
         let span2 = Span::new(10, 20, 2, 5);
         let merged = span1.merge(&span2);
-        
+
         assert_eq!(merged.start, 0);
         assert_eq!(merged.end, 20);
     }
@@ -625,7 +627,7 @@ mod tests {
             span: Span::default(),
         };
         let decl = Declaration::Gene(gene);
-        
+
         assert_eq!(decl.name(), "container.exists");
     }
 
@@ -651,10 +653,10 @@ mod tests {
             exegesis: "Test".to_string(),
             span: Span::default(),
         };
-        
+
         let decl = Declaration::Trait(trait_decl);
         let deps = decl.collect_dependencies();
-        
+
         assert_eq!(deps.len(), 2);
         assert!(deps.contains(&"dep.one".to_string()));
         assert!(deps.contains(&"dep.two".to_string()));

@@ -24,7 +24,7 @@
 //! ```
 
 use crate::ast::*;
-use crate::error::{ValidationError, ValidationErrors, ValidationWarning};
+use crate::error::{ValidationError, ValidationWarning};
 
 /// The result of validating a declaration.
 #[derive(Debug, Clone)]
@@ -234,12 +234,10 @@ fn validate_trait(trait_decl: &Trait, result: &mut ValidationResult) {
 /// Validates constraint-specific rules.
 fn validate_constraint(constraint: &Constraint, result: &mut ValidationResult) {
     // Constraints should have matches or never statements
-    let has_constraint_stmts = constraint.statements.iter().any(|s| {
-        matches!(
-            s,
-            Statement::Matches { .. } | Statement::Never { .. }
-        )
-    });
+    let has_constraint_stmts = constraint
+        .statements
+        .iter()
+        .any(|s| matches!(s, Statement::Matches { .. } | Statement::Never { .. }));
 
     if !has_constraint_stmts {
         result.add_warning(ValidationWarning::NamingConvention {
@@ -264,10 +262,7 @@ fn validate_system(system: &System, result: &mut ValidationResult) {
         if !is_valid_version(&req.version) {
             result.add_error(ValidationError::InvalidVersion {
                 version: req.version.clone(),
-                reason: format!(
-                    "invalid version in requirement for '{}'",
-                    req.name
-                ),
+                reason: format!("invalid version in requirement for '{}'", req.name),
             });
         }
     }
@@ -291,16 +286,17 @@ fn validate_evolution(evolution: &Evolution, result: &mut ValidationResult) {
     }
 
     // Check version ordering (new version should be greater than parent)
-    if is_valid_version(&evolution.version) && is_valid_version(&evolution.parent_version) {
-        if !is_version_greater(&evolution.version, &evolution.parent_version) {
-            result.add_warning(ValidationWarning::NamingConvention {
-                name: evolution.name.clone(),
-                suggestion: format!(
-                    "new version '{}' should be greater than parent '{}'",
-                    evolution.version, evolution.parent_version
-                ),
-            });
-        }
+    if is_valid_version(&evolution.version)
+        && is_valid_version(&evolution.parent_version)
+        && !is_version_greater(&evolution.version, &evolution.parent_version)
+    {
+        result.add_warning(ValidationWarning::NamingConvention {
+            name: evolution.name.clone(),
+            suggestion: format!(
+                "new version '{}' should be greater than parent '{}'",
+                evolution.version, evolution.parent_version
+            ),
+        });
     }
 
     // Should have at least one change

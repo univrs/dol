@@ -36,11 +36,17 @@ pub struct Parser<'a> {
     /// The underlying lexer
     lexer: Lexer<'a>,
 
+    /// The source text (for exegesis parsing)
+    source: &'a str,
+
     /// Current token
     current: Token,
 
     /// Previous token (for span tracking)
     previous: Token,
+
+    /// Peeked token for lookahead (if any)
+    peeked: Option<Token>,
 }
 
 impl<'a> Parser<'a> {
@@ -52,8 +58,10 @@ impl<'a> Parser<'a> {
 
         Parser {
             lexer,
+            source,
             current,
             previous,
+            peeked: None,
         }
     }
 
@@ -294,7 +302,8 @@ impl<'a> Parser<'a> {
                 _ => unreachable!(),
             };
             self.advance();
-            let phrase = self.parse_phrase()?;
+            // For quantified statements, parse the complete phrase including predicates
+            let phrase = self.parse_quantified_phrase()?;
             return Ok(Statement::Quantified {
                 quantifier,
                 phrase,
@@ -379,28 +388,74 @@ impl<'a> Parser<'a> {
                     phrase.push(' ');
                     phrase.push_str(&self.current.lexeme);
                     self.advance();
-                    
+
                     // Check if we've hit a predicate
                     if self.current.kind.is_predicate() {
                         break;
                     }
                 }
-                
+
                 // Now check what predicate follows
-                if self.current.kind == TokenKind::Emits {
-                    self.advance();
-                    let event = self.expect_identifier()?;
-                    return Ok(Statement::Emits {
-                        action: phrase,
-                        event,
-                        span: start_span.merge(&self.previous.span),
-                    });
+                match self.current.kind {
+                    TokenKind::Emits => {
+                        self.advance();
+                        let event = self.expect_identifier()?;
+                        Ok(Statement::Emits {
+                            action: phrase,
+                            event,
+                            span: start_span.merge(&self.previous.span),
+                        })
+                    }
+                    TokenKind::Never => {
+                        self.advance();
+                        let action = self.expect_identifier()?;
+                        Ok(Statement::Never {
+                            subject: phrase,
+                            action,
+                            span: start_span.merge(&self.previous.span),
+                        })
+                    }
+                    TokenKind::Matches => {
+                        self.advance();
+                        let target = self.parse_phrase()?;
+                        Ok(Statement::Matches {
+                            subject: phrase,
+                            target,
+                            span: start_span.merge(&self.previous.span),
+                        })
+                    }
+                    TokenKind::Is => {
+                        self.advance();
+                        let state = self.expect_identifier()?;
+                        Ok(Statement::Is {
+                            subject: phrase,
+                            state,
+                            span: start_span.merge(&self.previous.span),
+                        })
+                    }
+                    TokenKind::Has => {
+                        self.advance();
+                        let property = self.expect_identifier()?;
+                        Ok(Statement::Has {
+                            subject: phrase,
+                            property,
+                            span: start_span.merge(&self.previous.span),
+                        })
+                    }
+                    TokenKind::Requires => {
+                        self.advance();
+                        let requirement = self.parse_phrase()?;
+                        Ok(Statement::Requires {
+                            subject: phrase,
+                            requirement,
+                            span: start_span.merge(&self.previous.span),
+                        })
+                    }
+                    _ => Err(ParseError::InvalidStatement {
+                        message: format!("expected predicate after '{}'", phrase),
+                        span: self.current.span,
+                    }),
                 }
-                
-                Err(ParseError::InvalidStatement {
-                    message: format!("expected predicate after '{}'", phrase),
-                    span: self.current.span,
-                })
             }
             _ => Err(ParseError::UnexpectedToken {
                 expected: "predicate (has, is, derives, requires, etc.)".to_string(),
@@ -411,10 +466,56 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a phrase (one or more identifiers).
+    ///
+    /// Uses lookahead to avoid consuming identifiers that start new statements.
+    /// If the token after an identifier is a predicate, that identifier starts
+    /// a new statement and should not be included in this phrase.
+    ///
+    /// Note: The `no` keyword is allowed in phrases since it's not used as a
+    /// quantifier (only `each` and `all` are used).
     fn parse_phrase(&mut self) -> Result<String, ParseError> {
         let mut phrase = String::new();
 
-        // First identifier is required
+        // First token must be identifier or 'no' (which can appear in phrases)
+        if self.current.kind != TokenKind::Identifier && self.current.kind != TokenKind::No {
+            return Err(ParseError::UnexpectedToken {
+                expected: "identifier".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
+            });
+        }
+
+        phrase.push_str(&self.current.lexeme);
+        self.advance();
+
+        // Continue while we see identifiers or 'no', but use lookahead to stop
+        // at statement boundaries
+        while self.current.kind == TokenKind::Identifier || self.current.kind == TokenKind::No {
+            // Peek at what comes after this token
+            let next_kind = self.peek().kind;
+
+            // If the next token is a predicate, this identifier starts
+            // a new statement - don't include it in this phrase
+            if next_kind.is_predicate() {
+                break;
+            }
+
+            phrase.push(' ');
+            phrase.push_str(&self.current.lexeme);
+            self.advance();
+        }
+
+        Ok(phrase)
+    }
+
+    /// Parses a quantified phrase (for 'each'/'all' statements).
+    ///
+    /// This continues parsing until end of statement, including predicates like 'emits'.
+    /// For example: "each transition emits event" captures "transition emits event".
+    fn parse_quantified_phrase(&mut self) -> Result<String, ParseError> {
+        let mut phrase = String::new();
+
+        // First token (identifier) is required
         if self.current.kind != TokenKind::Identifier {
             return Err(ParseError::UnexpectedToken {
                 expected: "identifier".to_string(),
@@ -426,11 +527,39 @@ impl<'a> Parser<'a> {
         phrase.push_str(&self.current.lexeme);
         self.advance();
 
-        // Continue while we see identifiers (but stop at keywords)
-        while self.current.kind == TokenKind::Identifier {
-            phrase.push(' ');
-            phrase.push_str(&self.current.lexeme);
-            self.advance();
+        // Continue until we hit a statement boundary (RightBrace, EOF, or start of new statement)
+        loop {
+            match self.current.kind {
+                // End of statement boundaries
+                TokenKind::RightBrace | TokenKind::Eof => break,
+
+                // New statement starters (not predicates)
+                TokenKind::Uses | TokenKind::Each | TokenKind::All => break,
+
+                // Identifiers continue the phrase
+                TokenKind::Identifier => {
+                    phrase.push(' ');
+                    phrase.push_str(&self.current.lexeme);
+                    self.advance();
+                }
+
+                // Predicates that can appear in quantified phrases
+                TokenKind::Has
+                | TokenKind::Is
+                | TokenKind::Emits
+                | TokenKind::Matches
+                | TokenKind::Never
+                | TokenKind::Requires
+                | TokenKind::Derives
+                | TokenKind::From => {
+                    phrase.push(' ');
+                    phrase.push_str(&self.current.lexeme);
+                    self.advance();
+                }
+
+                // Any other token ends the phrase
+                _ => break,
+            }
         }
 
         Ok(phrase)
@@ -493,10 +622,10 @@ impl<'a> Parser<'a> {
 
         // Get position after opening brace
         let start_pos = self.current.span.start;
-        
+
         // Re-lex from the source to get raw text
         let source_after_brace = &self.lexer_source()[start_pos..];
-        
+
         for ch in source_after_brace.chars() {
             if ch == '{' {
                 brace_depth += 1;
@@ -529,14 +658,25 @@ impl<'a> Parser<'a> {
 
     /// Returns the source text (for exegesis parsing).
     fn lexer_source(&self) -> &'a str {
-        // This is a hack - we'd need to expose source from lexer
-        // For now, return empty and handle differently
-        ""
+        self.source
     }
 
     /// Advances to the next token.
     fn advance(&mut self) {
-        self.previous = std::mem::replace(&mut self.current, self.lexer.next_token());
+        self.previous = std::mem::replace(
+            &mut self.current,
+            self.peeked
+                .take()
+                .unwrap_or_else(|| self.lexer.next_token()),
+        );
+    }
+
+    /// Peeks at the next token without consuming it.
+    fn peek(&mut self) -> &Token {
+        if self.peeked.is_none() {
+            self.peeked = Some(self.lexer.next_token());
+        }
+        self.peeked.as_ref().unwrap()
     }
 
     /// Expects the current token to be of a specific kind.
@@ -630,7 +770,7 @@ exegesis {
         let mut parser = Parser::new(input);
         let result = parser.parse();
         assert!(result.is_ok(), "Parse error: {:?}", result.err());
-        
+
         if let Declaration::Gene(gene) = result.unwrap() {
             assert_eq!(gene.name, "container.exists");
             assert_eq!(gene.statements.len(), 2);
@@ -666,7 +806,7 @@ gene container.exists {
         let mut parser = Parser::new(input);
         let result = parser.parse();
         assert!(result.is_err());
-        
+
         if let Err(ParseError::MissingExegesis { .. }) = result {
             // Expected
         } else {

@@ -62,14 +62,12 @@ pub mod lexer;
 pub mod parser;
 pub mod validator;
 
-#[cfg(feature = "codegen")]
-pub mod codegen;
-
-#[cfg(feature = "codegen")]
+// Test file parser for .dol.test files
+#[cfg(feature = "cli")]
 pub mod test_parser;
 
 // Re-exports for convenience
-pub use ast::{Declaration, Gene, Trait, Constraint, System, Evolution, Statement, Span};
+pub use ast::{Constraint, Declaration, Evolution, Gene, Span, Statement, System, Trait};
 pub use error::{LexError, ParseError, ValidationError};
 pub use lexer::{Lexer, Token, TokenKind};
 pub use parser::Parser;
@@ -93,12 +91,12 @@ pub use validator::{validate, ValidationResult};
 /// use metadol::parse_file;
 ///
 /// let source = r#"
-/// gene test.example {
-///   test has property
+/// gene example.thing {
+///   thing has property
 /// }
 ///
 /// exegesis {
-///   Example gene for testing.
+///   Example gene for documentation.
 /// }
 /// "#;
 ///
@@ -129,12 +127,12 @@ pub fn parse_file(source: &str) -> Result<Declaration, ParseError> {
 /// use metadol::parse_and_validate;
 ///
 /// let source = r#"
-/// gene test.example {
-///   test has property
+/// gene example.thing {
+///   thing has property
 /// }
 ///
 /// exegesis {
-///   Example gene for testing.
+///   Example gene for documentation.
 /// }
 /// "#;
 ///

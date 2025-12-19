@@ -12,7 +12,8 @@
 //! # Example
 //!
 //! ```rust
-//! use metadol::error::{ParseError, Span};
+//! use metadol::error::ParseError;
+//! use metadol::ast::Span;
 //!
 //! let error = ParseError::UnexpectedToken {
 //!     expected: "identifier".to_string(),
@@ -136,6 +137,25 @@ pub enum ParseError {
     /// A lexer error occurred during parsing.
     #[error("lexer error: {0}")]
     LexerError(#[from] LexError),
+}
+
+impl ParseError {
+    /// Returns the source span where this error occurred.
+    pub fn span(&self) -> Span {
+        match self {
+            ParseError::UnexpectedToken { span, .. } => *span,
+            ParseError::MissingExegesis { span } => *span,
+            ParseError::InvalidStatement { span, .. } => *span,
+            ParseError::InvalidDeclaration { span, .. } => *span,
+            ParseError::UnexpectedEof { span, .. } => *span,
+            ParseError::LexerError(lex_err) => match lex_err {
+                LexError::UnexpectedChar { span, .. } => *span,
+                LexError::UnterminatedString { span } => *span,
+                LexError::InvalidVersion { span, .. } => *span,
+                LexError::InvalidEscape { span, .. } => *span,
+            },
+        }
+    }
 }
 
 /// Errors that can occur during semantic validation.
@@ -335,13 +355,13 @@ mod tests {
     fn test_validation_errors_collection() {
         let mut errors = ValidationErrors::new();
         assert!(errors.is_empty());
-        
+
         errors.add_error(ValidationError::EmptyExegesis {
             span: Span::default(),
         });
         assert!(errors.has_errors());
         assert!(!errors.has_warnings());
-        
+
         errors.add_warning(ValidationWarning::ShortExegesis {
             length: 10,
             span: Span::default(),

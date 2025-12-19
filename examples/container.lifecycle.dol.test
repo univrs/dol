@@ -1,0 +1,120 @@
+// Test specification for container.lifecycle trait
+// This file defines behavioral tests that verify the lifecycle state machine
+
+test container.lifecycle {
+
+    test "container can be created" {
+        given:
+            container does not exist
+            identity keypair is available
+        when:
+            create container with identity
+        then:
+            container exists
+            container is created
+            container has identity
+            creation event is emitted
+    }
+
+    test "container transitions from created to starting" {
+        given:
+            container exists
+            container is created
+        when:
+            start container
+        then:
+            container is starting
+            starting event is emitted
+    }
+
+    test "container transitions from starting to running" {
+        given:
+            container is starting
+            all dependencies are ready
+        when:
+            initialization completes
+        then:
+            container is running
+            running event is emitted
+    }
+
+    test "container can be paused while running" {
+        given:
+            container is running
+        when:
+            pause container
+        then:
+            container is pausing
+            container is paused
+            paused event is emitted
+            container state is preserved
+    }
+
+    test "container can be resumed from paused" {
+        given:
+            container is paused
+        when:
+            resume container
+        then:
+            container is resuming
+            container is running
+            resumed event is emitted
+    }
+
+    test "container can be stopped while running" {
+        given:
+            container is running
+        when:
+            stop container
+        then:
+            container is stopping
+            container is stopped
+            stopped event is emitted
+    }
+
+    test "container can be removed after stopped" {
+        given:
+            container is stopped
+        when:
+            remove container
+        then:
+            container is removing
+            container is removed
+            removed event is emitted
+            container no longer exists
+    }
+
+    test "container identity never changes" {
+        given:
+            container exists with identity A
+        when:
+            any state transition occurs
+        then:
+            container still has identity A
+        always
+    }
+
+    test "all transitions emit ordered events" {
+        given:
+            container exists
+            event sequence starts at N
+        when:
+            any state transition occurs
+        then:
+            new event has sequence N+1
+            event is signed with container identity
+        always
+    }
+
+    test "invalid transitions are rejected" {
+        given:
+            container is created
+        when:
+            attempt to stop container
+        then:
+            transition is rejected
+            error event is emitted
+            container remains created
+    }
+
+}

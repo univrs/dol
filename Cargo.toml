@@ -39,7 +39,7 @@ required-features = ["cli"]
 
 [features]
 default = []
-cli = ["dep:clap", "dep:anyhow", "dep:colored"]
+cli = ["dep:clap", "dep:anyhow", "dep:colored", "dep:serde", "dep:serde_json"]
 serde = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
@@ -74,9 +74,10 @@ debug = true
 [profile.test]
 opt-level = 1
 
-[[bench]]
-name = "parser_bench"
-harness = false
+# Benchmarks will be added in a future phase
+# [[bench]]
+# name = "parser_bench"
+# harness = false
 
 [package.metadata.docs.rs]
 all-features = true
