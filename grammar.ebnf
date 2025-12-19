@@ -1,0 +1,325 @@
+(* 
+ * Metal DOL Grammar Specification
+ * Version: 0.0.1
+ * Format: Extended Backus-Naur Form (EBNF)
+ * 
+ * This grammar defines the complete syntax of the Metal DOL language.
+ * It can be used to implement parsers or generate parser code.
+ *)
+
+(* ============================================ *)
+(* 1. Lexical Rules                             *)
+(* ============================================ *)
+
+(* Character classes *)
+letter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' 
+       | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' 
+       | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
+       | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J'
+       | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T'
+       | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' ;
+
+digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' ;
+
+underscore = '_' ;
+
+(* Whitespace and comments are skipped by the lexer *)
+whitespace = ' ' | '\t' | '\r' | '\n' ;
+comment = '//' , { ? any character except newline ? } , '\n' ;
+
+(* ============================================ *)
+(* 2. Tokens                                    *)
+(* ============================================ *)
+
+(* Identifiers *)
+identifier = letter , { letter | digit | underscore } ;
+qualified_identifier = identifier , { '.' , identifier } ;
+
+(* Version numbers follow semantic versioning *)
+version = digit , { digit } , '.' , digit , { digit } , '.' , digit , { digit } ;
+
+(* String literals *)
+string_literal = '"' , { string_char } , '"' ;
+string_char = ? any character except '"' or newline ? 
+            | '\"'   (* escaped quote *)
+            | '\\'   (* escaped backslash *)
+            | '\n'   (* escaped newline *) ;
+
+(* ============================================ *)
+(* 3. Keywords                                  *)
+(* ============================================ *)
+
+(* Declaration keywords *)
+kw_gene = 'gene' ;
+kw_trait = 'trait' ;
+kw_constraint = 'constraint' ;
+kw_system = 'system' ;
+kw_evolves = 'evolves' ;
+kw_exegesis = 'exegesis' ;
+
+(* Predicate keywords *)
+kw_has = 'has' ;
+kw_is = 'is' ;
+kw_derives = 'derives' ;
+kw_from = 'from' ;
+kw_requires = 'requires' ;
+kw_uses = 'uses' ;
+kw_emits = 'emits' ;
+kw_matches = 'matches' ;
+kw_never = 'never' ;
+
+(* Evolution keywords *)
+kw_adds = 'adds' ;
+kw_deprecates = 'deprecates' ;
+kw_removes = 'removes' ;
+kw_because = 'because' ;
+
+(* Test keywords *)
+kw_test = 'test' ;
+kw_given = 'given' ;
+kw_when = 'when' ;
+kw_then = 'then' ;
+kw_always = 'always' ;
+
+(* Quantifiers *)
+kw_each = 'each' ;
+kw_all = 'all' ;
+kw_no = 'no' ;
+
+(* ============================================ *)
+(* 4. Operators and Delimiters                  *)
+(* ============================================ *)
+
+op_at = '@' ;
+op_gt = '>' ;
+op_ge = '>=' ;
+op_eq = '=' ;
+
+delim_lbrace = '{' ;
+delim_rbrace = '}' ;
+
+(* ============================================ *)
+(* 5. Top-Level Structure                       *)
+(* ============================================ *)
+
+(* A DOL file contains exactly one declaration followed by exegesis *)
+dol_file = declaration , exegesis_block ;
+
+declaration = gene_declaration
+            | trait_declaration
+            | constraint_declaration
+            | system_declaration
+            | evolution_declaration ;
+
+(* Exegesis is mandatory for all declarations *)
+exegesis_block = kw_exegesis , delim_lbrace , exegesis_text , delim_rbrace ;
+exegesis_text = { ? any character except unmatched '}' ? } ;
+
+(* ============================================ *)
+(* 6. Gene Declaration                          *)
+(* ============================================ *)
+
+(* Genes are atomic units that cannot be decomposed *)
+gene_declaration = kw_gene , qualified_identifier , delim_lbrace , 
+                   { gene_statement } , 
+                   delim_rbrace ;
+
+gene_statement = has_statement 
+               | is_statement 
+               | derives_statement 
+               | requires_statement ;
+
+(* ============================================ *)
+(* 7. Trait Declaration                         *)
+(* ============================================ *)
+
+(* Traits compose genes and declare behaviors *)
+trait_declaration = kw_trait , qualified_identifier , delim_lbrace ,
+                    { trait_statement } ,
+                    delim_rbrace ;
+
+trait_statement = uses_statement 
+                | has_statement 
+                | is_statement 
+                | emits_statement
+                | quantified_statement ;
+
+(* ============================================ *)
+(* 8. Constraint Declaration                    *)
+(* ============================================ *)
+
+(* Constraints define invariants that must always hold *)
+constraint_declaration = kw_constraint , qualified_identifier , delim_lbrace ,
+                         { constraint_statement } ,
+                         delim_rbrace ;
+
+constraint_statement = matches_statement 
+                     | never_statement 
+                     | has_statement
+                     | is_statement ;
+
+(* ============================================ *)
+(* 9. System Declaration                        *)
+(* ============================================ *)
+
+(* Systems are top-level compositions with version requirements *)
+system_declaration = kw_system , qualified_identifier , op_at , version , 
+                     delim_lbrace ,
+                     { system_statement } ,
+                     delim_rbrace ;
+
+system_statement = requires_clause 
+                 | has_statement 
+                 | is_statement
+                 | quantified_statement ;
+
+requires_clause = kw_requires , qualified_identifier , version_constraint ;
+version_constraint = ( op_ge | op_gt | op_eq ) , version ;
+
+(* ============================================ *)
+(* 10. Evolution Declaration                    *)
+(* ============================================ *)
+
+(* Evolutions track changes between versions *)
+evolution_declaration = kw_evolves , qualified_identifier , 
+                        op_at , version , op_gt , version ,
+                        delim_lbrace ,
+                        { evolution_statement } ,
+                        delim_rbrace ;
+
+evolution_statement = adds_statement 
+                    | deprecates_statement 
+                    | removes_statement 
+                    | because_statement ;
+
+adds_statement = kw_adds , ( has_statement | is_statement ) ;
+deprecates_statement = kw_deprecates , ( has_statement | is_statement ) ;
+removes_statement = kw_removes , qualified_identifier ;
+because_statement = kw_because , string_literal ;
+
+(* ============================================ *)
+(* 11. Statements                               *)
+(* ============================================ *)
+
+(* Property possession: "subject has property" *)
+has_statement = subject , kw_has , property ;
+
+(* State or behavior: "subject is state" *)
+is_statement = subject , kw_is , state ;
+
+(* Origin relationship: "subject derives from origin" *)
+derives_statement = subject , kw_derives , kw_from , phrase ;
+
+(* Dependency: "subject requires requirement" *)
+requires_statement = subject , kw_requires , phrase ;
+
+(* Composition: "uses reference" *)
+uses_statement = kw_uses , qualified_identifier ;
+
+(* Event production: "action emits event" *)
+emits_statement = phrase , kw_emits , identifier ;
+
+(* Equivalence constraint: "subject matches target" *)
+matches_statement = phrase , kw_matches , phrase ;
+
+(* Negative constraint: "subject never action" *)
+never_statement = subject , kw_never , action ;
+
+(* Quantified statements for traits and systems *)
+quantified_statement = quantifier , phrase ;
+quantifier = kw_each | kw_all ;
+
+(* ============================================ *)
+(* 12. Primitives                               *)
+(* ============================================ *)
+
+subject = identifier ;
+property = identifier ;
+state = identifier ;
+action = identifier ;
+
+(* A phrase is one or more identifiers forming a semantic unit *)
+phrase = identifier , { identifier } ;
+
+(* ============================================ *)
+(* 13. Test File Syntax                         *)
+(* ============================================ *)
+
+(* Test files contain multiple test declarations *)
+test_file = { test_declaration } ;
+
+test_declaration = kw_test , identifier , delim_lbrace ,
+                   { given_clause } ,
+                   { when_clause } ,
+                   { then_clause } ,
+                   [ kw_always ] ,
+                   delim_rbrace ;
+
+given_clause = kw_given , phrase ;
+when_clause = kw_when , phrase ;
+then_clause = kw_then , phrase ;
+
+(* ============================================ *)
+(* 14. Precedence and Associativity             *)
+(* ============================================ *)
+
+(* 
+ * DOL is a declarative language without traditional expression operators.
+ * Parsing is deterministic based on keyword recognition.
+ * 
+ * Token priority (for disambiguation):
+ * 1. Keywords have priority over identifiers
+ * 2. Qualified identifiers are parsed greedily (longest match)
+ * 3. Phrases extend until a keyword or delimiter is encountered
+ *)
+
+(* ============================================ *)
+(* 15. Examples                                 *)
+(* ============================================ *)
+
+(*
+ * Example 1: Gene Declaration
+ * 
+ * gene container.exists {
+ *   container has identity
+ *   container has state
+ *   container has boundaries
+ * }
+ * 
+ * exegesis {
+ *   A container is the fundamental unit of workload isolation.
+ * }
+ *)
+
+(*
+ * Example 2: Trait with Uses
+ * 
+ * trait container.lifecycle {
+ *   uses container.exists
+ *   uses identity.cryptographic
+ *   
+ *   container is created
+ *   container is started
+ *   each transition emits event
+ * }
+ * 
+ * exegesis {
+ *   The container lifecycle defines state transitions.
+ * }
+ *)
+
+(*
+ * Example 3: Evolution
+ * 
+ * evolves container.lifecycle @ 0.0.2 > 0.0.1 {
+ *   adds container is paused
+ *   adds container is resumed
+ *   because "workload migration requires state preservation"
+ * }
+ * 
+ * exegesis {
+ *   Version 0.0.2 adds pause and resume capabilities.
+ * }
+ *)
+
+(* End of Grammar Specification *)

@@ -1,388 +1,728 @@
-//! DOL Lexer
+//! Lexical analysis for Metal DOL.
 //!
-//! Tokenizes DOL source text using the logos crate.
-//! Designed for LLVM-style diagnostic integration.
+//! This module provides tokenization of DOL source text into a stream of tokens
+//! that can be consumed by the parser. The lexer handles keywords, identifiers,
+//! operators, version numbers, and string literals.
+//!
+//! # Example
+//!
+//! ```rust
+//! use metadol::lexer::{Lexer, TokenKind};
+//!
+//! let mut lexer = Lexer::new("gene container.exists { }");
+//!
+//! assert_eq!(lexer.next_token().kind, TokenKind::Gene);
+//! assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+//! assert_eq!(lexer.next_token().kind, TokenKind::LeftBrace);
+//! assert_eq!(lexer.next_token().kind, TokenKind::RightBrace);
+//! ```
+//!
+//! # Token Types
+//!
+//! The lexer recognizes:
+//! - **Keywords**: `gene`, `trait`, `constraint`, `system`, `evolves`, etc.
+//! - **Predicates**: `has`, `is`, `derives`, `from`, `requires`, etc.
+//! - **Operators**: `@`, `>`, `>=`
+//! - **Delimiters**: `{`, `}`
+//! - **Identifiers**: Simple and qualified (dot-notation)
+//! - **Versions**: Semantic version numbers (X.Y.Z)
+//! - **Strings**: Double-quoted string literals
 
-use logos::{Logos, Lexer};
-use std::fmt;
+use crate::ast::Span;
+use crate::error::LexError;
 
-/// Callback for parsing version numbers
-fn parse_version(lex: &mut Lexer<Token>) -> Option<(u32, u32, u32)> {
-    let slice = lex.slice();
-    // Remove @ prefix if present
-    let version_str = slice.trim_start_matches('@').trim();
-    let parts: Vec<&str> = version_str.split('.').collect();
-    if parts.len() == 3 {
-        let major = parts[0].parse().ok()?;
-        let minor = parts[1].parse().ok()?;
-        let patch = parts[2].parse().ok()?;
-        Some((major, minor, patch))
-    } else {
-        None
-    }
-}
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
-/// Callback for parsing quoted strings
-fn parse_string(lex: &mut Lexer<Token>) -> String {
-    let slice = lex.slice();
-    // Remove surrounding quotes
-    slice[1..slice.len()-1].to_string()
-}
-
-/// DOL tokens
-#[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\r\n\f]+")]
-pub enum Token {
-    // ═══════════════════════════════════════════
-    // Keywords - Declaration Types
-    // ═══════════════════════════════════════════
-    
-    #[token("gene")]
-    Gene,
-    
-    #[token("trait")]
-    Trait,
-    
-    #[token("constraint")]
-    Constraint,
-    
-    #[token("system")]
-    System,
-    
-    #[token("evolves")]
-    Evolves,
-    
-    #[token("test")]
-    Test,
-    
-    #[token("exegesis")]
-    Exegesis,
-    
-    // ═══════════════════════════════════════════
-    // Keywords - Composition
-    // ═══════════════════════════════════════════
-    
-    #[token("uses")]
-    Uses,
-    
-    #[token("requires")]
-    Requires,
-    
-    // ═══════════════════════════════════════════
-    // Keywords - Predicates
-    // ═══════════════════════════════════════════
-    
-    #[token("has")]
-    Has,
-    
-    #[token("is")]
-    Is,
-    
-    #[token("are")]
-    Are,
-    
-    #[token("derives")]
-    Derives,
-    
-    #[token("from")]
-    From,
-    
-    #[token("emits")]
-    Emits,
-    
-    #[token("matches")]
-    Matches,
-    
-    #[token("never")]
-    Never,
-    
-    #[token("via")]
-    Via,
-    
-    #[token("no")]
-    No,
-    
-    // ═══════════════════════════════════════════
-    // Keywords - Quantifiers
-    // ═══════════════════════════════════════════
-    
-    #[token("each")]
-    Each,
-    
-    #[token("all")]
-    All,
-    
-    #[token("every")]
-    Every,
-    
-    // ═══════════════════════════════════════════
-    // Keywords - Evolution
-    // ═══════════════════════════════════════════
-    
-    #[token("adds")]
-    Adds,
-    
-    #[token("deprecates")]
-    Deprecates,
-    
-    #[token("removes")]
-    Removes,
-    
-    #[token("because")]
-    Because,
-    
-    #[token("migration")]
-    Migration,
-    
-    #[token("maps")]
-    Maps,
-    
-    #[token("to")]
-    To,
-    
-    #[token("then")]
-    Then,
-    
-    // ═══════════════════════════════════════════
-    // Keywords - Test
-    // ═══════════════════════════════════════════
-    
-    #[token("given")]
-    Given,
-    
-    #[token("when")]
-    When,
-    
-    #[token("always")]
-    Always,
-    
-    // ═══════════════════════════════════════════
-    // Operators and Punctuation
-    // ═══════════════════════════════════════════
-    
-    #[token("{")]
-    LBrace,
-    
-    #[token("}")]
-    RBrace,
-    
-    #[token("(")]
-    LParen,
-    
-    #[token(")")]
-    RParen,
-    
-    #[token(".")]
-    Dot,
-    
-    #[token(">")]
-    Gt,
-    
-    #[token(">=")]
-    Gte,
-    
-    #[token("<")]
-    Lt,
-    
-    #[token("<=")]
-    Lte,
-    
-    #[token("=")]
-    Eq,
-    
-    #[token("@")]
-    At,
-    
-    // ═══════════════════════════════════════════
-    // Literals
-    // ═══════════════════════════════════════════
-    
-    /// Version number like 0.0.1
-    #[regex(r"[0-9]+\.[0-9]+\.[0-9]+", |lex| parse_version(lex))]
-    Version((u32, u32, u32)),
-    
-    /// Integer
-    #[regex(r"[0-9]+", |lex| lex.slice().parse::<u64>().ok())]
-    Integer(u64),
-    
-    /// Quoted string
-    #[regex(r#""[^"]*""#, parse_string)]
-    String(String),
-    
-    /// Identifier (lowercase with underscores)
-    #[regex(r"[a-z_][a-z0-9_]*")]
-    Identifier,
-    
-    // ═══════════════════════════════════════════
-    // Comments
-    // ═══════════════════════════════════════════
-    
-    /// Line comment
-    #[regex(r"//[^\n]*", logos::skip)]
-    LineComment,
-    
-    /// Decorative line (═══)
-    #[regex(r"═+", logos::skip)]
-    DecorativeLine,
-}
-
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Token::Gene => write!(f, "gene"),
-            Token::Trait => write!(f, "trait"),
-            Token::Constraint => write!(f, "constraint"),
-            Token::System => write!(f, "system"),
-            Token::Evolves => write!(f, "evolves"),
-            Token::Test => write!(f, "test"),
-            Token::Exegesis => write!(f, "exegesis"),
-            Token::Uses => write!(f, "uses"),
-            Token::Requires => write!(f, "requires"),
-            Token::Has => write!(f, "has"),
-            Token::Is => write!(f, "is"),
-            Token::Are => write!(f, "are"),
-            Token::Derives => write!(f, "derives"),
-            Token::From => write!(f, "from"),
-            Token::Emits => write!(f, "emits"),
-            Token::Matches => write!(f, "matches"),
-            Token::Never => write!(f, "never"),
-            Token::Via => write!(f, "via"),
-            Token::No => write!(f, "no"),
-            Token::Each => write!(f, "each"),
-            Token::All => write!(f, "all"),
-            Token::Every => write!(f, "every"),
-            Token::Adds => write!(f, "adds"),
-            Token::Deprecates => write!(f, "deprecates"),
-            Token::Removes => write!(f, "removes"),
-            Token::Because => write!(f, "because"),
-            Token::Migration => write!(f, "migration"),
-            Token::Maps => write!(f, "maps"),
-            Token::To => write!(f, "to"),
-            Token::Then => write!(f, "then"),
-            Token::Given => write!(f, "given"),
-            Token::When => write!(f, "when"),
-            Token::Always => write!(f, "always"),
-            Token::LBrace => write!(f, "{{"),
-            Token::RBrace => write!(f, "}}"),
-            Token::LParen => write!(f, "("),
-            Token::RParen => write!(f, ")"),
-            Token::Dot => write!(f, "."),
-            Token::Gt => write!(f, ">"),
-            Token::Gte => write!(f, ">="),
-            Token::Lt => write!(f, "<"),
-            Token::Lte => write!(f, "<="),
-            Token::Eq => write!(f, "="),
-            Token::At => write!(f, "@"),
-            Token::Version((major, minor, patch)) => write!(f, "{major}.{minor}.{patch}"),
-            Token::Integer(n) => write!(f, "{n}"),
-            Token::String(s) => write!(f, "\"{s}\""),
-            Token::Identifier => write!(f, "<identifier>"),
-            Token::LineComment => write!(f, "<comment>"),
-            Token::DecorativeLine => write!(f, "<decorative>"),
-        }
-    }
-}
-
-/// A token with span information
+/// A lexical token produced by the lexer.
+///
+/// Tokens carry their kind, the original source text (lexeme), and
+/// source location information for error reporting.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SpannedToken {
-    pub token: Token,
-    pub span: std::ops::Range<usize>,
-    pub slice: String,
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Token {
+    /// The category of this token
+    pub kind: TokenKind,
+
+    /// The original source text that produced this token
+    pub lexeme: String,
+
+    /// Source location for error reporting
+    pub span: Span,
 }
 
-/// Tokenize DOL source
-pub fn tokenize(source: &str) -> Result<Vec<SpannedToken>, LexError> {
-    let mut lexer = Token::lexer(source);
-    let mut tokens = Vec::new();
-    
-    while let Some(result) = lexer.next() {
-        match result {
-            Ok(token) => {
-                tokens.push(SpannedToken {
-                    token,
-                    span: lexer.span(),
-                    slice: lexer.slice().to_string(),
-                });
+impl Token {
+    /// Creates a new token.
+    pub fn new(kind: TokenKind, lexeme: impl Into<String>, span: Span) -> Self {
+        Self {
+            kind,
+            lexeme: lexeme.into(),
+            span,
+        }
+    }
+}
+
+/// The category of a lexical token.
+///
+/// TokenKind distinguishes between keywords, operators, literals,
+/// and other syntactic elements of the DOL language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum TokenKind {
+    // === Declaration Keywords ===
+    /// The `gene` keyword
+    Gene,
+    /// The `trait` keyword
+    Trait,
+    /// The `constraint` keyword
+    Constraint,
+    /// The `system` keyword
+    System,
+    /// The `evolves` keyword
+    Evolves,
+    /// The `exegesis` keyword
+    Exegesis,
+
+    // === Predicate Keywords ===
+    /// The `has` predicate
+    Has,
+    /// The `is` predicate
+    Is,
+    /// The `derives` keyword
+    Derives,
+    /// The `from` keyword
+    From,
+    /// The `requires` predicate
+    Requires,
+    /// The `uses` predicate
+    Uses,
+    /// The `emits` predicate
+    Emits,
+    /// The `matches` predicate
+    Matches,
+    /// The `never` predicate
+    Never,
+
+    // === Evolution Keywords ===
+    /// The `adds` operator
+    Adds,
+    /// The `deprecates` operator
+    Deprecates,
+    /// The `removes` operator
+    Removes,
+    /// The `because` keyword
+    Because,
+
+    // === Test Keywords ===
+    /// The `test` keyword
+    Test,
+    /// The `given` keyword
+    Given,
+    /// The `when` keyword
+    When,
+    /// The `then` keyword
+    Then,
+    /// The `always` keyword
+    Always,
+
+    // === Quantifiers ===
+    /// The `each` quantifier
+    Each,
+    /// The `all` quantifier
+    All,
+    /// The `no` quantifier
+    No,
+
+    // === Delimiters ===
+    /// Left brace `{`
+    LeftBrace,
+    /// Right brace `}`
+    RightBrace,
+
+    // === Operators ===
+    /// At symbol `@`
+    At,
+    /// Greater-than `>`
+    Greater,
+    /// Greater-than-or-equal `>=`
+    GreaterEqual,
+    /// Equals `=`
+    Equal,
+
+    // === Literals ===
+    /// A dot-notation identifier
+    Identifier,
+    /// A semantic version number
+    Version,
+    /// A quoted string literal
+    String,
+
+    // === Special ===
+    /// End of file
+    Eof,
+    /// Unrecognized input
+    Error,
+}
+
+impl TokenKind {
+    /// Returns true if this is a keyword.
+    pub fn is_keyword(&self) -> bool {
+        matches!(
+            self,
+            TokenKind::Gene
+                | TokenKind::Trait
+                | TokenKind::Constraint
+                | TokenKind::System
+                | TokenKind::Evolves
+                | TokenKind::Exegesis
+                | TokenKind::Has
+                | TokenKind::Is
+                | TokenKind::Derives
+                | TokenKind::From
+                | TokenKind::Requires
+                | TokenKind::Uses
+                | TokenKind::Emits
+                | TokenKind::Matches
+                | TokenKind::Never
+                | TokenKind::Adds
+                | TokenKind::Deprecates
+                | TokenKind::Removes
+                | TokenKind::Because
+                | TokenKind::Test
+                | TokenKind::Given
+                | TokenKind::When
+                | TokenKind::Then
+                | TokenKind::Always
+                | TokenKind::Each
+                | TokenKind::All
+                | TokenKind::No
+        )
+    }
+
+    /// Returns true if this is a predicate keyword.
+    pub fn is_predicate(&self) -> bool {
+        matches!(
+            self,
+            TokenKind::Has
+                | TokenKind::Is
+                | TokenKind::Derives
+                | TokenKind::Requires
+                | TokenKind::Uses
+                | TokenKind::Emits
+                | TokenKind::Matches
+                | TokenKind::Never
+        )
+    }
+}
+
+impl std::fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Gene => write!(f, "gene"),
+            TokenKind::Trait => write!(f, "trait"),
+            TokenKind::Constraint => write!(f, "constraint"),
+            TokenKind::System => write!(f, "system"),
+            TokenKind::Evolves => write!(f, "evolves"),
+            TokenKind::Exegesis => write!(f, "exegesis"),
+            TokenKind::Has => write!(f, "has"),
+            TokenKind::Is => write!(f, "is"),
+            TokenKind::Derives => write!(f, "derives"),
+            TokenKind::From => write!(f, "from"),
+            TokenKind::Requires => write!(f, "requires"),
+            TokenKind::Uses => write!(f, "uses"),
+            TokenKind::Emits => write!(f, "emits"),
+            TokenKind::Matches => write!(f, "matches"),
+            TokenKind::Never => write!(f, "never"),
+            TokenKind::Adds => write!(f, "adds"),
+            TokenKind::Deprecates => write!(f, "deprecates"),
+            TokenKind::Removes => write!(f, "removes"),
+            TokenKind::Because => write!(f, "because"),
+            TokenKind::Test => write!(f, "test"),
+            TokenKind::Given => write!(f, "given"),
+            TokenKind::When => write!(f, "when"),
+            TokenKind::Then => write!(f, "then"),
+            TokenKind::Always => write!(f, "always"),
+            TokenKind::Each => write!(f, "each"),
+            TokenKind::All => write!(f, "all"),
+            TokenKind::No => write!(f, "no"),
+            TokenKind::LeftBrace => write!(f, "{{"),
+            TokenKind::RightBrace => write!(f, "}}"),
+            TokenKind::At => write!(f, "@"),
+            TokenKind::Greater => write!(f, ">"),
+            TokenKind::GreaterEqual => write!(f, ">="),
+            TokenKind::Equal => write!(f, "="),
+            TokenKind::Identifier => write!(f, "identifier"),
+            TokenKind::Version => write!(f, "version"),
+            TokenKind::String => write!(f, "string"),
+            TokenKind::Eof => write!(f, "end of file"),
+            TokenKind::Error => write!(f, "error"),
+        }
+    }
+}
+
+/// The lexer for Metal DOL source text.
+///
+/// The lexer maintains internal state as it scans through source text,
+/// producing tokens on demand. It handles whitespace and comments
+/// automatically, and provides source location tracking.
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::lexer::Lexer;
+///
+/// let input = r#"
+/// gene container.exists {
+///   container has identity
+/// }
+/// "#;
+///
+/// let lexer = Lexer::new(input);
+/// let tokens: Vec<_> = lexer.collect();
+///
+/// assert!(tokens.len() > 0);
+/// ```
+pub struct Lexer<'a> {
+    /// The source text being tokenized
+    source: &'a str,
+
+    /// Remaining source to process
+    remaining: &'a str,
+
+    /// Current byte position in source
+    position: usize,
+
+    /// Current line number (1-indexed)
+    line: usize,
+
+    /// Current column number (1-indexed)
+    column: usize,
+
+    /// Accumulated errors
+    errors: Vec<LexError>,
+}
+
+impl<'a> Lexer<'a> {
+    /// Creates a new lexer for the given source text.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The DOL source text to tokenize
+    ///
+    /// # Returns
+    ///
+    /// A new `Lexer` instance positioned at the start of the source
+    pub fn new(source: &'a str) -> Self {
+        Lexer {
+            source,
+            remaining: source,
+            position: 0,
+            line: 1,
+            column: 1,
+            errors: Vec::new(),
+        }
+    }
+
+    /// Returns any errors accumulated during lexing.
+    pub fn errors(&self) -> &[LexError] {
+        &self.errors
+    }
+
+    /// Produces the next token from the source.
+    ///
+    /// Advances the lexer position and returns the next token.
+    /// Returns `TokenKind::Eof` when the source is exhausted.
+    pub fn next_token(&mut self) -> Token {
+        self.skip_whitespace_and_comments();
+
+        if self.remaining.is_empty() {
+            return Token::new(
+                TokenKind::Eof,
+                "",
+                Span::new(self.position, self.position, self.line, self.column),
+            );
+        }
+
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        // Try to match various token types
+        if let Some(token) = self.try_string() {
+            return token;
+        }
+
+        if let Some(token) = self.try_operator() {
+            return token;
+        }
+
+        if let Some(token) = self.try_keyword_or_identifier() {
+            return token;
+        }
+
+        // Unknown character - produce error token
+        let ch = self.remaining.chars().next().unwrap();
+        self.advance(ch.len_utf8());
+        
+        let error = LexError::UnexpectedChar {
+            ch,
+            span: Span::new(start_pos, self.position, start_line, start_col),
+        };
+        self.errors.push(error);
+        
+        Token::new(
+            TokenKind::Error,
+            ch.to_string(),
+            Span::new(start_pos, self.position, start_line, start_col),
+        )
+    }
+
+    /// Skips whitespace and comments.
+    fn skip_whitespace_and_comments(&mut self) {
+        loop {
+            // Skip whitespace
+            let before = self.remaining.len();
+            self.skip_whitespace();
+            
+            // Skip comments
+            if self.remaining.starts_with("//") {
+                self.skip_line_comment();
             }
-            Err(_) => {
-                return Err(LexError {
-                    span: lexer.span(),
-                    message: format!("Unexpected character: {:?}", lexer.slice()),
-                });
+            
+            // If we didn't skip anything, we're done
+            if self.remaining.len() == before {
+                break;
             }
         }
     }
-    
-    Ok(tokens)
-}
 
-#[derive(Debug, Clone)]
-pub struct LexError {
-    pub span: std::ops::Range<usize>,
-    pub message: String,
-}
+    /// Skips whitespace characters.
+    fn skip_whitespace(&mut self) {
+        while let Some(ch) = self.remaining.chars().next() {
+            if ch.is_whitespace() {
+                self.advance(ch.len_utf8());
+            } else {
+                break;
+            }
+        }
+    }
 
-impl fmt::Display for LexError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Lexical error at {:?}: {}", self.span, self.message)
+    /// Skips a single-line comment.
+    fn skip_line_comment(&mut self) {
+        while let Some(ch) = self.remaining.chars().next() {
+            self.advance(ch.len_utf8());
+            if ch == '\n' {
+                break;
+            }
+        }
+    }
+
+    /// Tries to lex a string literal.
+    fn try_string(&mut self) -> Option<Token> {
+        if !self.remaining.starts_with('"') {
+            return None;
+        }
+
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        self.advance(1); // Skip opening quote
+
+        let mut content = String::new();
+        let mut escaped = false;
+
+        while let Some(ch) = self.remaining.chars().next() {
+            if escaped {
+                match ch {
+                    'n' => content.push('\n'),
+                    't' => content.push('\t'),
+                    'r' => content.push('\r'),
+                    '"' => content.push('"'),
+                    '\\' => content.push('\\'),
+                    _ => {
+                        let error = LexError::InvalidEscape {
+                            ch,
+                            span: Span::new(self.position - 1, self.position + 1, self.line, self.column - 1),
+                        };
+                        self.errors.push(error);
+                        content.push(ch);
+                    }
+                }
+                escaped = false;
+                self.advance(ch.len_utf8());
+            } else if ch == '\\' {
+                escaped = true;
+                self.advance(ch.len_utf8());
+            } else if ch == '"' {
+                self.advance(1); // Skip closing quote
+                return Some(Token::new(
+                    TokenKind::String,
+                    content,
+                    Span::new(start_pos, self.position, start_line, start_col),
+                ));
+            } else if ch == '\n' {
+                // Unterminated string
+                let error = LexError::UnterminatedString {
+                    span: Span::new(start_pos, self.position, start_line, start_col),
+                };
+                self.errors.push(error);
+                return Some(Token::new(
+                    TokenKind::Error,
+                    content,
+                    Span::new(start_pos, self.position, start_line, start_col),
+                ));
+            } else {
+                content.push(ch);
+                self.advance(ch.len_utf8());
+            }
+        }
+
+        // EOF while in string
+        let error = LexError::UnterminatedString {
+            span: Span::new(start_pos, self.position, start_line, start_col),
+        };
+        self.errors.push(error);
+        Some(Token::new(
+            TokenKind::Error,
+            content,
+            Span::new(start_pos, self.position, start_line, start_col),
+        ))
+    }
+
+    /// Tries to lex an operator.
+    fn try_operator(&mut self) -> Option<Token> {
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        let (kind, len) = if self.remaining.starts_with(">=") {
+            (TokenKind::GreaterEqual, 2)
+        } else if self.remaining.starts_with('>') {
+            (TokenKind::Greater, 1)
+        } else if self.remaining.starts_with('@') {
+            (TokenKind::At, 1)
+        } else if self.remaining.starts_with('=') {
+            (TokenKind::Equal, 1)
+        } else if self.remaining.starts_with('{') {
+            (TokenKind::LeftBrace, 1)
+        } else if self.remaining.starts_with('}') {
+            (TokenKind::RightBrace, 1)
+        } else {
+            return None;
+        };
+
+        let lexeme: String = self.remaining.chars().take(len).collect();
+        self.advance(len);
+
+        Some(Token::new(
+            kind,
+            lexeme,
+            Span::new(start_pos, self.position, start_line, start_col),
+        ))
+    }
+
+    /// Tries to lex a keyword, identifier, or version.
+    fn try_keyword_or_identifier(&mut self) -> Option<Token> {
+        let first = self.remaining.chars().next()?;
+        
+        // Check for version number
+        if first.is_ascii_digit() {
+            return self.try_version();
+        }
+
+        // Must start with letter
+        if !first.is_alphabetic() {
+            return None;
+        }
+
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        // Collect identifier (letters, digits, underscores, dots)
+        let mut lexeme = String::new();
+        while let Some(ch) = self.remaining.chars().next() {
+            if ch.is_alphanumeric() || ch == '_' || ch == '.' {
+                lexeme.push(ch);
+                self.advance(ch.len_utf8());
+            } else {
+                break;
+            }
+        }
+
+        // Strip trailing dot if present
+        if lexeme.ends_with('.') {
+            lexeme.pop();
+            self.position -= 1;
+            self.column -= 1;
+            self.remaining = &self.source[self.position..];
+        }
+
+        let kind = self.keyword_kind(&lexeme).unwrap_or(TokenKind::Identifier);
+
+        Some(Token::new(
+            kind,
+            lexeme,
+            Span::new(start_pos, self.position, start_line, start_col),
+        ))
+    }
+
+    /// Tries to lex a version number.
+    fn try_version(&mut self) -> Option<Token> {
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        let mut lexeme = String::new();
+        let mut dots = 0;
+
+        while let Some(ch) = self.remaining.chars().next() {
+            if ch.is_ascii_digit() {
+                lexeme.push(ch);
+                self.advance(ch.len_utf8());
+            } else if ch == '.' && dots < 2 {
+                // Check if next char is a digit (version) or not (identifier)
+                let next = self.remaining.chars().nth(1);
+                if next.map_or(false, |c| c.is_ascii_digit()) {
+                    lexeme.push(ch);
+                    self.advance(1);
+                    dots += 1;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        if dots == 2 {
+            Some(Token::new(
+                TokenKind::Version,
+                lexeme,
+                Span::new(start_pos, self.position, start_line, start_col),
+            ))
+        } else {
+            // Not a valid version, treat as identifier or error
+            Some(Token::new(
+                TokenKind::Identifier,
+                lexeme,
+                Span::new(start_pos, self.position, start_line, start_col),
+            ))
+        }
+    }
+
+    /// Returns the keyword kind for a lexeme, if it's a keyword.
+    fn keyword_kind(&self, lexeme: &str) -> Option<TokenKind> {
+        match lexeme {
+            "gene" => Some(TokenKind::Gene),
+            "trait" => Some(TokenKind::Trait),
+            "constraint" => Some(TokenKind::Constraint),
+            "system" => Some(TokenKind::System),
+            "evolves" => Some(TokenKind::Evolves),
+            "exegesis" => Some(TokenKind::Exegesis),
+            "has" => Some(TokenKind::Has),
+            "is" => Some(TokenKind::Is),
+            "derives" => Some(TokenKind::Derives),
+            "from" => Some(TokenKind::From),
+            "requires" => Some(TokenKind::Requires),
+            "uses" => Some(TokenKind::Uses),
+            "emits" => Some(TokenKind::Emits),
+            "matches" => Some(TokenKind::Matches),
+            "never" => Some(TokenKind::Never),
+            "adds" => Some(TokenKind::Adds),
+            "deprecates" => Some(TokenKind::Deprecates),
+            "removes" => Some(TokenKind::Removes),
+            "because" => Some(TokenKind::Because),
+            "test" => Some(TokenKind::Test),
+            "given" => Some(TokenKind::Given),
+            "when" => Some(TokenKind::When),
+            "then" => Some(TokenKind::Then),
+            "always" => Some(TokenKind::Always),
+            "each" => Some(TokenKind::Each),
+            "all" => Some(TokenKind::All),
+            "no" => Some(TokenKind::No),
+            _ => None,
+        }
+    }
+
+    /// Advances the lexer by the given number of bytes.
+    fn advance(&mut self, bytes: usize) {
+        let consumed = &self.remaining[..bytes];
+        for ch in consumed.chars() {
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += 1;
+            }
+        }
+        self.position += bytes;
+        self.remaining = &self.source[self.position..];
     }
 }
 
-impl std::error::Error for LexError {}
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let token = self.next_token();
+        if token.kind == TokenKind::Eof {
+            None
+        } else {
+            Some(token)
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn lex_gene_declaration() {
-        let source = r#"
-            gene container.exists {
-                container has identity
-            }
-        "#;
-        
-        let tokens = tokenize(source).unwrap();
-        assert!(tokens.iter().any(|t| t.token == Token::Gene));
-        assert!(tokens.iter().any(|t| t.token == Token::Has));
+    fn test_keywords() {
+        let mut lexer = Lexer::new("gene trait constraint");
+        assert_eq!(lexer.next_token().kind, TokenKind::Gene);
+        assert_eq!(lexer.next_token().kind, TokenKind::Trait);
+        assert_eq!(lexer.next_token().kind, TokenKind::Constraint);
     }
 
     #[test]
-    fn lex_version() {
-        let source = "@ 0.0.1";
-        let tokens = tokenize(source).unwrap();
-        assert!(tokens.iter().any(|t| matches!(t.token, Token::Version((0, 0, 1)))));
+    fn test_qualified_identifier() {
+        let mut lexer = Lexer::new("container.exists");
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Identifier);
+        assert_eq!(token.lexeme, "container.exists");
     }
 
     #[test]
-    fn lex_evolves_lineage() {
-        let source = "evolves container.lifecycle @ 0.0.2 > 0.0.1";
-        let tokens = tokenize(source).unwrap();
-        assert!(tokens.iter().any(|t| t.token == Token::Evolves));
-        assert!(tokens.iter().any(|t| t.token == Token::Gt));
+    fn test_version() {
+        let mut lexer = Lexer::new("0.0.1");
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Version);
+        assert_eq!(token.lexeme, "0.0.1");
     }
 
     #[test]
-    fn lex_quoted_string() {
-        let source = r#"because "migration requires state""#;
-        let tokens = tokenize(source).unwrap();
-        let string_token = tokens.iter().find(|t| matches!(&t.token, Token::String(_)));
-        assert!(string_token.is_some());
+    fn test_string() {
+        let mut lexer = Lexer::new(r#""hello world""#);
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::String);
+        assert_eq!(token.lexeme, "hello world");
     }
 
     #[test]
-    fn skip_comments() {
-        let source = r#"
-            // This is a comment
-            gene container.exists {
-                // Another comment
-                container has identity
-            }
-        "#;
-        
-        let tokens = tokenize(source).unwrap();
-        // Comments should be skipped
-        assert!(!tokens.iter().any(|t| t.token == Token::LineComment));
+    fn test_operators() {
+        let mut lexer = Lexer::new("@ > >=");
+        assert_eq!(lexer.next_token().kind, TokenKind::At);
+        assert_eq!(lexer.next_token().kind, TokenKind::Greater);
+        assert_eq!(lexer.next_token().kind, TokenKind::GreaterEqual);
+    }
+
+    #[test]
+    fn test_comments() {
+        let mut lexer = Lexer::new("gene // comment\ncontainer");
+        assert_eq!(lexer.next_token().kind, TokenKind::Gene);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
     }
 }

@@ -1,0 +1,771 @@
+# Claude-Flow Task Definitions
+# Metal DOL Remediation Project
+
+version: "1.0"
+project: metadol-remediation
+
+# ============================================
+# Agent Definitions
+# ============================================
+
+agents:
+  orchestrator:
+    role: "Project coordinator and structure setup"
+    capabilities:
+      - project_structure
+      - dependency_management
+      - release_coordination
+    
+  lexer-agent:
+    role: "Lexer implementation and testing"
+    capabilities:
+      - rust_development
+      - tokenization
+      - unit_testing
+    context:
+      - src/lexer.rs
+      - src/error.rs
+      - tests/lexer_tests.rs
+      - docs/grammar.ebnf
+    
+  parser-agent:
+    role: "Parser and AST implementation"
+    capabilities:
+      - rust_development
+      - parsing
+      - ast_design
+      - validation
+    context:
+      - src/parser.rs
+      - src/ast.rs
+      - src/validator.rs
+      - tests/parser_tests.rs
+    
+  cli-agent:
+    role: "CLI tool implementation"
+    capabilities:
+      - rust_development
+      - cli_design
+      - code_generation
+    context:
+      - src/bin/dol-parse.rs
+      - src/bin/dol-test.rs
+      - src/bin/dol-check.rs
+      - src/codegen.rs
+    
+  docs-agent:
+    role: "Documentation and examples"
+    capabilities:
+      - technical_writing
+      - example_creation
+      - tutorial_development
+    context:
+      - docs/
+      - examples/
+      - README.md
+    
+  ci-agent:
+    role: "CI/CD and release automation"
+    capabilities:
+      - github_actions
+      - release_management
+      - automation
+    context:
+      - .github/workflows/
+      - CHANGELOG.md
+
+# ============================================
+# Phase 1: Foundation Tasks
+# ============================================
+
+tasks:
+  # --- Setup Tasks ---
+  
+  task_1_1_project_structure:
+    name: "Project Structure Setup"
+    agent: orchestrator
+    phase: 1
+    priority: 0
+    effort_hours: 2
+    dependencies: []
+    description: |
+      Create the complete project directory structure with proper
+      Rust conventions and module organization.
+    
+    actions:
+      - action: create_directories
+        paths:
+          - src/bin
+          - tests
+          - examples/genes
+          - examples/traits
+          - examples/constraints
+          - examples/systems
+          - docs/tutorials
+          - .github/workflows
+      
+      - action: create_file
+        path: src/lib.rs
+        template: |
+          //! Metal DOL - Design Ontology Language
+          //!
+          //! A declarative specification language for ontology-first development.
+          
+          pub mod ast;
+          pub mod error;
+          pub mod lexer;
+          pub mod parser;
+          pub mod validator;
+          
+          pub use ast::*;
+          pub use error::*;
+          pub use lexer::Lexer;
+          pub use parser::Parser;
+    
+    deliverables:
+      - src/lib.rs
+      - Complete directory structure
+    
+    acceptance_criteria:
+      - cargo build succeeds
+      - All directories exist
+  
+  task_1_2_cargo_toml:
+    name: "Cargo.toml Enhancement"
+    agent: orchestrator
+    phase: 1
+    priority: 0
+    effort_hours: 1
+    dependencies:
+      - task_1_1_project_structure
+    description: |
+      Update Cargo.toml with complete metadata, dependencies,
+      binary targets, and feature flags.
+    
+    actions:
+      - action: update_file
+        path: Cargo.toml
+        content: |
+          # See /home/claude/metadol-project/Cargo.toml for full content
+    
+    deliverables:
+      - Cargo.toml with full metadata
+    
+    acceptance_criteria:
+      - cargo build succeeds
+      - cargo build --features cli succeeds
+  
+  task_1_3_error_types:
+    name: "Error Types Definition"
+    agent: lexer-agent
+    phase: 1
+    priority: 0
+    effort_hours: 2
+    dependencies:
+      - task_1_1_project_structure
+    description: |
+      Define error types for lexer, parser, and validation errors
+      using thiserror for ergonomic error handling.
+    
+    actions:
+      - action: create_file
+        path: src/error.rs
+        template: error_types_template
+    
+    deliverables:
+      - src/error.rs with LexError, ParseError, ValidationError
+    
+    acceptance_criteria:
+      - All errors include Span information
+      - Display impl provides helpful messages
+      - thiserror integration working
+  
+  task_1_4_lexer_docs_tests:
+    name: "Lexer Documentation & Tests"
+    agent: lexer-agent
+    phase: 1
+    priority: 0
+    effort_hours: 6
+    dependencies:
+      - task_1_3_error_types
+    description: |
+      Add comprehensive documentation to lexer module and create
+      20+ unit tests covering all token types and edge cases.
+    
+    actions:
+      - action: update_file
+        path: src/lexer.rs
+        add: documentation_comments
+      
+      - action: create_file
+        path: tests/lexer_tests.rs
+        template: lexer_tests_template
+    
+    deliverables:
+      - Fully documented src/lexer.rs
+      - tests/lexer_tests.rs with 20+ tests
+    
+    acceptance_criteria:
+      - cargo test lexer_tests passes
+      - cargo doc generates clean docs
+      - All token types tested
+  
+  task_1_5_ast_docs:
+    name: "AST Documentation"
+    agent: parser-agent
+    phase: 1
+    priority: 0
+    effort_hours: 3
+    dependencies:
+      - task_1_1_project_structure
+    description: |
+      Add comprehensive documentation to AST module with examples
+      showing how to construct and use AST nodes.
+    
+    actions:
+      - action: update_file
+        path: src/ast.rs
+        add: documentation_comments
+    
+    deliverables:
+      - Fully documented src/ast.rs
+    
+    acceptance_criteria:
+      - All public items documented
+      - Examples in doc comments
+      - cargo doc clean
+  
+  task_1_6_parser_docs_tests:
+    name: "Parser Documentation & Tests"
+    agent: parser-agent
+    phase: 1
+    priority: 0
+    effort_hours: 8
+    dependencies:
+      - task_1_4_lexer_docs_tests
+      - task_1_5_ast_docs
+    description: |
+      Add comprehensive documentation to parser module and create
+      20+ unit tests covering all declaration types and error cases.
+    
+    actions:
+      - action: update_file
+        path: src/parser.rs
+        add: documentation_comments
+      
+      - action: create_file
+        path: tests/parser_tests.rs
+        template: parser_tests_template
+    
+    deliverables:
+      - Fully documented src/parser.rs
+      - tests/parser_tests.rs with 20+ tests
+    
+    acceptance_criteria:
+      - cargo test parser_tests passes
+      - Error messages include source location
+      - All declaration types tested
+  
+  task_1_7_ebnf_grammar:
+    name: "EBNF Grammar Specification"
+    agent: docs-agent
+    phase: 1
+    priority: 1
+    effort_hours: 3
+    dependencies:
+      - task_1_4_lexer_docs_tests
+      - task_1_6_parser_docs_tests
+    description: |
+      Create formal EBNF grammar specification that matches
+      the implemented lexer and parser.
+    
+    actions:
+      - action: create_file
+        path: docs/grammar.ebnf
+        template: grammar_ebnf_template
+    
+    deliverables:
+      - docs/grammar.ebnf
+    
+    acceptance_criteria:
+      - All language constructs covered
+      - Examples included
+      - Matches implementation
+
+# ============================================
+# Phase 2: Tooling Tasks
+# ============================================
+
+  task_2_1_dol_parse:
+    name: "dol-parse CLI Implementation"
+    agent: cli-agent
+    phase: 2
+    priority: 0
+    effort_hours: 8
+    dependencies:
+      - task_1_6_parser_docs_tests
+    description: |
+      Implement the dol-parse CLI tool for parsing and validating
+      DOL files with multiple output formats.
+    
+    actions:
+      - action: create_file
+        path: src/bin/dol-parse.rs
+        template: dol_parse_template
+    
+    deliverables:
+      - Functional dol-parse binary
+    
+    acceptance_criteria:
+      - Parse single file
+      - Parse directory recursively
+      - JSON output format
+      - Validation mode
+      - CI-friendly exit codes
+  
+  task_2_2_validator:
+    name: "Validator Implementation"
+    agent: parser-agent
+    phase: 2
+    priority: 0
+    effort_hours: 6
+    dependencies:
+      - task_2_1_dol_parse
+    description: |
+      Implement semantic validation rules including exegesis
+      requirements, naming conventions, and cross-references.
+    
+    actions:
+      - action: create_file
+        path: src/validator.rs
+        template: validator_template
+    
+    deliverables:
+      - src/validator.rs with all validations
+    
+    acceptance_criteria:
+      - Exegesis validation
+      - Naming convention checks
+      - Version validation
+      - Integration with dol-parse
+  
+  task_2_3_dol_test:
+    name: "dol-test Code Generator"
+    agent: cli-agent
+    phase: 2
+    priority: 1
+    effort_hours: 12
+    dependencies:
+      - task_2_2_validator
+    description: |
+      Implement the dol-test CLI tool that generates Rust tests
+      from .dol.test specification files.
+    
+    actions:
+      - action: create_file
+        path: src/test_parser.rs
+        template: test_parser_template
+      
+      - action: create_file
+        path: src/codegen.rs
+        template: codegen_template
+      
+      - action: create_file
+        path: src/bin/dol-test.rs
+        template: dol_test_template
+    
+    deliverables:
+      - src/test_parser.rs
+      - src/codegen.rs
+      - Functional dol-test binary
+    
+    acceptance_criteria:
+      - Parse .dol.test files
+      - Generate compiling Rust tests
+      - Stub mode for scaffolding
+  
+  task_2_4_dol_check:
+    name: "dol-check Validation Tool"
+    agent: cli-agent
+    phase: 2
+    priority: 1
+    effort_hours: 8
+    dependencies:
+      - task_2_2_validator
+    description: |
+      Implement the dol-check CLI tool for CI validation
+      including coverage checking and exegesis enforcement.
+    
+    actions:
+      - action: create_file
+        path: src/bin/dol-check.rs
+        template: dol_check_template
+    
+    deliverables:
+      - Functional dol-check binary
+    
+    acceptance_criteria:
+      - Validate all .dol files in directory
+      - Check exegesis coverage
+      - Coverage percentage output
+      - CI gate mode
+  
+  task_2_5_cli_tests:
+    name: "CLI Integration Tests"
+    agent: cli-agent
+    phase: 2
+    priority: 1
+    effort_hours: 4
+    dependencies:
+      - task_2_1_dol_parse
+      - task_2_3_dol_test
+      - task_2_4_dol_check
+    description: |
+      Create integration tests for all CLI tools verifying
+      correct behavior with valid and invalid inputs.
+    
+    actions:
+      - action: create_file
+        path: tests/cli_tests.rs
+        template: cli_tests_template
+    
+    deliverables:
+      - tests/cli_tests.rs
+    
+    acceptance_criteria:
+      - All CLI tools tested
+      - Exit code verification
+      - Output format verification
+
+# ============================================
+# Phase 3: Documentation Tasks
+# ============================================
+
+  task_3_1_examples:
+    name: "Example DOL Files"
+    agent: docs-agent
+    phase: 3
+    priority: 0
+    effort_hours: 4
+    dependencies:
+      - task_2_5_cli_tests
+    description: |
+      Create comprehensive example DOL files covering all
+      declaration types and features.
+    
+    actions:
+      - action: create_files
+        directory: examples/
+        files:
+          - genes/container.exists.dol
+          - genes/identity.cryptographic.dol
+          - genes/state.finite.dol
+          - genes/node.exists.dol
+          - traits/container.lifecycle.dol
+          - traits/container.lifecycle.dol.test
+          - traits/node.discovery.dol
+          - constraints/container.integrity.dol
+          - constraints/cluster.consistency.dol
+          - systems/univrs.orchestrator.dol
+    
+    deliverables:
+      - 12+ example DOL files
+    
+    acceptance_criteria:
+      - All examples parse successfully
+      - Cover all declaration types
+      - Include test files
+  
+  task_3_2_tutorial_gene:
+    name: "Tutorial: First Gene"
+    agent: docs-agent
+    phase: 3
+    priority: 1
+    effort_hours: 3
+    dependencies:
+      - task_3_1_examples
+    description: |
+      Write introductory tutorial for creating first gene declaration.
+    
+    deliverables:
+      - docs/tutorials/01-first-gene.md
+    
+    acceptance_criteria:
+      - Clear explanations
+      - Working code examples
+      - Commands verified
+  
+  task_3_3_tutorial_traits:
+    name: "Tutorial: Composing Traits"
+    agent: docs-agent
+    phase: 3
+    priority: 1
+    effort_hours: 3
+    dependencies:
+      - task_3_2_tutorial_gene
+    
+    deliverables:
+      - docs/tutorials/02-composing-traits.md
+  
+  task_3_4_tutorial_constraints:
+    name: "Tutorial: Writing Constraints"
+    agent: docs-agent
+    phase: 3
+    priority: 1
+    effort_hours: 3
+    dependencies:
+      - task_3_3_tutorial_traits
+    
+    deliverables:
+      - docs/tutorials/03-writing-constraints.md
+  
+  task_3_5_tutorial_evolution:
+    name: "Tutorial: Evolution & Versioning"
+    agent: docs-agent
+    phase: 3
+    priority: 2
+    effort_hours: 3
+    dependencies:
+      - task_3_4_tutorial_constraints
+    
+    deliverables:
+      - docs/tutorials/04-evolution.md
+  
+  task_3_6_specification:
+    name: "Language Specification Document"
+    agent: docs-agent
+    phase: 3
+    priority: 1
+    effort_hours: 4
+    dependencies:
+      - task_3_1_examples
+    
+    deliverables:
+      - docs/specification.md
+    
+    acceptance_criteria:
+      - Complete language coverage
+      - Cross-references grammar.ebnf
+      - Examples for all constructs
+  
+  task_3_7_readme:
+    name: "README Enhancement"
+    agent: docs-agent
+    phase: 3
+    priority: 0
+    effort_hours: 4
+    dependencies:
+      - task_3_1_examples
+      - task_3_2_tutorial_gene
+    
+    deliverables:
+      - Enhanced README.md
+    
+    acceptance_criteria:
+      - Quick Start section
+      - Working examples
+      - All links valid
+
+# ============================================
+# Phase 4: Community Tasks
+# ============================================
+
+  task_4_1_ci:
+    name: "GitHub Actions CI"
+    agent: ci-agent
+    phase: 4
+    priority: 0
+    effort_hours: 4
+    dependencies:
+      - task_3_7_readme
+    
+    actions:
+      - action: create_file
+        path: .github/workflows/ci.yml
+        template: ci_workflow_template
+    
+    deliverables:
+      - .github/workflows/ci.yml
+    
+    acceptance_criteria:
+      - All jobs defined
+      - DOL validation job
+      - Branch protection ready
+  
+  task_4_2_release_workflow:
+    name: "Release Workflow"
+    agent: ci-agent
+    phase: 4
+    priority: 1
+    effort_hours: 3
+    dependencies:
+      - task_4_1_ci
+    
+    deliverables:
+      - .github/workflows/release.yml
+  
+  task_4_3_changelog:
+    name: "CHANGELOG.md"
+    agent: docs-agent
+    phase: 4
+    priority: 1
+    effort_hours: 2
+    dependencies:
+      - task_4_1_ci
+    
+    deliverables:
+      - CHANGELOG.md
+  
+  task_4_4_contributing:
+    name: "CONTRIBUTING.md"
+    agent: docs-agent
+    phase: 4
+    priority: 1
+    effort_hours: 2
+    dependencies:
+      - task_4_1_ci
+    
+    deliverables:
+      - CONTRIBUTING.md
+  
+  task_4_5_issue_templates:
+    name: "Issue Templates"
+    agent: ci-agent
+    phase: 4
+    priority: 2
+    effort_hours: 1
+    dependencies:
+      - task_4_1_ci
+    
+    deliverables:
+      - .github/ISSUE_TEMPLATE/bug_report.md
+      - .github/ISSUE_TEMPLATE/feature_request.md
+  
+  task_4_6_first_release:
+    name: "First Release (v0.0.1)"
+    agent: orchestrator
+    phase: 4
+    priority: 0
+    effort_hours: 2
+    dependencies:
+      - task_4_1_ci
+      - task_4_2_release_workflow
+      - task_4_3_changelog
+      - task_4_4_contributing
+    
+    actions:
+      - action: version_bump
+        file: Cargo.toml
+        version: "0.0.1"
+      
+      - action: git_tag
+        tag: "v0.0.1"
+      
+      - action: create_release
+        title: "Metal DOL v0.0.1 - Foundation"
+    
+    deliverables:
+      - v0.0.1 tag
+      - GitHub release
+    
+    acceptance_criteria:
+      - All CI checks passing
+      - CHANGELOG updated
+      - Release notes complete
+
+# ============================================
+# Execution Configuration
+# ============================================
+
+execution:
+  mode: parallel_within_phase
+  max_parallel_agents: 3
+  
+  phase_gates:
+    phase_1:
+      required_tasks:
+        - task_1_4_lexer_docs_tests
+        - task_1_6_parser_docs_tests
+      success_criteria:
+        - cargo test passes
+        - cargo clippy clean
+    
+    phase_2:
+      required_tasks:
+        - task_2_1_dol_parse
+        - task_2_5_cli_tests
+      success_criteria:
+        - All CLI tools functional
+        - Integration tests pass
+    
+    phase_3:
+      required_tasks:
+        - task_3_1_examples
+        - task_3_7_readme
+      success_criteria:
+        - All examples parse
+        - README complete
+    
+    phase_4:
+      required_tasks:
+        - task_4_6_first_release
+      success_criteria:
+        - CI green
+        - Release published
+
+# ============================================
+# Templates (Referenced by Tasks)
+# ============================================
+
+templates:
+  error_types_template: |
+    //! Error types for Metal DOL.
+    //!
+    //! This module defines all error types used throughout the crate,
+    //! providing rich error information including source locations.
+    
+    use crate::ast::Span;
+    use thiserror::Error;
+    
+    /// Errors that can occur during lexical analysis.
+    #[derive(Error, Debug, Clone)]
+    pub enum LexError {
+        #[error("unexpected character '{ch}' at {span:?}")]
+        UnexpectedChar { ch: char, span: Span },
+        
+        #[error("unterminated string starting at {span:?}")]
+        UnterminatedString { span: Span },
+        
+        #[error("invalid version number '{text}' at {span:?}")]
+        InvalidVersion { text: String, span: Span },
+    }
+    
+    /// Errors that can occur during parsing.
+    #[derive(Error, Debug, Clone)]
+    pub enum ParseError {
+        #[error("expected {expected}, found {found} at {span:?}")]
+        UnexpectedToken {
+            expected: String,
+            found: String,
+            span: Span,
+        },
+        
+        #[error("missing exegesis block at {span:?}")]
+        MissingExegesis { span: Span },
+        
+        #[error("invalid statement: {message} at {span:?}")]
+        InvalidStatement { message: String, span: Span },
+    }
+    
+    /// Errors that can occur during validation.
+    #[derive(Error, Debug, Clone)]
+    pub enum ValidationError {
+        #[error("empty exegesis at {span:?}")]
+        EmptyExegesis { span: Span },
+        
+        #[error("invalid identifier '{name}': {reason}")]
+        InvalidIdentifier { name: String, reason: String },
+        
+        #[error("unresolved reference '{reference}' at {span:?}")]
+        UnresolvedReference { reference: String, span: Span },
+    }

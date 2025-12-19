@@ -1,163 +1,151 @@
-//! # dol-parse
+//! # Metal DOL - Design Ontology Language
 //!
-//! Metal DOL (Design Ontology Language) parser and AST.
+//! Metal DOL is a declarative specification language that serves as the
+//! source of truth for ontology-first software development.
 //!
-//! DOL is a specification language for declaring system behavior, constraints,
-//! and evolution. This crate provides:
+//! ## Overview
 //!
-//! - Lexer for tokenizing DOL source
-//! - Parser for building Abstract Syntax Trees
-//! - LLVM-style diagnostics for error reporting
-//! - Repository management for multi-file projects
+//! In the DOL-first paradigm, design contracts are written before tests,
+//! and tests are written before code. Nothing changes without first being
+//! declared in the ontology.
 //!
-//! ## Example
-//!
-//! ```rust
-//! use dol_parse::{parse, DolFile};
-//!
-//! let source = r#"
-//!     gene container.exists {
-//!         container has identity
-//!         container has state
-//!         container has boundaries
-//!     }
-//!
-//!     exegesis {
-//!         A container is the fundamental unit of isolation.
-//!     }
-//! "#;
-//!
-//! let file = parse(source).expect("Parse error");
-//! println!("Parsed: {}", file.declaration.name());
+//! ```text
+//! Traditional:  Code → Tests → Documentation
+//! DOL-First:    Design Ontology → Tests → Code
 //! ```
 //!
-//! ## Design Philosophy
+//! ## Quick Start
 //!
-//! DOL embodies the principle that specification precedes implementation.
-//! The parser is designed to:
+//! Parse a DOL file:
 //!
-//! - Produce rich AST nodes with full source location tracking
-//! - Generate LLVM-quality diagnostic messages
-//! - Support incremental parsing for IDE integration
-//! - Enable code generation for tests and runtime checks
+//! ```rust
+//! use metadol::{Parser, parse_file};
+//!
+//! let input = r#"
+//! gene container.exists {
+//!   container has identity
+//!   container has state
+//! }
+//!
+//! exegesis {
+//!   A container is the fundamental unit of workload isolation.
+//! }
+//! "#;
+//!
+//! let result = parse_file(input);
+//! assert!(result.is_ok());
+//! ```
+//!
+//! ## Core Concepts
+//!
+//! - **Gene**: Atomic unit declaring fundamental truths
+//! - **Trait**: Composable behaviors built from genes
+//! - **Constraint**: Invariants that must always hold
+//! - **System**: Top-level composition of a complete subsystem
+//! - **Evolution**: Lineage record of ontology changes
+//!
+//! ## Modules
+//!
+//! - [`ast`]: Abstract Syntax Tree definitions
+//! - [`lexer`]: Tokenization of DOL source text
+//! - [`parser`]: Recursive descent parser producing AST
+//! - [`error`]: Error types with source location information
+//! - [`validator`]: Semantic validation rules
+
+#![doc(html_root_url = "https://docs.rs/metadol/0.0.1")]
+#![warn(missing_docs)]
+#![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod ast;
+pub mod error;
 pub mod lexer;
 pub mod parser;
-pub mod diagnostics;
+pub mod validator;
+
+#[cfg(feature = "codegen")]
+pub mod codegen;
+
+#[cfg(feature = "codegen")]
+pub mod test_parser;
 
 // Re-exports for convenience
-pub use ast::{
-    DolFile, DolRepository, Declaration, Gene, Trait, Constraint, System, 
-    Evolves, Test, QualifiedName, Version, Statement, Exegesis, Span,
-};
-pub use lexer::{Token, tokenize};
-pub use parser::{parse, parse_repository, ParseError};
-pub use diagnostics::{Diagnostic, DiagnosticCollector, Severity};
+pub use ast::{Declaration, Gene, Trait, Constraint, System, Evolution, Statement, Span};
+pub use error::{LexError, ParseError, ValidationError};
+pub use lexer::{Lexer, Token, TokenKind};
+pub use parser::Parser;
+pub use validator::{validate, ValidationResult};
 
-/// Parse a DOL source file
+/// Parse a DOL source string into an AST.
+///
+/// This is the primary entry point for parsing DOL files.
+///
+/// # Arguments
+///
+/// * `source` - The DOL source text to parse
+///
+/// # Returns
+///
+/// A `Declaration` AST node on success, or a `ParseError` on failure.
 ///
 /// # Example
 ///
 /// ```rust
-/// use dol_parse::parse_file;
+/// use metadol::parse_file;
 ///
-/// let source = "gene node.exists { node has identity }";
-/// let file = parse_file(source, Some("node.dol")).unwrap();
+/// let source = r#"
+/// gene test.example {
+///   test has property
+/// }
+///
+/// exegesis {
+///   Example gene for testing.
+/// }
+/// "#;
+///
+/// let result = parse_file(source);
+/// assert!(result.is_ok());
 /// ```
-pub fn parse_file(source: &str, path: Option<&str>) -> Result<DolFile, ParseError> {
-    let mut file = parse(source)?;
-    file.path = path.map(|p| p.to_string());
-    Ok(file)
+pub fn parse_file(source: &str) -> Result<Declaration, ParseError> {
+    let mut parser = Parser::new(source);
+    parser.parse()
 }
 
-/// Validate a DOL file and collect diagnostics
-pub fn validate(file: &DolFile) -> DiagnosticCollector {
-    let mut collector = DiagnosticCollector::new();
-    
-    // Validate declaration
-    match &file.declaration {
-        Declaration::Gene(g) => validate_gene(g, &mut collector),
-        Declaration::Trait(t) => validate_trait(t, &mut collector),
-        Declaration::Constraint(c) => validate_constraint(c, &mut collector),
-        Declaration::System(s) => validate_system(s, &mut collector),
-        Declaration::Evolves(e) => validate_evolves(e, &mut collector),
-        Declaration::Test(t) => validate_test(t, &mut collector),
-    }
-    
-    // Check for exegesis
-    if file.exegesis.is_none() {
-        collector.warning(
-            "Missing exegesis section",
-            file.span,
-        );
-    }
-    
-    collector
-}
-
-fn validate_gene(gene: &Gene, collector: &mut DiagnosticCollector) {
-    if gene.statements.is_empty() {
-        collector.warning("Gene has no statements", gene.span);
-    }
-    
-    // Validate naming convention
-    if gene.name.segments.len() < 2 {
-        collector.warning(
-            "Gene name should follow domain.property pattern",
-            gene.name.span,
-        );
-    }
-}
-
-fn validate_trait(t: &Trait, collector: &mut DiagnosticCollector) {
-    if t.uses.is_empty() && t.statements.is_empty() {
-        collector.warning("Trait has no composition or statements", t.span);
-    }
-}
-
-fn validate_constraint(c: &Constraint, collector: &mut DiagnosticCollector) {
-    if c.statements.is_empty() {
-        collector.warning("Constraint has no invariants", c.span);
-    }
-}
-
-fn validate_system(s: &System, collector: &mut DiagnosticCollector) {
-    if s.requires.is_empty() {
-        collector.warning("System has no requirements", s.span);
-    }
-}
-
-fn validate_evolves(e: &Evolves, collector: &mut DiagnosticCollector) {
-    // Check version ordering
-    if e.version <= e.from {
-        collector.error(
-            format!("Evolution version {} must be greater than {}", e.version, e.from),
-            e.span,
-        );
-    }
-    
-    if e.changes.is_empty() {
-        collector.warning("Evolution has no changes", e.span);
-    }
-    
-    if e.because.is_none() {
-        collector.warning("Evolution should include 'because' rationale", e.span);
-    }
-}
-
-fn validate_test(t: &Test, collector: &mut DiagnosticCollector) {
-    if t.given.is_empty() {
-        collector.warning("Test has no preconditions (given)", t.span);
-    }
-    
-    if t.when.is_empty() {
-        collector.warning("Test has no actions (when)", t.span);
-    }
-    
-    if t.then.is_empty() {
-        collector.warning("Test has no assertions (then)", t.span);
-    }
+/// Parse and validate a DOL source string.
+///
+/// Combines parsing and validation into a single operation.
+///
+/// # Arguments
+///
+/// * `source` - The DOL source text to parse and validate
+///
+/// # Returns
+///
+/// A tuple of the parsed `Declaration` and `ValidationResult` on success,
+/// or a `ParseError` if parsing fails.
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::parse_and_validate;
+///
+/// let source = r#"
+/// gene test.example {
+///   test has property
+/// }
+///
+/// exegesis {
+///   Example gene for testing.
+/// }
+/// "#;
+///
+/// let (decl, validation) = parse_and_validate(source)?;
+/// assert!(validation.is_valid());
+/// # Ok::<(), metadol::ParseError>(())
+/// ```
+pub fn parse_and_validate(source: &str) -> Result<(Declaration, ValidationResult), ParseError> {
+    let decl = parse_file(source)?;
+    let validation = validate(&decl);
+    Ok((decl, validation))
 }
 
 #[cfg(test)]
@@ -165,35 +153,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn full_parse_and_validate() {
+    fn test_parse_simple_gene() {
         let source = r#"
-            gene container.exists {
-                container has identity
-                container has state
-            }
+gene container.exists {
+  container has identity
+}
 
-            exegesis {
-                Containers are isolated execution environments.
-            }
-        "#;
-
-        let file = parse_file(source, Some("container.dol")).unwrap();
-        let diagnostics = validate(&file);
-        
-        assert!(!diagnostics.has_errors());
+exegesis {
+  A container is the fundamental unit.
+}
+"#;
+        let result = parse_file(source);
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn missing_exegesis_warning() {
+    fn test_parse_missing_exegesis() {
         let source = r#"
-            gene container.exists {
-                container has identity
-            }
-        "#;
-
-        let file = parse_file(source, None).unwrap();
-        let diagnostics = validate(&file);
-        
-        assert_eq!(diagnostics.warning_count(), 1);
+gene container.exists {
+  container has identity
+}
+"#;
+        let result = parse_file(source);
+        assert!(result.is_err());
     }
 }
