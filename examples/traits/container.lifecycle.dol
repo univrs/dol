@@ -1,0 +1,20 @@
+trait container.lifecycle {
+  uses container.exists
+
+  container is created
+  container is starting
+  container is running
+  container is stopping
+  container is stopped
+  container is removing
+  container is removed
+
+  each transition emits event
+}
+
+exegesis {
+  The container lifecycle defines the state machine that governs
+  container execution. Transitions between states are atomic and
+  emit events for observability. The lifecycle ensures predictable
+  behavior from creation through removal.
+}
