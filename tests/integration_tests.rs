@@ -51,9 +51,9 @@ fn test_parse_all_example_genes() {
             let entry = entry.expect("Failed to read directory entry");
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "dol") {
-                let content =
-                    fs::read_to_string(&path).expect(&format!("Failed to read {:?}", path));
+            if path.extension().is_some_and(|ext| ext == "dol") {
+                let content = fs::read_to_string(&path)
+                    .unwrap_or_else(|_| panic!("Failed to read {:?}", path));
 
                 let result = parse_file(&content);
                 assert!(
@@ -75,9 +75,9 @@ fn test_parse_all_example_traits() {
             let entry = entry.expect("Failed to read directory entry");
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "dol") {
-                let content =
-                    fs::read_to_string(&path).expect(&format!("Failed to read {:?}", path));
+            if path.extension().is_some_and(|ext| ext == "dol") {
+                let content = fs::read_to_string(&path)
+                    .unwrap_or_else(|_| panic!("Failed to read {:?}", path));
 
                 let result = parse_file(&content);
                 assert!(
