@@ -1,0 +1,16 @@
+[package]
+name = "scheduler_interface"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs team"]
+description = "Scheduler interface implementing the Metal DOL scheduling ontology"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/univrs/metadol"
+
+[dependencies]
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
