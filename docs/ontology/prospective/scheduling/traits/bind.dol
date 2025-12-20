@@ -1,0 +1,144 @@
+trait scheduling.bind {
+  uses scheduling.select
+
+  bind has container
+  bind has target_node
+  bind has reservation_id
+  bind has binding_mode
+  bind has resource_updates
+  bind has event_emission
+  bind has rollback_handler
+
+  container is workload_unit
+  target_node is node
+  reservation_id is lock_reference
+  binding_mode is bind_strategy
+  resource_updates is resource_delta_set
+  event_emission is event_notification
+  rollback_handler is compensation_action
+
+  binding_mode is optimistic
+  binding_mode is pessimistic
+  binding_mode is two_phase
+
+  bind requires reservation_validation
+  bind requires resource_commitment
+  bind requires state_transition
+
+  reservation_validation requires lock_verification
+  reservation_validation requires timeout_check
+  lock_verification is boolean
+  timeout_check is boolean
+
+  resource_commitment requires cpu_allocation
+  resource_commitment requires memory_allocation
+  resource_commitment requires storage_allocation
+  resource_commitment requires network_allocation
+  cpu_allocation is resource_claim
+  memory_allocation is resource_claim
+  storage_allocation is resource_claim
+  network_allocation is resource_claim
+
+  state_transition requires container_state_update
+  state_transition requires node_state_update
+  container_state_update is state_change
+  node_state_update is state_change
+
+  event_emission requires bind_success_event
+  event_emission requires bind_failure_event
+  bind_success_event is notification
+  bind_failure_event is notification
+
+  rollback_handler requires cleanup_actions
+  rollback_handler requires reservation_release
+  cleanup_actions is action_list
+  reservation_release is deallocation_operation
+
+  optimistic requires fast_commit
+  optimistic requires conflict_detection
+  fast_commit is boolean
+  conflict_detection is validation_check
+
+  pessimistic requires lock_acquisition
+  pessimistic requires verified_commit
+  lock_acquisition is locking_operation
+  verified_commit is atomic_operation
+
+  two_phase requires prepare_phase
+  two_phase requires commit_phase
+  prepare_phase is validation_stage
+  commit_phase is finalization_stage
+}
+
+exegesis {
+  The scheduling.bind trait defines the container binding mechanism for committing
+  the placement decision to the selected node. This trait implements the final stage
+  of the scheduling pipeline, making the placement permanent and updating all
+  relevant system state.
+
+  Binding Operation:
+  - Receives container specification and target node from scheduling.select
+  - Validates the reservation from the selection phase
+  - Commits resources on the target node
+  - Updates container and node state to reflect the binding
+  - Emits events for observability and downstream processing
+
+  Binding Modes:
+
+  Optimistic Binding:
+  - Assumes reservation is still valid and commits immediately
+  - Fast path with minimal validation overhead
+  - Includes conflict detection for race condition handling
+  - On conflict, triggers rollback and re-selection
+  - Best for stable clusters with low contention
+
+  Pessimistic Binding:
+  - Acquires exclusive locks before committing
+  - Verifies all preconditions before state changes
+  - Higher latency but guaranteed consistency
+  - No rollback needed on successful lock acquisition
+  - Best for high-contention or critical workloads
+
+  Two-Phase Binding:
+  - Prepare phase: Validate and lock without committing
+  - Commit phase: Finalize the binding atomically
+  - Allows for distributed coordination and rollback
+  - Used in multi-cluster or federated scheduling scenarios
+
+  Resource Updates:
+  - Converts temporary reservation into permanent allocation
+  - Updates node resource availability counters
+  - Records resource claims for capacity planning
+  - Updates resource utilization metrics
+
+  Event Emission:
+  - bind_success_event: Emitted on successful binding with details
+  - bind_failure_event: Emitted on failure with error context
+  - Events include container ID, node ID, timestamp, and metadata
+  - Used for monitoring, auditing, and triggering downstream workflows
+
+  Rollback Handling:
+  - On binding failure, rollback handler executes cleanup
+  - Releases the reservation to free locked resources
+  - Reverts any partial state changes
+  - May trigger re-scheduling or alert mechanisms
+  - Ensures system consistency even in failure scenarios
+
+  State Transitions:
+  - Container: pending -> bound (on success) or pending -> failed (on error)
+  - Node: Updates allocated resources and container registry
+  - Both transitions must be atomic and durable
+
+  Error Conditions:
+  - Reservation expired or invalid
+  - Node state changed since selection (resources unavailable)
+  - Network partition or node failure
+  - Resource constraint violation detected late
+  - Concurrent binding conflict (optimistic mode)
+
+  Performance Considerations:
+  - Binding latency directly impacts container startup time
+  - Optimistic mode minimizes latency for common case
+  - Event emission should be asynchronous to avoid blocking
+  - Rollback operations must be idempotent and fast
+}

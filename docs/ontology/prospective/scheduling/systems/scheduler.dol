@@ -1,0 +1,96 @@
+system scheduling.scheduler @ 0.1.0 {
+  requires scheduling.resources >= 0.0.1
+  requires scheduling.filter >= 0.0.1
+  requires scheduling.score >= 0.0.1
+  requires scheduling.select >= 0.0.1
+  requires scheduling.bind >= 0.0.1
+
+  uses state.concurrency
+  uses event.emission
+  uses error.handling
+}
+
+exegesis {
+  The scheduling.scheduler system composes the complete Kubernetes-style pod
+  scheduling pipeline: filter -> score -> select -> bind.
+
+  This is the core subsystem responsible for placing containers onto nodes in
+  a cluster. Given a pending workload (pod) and a set of available nodes, the
+  scheduler determines the optimal placement that satisfies resource constraints,
+  affinity rules, and system-wide objectives.
+
+  The scheduling pipeline operates as follows:
+
+  1. FILTER (Predicate Phase):
+     Eliminates nodes that cannot run the pod due to hard constraints:
+     - Insufficient CPU/memory/storage capacity
+     - Node not in Ready state
+     - Taints without matching tolerations
+     - Anti-affinity rules prohibiting co-location
+     - Resource limits exceeding node capacity
+
+     Output: Set of feasible nodes that satisfy all predicates.
+
+  2. SCORE (Priority Phase):
+     Ranks feasible nodes based on soft preferences and optimization goals:
+     - Balanced resource utilization (avoid hotspots)
+     - Affinity preferences (preferred co-location)
+     - Data locality (minimize network transfer)
+     - Topology spread (improve fault tolerance)
+     - Custom priority functions (user-defined policies)
+
+     Each scorer assigns a numeric value [0-100] to each node. Scores are
+     weighted and summed to produce a final ranking.
+
+     Output: Sorted list of nodes with composite scores.
+
+  3. SELECT (Decision Phase):
+     Chooses the best node from the ranked list. Typically selects the
+     highest-scoring node, but may use randomization among top-K nodes to
+     avoid thundering herds when many pods schedule simultaneously.
+
+     Output: Single selected node for placement.
+
+  4. BIND (Assignment Phase):
+     Commits the scheduling decision by creating a binding record in the
+     cluster state. This atomically associates the pod with the selected node.
+     The kubelet on that node observes the binding and starts the container.
+
+     Binding is asynchronous and may fail (e.g., node disappeared between
+     selection and binding). Failures trigger re-scheduling.
+
+     Output: Bound pod or re-schedule signal.
+
+  Key characteristics:
+
+  - Pluggable: Each phase uses registered plugins. Users can extend the
+    scheduler with custom filters and scorers without modifying core code.
+
+  - Concurrent: Multiple pods may be scheduled in parallel. The scheduler
+    uses optimistic concurrency - select based on cached state, validate at
+    bind time, retry on conflicts.
+
+  - Observable: Each phase emits detailed events (FilteredNode, ScoredNode,
+    SelectedNode, BoundPod) enabling full tracing of placement decisions.
+
+  - Cache-coherent: Maintains an eventually-consistent cache of node state
+    to avoid querying the API server for every pod. Updates flow through
+    watch events.
+
+  Dependencies:
+  - scheduling.resources: Resource accounting and capacity tracking
+  - scheduling.filter: Predicate plugins for feasibility checks
+  - scheduling.score: Priority plugins for node ranking
+  - scheduling.select: Selection logic (best node, round-robin, random)
+  - scheduling.bind: Binding protocol and conflict resolution
+  - state.concurrency: Thread-safe cache access during scheduling
+  - event.emission: Publishing scheduling events for observability
+  - error.handling: Structured errors for retry/backoff logic
+
+  Version 0.1.0 indicates early development. Future versions may add:
+  - Gang scheduling (atomic placement of pod groups)
+  - Preemption (evicting low-priority pods for high-priority ones)
+  - Multi-dimensional bin packing optimizations
+  - Machine learning-based score prediction
+  - Cross-cluster scheduling for federation
+}

@@ -1,0 +1,214 @@
+gene scheduling.resources {
+  // Node-level resource capacity definitions
+  node has cpu_capacity
+  node has memory_capacity
+  node has disk_capacity
+  node has gpu_capacity
+  node has ephemeral_storage_capacity
+  node has hugepages_capacity
+
+  // Node allocatable resources (what can be allocated to pods)
+  node has cpu_allocatable
+  node has memory_allocatable
+  node has disk_allocatable
+  node has gpu_allocatable
+  node has ephemeral_storage_allocatable
+  node has hugepages_allocatable
+
+  // Node reserved resources (for system daemons)
+  node has cpu_reserved
+  node has memory_reserved
+  node has disk_reserved
+
+  // Container resource requests (minimum guaranteed)
+  container has cpu_request
+  container has memory_request
+  container has ephemeral_storage_request
+  container has hugepages_request
+
+  // Container resource limits (maximum allowed)
+  container has cpu_limit
+  container has memory_limit
+  container has ephemeral_storage_limit
+  container has hugepages_limit
+
+  // Pod-level aggregated resources
+  pod has total_cpu_request
+  pod has total_memory_request
+  pod has total_cpu_limit
+  pod has total_memory_limit
+
+  // Extended resources (custom resource types)
+  node has extended_resources
+  container has extended_resource_requests
+  container has extended_resource_limits
+
+  extended_resource has resource_name
+  extended_resource has resource_quantity
+
+  // Resource derivation relationships
+  allocatable derives from capacity
+  allocatable derives from reserved
+  reserved is_subtracted_from capacity
+
+  pod.total_cpu_request derives from container.cpu_request
+  pod.total_memory_request derives from container.memory_request
+  pod.total_cpu_limit derives from container.cpu_limit
+  pod.total_memory_limit derives from container.memory_limit
+
+  // Resource quality constraints
+  each cpu_capacity is quantifiable
+  each cpu_capacity is non_negative
+  each cpu_capacity is measured_in millicores
+
+  each memory_capacity is quantifiable
+  each memory_capacity is non_negative
+  each memory_capacity is measured_in bytes
+
+  each disk_capacity is quantifiable
+  each disk_capacity is non_negative
+  each disk_capacity is measured_in bytes
+
+  each gpu_capacity is quantifiable
+  each gpu_capacity is non_negative
+  each gpu_capacity is measured_in units
+
+  each ephemeral_storage_capacity is quantifiable
+  each ephemeral_storage_capacity is non_negative
+  each ephemeral_storage_capacity is measured_in bytes
+
+  each hugepages_capacity is quantifiable
+  each hugepages_capacity is non_negative
+  each hugepages_capacity is measured_in bytes
+
+  // Request and limit constraints
+  each request is non_negative
+  each limit is non_negative
+  each limit is_greater_than_or_equal_to request
+
+  // Allocatable constraints
+  each allocatable is_less_than_or_equal_to capacity
+  each allocatable is_computed_as capacity minus reserved
+
+  // Pod scheduling feasibility
+  pod.total_cpu_request is_less_than_or_equal_to node.cpu_allocatable
+  pod.total_memory_request is_less_than_or_equal_to node.memory_allocatable
+
+  // Extended resource constraints
+  each extended_resource has unique resource_name
+  each extended_resource_quantity is non_negative
+  each extended_resource_quantity is integral
+
+  // Resource compressibility
+  cpu is compressible
+  memory is incompressible
+  disk is incompressible
+  ephemeral_storage is compressible
+
+  // QoS class derivation
+  qos_class derives from cpu_request
+  qos_class derives from memory_request
+  qos_class derives from cpu_limit
+  qos_class derives from memory_limit
+
+  // Best effort: no requests or limits
+  best_effort requires no_requests_or_limits
+
+  // Burstable: requests < limits or only some resources have requests
+  burstable requires requests_less_than_limits
+
+  // Guaranteed: requests == limits for all resources
+  guaranteed requires requests_equal_limits
+}
+
+exegesis {
+  The scheduling.resources gene defines the comprehensive resource model for
+  container orchestration scheduling. This model captures the multi-layered
+  resource management hierarchy from node-level capacity down to individual
+  container resource specifications.
+
+  Resource Capacity Model:
+
+  At the node level, resources represent physical or virtualized hardware
+  capabilities. The capacity represents the total available resources on a node,
+  including CPU cores (measured in millicores where 1000m = 1 core), memory
+  (bytes), disk storage (bytes), GPU units, ephemeral storage, and huge pages.
+
+  The distinction between capacity and allocatable is critical: capacity represents
+  the total hardware resources, while allocatable represents what the scheduler
+  can actually assign to pods. The difference (reserved resources) accounts for
+  system daemons, the kubelet, container runtime, and OS processes that must run
+  to maintain node functionality.
+
+  Container Resource Requests and Limits:
+
+  Resource requests represent the minimum guaranteed resources a container needs.
+  The scheduler uses requests to make placement decisions, ensuring nodes have
+  sufficient allocatable resources before scheduling pods. Requests are guarantees
+  that the container will receive at least this amount of resources.
+
+  Resource limits represent the maximum resources a container can consume. Limits
+  prevent resource starvation and enable resource overcommitment. The relationship
+  between requests and limits determines resource burstability and QoS guarantees.
+
+  Compressible vs Incompressible Resources:
+
+  CPU and ephemeral storage are compressible resources. When a container exceeds
+  its limit on compressible resources, it is throttled but not terminated. This
+  allows graceful degradation under resource pressure.
+
+  Memory and disk are incompressible resources. When a container exceeds its
+  memory limit, it is OOM-killed. Incompressible resources cannot be reclaimed
+  without terminating processes, making them critical for stability.
+
+  Quality of Service (QoS) Classes:
+
+  QoS classes determine pod eviction priority under node resource pressure:
+
+  - Guaranteed: Pods with requests == limits for all containers and all resources.
+    These pods receive the highest priority and are last to be evicted.
+
+  - Burstable: Pods with requests < limits or only some resources specified.
+    These pods have medium priority and can burst above requests up to limits.
+
+  - BestEffort: Pods with no requests or limits specified. These are first to be
+    evicted under pressure but can use all available node resources when idle.
+
+  Extended Resources:
+
+  Extended resources enable scheduling of specialized hardware like GPUs, FPGAs,
+  or InfiniBand adapters. Unlike standard resources, extended resources must be
+  integral (whole numbers) and are always requested and limited equally. They are
+  advertised by device plugins and consumed through the same request/limit API.
+
+  Pod-Level Aggregation:
+
+  Pod total requests and limits are computed as the sum of all container requests
+  and limits within the pod. The scheduler evaluates pod-level totals against node
+  allocatable resources to determine scheduling feasibility. This aggregation is
+  essential for multi-container pods where containers may have different resource
+  profiles.
+
+  Resource Accounting Invariants:
+
+  The model enforces several critical invariants:
+  1. All resource quantities are non-negative
+  2. Limits must be greater than or equal to requests
+  3. Allocatable resources cannot exceed capacity
+  4. Sum of scheduled pod requests cannot exceed node allocatable
+  5. Reserved resources are subtracted from capacity to compute allocatable
+
+  These invariants ensure the scheduler maintains cluster resource integrity and
+  prevents overcommitment beyond configured tolerances.
+
+  Measurement Units:
+
+  CPU is measured in millicores (1000m = 1 CPU core), allowing fine-grained
+  fractional CPU allocation. Memory and storage are measured in bytes with
+  standard binary (Ki, Mi, Gi) or decimal (k, M, G) suffixes. GPUs and other
+  extended resources use integral units specific to the resource type.
+
+  This resource model forms the foundation for scheduling decisions, bin-packing
+  optimization, cluster autoscaling, and resource quota enforcement across the
+  entire orchestration system.
+}

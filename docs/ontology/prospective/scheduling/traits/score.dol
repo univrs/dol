@@ -1,0 +1,144 @@
+trait scheduling.score {
+  uses scheduling.filter
+
+  score has scoring_functions
+  score has weights
+  score has ranked_nodes
+  score has final_score
+
+  scoring_function has resource_balance
+  scoring_function has spreading
+  scoring_function has binpacking
+  scoring_function has preferred_affinity
+  scoring_function has anti_affinity
+  scoring_function has topology_spread
+
+  weight has priority
+  weight has coefficient
+  weight is configurable
+
+  resource_balance has cpu_score
+  resource_balance has memory_score
+  resource_balance has allocation_ratio
+
+  spreading has node_distribution
+  spreading has zone_distribution
+  spreading has failure_domain_distribution
+
+  binpacking has utilization_target
+  binpacking has consolidation_score
+  binpacking has fragmentation_penalty
+
+  preferred_affinity has pod_affinity_score
+  preferred_affinity has node_affinity_score
+  preferred_affinity has preference_weight
+
+  anti_affinity has separation_score
+  anti_affinity has violation_penalty
+
+  topology_spread has constraint_score
+  topology_spread has skew_penalty
+  topology_spread has spread_target
+
+  score has normalized_value
+  score has weight_multiplier
+  score has contribution
+
+  each normalized_value is bounded
+  each normalized_value has minimum_value
+  each normalized_value has maximum_value
+  minimum_value is zero
+  maximum_value is one_hundred
+  each final_score is sum_of weighted_contributions
+  each ranked_node has total_score
+
+  ranked_nodes are sorted_by final_score
+  ranked_nodes are ordered descending
+}
+
+exegesis {
+  The scheduling.score trait defines the second phase of the scheduling process
+  where filtered nodes are ranked by preference through a weighted scoring system.
+
+  After the filter phase eliminates unsuitable nodes, the scoring phase evaluates
+  each remaining node across multiple dimensions to determine the best placement
+  for a workload. Each scoring function produces a normalized score between 0-100,
+  which is then multiplied by a configurable weight to produce the final score.
+
+  SCORING FUNCTIONS:
+
+  1. Resource Balance Scoring
+     - Evaluates how balanced resource allocation would be after placement
+     - Considers CPU and memory utilization ratios
+     - Prevents hotspots and promotes even cluster utilization
+     - Higher scores for nodes that maintain better balance
+
+  2. Spreading Scoring
+     - Promotes distribution of workloads across failure domains
+     - Evaluates node, zone, and rack distribution
+     - Reduces blast radius of failures
+     - Higher scores for placements that improve spread
+
+  3. Binpacking Scoring
+     - Optimizes for resource consolidation and efficiency
+     - Prefers filling partially utilized nodes
+     - Reduces fragmentation and enables better scale-down
+     - Inverse of spreading - higher scores for tighter packing
+
+  4. Preferred Affinity Scoring
+     - Evaluates pod-to-pod and pod-to-node affinity preferences
+     - Supports co-location requirements (databases with caches)
+     - Uses preference weights for soft constraints
+     - Higher scores when affinity rules are satisfied
+
+  5. Anti-Affinity Scoring
+     - Evaluates separation requirements between workloads
+     - Penalizes placements that violate anti-affinity rules
+     - Ensures high availability through distribution
+     - Lower scores when anti-affinity would be violated
+
+  6. Topology Spread Scoring
+     - Evaluates even distribution across topology domains
+     - Measures skew against target spread constraints
+     - Supports zone-aware and rack-aware spreading
+     - Higher scores for placements that reduce skew
+
+  WEIGHT CONFIGURATION:
+
+  Each scoring function has a configurable weight that determines its relative
+  importance in the final score calculation. Weights allow operators to tune
+  scheduling behavior based on cluster priorities:
+
+  - High binpacking weight: optimize for cost efficiency
+  - High spreading weight: optimize for availability
+  - High affinity weight: optimize for locality and performance
+
+  SCORE NORMALIZATION:
+
+  All scoring functions must produce normalized values in the range 0-100:
+  - 0: Worst possible score for this function
+  - 100: Best possible score for this function
+  - Linear or non-linear scaling depending on function
+
+  Normalization ensures fair comparison across different scoring dimensions
+  and prevents any single function from dominating the final result.
+
+  FINAL SCORE CALCULATION:
+
+  The final score for each node is computed as:
+
+    final_score = Σ(normalized_score[i] × weight[i])
+
+  Where i ranges over all enabled scoring functions. The contribution of each
+  function to the final score is proportional to its weight.
+
+  RANKING AND SELECTION:
+
+  After scoring, nodes are sorted in descending order by final_score. The
+  scheduler selects the highest-scoring node for placement. In case of ties,
+  deterministic tie-breaking (such as alphabetical node name) ensures
+  consistent behavior.
+
+  This scoring system provides flexibility for different workload requirements
+  and cluster optimization goals while maintaining predictable, tunable behavior.
+}

@@ -1,0 +1,154 @@
+constraint scheduling.feasibility {
+  node_capacity never exceeded
+  node_status requires ready
+  resource_requests is bounded_by_limits
+
+  anti_affinity_rules has enforcement
+  enforcement is hard
+  enforcement is soft
+
+  pod_spreading has topology_constraint
+  topology_constraint requires domain_key
+
+  taints requires matching_tolerations
+  matching_tolerations has operator
+  operator is equal
+  operator is exists
+
+  volume_affinity requires available_zone
+
+  pod_priority is comparable
+  preemption requires lower_priority_target
+
+  scheduling_decision is atomic
+  scheduling_decision requires validation
+
+  binding_conflict triggers reschedule
+}
+
+exegesis {
+  The scheduling.feasibility constraint defines the invariants that MUST hold
+  for a pod to be scheduled on a node. These are the hard constraints - if any
+  are violated, the placement is invalid regardless of how attractive it might
+  otherwise be.
+
+  Core feasibility rules:
+
+  1. RESOURCE CAPACITY:
+     node_capacity never exceeded
+
+     A node cannot accept a pod if the sum of existing resource allocations
+     plus the new pod's requests exceeds the node's allocatable capacity.
+
+     This applies to all resource types:
+     - CPU (millicores)
+     - Memory (bytes)
+     - Ephemeral storage (bytes)
+     - Extended resources (GPUs, FPGAs, etc.)
+
+     Example violation: Node has 8 GB allocatable memory, 6 GB already
+     allocated, new pod requests 3 GB -> infeasible.
+
+  2. NODE STATUS:
+     node_status requires ready
+
+     Only nodes in Ready status can receive new pods. Nodes in NotReady,
+     Unknown, or Unschedulable states are filtered out during predicates.
+
+     This prevents scheduling to:
+     - Nodes experiencing network partitions
+     - Nodes with failing health checks
+     - Nodes cordoned for maintenance
+
+  3. RESOURCE BOUNDS:
+     resource_requests is bounded_by_limits
+
+     If a pod specifies resource limits, its requests must not exceed those
+     limits. This prevents nonsensical configurations where a pod claims to
+     need more than it's allowed to use.
+
+     Additionally, resource requests must be non-negative.
+
+  4. ANTI-AFFINITY:
+     anti_affinity_rules has enforcement (hard | soft)
+
+     Hard anti-affinity rules MUST be satisfied. If a pod requires "do not
+     co-locate with pods labeled app=database", the scheduler filters out
+     any node already running such pods.
+
+     Soft anti-affinity is a preference handled during scoring, not filtering.
+
+     Example: Spreading replicas of a StatefulSet across failure domains to
+     ensure that a zone outage doesn't take down all instances.
+
+  5. POD SPREADING:
+     pod_spreading has topology_constraint
+
+     TopologySpreadConstraints distribute pods across topology domains
+     (zones, racks, nodes) according to maxSkew parameters. Violating the
+     spread constraint makes a node infeasible.
+
+     Example: If maxSkew=1 and zone-a has 3 replicas while zone-b has 1,
+     scheduling another replica to zone-a would violate the constraint.
+
+  6. TAINTS AND TOLERATIONS:
+     taints requires matching_tolerations
+
+     Nodes may have taints (key=value:effect) that repel pods. Only pods
+     with matching tolerations can schedule to tainted nodes.
+
+     Taint effects:
+     - NoSchedule: Hard constraint, pod must tolerate
+     - PreferNoSchedule: Soft constraint, handled in scoring
+     - NoExecute: Evicts running pods without toleration
+
+     Example: A node tainted with "hardware=gpu:NoSchedule" only accepts
+     pods with toleration "hardware=gpu".
+
+  7. VOLUME AFFINITY:
+     volume_affinity requires available_zone
+
+     If a pod mounts a persistent volume restricted to specific zones (e.g.,
+     an EBS volume in us-east-1a), the pod can only schedule to nodes in
+     that zone. Cross-zone volume mounts are infeasible.
+
+  8. PRIORITY AND PREEMPTION:
+     pod_priority is comparable
+     preemption requires lower_priority_target
+
+     If a high-priority pod cannot fit on any node, the scheduler may
+     preempt (evict) lower-priority pods to make room. Preemption is only
+     feasible if the freed resources would satisfy the new pod's needs.
+
+  9. ATOMIC SCHEDULING:
+     scheduling_decision is atomic
+     scheduling_decision requires validation
+
+     The bind operation must succeed atomically. If the node state changed
+     between selection and binding (e.g., another pod consumed remaining
+     capacity), the binding fails and the pod is re-scheduled.
+
+     This prevents double-booking of resources in concurrent scheduling.
+
+  10. CONFLICT HANDLING:
+      binding_conflict triggers reschedule
+
+      When a binding conflict occurs (optimistic concurrency failure), the
+      pod returns to the scheduling queue for another attempt with fresh
+      state. This ensures eventual placement as long as feasible nodes exist.
+
+  Failure modes:
+
+  - Unschedulable: No node satisfies all feasibility constraints. The pod
+    remains Pending and emits FailedScheduling events. Requires manual
+    intervention (add capacity, remove taints, fix configuration).
+
+  - Preemption candidate: No immediate fit, but preempting lower-priority
+    pods would create space. Scheduler evaluates preemption safety.
+
+  - Intermittent infeasibility: Pod becomes feasible when resources free up.
+    Scheduler retries with exponential backoff.
+
+  This constraint is the foundation of safe scheduling - it prevents resource
+  exhaustion, configuration conflicts, and physically impossible placements.
+}

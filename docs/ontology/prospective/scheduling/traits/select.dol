@@ -1,0 +1,80 @@
+trait scheduling.select {
+  uses scheduling.score
+
+  select has winner
+  select has candidates
+  select has tiebreaker
+  select has reservation
+  select has reservation_timeout
+  select has selection_result
+  select has selection_timestamp
+
+  winner is node
+  candidates is scored_node_list
+  tiebreaker is selection_strategy
+  reservation is resource_lock
+  reservation_timeout is duration
+  selection_result is binding_candidate
+  selection_timestamp is timestamp
+
+  tiebreaker requires strategy_type
+  strategy_type is random
+  strategy_type is least_loaded
+  strategy_type is round_robin
+  strategy_type is weighted_random
+  strategy_type is affinity_based
+
+  reservation requires lock_id
+  reservation requires expiration_time
+  lock_id is unique_identifier
+  expiration_time is timestamp
+
+  selection_result requires selected_node
+  selection_result requires score_value
+  selection_result requires reservation_handle
+  selected_node is node
+  score_value is numeric
+  reservation_handle is resource_lock_reference
+}
+
+exegesis {
+  The scheduling.select trait defines the node selection mechanism for choosing
+  the winning node from a set of scored candidates. This trait is responsible for
+  implementing the final decision logic in the scheduling pipeline.
+
+  Selection Process:
+  - Receives a list of candidates with their associated scores from scheduling.score
+  - Applies tiebreaker logic when multiple nodes have identical or similar scores
+  - Creates a temporary resource reservation on the selected node
+  - Returns a selection result with the winning node and reservation handle
+
+  Tiebreaker Strategies:
+  - random: Select randomly among top-scored nodes
+  - least_loaded: Among tied nodes, choose the one with lowest overall load
+  - round_robin: Distribute selections evenly across tied nodes
+  - weighted_random: Probabilistic selection weighted by scores
+  - affinity_based: Prefer nodes with affinity to container/workload
+
+  Reservation Mechanism:
+  - When a node is selected, a temporary resource reservation is placed
+  - The reservation has a timeout (reservation_timeout) to prevent resource deadlocks
+  - If binding does not occur within the timeout, the reservation is released
+  - The reservation_handle is passed to the bind operation for validation
+
+  Selection Result:
+  - Contains the selected node identifier
+  - Includes the final score value for auditing
+  - Provides a reservation handle for the subsequent bind operation
+  - Timestamped for tracking selection latency and debugging
+
+  Error Conditions:
+  - No candidates available (empty scored list)
+  - All candidates filtered out by constraints
+  - Reservation creation failure (node state changed)
+  - Tiebreaker strategy execution failure
+
+  Performance Considerations:
+  - Selection should complete in O(n) time where n is the number of candidates
+  - Reservation operations must be atomic and conflict-free
+  - Timeout values should account for network latency and bind operation time
+}

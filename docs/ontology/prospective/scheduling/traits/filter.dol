@@ -1,0 +1,172 @@
+trait scheduling.filter {
+  uses scheduling.resources
+  uses scheduling.nodes
+
+  filter has predicates
+  filter has node_pool
+  filter has eligible_nodes
+  filter has filtered_count
+
+  predicate has node_selector
+  predicate has node_affinity
+  predicate has pod_affinity
+  predicate has pod_anti_affinity
+  predicate has tolerations
+  predicate has topology_constraints
+
+  node_selector has label_requirements
+  node_selector has field_requirements
+
+  node_affinity has required_terms
+  node_affinity has preferred_terms
+
+  affinity_term has match_expressions
+  affinity_term has match_fields
+  affinity_term has weight
+
+  toleration has key
+  toleration has operator
+  toleration has value
+  toleration has effect
+
+  taint has key
+  taint has value
+  taint has effect
+
+  filter has resource_feasibility_check
+  resource_feasibility_check validates cpu_capacity
+  resource_feasibility_check validates memory_capacity
+  resource_feasibility_check validates storage_capacity
+  resource_feasibility_check validates extended_resources
+
+  filter has constraint_evaluation
+  constraint_evaluation enforces hard_constraints
+  constraint_evaluation scores soft_constraints
+
+  eligible_nodes contains node_references
+  eligible_nodes has admission_reasons
+
+  filtered_nodes has rejection_reasons
+  filtered_nodes has failure_details
+
+  each filter is deterministic
+  each filter is parallelizable
+  each filter is stateless
+
+  filter requires node_pool
+  filter produces eligible_nodes
+
+  node_selector is required
+  node_affinity is optional
+  pod_affinity is optional
+  pod_anti_affinity is optional
+
+  filter phase precedes scoring_phase
+  filter phase reduces search_space
+  filter phase optimizes scheduler_performance
+}
+
+exegesis {
+  The scheduling filter trait defines the first critical phase of the scheduling
+  process: node filtering. This phase eliminates nodes that cannot satisfy the
+  basic requirements of a workload, dramatically reducing the search space for
+  subsequent scoring and selection phases.
+
+  ## Filter Predicates
+
+  Filter predicates represent the collection of constraints that nodes must satisfy
+  to be considered eligible for workload placement. These predicates include:
+
+  - **Node Selectors**: Simple key-value label matching that provides basic node
+    selection capabilities. A pod with node selector labels will only run on nodes
+    that have all the specified labels.
+
+  - **Node Affinity**: Advanced node selection rules that extend node selectors with
+    more expressive constraint language. Node affinity supports required rules
+    (hard constraints) and preferred rules (soft constraints with weights).
+
+  - **Pod Affinity/Anti-Affinity**: Rules that constrain pod placement based on
+    labels of other pods already running on nodes. Pod affinity encourages
+    co-location (e.g., cache near database), while anti-affinity enforces
+    separation (e.g., replicas on different nodes for high availability).
+
+  - **Taints and Tolerations**: A mechanism to mark nodes as unsuitable for certain
+    workloads (taints) while allowing specific pods to tolerate those taints. This
+    enables node specialization and workload isolation.
+
+  - **Topology Constraints**: Rules about pod distribution across failure domains
+    (zones, regions, hosts) to ensure high availability and fault tolerance.
+
+  ## Hard vs Soft Constraints
+
+  The filter phase primarily enforces hard constraints - requirements that MUST be
+  satisfied for a node to be eligible. Nodes that fail any hard constraint are
+  immediately eliminated. Soft constraints (preferences with weights) are evaluated
+  later during the scoring phase.
+
+  Hard constraints include:
+  - Required node affinity terms
+  - Node selector matching
+  - Resource feasibility (sufficient CPU, memory, storage)
+  - Unschedulable taint without matching toleration
+  - Volume zone constraints
+  - PodTopologySpread maxSkew limits
+
+  ## Resource Feasibility Filtering
+
+  A critical filter predicate checks whether a node has sufficient allocatable
+  resources to accommodate the workload's resource requests. This check considers:
+
+  - CPU capacity: Total CPU minus already allocated CPU
+  - Memory capacity: Total memory minus already allocated memory
+  - Storage capacity: Available ephemeral storage
+  - Extended resources: GPU, FPGA, or custom resource availability
+
+  Resource feasibility filtering prevents scheduling workloads on nodes that would
+  be over-committed, ensuring QoS guarantees can be met.
+
+  ## Filter Result: Eligible Nodes
+
+  The output of the filter phase is a list of eligible nodes - nodes that passed
+  all filter predicates and are capable of hosting the workload. This list is
+  accompanied by:
+
+  - Admission reasons: Why each node passed filtering
+  - Rejection reasons: Why filtered-out nodes failed (for debugging)
+  - Failure details: Specific predicate violations per rejected node
+
+  ## Determinism and Parallelizability
+
+  Filter predicates are designed to be deterministic - evaluating the same node
+  against the same predicates always yields the same result. This determinism
+  enables safe parallelization: different nodes can be evaluated concurrently
+  without risk of race conditions or inconsistent results.
+
+  The stateless nature of filters means no shared state needs to be maintained
+  during evaluation, further enabling efficient parallel execution across the
+  node pool.
+
+  ## Performance Characteristics
+
+  Effective filtering is crucial for scheduler performance. By quickly eliminating
+  unsuitable nodes, the filter phase reduces the number of nodes that need expensive
+  scoring calculations. In large clusters (1000+ nodes), aggressive filtering can
+  reduce the scoring set by 90% or more, yielding dramatic performance improvements.
+
+  Filter predicates are ordered by computational cost, with cheap checks (node
+  selectors) evaluated before expensive ones (pod affinity scanning), enabling
+  fast-fail behavior that maximizes throughput.
+
+  ## Integration with Scheduling Pipeline
+
+  The filter phase is the first stage in the scheduling pipeline:
+
+  1. **Filter Phase**: Eliminate infeasible nodes (this trait)
+  2. **Scoring Phase**: Rank remaining nodes by preference
+  3. **Selection Phase**: Choose highest-scoring node
+  4. **Binding Phase**: Commit the scheduling decision
+
+  By clearly separating filtering from scoring, the scheduler maintains modularity
+  and extensibility - new filter predicates can be added without modifying scoring
+  logic, and vice versa.
+}
