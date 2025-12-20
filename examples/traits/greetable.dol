@@ -1,0 +1,20 @@
+trait entity.greetable {
+  uses entity.identity
+  greetable can greet
+  greetable can receive.greeting
+  greeting is polite
+}
+
+exegesis {
+  The entity.greetable trait defines behavior for entities that can
+  participate in greetings. This trait:
+
+  - uses entity.identity: requires the entity to have an identity
+  - can greet: the entity can initiate a greeting
+  - can receive.greeting: the entity can be greeted
+  - is polite: greetings are courteous (invariant)
+
+  The "uses" keyword declares a dependency on another specification.
+  The "can" keyword declares capabilities (what the entity can do).
+  The "is" keyword declares a quality or invariant.
+}

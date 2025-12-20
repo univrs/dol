@@ -1,0 +1,17 @@
+constraint counter.bounds_valid {
+  value never overflows
+  value never underflows
+  bounds never inverted
+}
+
+exegesis {
+  The counter.bounds_valid constraint ensures the counter state is
+  always valid. Three invariants must hold:
+
+  1. value >= minimum: can't go below the lower bound
+  2. value <= maximum: can't exceed the upper bound
+  3. minimum <= maximum: bounds must be sensible
+
+  Constraints are checked after every operation. If violated, the
+  operation must be rejected or the system is in an invalid state.
+}

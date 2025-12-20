@@ -1,0 +1,24 @@
+system greeting_service @ 0.1.0 {
+  implements entity.greetable
+  enforces greeting.protocol
+
+  uses hello.world
+  has greeting.templates
+  has response.timeout
+}
+
+exegesis {
+  The greeting_service system provides a complete greeting capability.
+
+  Composition:
+  - implements entity.greetable: can greet and receive greetings
+  - enforces greeting.protocol: ensures valid sender/recipient pairs
+  - uses hello.world: leverages message structure for greetings
+
+  Configuration:
+  - greeting.templates: pre-defined greeting formats
+  - response.timeout: how long to wait for greeting response
+
+  This example shows how systems compose multiple specifications
+  and add operational configuration.
+}

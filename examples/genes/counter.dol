@@ -1,0 +1,20 @@
+gene counter.state {
+  counter has value
+  counter has minimum
+  counter has maximum
+  counter derives from initialization
+}
+
+exegesis {
+  The counter.state gene models a bounded counter. A counter has a current
+  value, and bounds (minimum and maximum). The counter derives from an
+  initialization value when created.
+
+  Properties:
+  - value: Current count (integer)
+  - minimum: Lower bound (typically 0)
+  - maximum: Upper bound (optional, may be unbounded)
+
+  The "derives from" pattern indicates that the initial state comes from
+  some configuration or initialization source.
+}

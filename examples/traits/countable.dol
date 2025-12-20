@@ -1,0 +1,20 @@
+trait counter.countable {
+  uses counter.state
+  countable can increment
+  countable can decrement
+  countable can reset
+  operations are atomic
+}
+
+exegesis {
+  The counter.countable trait defines operations on a counter. It depends
+  on counter.state (which provides value, min, max properties).
+
+  Operations:
+  - increment: increase value by 1 (respecting maximum)
+  - decrement: decrease value by 1 (respecting minimum)
+  - reset: return value to initial state
+
+  The invariant "operations are atomic" ensures that count changes
+  happen indivisibly - no partial updates.
+}

@@ -1,0 +1,24 @@
+system bounded_counter @ 0.1.0 {
+  implements counter.state
+  implements counter.countable
+  enforces counter.bounds_valid
+
+  has persistence.strategy
+  has overflow.policy
+}
+
+exegesis {
+  The bounded_counter system composes genes, traits, and constraints
+  into a complete, versioned component.
+
+  Composition:
+  - implements counter.state: has value, min, max properties
+  - implements counter.countable: can increment, decrement, reset
+  - enforces counter.bounds_valid: guarantees value stays in bounds
+
+  Additional system-level concerns:
+  - persistence.strategy: how state is saved (memory, disk, etc.)
+  - overflow.policy: what happens at bounds (saturate, wrap, error)
+
+  The @ version (0.1.0) follows semver: major.minor.patch.
+}

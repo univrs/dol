@@ -1,0 +1,18 @@
+constraint greeting.protocol {
+  greeting requires sender
+  greeting requires recipient
+  sender differs.from recipient
+  response follows request
+}
+
+exegesis {
+  The greeting.protocol constraint defines the rules for valid greetings:
+
+  1. greeting requires sender: every greeting must have a sender
+  2. greeting requires recipient: every greeting must have a recipient
+  3. sender differs.from recipient: can't greet yourself
+  4. response follows request: responses must follow initial greetings
+
+  This demonstrates how constraints encode business rules and
+  protocol requirements that must always be satisfied.
+}
