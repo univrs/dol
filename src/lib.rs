@@ -80,7 +80,9 @@ pub use typechecker::{Type, TypeChecker, TypeEnv, TypeError};
 pub use validator::{validate, ValidationResult};
 
 // Codegen re-exports
-pub use codegen::{Codegen, CodegenOptions, RustCodegen, TypeMapper, Visibility};
+pub use codegen::{
+    Codegen, CodegenOptions, RustCodegen, TypeMapper, TypeScriptCodegen, Visibility,
+};
 
 /// Parse a DOL source string into an AST.
 ///

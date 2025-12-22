@@ -6,7 +6,7 @@
 //! # Supported Targets
 //!
 //! - **Rust**: Generate structs, traits, and type aliases
-//! - **TypeScript**: Generate interfaces and type definitions (planned)
+//! - **TypeScript**: Generate interfaces and type definitions
 //! - **JSON Schema**: Generate JSON Schema from types (planned)
 //!
 //! # Example
@@ -31,8 +31,10 @@
 //! ```
 
 mod rust;
+mod typescript;
 
 pub use rust::RustCodegen;
+pub use typescript::TypeScriptCodegen;
 
 use crate::ast::{Declaration, TypeExpr};
 use crate::typechecker::Type;
