@@ -69,7 +69,7 @@ DOL 2.0 is a **Turing-complete functional language** that compiles to multiple t
 gene Calculator {
   type: Module
   
-  function fibonacci(n: Int64) -> Int64 {
+  fun fibonacci(n: Int64) -> Int64 {
     match n {
       0 { return 0 }
       1 { return 1 }
@@ -77,7 +77,7 @@ gene Calculator {
     }
   }
   
-  function pipeline(x: Int64) -> Int64 {
+  fun pipeline(x: Int64) -> Int64 {
     return x |> double >> increment |> square
   }
   
@@ -203,7 +203,7 @@ y = 3.14        // y: Float64 (inferred)
 z = "hello"     // z: String (inferred)
 
 // Functions infer return types
-function double(n: Int32) -> Int32 {
+fun double(n: Int32) -> Int32 {
   return n * 2  // Verified: Int32 * Int32 → Int32
 }
 
@@ -295,7 +295,7 @@ Built with [logos](https://github.com/maciejhirsz/logos) for high-performance to
 
 | Category | Tokens |
 |----------|--------|
-| Keywords | `gene`, `trait`, `system`, `constraint`, `evolves`, `exegesis`, `function`, `return`, `match`, `if`, `else`, `for`, `while`, `loop`, `break`, `continue`, `where`, `in`, `requires`, `law`, `type`, `has`, `is` |
+| Keywords | `gene`, `trait`, `system`, `constraint`, `evolves`, `exegesis`, `fun`, `return`, `match`, `if`, `else`, `for`, `while`, `loop`, `break`, `continue`, `where`, `in`, `requires`, `law`, `type`, `has`, `is` |
 | Types | `Int8`, `Int16`, `Int32`, `Int64`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Float32`, `Float64`, `Bool`, `String`, `Void`, `Self` |
 | Operators | `\|>`, `>>`, `<\|`, `@`, `:=`, `->`, `=>`, `==`, `!=`, `>=`, `<=`, `>`, `<`, `+`, `-`, `*`, `/`, `%`, `&&`, `\|\|`, `!`, `'`, `#`, `?`, `[\|`, `\|]` |
 | Delimiters | `{`, `}`, `(`, `)`, `[`, `]`, `:`, `,`, `.`, `_` |
@@ -697,7 +697,7 @@ gene Math {
 
 // DOL 2.0 - Add implementation
 gene Math {
-  function add(a: Int32, b: Int32) -> Int32 {
+  fun add(a: Int32, b: Int32) -> Int32 {
     return a + b
   }
 }
@@ -707,7 +707,7 @@ gene Math {
 
 ```dol
 // DOL 2.0
-function describe(n: Int32) -> String {
+fun describe(n: Int32) -> String {
   match n {
     0 { return "zero" }
     n where n > 0 { return "positive" }
@@ -720,7 +720,7 @@ function describe(n: Int32) -> String {
 
 ```dol
 // DOL 2.0
-function process(x: Int32) -> Int32 {
+fun process(x: Int32) -> Int32 {
   return x |> validate >> transform |> finalize
 }
 ```

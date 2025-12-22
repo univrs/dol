@@ -238,7 +238,7 @@ pub enum TokenKind {
     VoidType,
 
     // === Function Keyword (DOL 2.0) ===
-    /// The `function` keyword
+    /// The `fun` keyword
     Function,
 
     // === Operators ===

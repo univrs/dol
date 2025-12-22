@@ -1324,7 +1324,7 @@ impl<'a> Parser<'a> {
         Ok(base_type)
     }
 
-    /// Parses a function declaration (for DOL 2.0 gene/trait bodies).
+    /// Parses a fun declaration (for DOL 2.0 gene/trait bodies).
     #[allow(dead_code)]
     fn parse_function_decl(&mut self) -> Result<FunctionDecl, ParseError> {
         let start_span = self.current.span;

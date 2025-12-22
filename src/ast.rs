@@ -876,7 +876,7 @@ pub enum Stmt {
 
 /// Function parameter with type annotation.
 ///
-/// Represents a parameter in a function declaration.
+/// Represents a parameter in a `fun` declaration.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FunctionParam {
@@ -886,9 +886,10 @@ pub struct FunctionParam {
     pub type_ann: TypeExpr,
 }
 
-/// Function declaration for DOL 2.0.
+/// Function declaration for DOL 2.0 (`fun` keyword).
 ///
 /// Represents a function definition inside a gene or trait body.
+/// In DOL syntax, these are declared using the `fun` keyword.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FunctionDecl {
