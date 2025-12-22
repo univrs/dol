@@ -465,7 +465,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::StringType => write!(f, "String"),
             TokenKind::VoidType => write!(f, "Void"),
             // DOL 2.0 Function Keyword
-            TokenKind::Function => write!(f, "function"),
+            TokenKind::Function => write!(f, "fun"),
             // Operators
             TokenKind::At => write!(f, "@"),
             TokenKind::Greater => write!(f, ">"),
@@ -1011,7 +1011,7 @@ impl<'a> Lexer<'a> {
             "String" => Some(TokenKind::StringType),
             "Void" => Some(TokenKind::VoidType),
             // DOL 2.0 function keyword
-            "function" => Some(TokenKind::Function),
+            "fun" => Some(TokenKind::Function),
             _ => None,
         }
     }
@@ -1165,7 +1165,7 @@ mod tests {
 
     #[test]
     fn test_dol2_function_keyword() {
-        let mut lexer = Lexer::new("function");
+        let mut lexer = Lexer::new("fun");
         assert_eq!(lexer.next_token().kind, TokenKind::Function);
     }
 

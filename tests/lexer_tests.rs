@@ -776,7 +776,7 @@ fn test_all_logical_operators() {
 
 #[test]
 fn test_function_keyword() {
-    let tokens = tokenize("function");
+    let tokens = tokenize("fun");
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].0, TokenKind::Function);
 }
