@@ -1073,7 +1073,7 @@ mod tests {
         let mut checker = TypeChecker::new();
 
         assert_eq!(checker.infer(&int_lit(42)).unwrap(), Type::Int64);
-        assert_eq!(checker.infer(&float_lit(3.14)).unwrap(), Type::Float64);
+        assert_eq!(checker.infer(&float_lit(1.5)).unwrap(), Type::Float64);
         assert_eq!(checker.infer(&bool_lit(true)).unwrap(), Type::Bool);
         assert_eq!(checker.infer(&string_lit("hello")).unwrap(), Type::String);
     }
