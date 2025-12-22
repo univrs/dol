@@ -81,7 +81,8 @@ pub use validator::{validate, ValidationResult};
 
 // Codegen re-exports
 pub use codegen::{
-    Codegen, CodegenOptions, RustCodegen, TypeMapper, TypeScriptCodegen, Visibility,
+    Codegen, CodegenOptions, JsonSchemaCodegen, RustCodegen, TypeMapper, TypeScriptCodegen,
+    Visibility,
 };
 
 /// Parse a DOL source string into an AST.

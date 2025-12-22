@@ -30,9 +30,11 @@
 //! println!("{}", rust_code);
 //! ```
 
+mod jsonschema;
 mod rust;
 mod typescript;
 
+pub use jsonschema::JsonSchemaCodegen;
 pub use rust::RustCodegen;
 pub use typescript::TypeScriptCodegen;
 
