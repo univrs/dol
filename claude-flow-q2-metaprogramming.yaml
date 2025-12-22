@@ -1,0 +1,1055 @@
+# claude-flow-q2-metaprogramming.yaml
+#
+# Mission: Implement DOL 2.0 Meta-Programming operators
+# Phase: Q2 - Quote, Eval, Macro, Reflect, Idiom Brackets
+#
+# Run: npx claude-flow@alpha swarm "read claude-flow-q2-metaprogramming.yaml --workflow q2-meta"
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUMMARY: Total Implementation Effort ~73 hours across 14 agents
+#
+# Phase 3 Completion (15h): Expression evaluator, REPL, tests
+# Q2 Core Metaprogramming (28h): Quote/Eval, Macros, AST transforms
+# Q2 Extended Features (20h): Reflection, Plugins, TODO fixes
+# Integration (6h): Component integration and validation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: q2-metaprogramming
+version: 1.0.0
+description: |
+  Complete Q2 metaprogramming implementation for Metal DOL.
+  Extends the existing lexer/parser/typechecker with macro expansion,
+  AST transformations, and runtime evaluation capabilities.
+
+config:
+  max_concurrent_agents: 4
+  checkpoint_interval: 30m
+  working_dir: ~/repos/univrs-metadol
+  log_level: info
+
+# ═══════════════════════════════════════════════════════════════════
+# CONTEXT
+# ═══════════════════════════════════════════════════════════════════
+
+context:
+  current_state:
+    phase_3_complete:
+      - "Task 3.1: Type-aware validator with DOL 2.0 expressions"
+      - "Task 3.2: Rust code generator (src/codegen/rust.rs)"
+      - "Task 3.3: TypeScript code generator (src/codegen/typescript.rs)"
+      - "Task 3.4: JSON Schema code generator (src/codegen/jsonschema.rs)"
+      - "Task 3.6: dol-codegen CLI (src/bin/dol-codegen.rs)"
+
+    phase_3_remaining:
+      - "Task 3.5: Expression Evaluator/REPL"
+
+    infrastructure:
+      lexer: "Already has tokens for ' ! # ? [| |]"
+      parser: "Recognizes operators, has Pratt parser for expressions"
+      typechecker: "Bidirectional inference, needs Quoted type handling"
+      codegen: "3 targets implemented, needs quote/eval emission"
+
+    identified_todos:
+      - "src/codegen/rust.rs:191 - Constraint validation implementation"
+      - "src/codegen/rust.rs:222 - System implementation"
+      - "src/codegen/typescript.rs:200 - Constraint validation implementation"
+      - "src/typechecker.rs:816 - Pattern checking for match scrutinee"
+
+    operators:
+        quote:
+            symbol: "'"
+            description: "Defer evaluation, capture AST as data"
+            example: "quoted = '(x + y)"
+
+        eval:
+            symbol: "!"
+            description: "Force evaluation of quoted expression"
+            example: "result = !quoted"
+
+        macro:
+            symbol: "#"
+            description: "Compile-time code transformation"
+            example: "#derive(Debug, Clone)"
+
+        reflect:
+            symbol: "?"
+            description: "Runtime type introspection"
+            example: "info = ?MyType"
+
+        idiom_brackets:
+            symbols: "[| |]"
+            description: "Applicative functor lifting"
+            example: "[| f <$> x <*> y |]"
+
+# ═══════════════════════════════════════════════════════════════════
+# AGENTS
+# ═══════════════════════════════════════════════════════════════════
+
+agents:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 3.5: Expression Evaluator/REPL (Foundation for Q2)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  evaluator-core:
+    name: Expression Evaluator Core
+    role: coder
+    complexity: high
+    estimated_hours: 8
+    description: Implement expression evaluation engine for DOL 2.0 expressions
+
+    instructions: |
+      Create the expression evaluator - foundation for macro expansion and eval.
+
+      CREATE src/eval/mod.rs:
+      - pub mod value, interpreter, builtins
+      - pub use Value, Interpreter
+
+      CREATE src/eval/value.rs:
+      - Value enum: Void, Bool, Int, Float, String, Quoted, Function, Builtin, TypeInfo, Array, Record
+      - Environment struct with scoped bindings and parent lookup
+      - EvalError struct
+
+      CREATE src/eval/interpreter.rs:
+      - Interpreter with Environment
+      - eval(&Expr) -> Result<Value, EvalError>
+      - Methods: eval_literal, eval_identifier, eval_binary, eval_unary, eval_call
+      - eval_lambda, eval_if, eval_match, eval_block
+      - eval_eval (for ! operator), eval_reflect (for ? operator)
+
+      CREATE src/eval/builtins.rs:
+      - Built-in functions: print, typeof, len, push, pop, keys, values
+
+      UPDATE src/lib.rs: pub mod eval; pub use eval::{Value, Interpreter};
+
+    outputs:
+      - src/eval/mod.rs
+      - src/eval/value.rs
+      - src/eval/interpreter.rs
+      - src/eval/builtins.rs
+
+  repl-impl:
+    name: REPL Implementation
+    role: coder
+    complexity: medium
+    estimated_hours: 4
+    dependencies:
+      - evaluator-core
+    description: Implement interactive REPL for DOL expressions
+
+    instructions: |
+      CREATE src/bin/dol-repl.rs:
+      - clap for argument parsing (-e for single expression, --quiet)
+      - Interactive mode with "dol>" prompt
+      - Commands: :help, :quit, :clear
+      - Colored output with 'colored' crate
+      - Parse and evaluate expressions
+
+      UPDATE Cargo.toml: Add [[bin]] entry for dol-repl
+
+    outputs:
+      - src/bin/dol-repl.rs
+      - Cargo.toml (updated)
+
+  evaluator-tests:
+    name: Evaluator Tests
+    role: tester
+    complexity: medium
+    estimated_hours: 3
+    dependencies:
+      - evaluator-core
+    description: Write comprehensive tests for the expression evaluator
+
+    instructions: |
+      CREATE tests/eval_tests.rs:
+      - test_eval_literals (int, float, bool, string)
+      - test_eval_arithmetic (+, -, *, /, ^, %)
+      - test_eval_comparison (<, >, ==, !=)
+      - test_eval_logic (&&, ||, !)
+      - test_eval_quote_eval (round-trip)
+      - test_eval_lambda (creation and application)
+      - test_eval_if (branching)
+      - test_eval_block (let bindings)
+
+    outputs:
+      - tests/eval_tests.rs
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Task 4.1: Quote Operator
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  quote-ast:
+        name: Quote AST Designer
+        role: Design AST representation for quoted expressions
+        instructions: |
+            Design how quoted expressions are represented in the AST.
+
+            CONCEPT:
+            The quote operator ' captures an expression as data (an AST node)
+            instead of evaluating it. This is the foundation for macros.
+
+            ```dol
+            // Instead of computing 1 + 2 = 3, capture the expression
+            expr = '(1 + 2)
+            // expr is now an Expr::Quote containing Expr::Binary(Add, 1, 2)
+            ```
+
+            UPDATE src/ast.rs:
+
+            ```rust
+            // Add to Expr enum
+            pub enum Expr {
+                // ... existing variants ...
+
+                /// Quoted expression - deferred evaluation
+                /// '(expr) captures expr as AST data
+                Quote {
+                    inner: Box<Expr>,
+                    span: Span,
+                },
+
+                /// Splice/Unquote - insert evaluated expr into quote
+                /// Used inside quotes: '(1 + ,x) where x is evaluated
+                Unquote {
+                    inner: Box<Expr>,
+                    span: Span,
+                },
+
+                /// Quasi-quote - quote with splicing support
+                /// `(1 + ,x + ,(y * 2))
+                QuasiQuote {
+                    inner: Box<Expr>,
+                    span: Span,
+                },
+            }
+            ```
+
+            Add a new type for representing AST-as-data:
+
+            ```rust
+            /// Runtime representation of quoted code
+            #[derive(Debug, Clone, PartialEq)]
+            pub enum QuotedExpr {
+                Literal(Literal),
+                Ident(String),
+                Binary { op: BinaryOp, left: Box<QuotedExpr>, right: Box<QuotedExpr> },
+                Unary { op: UnaryOp, operand: Box<QuotedExpr> },
+                Call { callee: Box<QuotedExpr>, args: Vec<QuotedExpr> },
+                List(Vec<QuotedExpr>),
+                // ... mirror Expr structure
+            }
+            ```
+
+            FILE: ~/repos/metadol/src/ast.rs
+
+    quote-parser:
+        name: Quote Parser
+        role: Parse quote expressions
+        dependencies:
+            - quote-ast
+        instructions: |
+            Update parser to handle quote expressions.
+
+            The lexer already has Token::Quote for the ' character.
+
+            UPDATE src/pratt.rs to handle prefix ':
+
+            ```rust
+            fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
+                match self.current_token() {
+                    Token::Quote => {
+                        let start = self.current_span();
+                        self.advance(); // consume '
+
+                        // Parse the expression being quoted
+                        let inner = self.parse_expr()?;
+
+                        Ok(Expr::Quote {
+                            inner: Box::new(inner),
+                            span: start.merge(inner.span()),
+                        })
+                    }
+                    // ... existing cases
+                }
+            }
+            ```
+
+            Also handle unquote (comma inside quotes) if implementing quasi-quotes.
+
+            FILES:
+            - ~/repos/metadol/src/pratt.rs
+            - ~/repos/metadol/src/parser.rs
+
+    quote-typechecker:
+        name: Quote Type Checker
+        role: Type check quoted expressions
+        dependencies:
+            - quote-parser
+        instructions: |
+            Add type checking for quoted expressions.
+
+            CONCEPT:
+            A quoted expression has type `Quoted<T>` where T is the type
+            the expression would have if evaluated.
+
+            UPDATE src/typechecker.rs:
+
+            ```rust
+            // Add to Type enum
+            pub enum Type {
+                // ... existing variants ...
+
+                /// Type of a quoted expression
+                /// Quoted<Int32> means "an unevaluated expression that would be Int32"
+                Quoted(Box<Type>),
+            }
+
+            impl TypeChecker {
+                fn check_expr(&mut self, expr: &Expr, env: &mut TypeEnv) -> Result<Type, TypeError> {
+                    match expr {
+                        Expr::Quote { inner, span } => {
+                            // Type check the inner expression
+                            let inner_type = self.check_expr(inner, env)?;
+                            // Wrap in Quoted
+                            Ok(Type::Quoted(Box::new(inner_type)))
+                        }
+                        // ... existing cases
+                    }
+                }
+            }
+            ```
+
+            FILE: ~/repos/metadol/src/typechecker.rs
+
+    quote-tests:
+        name: Quote Tests
+        role: Write comprehensive tests for quote
+        dependencies:
+            - quote-typechecker
+        instructions: |
+            Write tests for the quote operator.
+
+            CREATE tests/quote_tests.rs:
+
+            ```rust
+            use metadol::*;
+
+            #[test]
+            fn test_quote_literal() {
+                let source = "x = '42";
+                let ast = parse(source).unwrap();
+                // Should have Quote wrapping Literal(42)
+            }
+
+            #[test]
+            fn test_quote_binary_expr() {
+                let source = "expr = '(1 + 2)";
+                let ast = parse(source).unwrap();
+                // Should have Quote wrapping Binary(Add, 1, 2)
+            }
+
+            #[test]
+            fn test_quote_type() {
+                let source = "expr = '(1 + 2)";
+                let typed = typecheck(source).unwrap();
+                // expr should have type Quoted<Int64>
+            }
+
+            #[test]
+            fn test_nested_quote() {
+                let source = "expr = ''42";  // Quote of quote
+                let ast = parse(source).unwrap();
+                // Should have Quote(Quote(Literal(42)))
+            }
+
+            #[test]
+            fn test_quote_with_identifiers() {
+                let source = r#"
+                    gene Test {
+                        fun example(x: Int32) -> Quoted<Int32> {
+                            return '(x + 1)
+                        }
+                    }
+                "#;
+                let typed = typecheck(source).unwrap();
+            }
+            ```
+
+            FILE: ~/repos/metadol/tests/quote_tests.rs
+
+    # ─────────────────────────────────────────────────────────────────
+    # Task 4.2: Eval Operator
+    # ─────────────────────────────────────────────────────────────────
+    eval-impl:
+        name: Eval Implementer
+        role: Implement eval operator
+        dependencies:
+            - quote-tests
+        instructions: |
+            Implement the eval operator (!) that evaluates quoted expressions.
+
+            CONCEPT:
+            If ' captures code as data, ! executes that data as code.
+
+            ```dol
+            expr = '(1 + 2)   // Quoted<Int64>
+            result = !expr    // Int64 = 3
+            ```
+
+            UPDATE src/ast.rs - already has Expr::Eval if using Unary with Op::Eval
+
+            UPDATE src/typechecker.rs:
+
+            ```rust
+            fn check_expr(&mut self, expr: &Expr, env: &mut TypeEnv) -> Result<Type, TypeError> {
+                match expr {
+                    Expr::Unary { op: UnaryOp::Eval, operand, span } => {
+                        let operand_type = self.check_expr(operand, env)?;
+
+                        // Eval requires a Quoted type
+                        match operand_type {
+                            Type::Quoted(inner) => Ok(*inner),
+                            _ => Err(TypeError::NotQuoted {
+                                found: operand_type,
+                                span: *span,
+                            }),
+                        }
+                    }
+                    // ...
+                }
+            }
+            ```
+
+            For codegen, eval needs an interpreter or JIT:
+            - Rust codegen: Generate match on QuotedExpr variants
+            - WASM: Emit call to runtime eval function
+
+            FILES:
+            - ~/repos/metadol/src/typechecker.rs
+            - ~/repos/metadol/src/codegen/rust.rs
+
+    # ─────────────────────────────────────────────────────────────────
+    # Task 4.3: Macro System
+    # ─────────────────────────────────────────────────────────────────
+    macro-design:
+        name: Macro System Designer
+        role: Design the macro system
+        dependencies:
+            - eval-impl
+        instructions: |
+            Design DOL's macro system using #.
+
+            TWO TYPES OF MACROS:
+
+            1. ATTRIBUTE MACROS - Modify declarations
+            ```dol
+            #derive(Debug, Clone)
+            gene Container {
+                has id: UInt64
+            }
+            ```
+
+            2. EXPRESSION MACROS - Transform expressions
+            ```dol
+            result = #stringify(x + y)  // -> "x + y"
+            items = #vec[1, 2, 3]       // -> List<Int64>
+            ```
+
+            IMPLEMENTATION APPROACH:
+
+            a) Parse phase: Collect macro invocations
+            b) Expand phase: Run macro transformers before type checking
+            c) Continue with expanded AST
+
+            CREATE src/macros/mod.rs:
+
+            ```rust
+            pub mod builtin;
+            pub mod expand;
+
+            /// A macro definition
+            pub trait Macro {
+                fn name(&self) -> &str;
+                fn expand(&self, input: MacroInput) -> Result<MacroOutput, MacroError>;
+            }
+
+            pub enum MacroInput {
+                Attribute { item: Declaration, args: Vec<Expr> },
+                Expression { expr: Expr, args: Vec<Expr> },
+            }
+
+            pub enum MacroOutput {
+                Declaration(Declaration),
+                Declarations(Vec<Declaration>),
+                Expression(Expr),
+            }
+            ```
+
+            CREATE src/macros/builtin.rs with built-in macros:
+            - #derive(traits...) - Generate trait impls
+            - #stringify(expr) - Convert to string
+            - #concat(a, b) - Concatenate
+            - #env("VAR") - Read environment variable
+            - #include("path") - Include file
+            - #cfg(condition) - Conditional compilation
+
+            FILES:
+            - ~/repos/metadol/src/macros/mod.rs
+            - ~/repos/metadol/src/macros/builtin.rs
+            - ~/repos/metadol/src/macros/expand.rs
+
+    # ─────────────────────────────────────────────────────────────────
+    # Task 4.4: Reflect Operator
+    # ─────────────────────────────────────────────────────────────────
+    reflect-impl:
+        name: Reflect Implementer
+        role: Implement reflection operator
+        dependencies:
+            - macro-design
+        instructions: |
+            Implement the reflect operator (?) for runtime type introspection.
+
+            CONCEPT:
+            ```dol
+            // Get type information at runtime
+            info = ?Container
+
+            // info.name == "Container"
+            // info.fields == [{ name: "id", type: "UInt64" }, ...]
+            // info.constraints == [...]
+            ```
+
+            CREATE src/reflect.rs:
+
+            ```rust
+            /// Runtime type information
+            #[derive(Debug, Clone)]
+            pub struct TypeInfo {
+                pub name: String,
+                pub kind: TypeKind,
+                pub fields: Vec<FieldInfo>,
+                pub methods: Vec<MethodInfo>,
+                pub constraints: Vec<ConstraintInfo>,
+                pub exegesis: Option<String>,
+            }
+
+            #[derive(Debug, Clone)]
+            pub enum TypeKind {
+                Gene,
+                Trait,
+                System,
+                Primitive,
+                Compound,
+            }
+
+            #[derive(Debug, Clone)]
+            pub struct FieldInfo {
+                pub name: String,
+                pub type_name: String,
+                pub is_required: bool,
+            }
+            ```
+
+            UPDATE src/typechecker.rs:
+
+            ```rust
+            Expr::Unary { op: UnaryOp::Reflect, operand, span } => {
+                // Operand should be a type identifier
+                // Return TypeInfo
+                Ok(Type::Generic {
+                    name: "TypeInfo".to_string(),
+                    params: vec![],
+                })
+            }
+            ```
+
+            For codegen, generate TypeInfo structs at compile time.
+
+            FILES:
+            - ~/repos/metadol/src/reflect.rs
+            - ~/repos/metadol/src/typechecker.rs
+            - ~/repos/metadol/src/codegen/rust.rs
+
+    # ─────────────────────────────────────────────────────────────────
+    # Task 4.5: Idiom Brackets
+    # ─────────────────────────────────────────────────────────────────
+    idiom-impl:
+        name: Idiom Bracket Implementer
+        role: Implement idiom brackets for applicative style
+        dependencies:
+            - reflect-impl
+        instructions: |
+            Implement idiom brackets [| |] for applicative functor lifting.
+
+            CONCEPT:
+            Idiom brackets allow writing applicative code in direct style:
+
+            ```dol
+            // Instead of:
+            result = pure(add) <*> mx <*> my
+
+            // Write:
+            result = [| add mx my |]
+            ```
+
+            The brackets automatically insert <$> and <*> based on position.
+
+            DESUGARING:
+            ```
+            [| f a |]       → f <$> a
+            [| f a b |]     → f <$> a <*> b
+            [| f a b c |]   → f <$> a <*> b <*> c
+            ```
+
+            UPDATE src/ast.rs:
+
+            ```rust
+            pub enum Expr {
+                // ... existing ...
+
+                /// Idiom brackets [| f x y |]
+                IdiomBracket {
+                    /// The function to apply
+                    func: Box<Expr>,
+                    /// Arguments to lift and apply
+                    args: Vec<Expr>,
+                    span: Span,
+                },
+            }
+            ```
+
+            UPDATE src/pratt.rs to parse [| ... |]:
+
+            ```rust
+            Token::IdiomOpen => {
+                let start = self.current_span();
+                self.advance(); // consume [|
+
+                let func = self.parse_expr()?;
+                let mut args = vec![];
+
+                while !self.check(Token::IdiomClose) {
+                    args.push(self.parse_expr()?);
+                }
+
+                self.expect(Token::IdiomClose)?;
+
+                Ok(Expr::IdiomBracket {
+                    func: Box::new(func),
+                    args,
+                    span: start.merge(self.previous_span()),
+                })
+            }
+            ```
+
+            UPDATE typechecker to verify Applicative constraint.
+
+            FILES:
+            - ~/repos/metadol/src/ast.rs
+            - ~/repos/metadol/src/pratt.rs
+            - ~/repos/metadol/src/typechecker.rs
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Task 4.6: AST Transformation Framework
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  ast-transform:
+    name: AST Transformation Framework
+    role: coder
+    complexity: high
+    estimated_hours: 8
+    dependencies:
+      - macro-design
+    description: Implement AST visitor and transformation framework
+
+    instructions: |
+      CREATE src/transform/mod.rs:
+      - Pass trait (name, run, should_run)
+      - PassError struct
+      - PassPipeline for chaining passes
+
+      CREATE src/transform/visitor.rs:
+      - Visitor trait for immutable traversal
+      - MutVisitor trait for transformation
+      - Methods: visit_declaration, visit_gene, visit_trait, visit_statement, visit_expr
+
+      CREATE src/transform/fold.rs:
+      - Fold trait for expression transformation
+
+      CREATE src/transform/passes.rs:
+      - ConstantFolding: Evaluate constant expressions at compile time
+      - DeadCodeElimination: Remove unreachable code
+      - InlineSimpleLambdas: Inline single-use lambdas
+      - NormalizeOperators: Canonicalize operator ordering
+
+    outputs:
+      - src/transform/mod.rs
+      - src/transform/visitor.rs
+      - src/transform/fold.rs
+      - src/transform/passes.rs
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Task 4.7: Fix Code Generator TODOs
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  codegen-todos:
+    name: Fix Code Generator TODOs
+    role: coder
+    complexity: medium
+    estimated_hours: 4
+    description: Address identified TODOs in code generators
+
+    instructions: |
+      Fix the following TODOs:
+
+      1. src/codegen/rust.rs:191 - Constraint validation:
+         Generate validation logic from Statement::Matches and Statement::Never
+
+      2. src/codegen/rust.rs:222 - System implementation:
+         Generate system struct with dependency injection, state management
+
+      3. src/codegen/typescript.rs:200 - Constraint validation:
+         Same as Rust but in TypeScript syntax
+
+      4. src/typechecker.rs:816 - Pattern checking:
+         Use scrutinee_type for exhaustiveness and pattern type matching
+
+    outputs:
+      - src/codegen/rust.rs (updated)
+      - src/codegen/typescript.rs (updated)
+      - src/typechecker.rs (updated)
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Integration and Validator
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  integration:
+    name: Q2 Integration
+    role: coder
+    complexity: medium
+    estimated_hours: 4
+    dependencies:
+      - evaluator-tests
+      - idiom-impl
+      - ast-transform
+      - codegen-todos
+    description: Integrate all Q2 components
+
+    instructions: |
+      1. Update src/lib.rs with all new modules:
+         - pub mod eval;
+         - pub mod macros;
+         - pub mod transform;
+         - pub mod reflect;
+
+      2. Create examples/metaprogramming/:
+         - quote_eval.dol - Quote and eval demonstration
+         - macro_usage.dol - Built-in macro examples
+         - reflection.dol - Type reflection examples
+
+    outputs:
+      - src/lib.rs (updated)
+      - examples/metaprogramming/quote_eval.dol
+      - examples/metaprogramming/macro_usage.dol
+      - examples/metaprogramming/reflection.dol
+
+  validator:
+        name: Q2 Validator
+        role: Validate all meta-programming features
+        dependencies:
+            - idiom-impl
+        instructions: |
+            Validate all Q2 meta-programming features work together.
+
+            ```bash
+            cd ~/repos/metadol
+
+            cargo fmt --all
+            cargo clippy -- -D warnings
+            cargo test
+            ```
+
+            CREATE a comprehensive test file:
+
+            ```rust
+            // tests/metaprogramming_tests.rs
+
+            #[test]
+            fn test_quote_and_eval_roundtrip() {
+                let source = r#"
+                    gene Test {
+                        fun roundtrip() -> Int64 {
+                            expr = '(40 + 2)
+                            return !expr
+                        }
+                    }
+                "#;
+                // Should type check and generate code that returns 42
+            }
+
+            #[test]
+            fn test_macro_derive() {
+                let source = r#"
+                    #derive(Debug)
+                    gene Container {
+                        has id: UInt64
+                    }
+                "#;
+                // Should expand to include debug implementation
+            }
+
+            #[test]
+            fn test_reflect_gene() {
+                let source = r#"
+                    gene Container {
+                        has id: UInt64
+                        has name: String
+                    }
+
+                    info = ?Container
+                "#;
+                // info should have TypeInfo type
+            }
+
+            #[test]
+            fn test_idiom_brackets() {
+                let source = r#"
+                    // Assuming Option is Applicative
+                    result = [| add mx my |]
+                "#;
+                // Should desugar to add <$> mx <*> my
+            }
+            ```
+
+            When all tests pass, commit:
+
+            ```bash
+            git add -A
+            git commit -m "feat(meta): implement Q2 meta-programming
+
+            - Quote operator (') for capturing expressions as data
+            - Eval operator (!) for executing quoted expressions
+            - Macro system (#) with built-in macros
+            - Reflect operator (?) for runtime type introspection
+            - Idiom brackets [| |] for applicative style
+
+            Closes Q2 milestone"
+            ```
+
+# ═══════════════════════════════════════════════════════════════════
+# WORKFLOWS
+# ═══════════════════════════════════════════════════════════════════
+
+workflows:
+  # Complete Q2 workflow with evaluator foundation
+  q2-full:
+    name: Q2 Full Metaprogramming Implementation
+    description: Complete Q2 metaprogramming with evaluator foundation
+    stages:
+      - name: phase-3-completion
+        description: Complete remaining Phase 3 task (Evaluator/REPL)
+        agents:
+          - evaluator-core
+          - repl-impl
+          - evaluator-tests
+
+      - name: task-4.1-quote
+        description: Quote operator
+        agents:
+          - quote-ast
+          - quote-parser
+          - quote-typechecker
+          - quote-tests
+        depends_on:
+          - phase-3-completion
+
+      - name: task-4.2-eval
+        description: Eval operator
+        agents:
+          - eval-impl
+        depends_on:
+          - task-4.1-quote
+
+      - name: task-4.3-macro
+        description: Macro system
+        agents:
+          - macro-design
+        depends_on:
+          - task-4.2-eval
+
+      - name: task-4.4-reflect
+        description: Reflect operator
+        agents:
+          - reflect-impl
+        depends_on:
+          - task-4.3-macro
+
+      - name: task-4.5-idiom
+        description: Idiom brackets
+        agents:
+          - idiom-impl
+        depends_on:
+          - task-4.4-reflect
+
+      - name: task-4.6-transform
+        description: AST transformation framework
+        agents:
+          - ast-transform
+        depends_on:
+          - task-4.3-macro
+
+      - name: task-4.7-fixes
+        description: Fix existing TODOs
+        agents:
+          - codegen-todos
+
+      - name: integration
+        description: Integration and final validation
+        agents:
+          - integration
+          - validator
+        depends_on:
+          - task-4.5-idiom
+          - task-4.6-transform
+          - task-4.7-fixes
+
+  # Core Q2 workflow (operators only)
+  q2-meta:
+    name: Q2 Meta-Programming
+    description: Implement all meta-programming operators
+    stages:
+      - name: foundation
+        description: Expression evaluator foundation
+        agents:
+          - evaluator-core
+          - evaluator-tests
+
+      - name: task-4.1-quote
+        description: Quote operator
+        agents:
+          - quote-ast
+          - quote-parser
+          - quote-typechecker
+          - quote-tests
+        depends_on:
+          - foundation
+
+      - name: task-4.2-eval
+        description: Eval operator
+        agents:
+          - eval-impl
+        depends_on:
+          - task-4.1-quote
+
+      - name: task-4.3-macro
+        description: Macro system
+        agents:
+          - macro-design
+        depends_on:
+          - task-4.2-eval
+
+      - name: task-4.4-reflect
+        description: Reflect operator
+        agents:
+          - reflect-impl
+        depends_on:
+          - task-4.3-macro
+
+      - name: task-4.5-idiom
+        description: Idiom brackets
+        agents:
+          - idiom-impl
+        depends_on:
+          - task-4.4-reflect
+
+      - name: validate
+        description: Final validation
+        agents:
+          - validator
+        depends_on:
+          - task-4.5-idiom
+
+  # Just evaluator (Phase 3.5 completion)
+  evaluator-only:
+    name: Evaluator Implementation Only
+    description: Just implement the expression evaluator and REPL
+    stages:
+      - name: evaluator
+        agents:
+          - evaluator-core
+          - repl-impl
+          - evaluator-tests
+
+  # Focused workflow for just quote/eval
+  quote-eval-only:
+    name: Quote and Eval Only
+    description: Implement just ' and ! operators first
+    stages:
+      - name: foundation
+        agents:
+          - evaluator-core
+      - name: quote
+        agents:
+          - quote-ast
+          - quote-parser
+          - quote-typechecker
+          - quote-tests
+        depends_on:
+          - foundation
+      - name: eval
+        agents:
+          - eval-impl
+        depends_on:
+          - quote
+
+  # Fix TODOs only
+  fixes-only:
+    name: Fix TODOs Only
+    description: Just fix the identified TODOs
+    stages:
+      - name: fixes
+        agents:
+          - codegen-todos
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CHECKPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+checkpoints:
+  evaluator-complete:
+    trigger: command_success
+    command: "cargo test eval"
+    message: "Phase 3.5 complete: Expression evaluator implemented"
+
+  quote-complete:
+    trigger: command_success
+    command: "cargo test quote"
+    message: "Quote operator implemented and tested"
+
+  macro-system-complete:
+    trigger: command_success
+    command: "cargo test macro"
+    message: "Macro system implemented and tested"
+
+  q2-complete:
+    trigger: all_checkpoints
+    checkpoints:
+      - evaluator-complete
+      - quote-complete
+      - macro-system-complete
+    message: |
+      ═══════════════════════════════════════════════════════════════
+      Q2 METAPROGRAMMING IMPLEMENTATION COMPLETE
+
+      Implemented:
+      - Expression evaluator with REPL (Phase 3.5)
+      - Quote operator (') for AST capture
+      - Eval operator (!) for expression evaluation
+      - Macro system (#) with built-in macros
+      - Reflect operator (?) for type introspection
+      - Idiom brackets [| |] for applicative style
+      - AST transformation framework
+
+      Next steps:
+      - Q3: Language Server Protocol (LSP)
+      - Q4: Compiler backend (LLVM/Cranelift)
+      ═══════════════════════════════════════════════════════════════
