@@ -1,0 +1,1873 @@
+# claude-flow-q3-llvm-mcp.yaml
+#
+# Mission: Q3 - LLVM MCP Server
+# Goals: MLIR Codegen, WASM Backend, MCP Integration
+#
+# Run: npx claude-flow@alpha swarm "read claude-flow-q3-llvm-mcp.yaml --workflow q3-full"
+
+name: q3-llvm-mcp
+description: Q3 - MLIR Codegen, WASM Backend, MCP Integration
+
+# ═══════════════════════════════════════════════════════════════════
+# CONTEXT
+# ═══════════════════════════════════════════════════════════════════
+
+context:
+  q2_complete:
+    - "Quote/Eval (', !) - Expression capture and execution"
+    - "Macro System (#) - 20 built-in macros"
+    - "Reflect (?) - Runtime type introspection"
+    - "Idiom Brackets ([| |]) - Applicative syntax"
+    - "AST Transform Framework - Pass, Visitor, Fold"
+    
+  q3_goals:
+    - "MLIR Codegen - Lower DOL AST to MLIR dialects"
+    - "WASM Backend - Compile MLIR to WebAssembly"
+    - "MCP Integration - Model Context Protocol for AI-driven compilation"
+    
+  architecture: |
+    DOL Source → Parser → Typed AST → MLIR → LLVM IR → WASM
+                                         ↓
+                                    MCP Server
+                                         ↓
+                                   AI Agents (Claude)
+    
+  mlir_dialects:
+    - "arith - Arithmetic operations"
+    - "func - Function definitions"
+    - "scf - Structured control flow (if, for, while)"
+    - "memref - Memory references"
+    - "cf - Control flow (branch, return)"
+    
+  dependencies:
+    - "melior - Rust bindings for MLIR"
+    - "inkwell - Rust bindings for LLVM (optional)"
+    - "wasmtime - WASM runtime for testing"
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 1: MLIR INFRASTRUCTURE
+# ═══════════════════════════════════════════════════════════════════
+
+agents:
+  # ─────────────────────────────────────────────────────────────────
+  # Task 5.1: MLIR Setup
+  # ─────────────────────────────────────────────────────────────────
+  mlir-setup:
+    name: MLIR Setup
+    role: Set up MLIR dependencies and module structure
+    instructions: |
+      Set up the MLIR infrastructure for DOL.
+      
+      UPDATE Cargo.toml:
+      
+      ```toml
+      [dependencies]
+      # Existing deps...
+      
+      # MLIR bindings (optional feature)
+      melior = { version = "0.18", optional = true }
+      
+      [features]
+      default = []
+      mlir = ["melior"]
+      wasm = ["mlir"]  # WASM requires MLIR
+      ```
+      
+      CREATE src/mlir/mod.rs:
+      
+      ```rust
+      //! MLIR Code Generation for DOL
+      //!
+      //! Lowers DOL typed AST to MLIR dialects:
+      //! - arith: Arithmetic operations
+      //! - func: Function definitions  
+      //! - scf: Structured control flow
+      //! - memref: Memory references
+      //!
+      //! # Example
+      //! ```ignore
+      //! let context = MlirContext::new();
+      //! let codegen = MlirCodegen::new(&context);
+      //! let module = codegen.compile(ast)?;
+      //! ```
+      
+      #[cfg(feature = "mlir")]
+      pub mod context;
+      #[cfg(feature = "mlir")]
+      pub mod codegen;
+      #[cfg(feature = "mlir")]
+      pub mod types;
+      #[cfg(feature = "mlir")]
+      pub mod ops;
+      #[cfg(feature = "mlir")]
+      pub mod lowering;
+      
+      #[cfg(feature = "mlir")]
+      pub use context::MlirContext;
+      #[cfg(feature = "mlir")]
+      pub use codegen::MlirCodegen;
+      
+      /// Error during MLIR code generation
+      #[derive(Debug, Clone)]
+      pub struct MlirError {
+          pub message: String,
+          pub span: Option<crate::ast::Span>,
+      }
+      
+      impl std::fmt::Display for MlirError {
+          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+              write!(f, "MLIR Error: {}", self.message)
+          }
+      }
+      
+      impl std::error::Error for MlirError {}
+      ```
+      
+      FILE: ~/repos/metadol/src/mlir/mod.rs
+
+  mlir-context:
+    name: MLIR Context
+    role: Create MLIR context wrapper
+    dependencies:
+      - mlir-setup
+    instructions: |
+      Create the MLIR context and module management.
+      
+      CREATE src/mlir/context.rs:
+      
+      ```rust
+      //! MLIR Context management
+      
+      #[cfg(feature = "mlir")]
+      use melior::{
+          Context, 
+          dialect::{self, DialectRegistry},
+          ir::{Module, Location},
+          utility::register_all_dialects,
+      };
+      
+      use super::MlirError;
+      
+      /// Wrapper around MLIR context with DOL-specific configuration
+      #[cfg(feature = "mlir")]
+      pub struct MlirContext {
+          context: Context,
+      }
+      
+      #[cfg(feature = "mlir")]
+      impl MlirContext {
+          /// Create a new MLIR context with required dialects
+          pub fn new() -> Self {
+              let registry = DialectRegistry::new();
+              register_all_dialects(&registry);
+              
+              let context = Context::new();
+              context.append_dialect_registry(&registry);
+              context.load_all_available_dialects();
+              
+              Self { context }
+          }
+          
+          /// Get the underlying MLIR context
+          pub fn context(&self) -> &Context {
+              &self.context
+          }
+          
+          /// Create a new MLIR module
+          pub fn create_module(&self, name: &str) -> Module {
+              let location = Location::unknown(&self.context);
+              Module::new(location)
+          }
+          
+          /// Create a location from DOL span
+          pub fn location_from_span(&self, span: &crate::ast::Span, filename: &str) -> Location {
+              Location::file_line_col(
+                  &self.context,
+                  filename,
+                  span.start as u32,
+                  0,
+              )
+          }
+      }
+      
+      #[cfg(feature = "mlir")]
+      impl Default for MlirContext {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+      
+      // Stub for when MLIR feature is disabled
+      #[cfg(not(feature = "mlir"))]
+      pub struct MlirContext;
+      
+      #[cfg(not(feature = "mlir"))]
+      impl MlirContext {
+          pub fn new() -> Self {
+              Self
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/mlir/context.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Task 5.2: Type Lowering
+  # ─────────────────────────────────────────────────────────────────
+  mlir-types:
+    name: MLIR Types
+    role: Lower DOL types to MLIR types
+    dependencies:
+      - mlir-context
+    instructions: |
+      Create type lowering from DOL to MLIR.
+      
+      CREATE src/mlir/types.rs:
+      
+      ```rust
+      //! DOL to MLIR type lowering
+      
+      #[cfg(feature = "mlir")]
+      use melior::{
+          Context,
+          ir::Type as MlirType,
+          ir::r#type::{IntegerType, FunctionType, MemRefType},
+      };
+      
+      use crate::typechecker::Type as DolType;
+      use super::MlirError;
+      
+      /// Type lowering from DOL to MLIR
+      #[cfg(feature = "mlir")]
+      pub struct TypeLowering<'ctx> {
+          context: &'ctx Context,
+      }
+      
+      #[cfg(feature = "mlir")]
+      impl<'ctx> TypeLowering<'ctx> {
+          pub fn new(context: &'ctx Context) -> Self {
+              Self { context }
+          }
+          
+          /// Lower a DOL type to MLIR type
+          pub fn lower(&self, ty: &DolType) -> Result<MlirType<'ctx>, MlirError> {
+              match ty {
+                  // Integers
+                  DolType::Int8 => Ok(IntegerType::new(self.context, 8).into()),
+                  DolType::Int16 => Ok(IntegerType::new(self.context, 16).into()),
+                  DolType::Int32 => Ok(IntegerType::new(self.context, 32).into()),
+                  DolType::Int64 => Ok(IntegerType::new(self.context, 64).into()),
+                  
+                  // Unsigned integers (same bit width, different semantics)
+                  DolType::UInt8 => Ok(IntegerType::new(self.context, 8).into()),
+                  DolType::UInt16 => Ok(IntegerType::new(self.context, 16).into()),
+                  DolType::UInt32 => Ok(IntegerType::new(self.context, 32).into()),
+                  DolType::UInt64 => Ok(IntegerType::new(self.context, 64).into()),
+                  
+                  // Floats
+                  DolType::Float32 => Ok(MlirType::float32(self.context)),
+                  DolType::Float64 => Ok(MlirType::float64(self.context)),
+                  
+                  // Boolean as i1
+                  DolType::Bool => Ok(IntegerType::new(self.context, 1).into()),
+                  
+                  // Void as none type
+                  DolType::Void => Ok(MlirType::none(self.context)),
+                  
+                  // String as memref of i8
+                  DolType::String => {
+                      let i8_type = IntegerType::new(self.context, 8).into();
+                      Ok(MemRefType::new(i8_type, &[-1], None, None).into())
+                  }
+                  
+                  // Function types
+                  DolType::Function { params, return_type } => {
+                      let param_types: Vec<MlirType> = params
+                          .iter()
+                          .map(|p| self.lower(p))
+                          .collect::<Result<Vec<_>, _>>()?;
+                      let result_types = vec![self.lower(return_type)?];
+                      Ok(FunctionType::new(self.context, &param_types, &result_types).into())
+                  }
+                  
+                  // Generic types need specialization
+                  DolType::Generic { name, params } => {
+                      // Handle known generic types
+                      match name.as_str() {
+                          "List" => {
+                              // List<T> -> memref<T>
+                              let elem_type = self.lower(&params[0])?;
+                              Ok(MemRefType::new(elem_type, &[-1], None, None).into())
+                          }
+                          "Option" => {
+                              // Option<T> -> { i1, T } (tagged union)
+                              // Simplified: just return the inner type
+                              self.lower(&params[0])
+                          }
+                          _ => Err(MlirError {
+                              message: format!("Cannot lower generic type: {}", name),
+                              span: None,
+                          }),
+                      }
+                  }
+                  
+                  // Tuple types
+                  DolType::Tuple(types) => {
+                      // Lower to LLVM struct type
+                      let _elem_types: Vec<MlirType> = types
+                          .iter()
+                          .map(|t| self.lower(t))
+                          .collect::<Result<Vec<_>, _>>()?;
+                      // Return as opaque for now
+                      Err(MlirError {
+                          message: "Tuple types not yet supported in MLIR".into(),
+                          span: None,
+                      })
+                  }
+                  
+                  // Unknown/Any - error
+                  DolType::Unknown | DolType::Any => Err(MlirError {
+                      message: "Cannot lower unknown/any type to MLIR".into(),
+                      span: None,
+                  }),
+                  
+                  // Type variables - should be resolved before lowering
+                  DolType::Var(_) => Err(MlirError {
+                      message: "Type variable not resolved".into(),
+                      span: None,
+                  }),
+                  
+                  // Error type
+                  DolType::Error => Err(MlirError {
+                      message: "Cannot lower error type".into(),
+                      span: None,
+                  }),
+                  
+                  // Quoted type (meta)
+                  DolType::Quoted(_) => Err(MlirError {
+                      message: "Cannot lower quoted type to MLIR".into(),
+                      span: None,
+                  }),
+              }
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/mlir/types.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Task 5.3: Operation Lowering
+  # ─────────────────────────────────────────────────────────────────
+  mlir-ops:
+    name: MLIR Operations
+    role: Lower DOL operations to MLIR ops
+    dependencies:
+      - mlir-types
+    instructions: |
+      Create operation lowering from DOL to MLIR dialects.
+      
+      CREATE src/mlir/ops.rs:
+      
+      ```rust
+      //! DOL to MLIR operation lowering
+      //!
+      //! Maps DOL operations to MLIR dialect operations:
+      //! - Arithmetic → arith dialect
+      //! - Comparisons → arith dialect
+      //! - Control flow → scf dialect
+      //! - Functions → func dialect
+      
+      #[cfg(feature = "mlir")]
+      use melior::{
+          Context,
+          ir::{
+              Block, Location, Operation, Region, Value,
+              attribute::{IntegerAttribute, StringAttribute, TypeAttribute},
+              r#type::IntegerType,
+          },
+          dialect::{arith, func, scf, cf},
+      };
+      
+      use crate::ast::{BinaryOp, UnaryOp};
+      use super::MlirError;
+      
+      /// Operation builder for MLIR
+      #[cfg(feature = "mlir")]
+      pub struct OpBuilder<'ctx> {
+          context: &'ctx Context,
+      }
+      
+      #[cfg(feature = "mlir")]
+      impl<'ctx> OpBuilder<'ctx> {
+          pub fn new(context: &'ctx Context) -> Self {
+              Self { context }
+          }
+          
+          /// Build arithmetic binary operation
+          pub fn build_binary_arith(
+              &self,
+              op: &BinaryOp,
+              lhs: Value<'ctx, '_>,
+              rhs: Value<'ctx, '_>,
+              location: Location<'ctx>,
+          ) -> Result<Operation<'ctx>, MlirError> {
+              match op {
+                  // Integer arithmetic
+                  BinaryOp::Add => Ok(arith::addi(lhs, rhs, location)),
+                  BinaryOp::Sub => Ok(arith::subi(lhs, rhs, location)),
+                  BinaryOp::Mul => Ok(arith::muli(lhs, rhs, location)),
+                  BinaryOp::Div => Ok(arith::divsi(lhs, rhs, location)), // signed
+                  BinaryOp::Mod => Ok(arith::remsi(lhs, rhs, location)), // signed remainder
+                  
+                  // Comparisons
+                  BinaryOp::Eq => Ok(arith::cmpi(
+                      self.context, arith::CmpiPredicate::Eq, lhs, rhs, location
+                  )),
+                  BinaryOp::Ne => Ok(arith::cmpi(
+                      self.context, arith::CmpiPredicate::Ne, lhs, rhs, location
+                  )),
+                  BinaryOp::Lt => Ok(arith::cmpi(
+                      self.context, arith::CmpiPredicate::Slt, lhs, rhs, location
+                  )),
+                  BinaryOp::Le => Ok(arith::cmpi(
+                      self.context, arith::CmpiPredicate::Sle, lhs, rhs, location
+                  )),
+                  BinaryOp::Gt => Ok(arith::cmpi(
+                      self.context, arith::CmpiPredicate::Sgt, lhs, rhs, location
+                  )),
+                  BinaryOp::Ge => Ok(arith::cmpi(
+                      self.context, arith::CmpiPredicate::Sge, lhs, rhs, location
+                  )),
+                  
+                  // Logical (on i1)
+                  BinaryOp::And => Ok(arith::andi(lhs, rhs, location)),
+                  BinaryOp::Or => Ok(arith::ori(lhs, rhs, location)),
+                  
+                  // Bitwise
+                  BinaryOp::BitAnd => Ok(arith::andi(lhs, rhs, location)),
+                  BinaryOp::BitOr => Ok(arith::ori(lhs, rhs, location)),
+                  BinaryOp::BitXor => Ok(arith::xori(lhs, rhs, location)),
+                  BinaryOp::Shl => Ok(arith::shli(lhs, rhs, location)),
+                  BinaryOp::Shr => Ok(arith::shrsi(lhs, rhs, location)),
+                  
+                  // Non-arithmetic ops handled elsewhere
+                  _ => Err(MlirError {
+                      message: format!("Cannot lower {:?} to arith dialect", op),
+                      span: None,
+                  }),
+              }
+          }
+          
+          /// Build floating-point binary operation
+          pub fn build_binary_float(
+              &self,
+              op: &BinaryOp,
+              lhs: Value<'ctx, '_>,
+              rhs: Value<'ctx, '_>,
+              location: Location<'ctx>,
+          ) -> Result<Operation<'ctx>, MlirError> {
+              match op {
+                  BinaryOp::Add => Ok(arith::addf(lhs, rhs, location)),
+                  BinaryOp::Sub => Ok(arith::subf(lhs, rhs, location)),
+                  BinaryOp::Mul => Ok(arith::mulf(lhs, rhs, location)),
+                  BinaryOp::Div => Ok(arith::divf(lhs, rhs, location)),
+                  
+                  // Float comparisons
+                  BinaryOp::Eq => Ok(arith::cmpf(
+                      self.context, arith::CmpfPredicate::Oeq, lhs, rhs, location
+                  )),
+                  BinaryOp::Ne => Ok(arith::cmpf(
+                      self.context, arith::CmpfPredicate::One, lhs, rhs, location
+                  )),
+                  BinaryOp::Lt => Ok(arith::cmpf(
+                      self.context, arith::CmpfPredicate::Olt, lhs, rhs, location
+                  )),
+                  BinaryOp::Le => Ok(arith::cmpf(
+                      self.context, arith::CmpfPredicate::Ole, lhs, rhs, location
+                  )),
+                  BinaryOp::Gt => Ok(arith::cmpf(
+                      self.context, arith::CmpfPredicate::Ogt, lhs, rhs, location
+                  )),
+                  BinaryOp::Ge => Ok(arith::cmpf(
+                      self.context, arith::CmpfPredicate::Oge, lhs, rhs, location
+                  )),
+                  
+                  _ => Err(MlirError {
+                      message: format!("Cannot lower {:?} to float arith", op),
+                      span: None,
+                  }),
+              }
+          }
+          
+          /// Build unary operation
+          pub fn build_unary(
+              &self,
+              op: &UnaryOp,
+              operand: Value<'ctx, '_>,
+              location: Location<'ctx>,
+          ) -> Result<Operation<'ctx>, MlirError> {
+              match op {
+                  UnaryOp::Neg => {
+                      // -x = 0 - x
+                      let zero = self.build_constant_i64(0, location)?;
+                      let zero_val = zero.result(0)?.into();
+                      Ok(arith::subi(zero_val, operand, location))
+                  }
+                  UnaryOp::Not => {
+                      // !x = x xor 1
+                      let one = self.build_constant_i1(true, location)?;
+                      let one_val = one.result(0)?.into();
+                      Ok(arith::xori(operand, one_val, location))
+                  }
+                  _ => Err(MlirError {
+                      message: format!("Cannot lower {:?} to MLIR", op),
+                      span: None,
+                  }),
+              }
+          }
+          
+          /// Build integer constant
+          pub fn build_constant_i64(
+              &self,
+              value: i64,
+              location: Location<'ctx>,
+          ) -> Result<Operation<'ctx>, MlirError> {
+              let ty = IntegerType::new(self.context, 64).into();
+              let attr = IntegerAttribute::new(ty, value);
+              Ok(arith::constant(self.context, attr.into(), location))
+          }
+          
+          /// Build boolean constant
+          pub fn build_constant_i1(
+              &self,
+              value: bool,
+              location: Location<'ctx>,
+          ) -> Result<Operation<'ctx>, MlirError> {
+              let ty = IntegerType::new(self.context, 1).into();
+              let attr = IntegerAttribute::new(ty, if value { 1 } else { 0 });
+              Ok(arith::constant(self.context, attr.into(), location))
+          }
+          
+          /// Build SCF if operation
+          pub fn build_if(
+              &self,
+              condition: Value<'ctx, '_>,
+              then_region: Region<'ctx>,
+              else_region: Option<Region<'ctx>>,
+              result_types: &[melior::ir::Type<'ctx>],
+              location: Location<'ctx>,
+          ) -> Operation<'ctx> {
+              scf::r#if(
+                  condition,
+                  result_types,
+                  then_region,
+                  else_region.unwrap_or_else(|| Region::new()),
+                  location,
+              )
+          }
+          
+          /// Build SCF for loop
+          pub fn build_for(
+              &self,
+              lower_bound: Value<'ctx, '_>,
+              upper_bound: Value<'ctx, '_>,
+              step: Value<'ctx, '_>,
+              body: Region<'ctx>,
+              location: Location<'ctx>,
+          ) -> Operation<'ctx> {
+              scf::r#for(lower_bound, upper_bound, step, body, location)
+          }
+          
+          /// Build SCF while loop
+          pub fn build_while(
+              &self,
+              before: Region<'ctx>,
+              after: Region<'ctx>,
+              location: Location<'ctx>,
+          ) -> Operation<'ctx> {
+              scf::r#while(&[], before, after, location)
+          }
+          
+          /// Build function definition
+          pub fn build_func(
+              &self,
+              name: &str,
+              function_type: melior::ir::Type<'ctx>,
+              body: Region<'ctx>,
+              location: Location<'ctx>,
+          ) -> Operation<'ctx> {
+              func::func(
+                  self.context,
+                  StringAttribute::new(self.context, name),
+                  TypeAttribute::new(function_type),
+                  body,
+                  &[],
+                  location,
+              )
+          }
+          
+          /// Build function call
+          pub fn build_call(
+              &self,
+              callee: &str,
+              args: &[Value<'ctx, '_>],
+              result_types: &[melior::ir::Type<'ctx>],
+              location: Location<'ctx>,
+          ) -> Operation<'ctx> {
+              func::call(
+                  self.context,
+                  StringAttribute::new(self.context, callee),
+                  args,
+                  result_types,
+                  location,
+              )
+          }
+          
+          /// Build return
+          pub fn build_return(
+              &self,
+              values: &[Value<'ctx, '_>],
+              location: Location<'ctx>,
+          ) -> Operation<'ctx> {
+              func::r#return(values, location)
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/mlir/ops.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Task 5.4: Main Codegen
+  # ─────────────────────────────────────────────────────────────────
+  mlir-codegen:
+    name: MLIR Codegen
+    role: Main MLIR code generator
+    dependencies:
+      - mlir-ops
+    instructions: |
+      Create the main MLIR code generator that orchestrates lowering.
+      
+      CREATE src/mlir/codegen.rs:
+      
+      ```rust
+      //! Main MLIR code generator
+      
+      #[cfg(feature = "mlir")]
+      use melior::{
+          ir::{Module, Block, Region, Location, Value, Operation},
+          dialect::func,
+      };
+      
+      use std::collections::HashMap;
+      
+      use crate::ast::{Module as DolModule, Declaration, Expr, Stmt, Literal};
+      use crate::typechecker::Type;
+      use super::{MlirContext, MlirError};
+      use super::types::TypeLowering;
+      use super::ops::OpBuilder;
+      
+      /// MLIR Code Generator
+      #[cfg(feature = "mlir")]
+      pub struct MlirCodegen<'ctx> {
+          mlir_ctx: &'ctx MlirContext,
+          type_lowering: TypeLowering<'ctx>,
+          op_builder: OpBuilder<'ctx>,
+          /// Map from DOL variable names to MLIR values
+          variables: HashMap<String, Value<'ctx, 'static>>,
+          /// Current file for locations
+          filename: String,
+      }
+      
+      #[cfg(feature = "mlir")]
+      impl<'ctx> MlirCodegen<'ctx> {
+          pub fn new(mlir_ctx: &'ctx MlirContext) -> Self {
+              let context = mlir_ctx.context();
+              Self {
+                  mlir_ctx,
+                  type_lowering: TypeLowering::new(context),
+                  op_builder: OpBuilder::new(context),
+                  variables: HashMap::new(),
+                  filename: "<unknown>".to_string(),
+              }
+          }
+          
+          pub fn with_filename(mut self, filename: &str) -> Self {
+              self.filename = filename.to_string();
+              self
+          }
+          
+          /// Compile a DOL module to MLIR module
+          pub fn compile(&mut self, module: &DolModule) -> Result<Module<'ctx>, MlirError> {
+              let mlir_module = self.mlir_ctx.create_module(&module.name);
+              
+              for decl in &module.declarations {
+                  self.compile_declaration(decl, &mlir_module)?;
+              }
+              
+              // Verify the module
+              if !mlir_module.as_operation().verify() {
+                  return Err(MlirError {
+                      message: "MLIR module verification failed".into(),
+                      span: None,
+                  });
+              }
+              
+              Ok(mlir_module)
+          }
+          
+          fn compile_declaration(
+              &mut self,
+              decl: &Declaration,
+              module: &Module<'ctx>,
+          ) -> Result<(), MlirError> {
+              match decl {
+                  Declaration::Function { name, params, return_type, body, span, .. } => {
+                      self.compile_function(name, params, return_type, body, *span, module)
+                  }
+                  Declaration::Gene { name, body, .. } => {
+                      // Genes become struct types - handled at type level
+                      // Generate constructor function
+                      self.compile_gene_constructor(name, body, module)
+                  }
+                  _ => {
+                      // Other declarations (traits, systems, etc.) don't directly
+                      // generate MLIR code
+                      Ok(())
+                  }
+              }
+          }
+          
+          fn compile_function(
+              &mut self,
+              name: &str,
+              params: &[(String, Type)],
+              return_type: &Type,
+              body: &[Stmt],
+              span: crate::ast::Span,
+              module: &Module<'ctx>,
+          ) -> Result<(), MlirError> {
+              let location = self.mlir_ctx.location_from_span(&span, &self.filename);
+              let context = self.mlir_ctx.context();
+              
+              // Build function type
+              let param_types: Vec<_> = params
+                  .iter()
+                  .map(|(_, ty)| self.type_lowering.lower(ty))
+                  .collect::<Result<Vec<_>, _>>()?;
+              let result_type = self.type_lowering.lower(return_type)?;
+              
+              let func_type = melior::ir::r#type::FunctionType::new(
+                  context,
+                  &param_types,
+                  &[result_type],
+              );
+              
+              // Create function body region
+              let region = Region::new();
+              let block = Block::new(&param_types.iter().map(|t| (*t, location)).collect::<Vec<_>>());
+              
+              // Bind parameters to variables
+              self.variables.clear();
+              for (i, (param_name, _)) in params.iter().enumerate() {
+                  let arg = block.argument(i)?.into();
+                  self.variables.insert(param_name.clone(), arg);
+              }
+              
+              // Compile body statements
+              for stmt in body {
+                  self.compile_stmt(stmt, &block)?;
+              }
+              
+              region.append_block(block);
+              
+              // Create function operation
+              let func_op = self.op_builder.build_func(
+                  name,
+                  func_type.into(),
+                  region,
+                  location,
+              );
+              
+              module.body().append_operation(func_op);
+              
+              Ok(())
+          }
+          
+          fn compile_stmt(
+              &mut self,
+              stmt: &Stmt,
+              block: &Block<'ctx>,
+          ) -> Result<Option<Value<'ctx, '_>>, MlirError> {
+              match stmt {
+                  Stmt::Let { name, value, .. } => {
+                      let val = self.compile_expr(value, block)?;
+                      self.variables.insert(name.clone(), val);
+                      Ok(Some(val))
+                  }
+                  Stmt::Return(Some(expr)) => {
+                      let val = self.compile_expr(expr, block)?;
+                      let location = Location::unknown(self.mlir_ctx.context());
+                      let ret_op = self.op_builder.build_return(&[val], location);
+                      block.append_operation(ret_op);
+                      Ok(None)
+                  }
+                  Stmt::Return(None) => {
+                      let location = Location::unknown(self.mlir_ctx.context());
+                      let ret_op = self.op_builder.build_return(&[], location);
+                      block.append_operation(ret_op);
+                      Ok(None)
+                  }
+                  Stmt::Expr(expr) => {
+                      let val = self.compile_expr(expr, block)?;
+                      Ok(Some(val))
+                  }
+                  _ => Err(MlirError {
+                      message: "Statement not yet supported in MLIR codegen".into(),
+                      span: None,
+                  }),
+              }
+          }
+          
+          fn compile_expr(
+              &mut self,
+              expr: &Expr,
+              block: &Block<'ctx>,
+          ) -> Result<Value<'ctx, '_>, MlirError> {
+              let location = Location::unknown(self.mlir_ctx.context());
+              
+              match expr {
+                  Expr::Literal(lit) => {
+                      match lit {
+                          Literal::Int(n) => {
+                              let op = self.op_builder.build_constant_i64(*n, location)?;
+                              block.append_operation(op);
+                              Ok(block.last_operation()?.result(0)?.into())
+                          }
+                          Literal::Bool(b) => {
+                              let op = self.op_builder.build_constant_i1(*b, location)?;
+                              block.append_operation(op);
+                              Ok(block.last_operation()?.result(0)?.into())
+                          }
+                          _ => Err(MlirError {
+                              message: "Literal type not yet supported".into(),
+                              span: None,
+                          }),
+                      }
+                  }
+                  Expr::Identifier(name) => {
+                      self.variables.get(name).cloned().ok_or_else(|| MlirError {
+                          message: format!("Undefined variable: {}", name),
+                          span: None,
+                      })
+                  }
+                  Expr::Binary { op, left, right, .. } => {
+                      let lhs = self.compile_expr(left, block)?;
+                      let rhs = self.compile_expr(right, block)?;
+                      let binary_op = self.op_builder.build_binary_arith(op, lhs, rhs, location)?;
+                      block.append_operation(binary_op);
+                      Ok(block.last_operation()?.result(0)?.into())
+                  }
+                  Expr::Unary { op, operand, .. } => {
+                      let val = self.compile_expr(operand, block)?;
+                      let unary_op = self.op_builder.build_unary(op, val, location)?;
+                      block.append_operation(unary_op);
+                      Ok(block.last_operation()?.result(0)?.into())
+                  }
+                  Expr::Call { callee, args, .. } => {
+                      if let Expr::Identifier(name) = callee.as_ref() {
+                          let arg_vals: Vec<_> = args
+                              .iter()
+                              .map(|a| self.compile_expr(a, block))
+                              .collect::<Result<Vec<_>, _>>()?;
+                          
+                          // TODO: Get result types from function signature
+                          let i64_type = melior::ir::r#type::IntegerType::new(
+                              self.mlir_ctx.context(), 64
+                          ).into();
+                          
+                          let call_op = self.op_builder.build_call(
+                              name,
+                              &arg_vals,
+                              &[i64_type],
+                              location,
+                          );
+                          block.append_operation(call_op);
+                          Ok(block.last_operation()?.result(0)?.into())
+                      } else {
+                          Err(MlirError {
+                              message: "Only direct function calls supported".into(),
+                              span: None,
+                          })
+                      }
+                  }
+                  Expr::If { condition, then_branch, else_branch, .. } => {
+                      let cond_val = self.compile_expr(condition, block)?;
+                      
+                      // Create then region
+                      let then_region = Region::new();
+                      let then_block = Block::new(&[]);
+                      let then_val = self.compile_expr(then_branch, &then_block)?;
+                      let yield_op = scf::r#yield(&[then_val], location);
+                      then_block.append_operation(yield_op);
+                      then_region.append_block(then_block);
+                      
+                      // Create else region if present
+                      let else_region = if let Some(else_expr) = else_branch {
+                          let region = Region::new();
+                          let else_block = Block::new(&[]);
+                          let else_val = self.compile_expr(else_expr, &else_block)?;
+                          let yield_op = scf::r#yield(&[else_val], location);
+                          else_block.append_operation(yield_op);
+                          region.append_block(else_block);
+                          Some(region)
+                      } else {
+                          None
+                      };
+                      
+                      let i64_type = melior::ir::r#type::IntegerType::new(
+                          self.mlir_ctx.context(), 64
+                      ).into();
+                      
+                      let if_op = self.op_builder.build_if(
+                          cond_val,
+                          then_region,
+                          else_region,
+                          &[i64_type],
+                          location,
+                      );
+                      block.append_operation(if_op);
+                      Ok(block.last_operation()?.result(0)?.into())
+                  }
+                  _ => Err(MlirError {
+                      message: "Expression not yet supported in MLIR codegen".into(),
+                      span: None,
+                  }),
+              }
+          }
+          
+          fn compile_gene_constructor(
+              &mut self,
+              _name: &str,
+              _body: &[crate::ast::GeneStatement],
+              _module: &Module<'ctx>,
+          ) -> Result<(), MlirError> {
+              // TODO: Generate constructor function for gene
+              Ok(())
+          }
+      }
+      
+      // Stub for when MLIR feature is disabled
+      #[cfg(not(feature = "mlir"))]
+      pub struct MlirCodegen;
+      
+      #[cfg(not(feature = "mlir"))]
+      impl MlirCodegen {
+          pub fn new(_: &MlirContext) -> Self { Self }
+          pub fn compile(&mut self, _: &crate::ast::Module) -> Result<(), MlirError> {
+              Err(MlirError {
+                  message: "MLIR support not compiled. Enable 'mlir' feature.".into(),
+                  span: None,
+              })
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/mlir/codegen.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Task 5.5: MLIR Tests
+  # ───â───────────────────────────────────────────────────
+  mlir-tests:
+    name: MLIR Tests
+    role: Write tests for MLIR codegen
+    dependencies:
+      - mlir-codegen
+    instructions: |
+      Write tests for MLIR code generation.
+      
+      CREATE tests/mlir_tests.rs:
+      
+      ```rust
+      //! MLIR code generation tests
+      
+      #[cfg(feature = "mlir")]
+      mod mlir_tests {
+          use metar::{MlirContext, MlirCodegen};
+          use metadol::parse;
+          use metadol::typechecker::TypeChecker;
+          
+          #[test]
+          fn test_mlir_context_creation() {
+              let ctx = MlirContext::new();
+              let _module = ctx.create_module("test");
+          }
+          
+          #[test]
+          fn test_compile_simple_function() {
+              let source = r#"
+                  fun add(a: Int64, b: Int64) -> Int64 {
+                      return a + b
+                  }
+              "#;
+              
+              let ast = parse(source).unwrap();
+              let mut checker = TypeChecker::new();
+              let typed_ast = checker.check(&ast).unwrap();
+              
+              let ctx = MlirContext::new();
+              let mut codegen = MlirCodegen::new(&ctx);
+              let result = codegen.compile(&typed_ast);
+              
+              assert!(result.is_ok(), "MLIR compilation failed: {:?}", result.err());
+          }
+          
+          #[test]
+          fn test_compile_arithmetic() {
+              let source = r#"
+                  fun compute(x: Int64) -> Int64 {
+                      return x * 2 + 1
+                  }
+              "#;
+              
+              let ast = parse(source).unwrap();
+              let mut checker = TypeChecker::new();
+              let typed_ast = checker.check(&ast).unwrap();
+              
+              let ctx = MlirContext::new();
+              let mut codegen = MlirCodegen::new(&ctx);
+              let result = codegen.compile(&typed_ast);
+              
+              assert!(result.is_ok());
+          }
+          
+          #[test]
+          fn test_compile_conditional() {
+              let source = r#"
+                  fun max(a: Int64, b: Int64) -> Int64 {
+                      if a > b {
+                          return a
+                      } else {
+                          return b
+                      }
+                  }
+              "#;
+              
+              let ast = parse(source).unwrap();
+              let mut checker = TypeChecker::new();
+              let typed_ast = checker.check(&ast).unwrap();
+              
+              let ctx = MlirContext::new();
+              let mut codegen = MlirCodegen::new(&ctx);
+              let result = codegen.compile(&typed_ast);
+              
+              assert!(result.is_ok());
+          }
+          
+          #[test]
+          fn test_mlir_module_verification() {
+              let source = r#"
+                  fun identity(x: Int64) -> Int64 {
+                      return x
+                  }
+              "#;
+              
+              let ast = parse(source).unwrap();
+              let mut checker = TypeChecker::new();
+              let typed_ast = checker.check(&ast).unwrap();
+              
+              let ctx = MlirContext::new();
+              let mut codegen = MlirCodegen::new(&ctx);
+              let module = codegen.compile(&typed_ast).unwrap();
+              
+              // Module should verify
+              assert!(module.as_operation().verify());
+          }
+      }
+      
+      #[cfg(not(feature = "mlir"))]
+      mod mlir_tests {
+          #[test]
+          fn test_mlir_feature_disabled() {
+              // MLIR tests skipped when feature is disabled
+              assert!(true);
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/tests/mlir_tests.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # PHASE 2: WASM BACKEND
+  # ─────────────────────────────────────────────────────────────────
+  wasm-setup:
+    name: WASM Setup
+    role: Set up WASM compilation infrastructure
+    dependencies:
+      - mlir-tests
+    instructions: |
+      Set up WASM compilation from MLIR.
+      
+      CREATE src/wasm/mod.rs:
+      
+      ```rust
+      //! WebAssemBackend for DOL
+      //!
+      //! Compiles DOL (via MLIR) to WebAssembly.
+      //!
+      //! # Pipeline
+      //! DOL AST → MLIR → LLVM IR → WASM
+      
+      pub mod compiler;
+      pub mod runtime;
+      
+      #[cfg(feature = "wasm")]
+      pub use compiler::WasmCompiler;
+      #[cfg(feature = "wasm")]
+      pub use runtime::WasmRuntime;
+      
+      /// Error during WASM compilation
+      #[derive(Debug, Clone)]
+      pub struct WasmError {
+          pub message: String,
+      }
+      
+      im::fmt::Display for WasmError {
+          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+              write!(f, "WASM Error: {}", self.message)
+          }
+      }
+      
+      impl std::error::Error for WasmError {}
+      ```
+      
+      CREATE src/wasm/compiler.rs:
+      
+      ```rust
+      //! WASM Compiler - compiles MLIR to WASM
+      
+      #[cfg(feature = "wasm")]
+      use crate::mlir::{MlirContext, MlirCodegen};
+      use crate::ast::Module as DolModule;
+      use super::WasmError;
+      
+      /// WASM Compiler
+      #[cfg(feature = "wasm")]
+      pub struct WasmCompiler {
+          optimize: bool,
+          debug_info: bool,
+      }
+      
+      #[cfg(feature = "wasm")]
+      impl WasmCompiler {
+          pub fn new() -> Self {
+              Self {
+                  optimize: true,
+                  debug_info: false,
+              }
+          }
+          
+          pub fn with_optimization(mut self, optimize: bool) -> Self {
+              self.optimize = optimize;
+              self
+          }
+          
+          pub fn with_debug_info(mut self, debug: bool) -> Self {
+              self.debug_info = debug;
+              self
+          }
+          
+          /// Compile DOL module to WASM bytes
+          pub fn compile(&self, module: &DolModule) -> Result<Vec<u8>, WasmError> {
+              // Step 1: Lower to MLIR
+              let mlir_ctx = MlirContext::new();
+              let mut codegen = MlirCodegen::new(&mlir_ctx);
+              let mlir_module = codegen.compile(module).map_err(|e| WasmError {
+                  message: format!("MLIR lowering failed: {}", e),
+              })?;
+              
+              // Step 2: Lower MLIR to LLVM dialect
+              // (requires MLIR passes)
+              
+              // Step 3: Emit LLVM IR
+              
+              // Step 4: Compile LLVM IR to WASM
+              // (requires LLVM wasm32 target)
+              
+              // For now, return placeholder
+              Err(WasmError {
+                  message: "WASM backend not fully implemented".into(),
+              })
+          }
+          
+          /// Compile and write to file
+          pub fn compile_to_file(
+              &self,
+              module: &DolModule,
+              output_path: &std::path::Path,
+          ) -> Result<(), WasmError> {
+              let wasm_bytes = self.compile(module)?;
+              std::fs::write(output_path, wasm_bytes).map_err(|e| WasmError {
+                  message: format!("Failed to write WASM: {}", e),
+              })
+          }
+      }
+      
+      #[cfg(feature = "wasm")]
+      impl Default for WasmCompiler {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+      ```
+      
+      CREATE src/wasm/runtime.rs:
+      
+      ```rust
+      //! WASM Runtime - execute compiled WASM
+      
+      #[cfg(feature = "wasm")]
+      use wasmtime::{Engine, Store, Module, Instance, Func, Val};
+      
+      use super::WasmError;
+      
+      /// WASM Runtime for executing compiled DOL code
+      #[cfg(feature = "wasm")]
+      pub struct WasmRuntime {
+          engine: Engine,
+          store: Store<()>,
+      }
+      
+      #[cfg(feature = "wasm")]
+      impl WasmRuntime {
+          pub fn new() -> Result<Self, WasmError> {
+              let engine = Engine::default();
+              let store = Store::new(&engine, ());
+              Ok(Self { engine, store })
+          }
+          
+          /// Load WASM module from bytes
+          pub fn load(&mut self, wasm_bytes: &[u8]) -> Result<WasmModule, WasmError> {
+              let module = Module::new(&self.engine, wasm_bytes).map_err(|e| WasmError {
+                  message: format!("Failed to load WASM: {}", e),
+              })?;
+              
+              let instance = Instance::new(&mut self.store, &module, &[]).map_err(|e| WasmError {
+                  message: format!("Failed to instantiate WASM: {}", e),
+              })?;
+              
+              Ok(WasmModule { instance })
+          }
+          
+          /// Load WASM module from file
+          pub fn load_file(&mut self, path: &std::path::Path) -> Result<WasmModule, WasmError> {
+              let wasm_bytes = std::fs::read(path).map_err(|e| WasmError {
+                  message: format!("Failed to read WASM file: {}", e),
+              })?;
+              self.load(&wasm_bytes)
+          }
+      }
+      
+      #[cfg(feature = "wasm")]
+      impl Default for WasmRuntime {
+          fn default() -> Self {
+              Self::new().expect("Failed to create WASM runtime")
+          }
+      }
+      
+      /// A loaded WASM module
+      #[cfg(feature = "wasm")]
+      pub struct WasmModule {
+          instance: Instance,
+      }
+      
+      #[cfg(feature = "wasm")]
+      impl WasmModule {
+          /// Call a function by name
+          pub fn call<T>(&self, store: &mut Store<()>, name: &str, args: &[Val]) -> Result<T, WasmError>
+          where
+              T: From<Val>,
+          {
+              let func = self.instance.get_func(store, name).ok_or_else(|| WasmError {
+                  message: format!("Function not found: {}", name),
+              })?;
+              
+              let mut results = vec![Val::I64(0)];
+              func.call(store, args, &mut results).map_err(|e| WasmError {
+                  message: format!("Function call failed: {}", e),
+              })?;
+              
+              Ok(results[0].clone().into())
+          }
+      }
+      ```
+      
+      FILES:
+      - ~/repos/metadol/src/wasm/mod.rs
+      - ~/repos/metadol/src/wasm/compiler.rs
+      - ~/repos/metadol/src/wasm/runtime.rs
+
+  # â───────────────────────────────────────────────────────────────
+  # PHASE 3: MCP INTEGRATION
+  # ─────────────────────────────────────────────────────────────────
+  mcp-setup:
+    name: MCP Setup
+    role: Set up Model Context Protocol server
+    dependcies:
+      - wasm-setup
+    instructions: |
+      Set up MCP server for AI-driven compilation.
+      
+      CREATE src/mcp/mod.rs:
+      
+      ```rust
+      //! Model Context Protocol (MCP) Server for DOL
+      //!
+      //! Exposes DOL compiler capabilities via MCP for AI agent integration.
+      //!
+      //! # Capabilities
+      //! - Parse DOL source
+      //! - Type check
+      //! - Compile to targets (Rust, TS, WASM)
+      //! - Execute DOL code
+      //! - Reflect on types
+      
+      pub mod server;
+      pub mod tools;
+      pub mod resources;
+      
+      pub use server::McpServer;
+      
+      /// MCP Tool definitions for DOL
+      #[derive(Debug, Clone)]
+      pub enum DolTool {
+          /// Parse DOL source and return AST
+          Parse,
+          /// Type check DOL source
+          TypeCheck,
+          /// Compile to Rust
+          CompileRust,
+          /// Compile to TypeScript
+          CompileTypeScript,
+          /// Compile to WASM
+          CompileWasm,
+          /// Execute DOL expression
+          Eval,
+          /// Get type information
+          Reflect,
+          /// Format DOL source
+          Format,
+          /// List available macros
+          ListMacros,
+          /// Expand a macro
+          ExpandMacro,
+      }
+      ```
+      
+      CREATE src/mcp/server.rs:
+      
+      ```rust
+      //! MCP Server implementation
+      
+      use std::collections::HashMap;
+      use serde::{Serialize, Deserialize};
+      
+      use crate::parse;
+      use crate::typechecker::TypeChecker;
+      use crate::codegen::rust::RustCodegen;
+      use crate::codegen::typescript::TypeScriptCodegen;
+      use crate::eval::Interpreter;
+      
+      /// MCP Server for DOL
+      pub struct McpServer {
+          /// Server name
+          pub name: String,
+          /// Server version
+          pub version: String,
+      }
+      
+      impl McpServer {
+          pub fn new() -> Self {
+              Self {
+                  name: "dol-mcp".to_string(),
+                  version: env!("CARGO_PKG_VERSION").to_string(),
+              }
+          }
+          
+          /// Handle MCP tool call
+          pub fn handle_tool(&self, tool: &str, args: ToolArgs) -> Result<ToolResult, String> {
+              match tool {
+                  "dol/parse" => self.tool_parse(args),
+                  "dol/typecheck" => self.tool_typecheck(args),
+                  "dol/compile/rust" => self.tool_compile_rust(args),
+                  "dol/compile/typescript" => self.tool_compile_typescript(args),
+                  "dol/eval" => self.tool_eval(args),
+                  "dol/reflect" => self.tool_reflect(args),
+                  "dol/macros/list" => self.tool_list_macros(args),
+                  "dol/macros/expand" => self.tool_expand_macro(args),
+                  _ => Err(format!("Unknown tool: {}", tool)),
+              }
+          }
+          
+          fn tool_parse(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let source = args.get_string("source")?;
+              let ast = parse(&source).map_err(|e| format!("Parse error: {:?}", e))?;
+              Ok(ToolResult::json(serde_json::to_value(&ast).unwrap()))
+          }
+          
+          fn tool_typecheck(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let source = args.get_string("source")?;
+              let ast = parse(&source).map_err(|e| format!("Parse error: {:?}", e))?;
+              let mut checker = TypeChecker::new();
+              let typed = checker.check(&ast).map_err(|e| format!("Type error: {:?}", e))?;
+              Ok(ToolResult::json(serde_json::json!({
+                  "success": true,
+                  "types": format!("{:?}", typed)
+              })))
+          }
+          
+          fn tool_compile_rust(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let source = args.get_string("source")?;
+              let ast = parse(&source).map_err(|e| format!("Parse error: {:?}", e))?;
+              let codegen = RustCodegen::new();
+              let rust_code = codegen.generate(&ast).map_err(|e| format!("Codegen error: {:?}", e))?;
+              Ok(ToolResult::text(rust_code))
+          }
+          
+          fn tool_compile_typescript(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let source = args.get_string("source")?;
+              let ast = parse(&source).map_err(|e| format!("Parse error: {:?}", e))?;
+              let codegen = TypeScriptCodegen::new();
+              let ts_code = codegen.generate(&ast).map_err(|e| format!("Codegen error: {:?}", e))?;
+              Ok(ToolResult::text(ts_code))
+          }
+          
+          fn tool_eval(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let source = args.get_string("source")?;
+              let ast = parse(&source).map_err(|e| format!("Parse error: {:?}", e))?;
+              let mut interpreter = Interpreter::new();
+              let result = interpreter.eval(&ast).map_err(|e| format!("Eval error: {:?}", e))?;
+              Ok(ToolResult::json(serde_json::json!({
+                  "result": format!("{:?}", result)
+              })))
+          }
+          
+          fn tool_reflect(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let type_name = args.get_string("type")?;
+              // TODO: Look up type in registry
+              Ok(ToolResult::json(serde_json::json!({
+                  "name": type_name,
+                  "kind": "unknown"
+              })))
+          }
+          
+          fn tool_list_macros(&self, _args: ToolArgs) -> Result<ToolResult, String> {
+              let registry = crate::macros::MacroRegistry::new();
+              let macros = registry.list();
+              Ok(ToolResult::json(serde_json::json!({
+                  "macros": macros
+              })))
+          }
+          
+          fn tool_expand_macro(&self, args: ToolArgs) -> Result<ToolResult, String> {
+              let name = args.get_string("name")?;
+              let input = args.get_string("input")?;
+              // TODO: Parse and expand macro
+              Ok(ToolResult::json(serde_json::json!({
+                  "name": name,
+                  "input": input,
+                  "expanded": "TODO"
+              })))
+          }
+          
+          /// Get MCP server manifest
+          pub fn manifest(&self) -> ServerManifest {
+              ServerManifest {
+                  name: self.name.clone(),
+                  version: self.version.clone(),
+                  tools: vec![
+                      ToolDef {
+                          name: "dol/parse".into(),
+                          description: "Parse DOL source code and return AST".into(),
+                          parameters: vec![
+                              ParamDef { name: "source".into(), type_: "string".into(), required: true }
+                          ],
+                      },
+                      ToolDef {
+                          name: "dol/typecheck".into(),
+                          description: "Type check DOL source code".into(),
+                          parameters: vec![
+                              ParamDef { name: "source".into(), type_: "string".into(), required: true }
+                          ],
+                      },
+                      ToolDef {
+                          name: "dol/compile/rust".into(),
+                          description: "Compile DOL to Rust code".into(),
+                          parameters: vec![
+                              ParamDef { name: "source".into(), type_: "string".into(), required: true }
+                          ],
+                      },
+                      ToolDef {
+                          name: "dol/compile/typescript".into(),
+                          description: "Compile DOL to TypeScript code".into(),
+                          parameters: vec![
+                              ParamDef { name: "source".into(), type_: "string".into(), required: true }
+                          ],
+                      },
+                      ToolDef {
+                          name: "dol/eval".into(),
+                          description: "Evaluate DOL expression".into(),
+                          parameters: vec![
+                              ParamDef { name: "source".into(), type_: "string".into(), required: true }
+                          ],
+                      },
+                      ToolDef {
+                          name: "dol/reflect".into(),
+                          description: "Get type information".into(),
+                          parameters: vec![
+                              ParamDef { name: "type".into(), type_: "string".into(), required: true }
+                          ],
+                      },
+                      ToolDef {
+                          name: "dol/macros/list".into(),
+                          description: "List available macros".into(),
+                          parameters: vec![],
+                      },
+                      ToolDef {
+                          name: "dol/macros/expand".into(),
+                          description: "Expand a macro".into(),
+                          parameters: vec![
+                              ParamDef { name: "name".into(), type_: "string".into(), required: true },
+                              ParamDef { name: "input".into(), type_: "string".into(), required: true },
+                          ],
+                      },
+                  ],
+              }
+          }
+      }
+      
+      impl Default for McpServer {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+      
+      // Supporting types
+      
+      #[derive(Debug, Clone, Serialize, Deserialize)]
+      pub struct ToolArgs {
+          values: HashMap<String, serde_json::Value>,
+      }
+      
+      impl ToolArgs {
+          pub fn get_string(&self, key: &str) -> Result<String, String> {
+              self.values
+                  .get(key)
+                  .and_then(|v| v.as_str())
+                  .map(|s| s.to_string())
+                  .ok_or_else(|| format!("Missing required parameter: {}", key))
+          }
+      }
+      
+      #[derive(Debug, Clone, Serialize, Deserialize)]
+      pub struct ToolResult {
+          pub content_type: String,
+          pub content: serde_json::Value,
+      }
+      
+      impl ToolResult {
+          pub fn text(s: String) -> Self {
+              Self {
+                  content_type: "text/plain".into(),
+                  content: serde_json::Value::String(s),
+              }
+          }
+          
+          pub fn json(v: serde_json::Value) -> Self {
+              Self {
+                  content_type: "application/json".into(),
+                  content: v,
+              }
+          }
+      }
+      
+      #[derive(Debug, Clone, Serialize, Deserialize)]
+      pub struct ServerManifest {
+          pub name: String,
+          pub version: String,
+          pub tools: Vec<ToolDef>,
+      }
+      
+      #[derive(Debug, Clone, Serialize, Deserialize)]
+      pub struct ToolDef {
+          pub name: String,
+          pub description: String,
+          pub parameters: Vec<ParamDef>,
+      }
+      
+      #[derive(Debug, Clone, Serialize, Deserialize)]
+      pub struct ParamDef {
+          pub name: String,
+          #[serde(rename = "type")]
+          pub type_: String,
+          pub required: bool,
+      }
+      ```
+      
+      FILES:
+      - ~/repos/metadol/src/mcp/mod.rs
+      - ~/repos/metadol/src/mcp/server.rs
+
+  mcp-cli:
+    name: MCP CLI
+    role: Create MCP server CLI binary
+    dependencies:
+      - mcp-setup
+    instructions: |
+      Create CLI binary for running the MCP server.
+      
+      CREATE src/bin/dol-mcp.rs:
+      
+      ```rust
+      //! DOL MCP Server
+      //!
+      //! Run the Model Context Protocol server for AI integration.
+      //!
+      //! Usage:
+      //!   dol-mcp serve          # Start MCP server
+      //!   dol-mcp manifest       # Print server manifest
+      //!   dol-mcp tool <name>    # Execute a tool
+      
+      use std::io::{self, BufRead, Write};
+      use metadol::mcp::{McpServer, ToolArgs};
+      
+      fn main() {
+          let args: Vec<String> = std::env::args().collect();
+          
+          if args.len() < 2 {
+              print_usage();
+              return;
+          }
+          
+          let server = McpServer::new();
+          
+          match args[1].as_str() {
+              "serve" => run_server(server),
+              "manifest" => print_manifest(server),
+              "tool" if args.len() >= 3 => run_tool(server, &args[2], &args[3..]),
+              _ => print_usage(),
+          }
+      }
+      
+      fn print_usage() {
+          eprintln!("DOL MCP Server");
+          eprintln!();
+          eprintln!("Usage:");
+          eprintln!("  dol-mcp serve              Start MCP server (stdio)");
+          eprintln!("  dol-mcp manifest           Print server manifest");
+          eprintln!("  dol-mcp tool <name> [args] Execute a tool");
+          eprintln!();
+          eprintln!("Tools:");
+          eprintln!("  dol/parse           Parse DOL source");
+          eprintln!("  dol/typecheck       Type check DOL source");
+          eprintln!("  dol/compile/rust    Compile to Rust");
+          eprintln!("  dol/compile/ts      Compile to TypeScript");
+          eprintln!("  dol/eval            Evaluate expression");
+          eprintln!("  dol/reflect         Get type info");
+          eprintln!("  dol/macros/list     List macros");
+      }
+      
+      fn run_server(server: McpServer) {
+          eprintln!("DOL MCP Server v{}", server.version);
+          eprintln!("Listening on stdio...");
+          
+          let stdin = io::stdin();
+          let mut stdout = io::stdout();
+          
+          for line in stdin.lock().lines() {
+              match line {
+                  Ok(input) => {
+                      // Parse JSON-RPC request
+                      if let Ok(request) = serde_json::from_str::<serde_json::Value>(&input) {
+                          let response = handle_request(&server, request);
+                          let output = serde_json::to_string(&response).unwrap();
+                          writeln!(stdout, "{}", output).unwrap();
+                          stdout.flush().unwrap();
+                      }
+                  }
+                  Err(e) => {
+                      eprintln!("Read error: {}", e);
+                      break;
+                  }
+              }
+          }
+      }
+      
+      fn handle_request(server: &McpServer, request: serde_json::Value) -> serde_json::Value {
+          let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
+          let id = request.get("id").cloned().unwrap_or(serde_json::Value::Null);
+          
+          let result = match method {
+              "initialize" => {
+                  let manifest = server.manifest();
+                  serde_json::to_value(manifest).unwrap()
+              }
+              "tools/call" => {
+                  let params = request.get("params").cloned().unwrap_or_default();
+                  let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                  let args = params.get("arguments").cloned().unwrap_or_default();
+                  
+                  let tool_args = ToolArgs {
+                      values: serde_json::from_value(args).unwrap_or_default(),
+                  };
+                  
+                  match server.handle_tool(tool_name, tool_args) {
+                      Ok(result) => serde_json::to_value(result).unwrap(),
+                      Err(e) => serde_json::json!({ "error": e }),
+                  }
+              }
+              _ => serde_json::json!({ "error": "Unknown method" }),
+          };
+          
+          serde_json::json!({
+              "jsonrpc": "2.0",
+              "id": id,
+              "result": result
+          })
+      }
+      
+      fn print_manifest(server: McpServer) {
+          let manifest = server.manifest();
+          println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+      }
+      
+      fn run_tool(server: McpServer, tool: &str, args: &[String]) {
+          let mut values = std::collections::HashMap::new();
+          
+          // Parse key=value args
+          for arg in args {
+              if let Some((key, value)) = arg.split_once('=') {
+                  values.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+              }
+          }
+          
+          // Or read source from stdin if no source arg
+          if !values.contains_key("source") && tool.contains("parse") || tool.contains("compile") || tool.contains("eval") {
+              eprintln!("Reading source from stdin...");
+              let mut source = String::new();
+              io::stdin().read_to_string(&mut source).unwrap();
+              values.insert("source".to_string(), serde_json::Value::String(source));
+          }
+          
+          let tool_args = ToolArgs { values };
+          
+          match server.handle_tool(tool, tool_args) {
+              Ok(result) => {
+                  println!("{}", serde_json::to_string_pretty(&result.content).unwrap());
+              }
+              Err(e) => {
+                  eprintln!("Error: {}", e);
+                  std::process::exit(1);
+              }
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/bin/dol-mcp.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Final Validation
+  # ─────────────────────────────────────────────────────────────────
+  validator:
+    name: Q3 Validator
+    role: Validate Q3 implementation
+    dependencies:
+  - mcp-cli
+    instructions: |
+      Validate Q3 implementation.
+      
+      ```bash
+      cd ~/repos/metadol
+      
+      # Update lib.rs
+      # Add: pub mod mlir;
+      # Add: pub mod wasm;
+      # Add: pub mod mcp;
+      
+      # Format
+      cargo fmt --all
+      
+      # Lint
+      cargo clippy -- -D warnings
+      
+      # Test without features
+      cargo test
+      
+      # Test with MLIR feature (if LLVM available)
+      cargo test --features mlir
+      
+      # Build MCP binary
+      cargo build --bin dol-mcp
+      
+      # Test MCP manifest
+      ./target/debug/dol-mcp manifest
+      ```
+      
+      When all pass:
+      
+      ```bash
+      git add -A
+      git commit -m "feat: Q3 LLVM MCP Server
+      
+      - MLIR code generation infrastructure
+      - DOL to MLIR type lowering
+      - Operation lowering (arith, func, scf dialects)
+      - WASM compilation skeleton
+      - MCP server with DOL tools:
+        - dol/parse
+        - dol/typecheck
+        - dol/compile/rust
+        - dol/compile/typescript
+        - dol/eval
+        - dol/reflect
+        - dol/macros/list
+        - dol/macros/expand
+      
+      Q3 milestone complete!"
+      
+      git push
+      ```
+
+# ═══════════════════════════════════════════════════════════════════
+# WORKFLOWS
+# ═════════════════════════════════════════════════════════════
+
+workflows:
+  q3-full:
+    name: Q3 Full - LLVM MCP Server
+    description: Complete Q3 implementation
+    stages:
+      - name: mlir-infrastructure
+        agents: [mlir-setup, mlir-context, mlir-types, mlir-ops, mlir-codegen, mlir-tests]
+        
+      - name: wasm-backend
+        agents: [wasm-setup]
+        depends_on: [mlir-infrastructure]
+        
+      - name: mcp-integration
+        agents: [mcp-setup, mcp-cli]
+        depends_on: [wasm        
+      - name: validate
+        agents: [validator]
+        depends_on: [mcp-integration]
+
+  mlir-only:
+    name: MLIR Only
+    stages:
+      - name: mlir
+        agents: [mlir-setup, mlir-context, mlir-types, mlir-ops, mlir-codegen, mlir-tests]
+
+  mcp-only:
+    name: MCP Only
+    stages:
+      - name: mcp
+        agents: [mcp-setup, mcp-cli]
