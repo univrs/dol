@@ -54,6 +54,7 @@
 //! - [`typechecker`]: DOL 2.0 type inference and checking
 //! - [`eval`]: Expression evaluation for DOL 2.0
 //! - [`macros`]: Macro system for compile-time metaprogramming
+//! - [`transform`]: AST transformation framework with passes
 //! - [`codegen`]: Code generation from DOL declarations
 
 #![doc(html_root_url = "https://docs.rs/metadol/0.0.1")]
@@ -68,6 +69,7 @@ pub mod lexer;
 pub mod macros;
 pub mod parser;
 pub mod pratt;
+pub mod transform;
 pub mod typechecker;
 pub mod validator;
 
@@ -94,6 +96,12 @@ pub use codegen::{
 pub use macros::{
     AttributeArg, BuiltinMacros, Macro, MacroAttribute, MacroContext, MacroError, MacroExpander,
     MacroInput, MacroInvocation, MacroOutput,
+};
+
+// Transform framework re-exports
+pub use transform::{
+    ConstantFolding, DeadCodeElimination, Fold, MutVisitor, Pass, PassConfig, PassError,
+    PassPipeline, PassResult, PassStats, Visitor,
 };
 
 /// Parse a DOL source string into an AST.
