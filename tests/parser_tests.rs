@@ -1648,7 +1648,10 @@ fn test_parse_idiom_bracket_nested() {
         Expr::IdiomBracket { func, args } => {
             // The first expression is add(1+2) as a call
             match *func {
-                Expr::Call { callee, args: call_args } => {
+                Expr::Call {
+                    callee,
+                    args: call_args,
+                } => {
                     match *callee {
                         Expr::Identifier(ref name) => assert_eq!(name, "add"),
                         _ => panic!("Expected identifier for callee"),

@@ -496,7 +496,9 @@ impl TypeChecker {
                 // The result type depends on the function's return type wrapped in the applicative
                 // For now, return the function's return type (simplified)
                 match func_type {
-                    Type::Function { ref return_type, .. } => Ok((**return_type).clone()),
+                    Type::Function {
+                        ref return_type, ..
+                    } => Ok((**return_type).clone()),
                     _ => Ok(Type::Unknown),
                 }
             }

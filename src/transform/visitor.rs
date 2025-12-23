@@ -193,9 +193,7 @@ fn walk_stmt<V: Visitor + ?Sized>(v: &mut V, stmt: &Stmt) {
         }
         Stmt::Expr(expr) => v.visit_expr(expr),
         Stmt::Return(Some(expr)) => v.visit_expr(expr),
-        Stmt::For {
-            iterable, body, ..
-        } => {
+        Stmt::For { iterable, body, .. } => {
             v.visit_expr(iterable);
             for s in body {
                 v.visit_stmt(s);
@@ -348,9 +346,7 @@ fn walk_stmt_mut<V: MutVisitor + ?Sized>(v: &mut V, stmt: &mut Stmt) {
         }
         Stmt::Expr(expr) => v.visit_expr(expr),
         Stmt::Return(Some(expr)) => v.visit_expr(expr),
-        Stmt::For {
-            iterable, body, ..
-        } => {
+        Stmt::For { iterable, body, .. } => {
             v.visit_expr(iterable);
             for s in body {
                 v.visit_stmt(s);

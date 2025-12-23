@@ -1030,12 +1030,7 @@ impl Macro for FormatMacro {
             MacroInput::ExprList(exprs) if !exprs.is_empty() => {
                 let format_string = match &exprs[0] {
                     Expr::Literal(Literal::String(s)) => s.clone(),
-                    _ => {
-                        return Err(MacroError::type_error(
-                            "string literal",
-                            "expression",
-                        ))
-                    }
+                    _ => return Err(MacroError::type_error("string literal", "expression")),
                 };
 
                 let args = &exprs[1..];
@@ -1381,7 +1376,11 @@ fn stringify_expr(expr: &Expr) -> String {
         }
         Expr::Reflect(type_expr) => format!("?{:?}", type_expr),
         Expr::IdiomBracket { func, args } => {
-            let args_str = args.iter().map(stringify_expr).collect::<Vec<_>>().join(" ");
+            let args_str = args
+                .iter()
+                .map(stringify_expr)
+                .collect::<Vec<_>>()
+                .join(" ");
             format!("[| {} {} |]", stringify_expr(func), args_str)
         }
     }
@@ -1889,7 +1888,10 @@ mod tests {
         if let MacroOutput::Expr(expr) = output {
             if let Expr::Call { args, .. } = *expr {
                 // Inner array call should have no elements
-                if let Expr::Call { args: inner_args, .. } = &args[0] {
+                if let Expr::Call {
+                    args: inner_args, ..
+                } = &args[0]
+                {
                     assert!(inner_args.is_empty());
                 } else {
                     panic!("Expected inner call");
