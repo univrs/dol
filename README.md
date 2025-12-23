@@ -8,8 +8,11 @@
 **A declarative DSL for ontology-first development with meta-programming and multi-target compilation**
 
 ---
+
 ## Overview
+
 Meta DOL (Design Ontology Language) is a production-ready DSL toolchain that enables ontology-first development. Instead of writing code and hoping it aligns with your domain model, Meta DOL lets you declare your domain's fundamental structure, behaviors, and constraints explicitly. The toolchain then validates, type-checks, and compiles to multiple targets including Rust, TypeScript, WebAssembly, and JSON Schema.
+
 ### What Makes DOL 2.0 Different?
 
 | Traditional Approach | DOL 2.0 Approach |
@@ -21,6 +24,7 @@ Meta DOL (Design Ontology Language) is a production-ready DSL toolchain that ena
 | Limited metaprogramming | **Quote, Eval, Macros, Reflection** |
 
 DOL 2.0 treats ontology as a first-class concern. You define **genes** (atomic types), **traits** (composable behaviors), **constraints** (invariants), **systems** (compositions), and **evolutions** (version tracking). Each declaration includes mandatory **exegesis**—human-readable documentation that bridges formal specification and domain understanding.
+
 ---
 
 ## Features
@@ -52,7 +56,6 @@ result = data |> validate >> transform |> persist
 // Control flow
 for item in collection {
     if item.active { process(item) }
-
 }
 ```
 
@@ -68,17 +71,17 @@ result = !expr                 // Int64 = 7
 // Macros — compile-time code transformation
 #derive(Debug, Clone)
 gene Container { has id: UInt64 }
+
 message = #format("Hello, {}!", name)
 #assert(count > 0, "count must be positive")
 
 // Reflect — runtime type introspection
 info = ?Container
-
 // info.name == "Container"
 // info.fields == [{ name: "id", type: "UInt64" }]
+
 // Idiom Brackets — applicative functor style
 result = [| add mx my |]      // Desugars to: add <$> mx <*> my
-
 ```
 
 ### 20 Built-in Macros
@@ -111,20 +114,25 @@ result = [| add mx my |]      // Desugars to: add <$> mx <*> my
 ```bash
 # Compile to Rust
 dol build --target rust src/domain.dol -o generated/
+
 # Compile to TypeScript
 dol build --target typescript src/domain.dol -o generated/
+
 # Generate JSON Schema for validation
 dol build --target jsonschema src/domain.dol -o schemas/
+
 # Compile to WebAssembly (requires LLVM 18)
 dol build --target wasm src/domain.dol -o app.wasm
 ```
 
 ### MCP Server (AI Integration)
+
 DOL 2.0 includes a Model Context Protocol (MCP) server for AI-driven development:
 
 ```bash
 # Start MCP server
 dol-mcp serve
+
 # Available tools
 dol/parse           # Parse DOL source → AST
 dol/typecheck       # Type check source
@@ -136,25 +144,31 @@ dol/format          # Format source code
 dol/macros/list     # List available macros
 dol/macros/expand   # Expand a macro
 ```
+
 ---
 
 ## Quick Start
+
 ### Prerequisites
+
 - Rust toolchain 1.81 or later ([install from rustup.rs](https://rustup.rs))
+
 ### Clone and Build
 
 ```bash
 # Clone the repository
 git clone https://github.com/univrs/metadol.git
 cd metadol
+
 # Build the project
 cargo build --release
- Run tests (516 tests)
-cargo test
 
+# Run tests (516 tests)
+cargo test
 ```
 
 ### Create Your First .dol File
+
 Create a file named `example.dol`:
 
 ```dol
@@ -162,11 +176,12 @@ gene user.Account {
     has id: UInt64
     has email: String
     has created_at: Timestamp
-  
+    
     constraint valid_email {
         this.email.contains("@")
     }
 }
+
 exegesis {
     A user account represents an authenticated entity in the system.
     Every account has a unique identifier, validated email address,
@@ -174,34 +189,32 @@ exegesis {
 }
 
 trait user.Authenticatable {
-    uses user.Account 
+    uses user.Account
+    
     fun authenticate(password: String) -> Bool
     fun reset_password(new_password: String) -> Result<Void, Error>
+    
     each authentication emits AuthEvent
 }
 
 exegesis {
     Authenticatable provides password-based authentication
     with secure password reset capabilities.
-
 }
-
 ```
-
 
 ### Parse and Validate
 
 ```bash
 # Parse the file
 cargo run --features cli --bin dol-parse -- example.dol
+
 # Validate with type checking
 cargo run --features cli --bin dol-check -- example.dol
+
 # Generate Rust code
 cargo run --features cli --bin dol-parse -- --format rust example.dol
-
 ```
-
-
 
 ### Expected Output
 
@@ -215,9 +228,11 @@ Summary
   Success:  2
   Errors:   0
 ```
+
 ---
 
 ## Installation
+
 ### From Source
 
 ```bash
@@ -236,18 +251,24 @@ dol-test --version
 ```
 
 ### Optional Features
+
 ```bash
 # With CLI tools
 cargo build --features cli
+
 # With serialization support
 cargo build --features serde
+
 # With MLIR/WASM (requires LLVM 18)
 cargo build --features mlir,wasm
 ```
+
 ---
 
 ## CLI Tools
+
 ### `dol-parse`
+
 Parse DOL files and output AST in various formats.
 
 ```bash
@@ -285,6 +306,7 @@ dol-mcp serve                           # Start MCP server (stdio)
 dol-mcp manifest                        # Print server manifest
 dol-mcp tool dol/parse source="..."     # Execute tool directly
 ```
+
 ---
 
 ## Language Reference
@@ -294,43 +316,40 @@ dol-mcp tool dol/parse source="..."     # Execute tool directly
 Atomic types with fields, constraints, and optional inheritance.
 
 ```dol
-
 gene container.Container {
     has id: UInt64
     has name: String
     has state: ContainerState
     has resources: ResourceLimits
-
+    
     constraint valid_name {
         this.name.length > 0 && this.name.length <= 255
     }
-
-  
+    
     constraint resources_bounded {
         this.resources.memory <= MAX_MEMORY
     }
 }
-
 
 exegesis {
     A Container is the fundamental unit of workload isolation.
     Each container has immutable identity, mutable state,
     and enforced resource boundaries.
 }
-
 ```
 
-
 ### Traits
+
 Interface contracts with methods, events, and quantified statements.
 
 ```dol
 trait container.Lifecycle {
     uses container.Container
+    
     fun start() -> Result<Void, Error>
     fun stop(force: Bool) -> Result<Void, Error>
     fun restart() -> Result<Void, Error>
-
+    
     each state_change emits LifecycleEvent
     all containers is monitored
 }
@@ -339,10 +358,10 @@ exegesis {
     Lifecycle defines the state machine for container
     management with event emission on transitions.
 }
-
 ```
 
 ### Constraints
+
 Validation rules and domain invariants.
 
 ```dol
@@ -351,11 +370,11 @@ constraint container.Integrity {
     state never undefined
     boundaries never exceeded
 }
+
 exegesis {
     Container integrity ensures immutable identity,
     defined state, and enforced resource limits.
 }
-
 ```
 
 ### Systems
@@ -363,11 +382,11 @@ exegesis {
 Top-level compositions with versioned dependencies.
 
 ```dol
-
 system univrs.Orchestrator @ 0.3.0 {
     requires container.Container >= 0.1.0
     requires container.Lifecycle >= 0.1.0
     requires scheduler.Scheduler >= 0.2.0
+    
     each container has supervisor
     all containers is health_checked
 }
@@ -376,12 +395,10 @@ exegesis {
     The Orchestrator manages container lifecycles,
     scheduling, and health monitoring across nodes.
 }
-
 ```
 
-
-
 ### Evolutions
+
 Version migration with semantic tracking.
 
 ```dol
@@ -391,11 +408,11 @@ evolves container.Lifecycle @ 0.2.0 > 0.1.0 {
     deprecates fun restart()
     because "Live migration requires pause/resume semantics"
 }
+
 exegesis {
     Version 0.2.0 introduces pause/resume for live migration
     support, deprecating the atomic restart operation.
 }
-
 ```
 
 ---
@@ -417,8 +434,8 @@ exegesis {
 | `Void` | No value |
 
 ### Generic Types
-```dol
 
+```dol
 // Collections
 List<T>
 Map<K, V>
@@ -430,12 +447,11 @@ Result<T, E>
 
 // Quoted expressions (meta-programming)
 Quoted<T>
-
 ```
+
 ### Function Types
 
 ```dol
-
 // Simple function
 Fun<Int64, Int64>
 
@@ -444,7 +460,6 @@ Fun<(Int64, String), Bool>
 
 // Higher-order
 Fun<Fun<Int64, Int64>, Int64>
-
 ```
 
 ---
@@ -455,6 +470,7 @@ DOL 2.0 includes a powerful AST transformation framework:
 
 ```rust
 use metadol::transform::{Pass, PassPipeline, Visitor, Fold};
+
 // Built-in passes
 let pipeline = PassPipeline::new()
     .add(ConstantFolding)
@@ -464,8 +480,6 @@ let pipeline = PassPipeline::new()
 
 let optimized = pipeline.run(ast)?;
 ```
-
-
 
 ### Available Passes
 
@@ -477,7 +491,6 @@ let optimized = pipeline.run(ast)?;
 | `Simplify` | Simplify expressions (double negation, identity ops) |
 
 ---
-
 
 ## Project Structure
 
@@ -517,8 +530,8 @@ metadol/
 ├── tests/                  # Test suites (516 tests)
 ├── examples/               # Example DOL files
 └── docs/                   # Documentation
-
 ```
+
 ---
 
 ## Testing
@@ -526,6 +539,7 @@ metadol/
 ```bash
 # Run all tests (516 tests)
 cargo test
+
 # Run specific test suite
 cargo test --test parser_tests
 cargo test --test macro_tests
@@ -538,11 +552,7 @@ cargo test -- --nocapture
 cargo bench
 ```
 
-
-
 ### Test Coverage
-
-
 
 | Suite | Tests |
 |-------|-------|
@@ -562,6 +572,7 @@ cargo bench
 ## Roadmap
 
 ### Completed
+
 | Phase | Milestone | Status |
 |-------|-----------|--------|
 | Q1 | Foundation — Lexer, Parser, TypeChecker, Codegen | ✅ |
@@ -581,6 +592,7 @@ cargo bench
 ## Examples
 
 The `examples/` directory contains comprehensive examples:
+
 ```
 examples/
 ├── genes/          # Atomic type definitions
@@ -590,6 +602,7 @@ examples/
 ├── evolutions/     # Version migrations
 └── tests/          # Test specifications
 ```
+
 ---
 
 ## Documentation
@@ -606,7 +619,9 @@ cargo doc --open
 ```
 
 ---
+
 ## Contributing
+
 Contributions are welcome! Please follow these guidelines:
 
 1. Run `cargo fmt` before committing
@@ -619,14 +634,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 ---
 
 ## License
+
 Licensed under either of:
+
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
+
 at your option.
+
 ---
 
 ## Acknowledgments
+
 Meta DOL is part of the [Univrs](https://github.com/univrs) ecosystem, building the foundation for VUDO OS — a distributed, AI-native operating system where systems describe their ontological nature before their functionality.
 
 ---
+
 **Built with Rust. Powered by Ontology. Driven by Clarity.** 🍄
