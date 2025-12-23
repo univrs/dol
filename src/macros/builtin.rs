@@ -50,6 +50,17 @@ impl BuiltinMacros {
         macros.insert("todo".to_string(), Arc::new(TodoMacro));
         macros.insert("unreachable".to_string(), Arc::new(UnreachableMacro));
 
+        // Assertion macros
+        macros.insert("assert".to_string(), Arc::new(AssertMacro));
+        macros.insert("assert_eq".to_string(), Arc::new(AssertEqMacro));
+        macros.insert("assert_ne".to_string(), Arc::new(AssertNeMacro));
+
+        // Utility macros
+        macros.insert("format".to_string(), Arc::new(FormatMacro));
+        macros.insert("dbg".to_string(), Arc::new(DbgMacro));
+        macros.insert("compile_error".to_string(), Arc::new(CompileErrorMacro));
+        macros.insert("vec".to_string(), Arc::new(VecMacro));
+
         Self { macros }
     }
 
@@ -772,6 +783,499 @@ impl Macro for UnreachableMacro {
 
     fn description(&self) -> &str {
         "Mark code as unreachable"
+    }
+}
+
+/// `#assert` - Assert a condition is true.
+///
+/// Always checks the condition, unlike `#debug_assert`.
+///
+/// # Syntax
+///
+/// ```dol
+/// #assert(x > 0);
+/// #assert(valid, "must be valid");
+/// ```
+pub struct AssertMacro;
+
+impl Macro for AssertMacro {
+    fn name(&self) -> &str {
+        "assert"
+    }
+
+    fn expand(&self, input: MacroInput, _ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        match input {
+            MacroInput::Expr(condition) => {
+                let condition_str = stringify_expr(&condition);
+                let message = format!("assertion failed: {}", condition_str);
+                Ok(MacroOutput::expr(Expr::If {
+                    condition: Box::new(Expr::Unary {
+                        op: crate::ast::UnaryOp::Not,
+                        operand: condition,
+                    }),
+                    then_branch: Box::new(Expr::Call {
+                        callee: Box::new(Expr::Identifier("panic".to_string())),
+                        args: vec![Expr::Literal(Literal::String(message))],
+                    }),
+                    else_branch: None,
+                }))
+            }
+            MacroInput::ExprList(exprs) if !exprs.is_empty() => {
+                let condition = exprs[0].clone();
+                let condition_str = stringify_expr(&condition);
+                let message = if exprs.len() > 1 {
+                    match &exprs[1] {
+                        Expr::Literal(Literal::String(s)) => s.clone(),
+                        _ => format!("assertion failed: {}", condition_str),
+                    }
+                } else {
+                    format!("assertion failed: {}", condition_str)
+                };
+
+                Ok(MacroOutput::expr(Expr::If {
+                    condition: Box::new(Expr::Unary {
+                        op: crate::ast::UnaryOp::Not,
+                        operand: Box::new(condition),
+                    }),
+                    then_branch: Box::new(Expr::Call {
+                        callee: Box::new(Expr::Identifier("panic".to_string())),
+                        args: vec![Expr::Literal(Literal::String(message))],
+                    }),
+                    else_branch: None,
+                }))
+            }
+            _ => Err(MacroError::invalid_argument(
+                "assert expects a condition expression",
+            )),
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Assert condition is true (always checked)"
+    }
+
+    fn min_args(&self) -> usize {
+        1
+    }
+}
+
+/// `#assert_eq` - Assert two values are equal.
+///
+/// Compares two expressions and panics if they are not equal.
+///
+/// # Syntax
+///
+/// ```dol
+/// #assert_eq(result, expected);
+/// #assert_eq(x, 42, "x should be 42");
+/// ```
+pub struct AssertEqMacro;
+
+impl Macro for AssertEqMacro {
+    fn name(&self) -> &str {
+        "assert_eq"
+    }
+
+    fn expand(&self, input: MacroInput, _ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        match input {
+            MacroInput::ExprList(exprs) if exprs.len() >= 2 => {
+                let left = exprs[0].clone();
+                let right = exprs[1].clone();
+                let left_str = stringify_expr(&left);
+                let right_str = stringify_expr(&right);
+
+                let message = if exprs.len() > 2 {
+                    match &exprs[2] {
+                        Expr::Literal(Literal::String(s)) => s.clone(),
+                        _ => format!(
+                            "assertion failed: `(left == right)`\n  left: `{}`\n right: `{}`",
+                            left_str, right_str
+                        ),
+                    }
+                } else {
+                    format!(
+                        "assertion failed: `(left == right)`\n  left: `{}`\n right: `{}`",
+                        left_str, right_str
+                    )
+                };
+
+                // Generate: if left != right { panic(message) }
+                Ok(MacroOutput::expr(Expr::If {
+                    condition: Box::new(Expr::Binary {
+                        left: Box::new(left),
+                        op: crate::ast::BinaryOp::Ne,
+                        right: Box::new(right),
+                    }),
+                    then_branch: Box::new(Expr::Call {
+                        callee: Box::new(Expr::Identifier("panic".to_string())),
+                        args: vec![Expr::Literal(Literal::String(message))],
+                    }),
+                    else_branch: None,
+                }))
+            }
+            _ => Err(MacroError::invalid_argument(
+                "assert_eq expects two expressions to compare",
+            )),
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Assert two values are equal"
+    }
+
+    fn min_args(&self) -> usize {
+        2
+    }
+}
+
+/// `#assert_ne` - Assert two values are not equal.
+///
+/// Compares two expressions and panics if they are equal.
+///
+/// # Syntax
+///
+/// ```dol
+/// #assert_ne(result, 0);
+/// #assert_ne(status, "error", "should not be error");
+/// ```
+pub struct AssertNeMacro;
+
+impl Macro for AssertNeMacro {
+    fn name(&self) -> &str {
+        "assert_ne"
+    }
+
+    fn expand(&self, input: MacroInput, _ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        match input {
+            MacroInput::ExprList(exprs) if exprs.len() >= 2 => {
+                let left = exprs[0].clone();
+                let right = exprs[1].clone();
+                let left_str = stringify_expr(&left);
+                let right_str = stringify_expr(&right);
+
+                let message = if exprs.len() > 2 {
+                    match &exprs[2] {
+                        Expr::Literal(Literal::String(s)) => s.clone(),
+                        _ => format!(
+                            "assertion failed: `(left != right)`\n  left: `{}`\n right: `{}`",
+                            left_str, right_str
+                        ),
+                    }
+                } else {
+                    format!(
+                        "assertion failed: `(left != right)`\n  left: `{}`\n right: `{}`",
+                        left_str, right_str
+                    )
+                };
+
+                // Generate: if left == right { panic(message) }
+                Ok(MacroOutput::expr(Expr::If {
+                    condition: Box::new(Expr::Binary {
+                        left: Box::new(left),
+                        op: crate::ast::BinaryOp::Eq,
+                        right: Box::new(right),
+                    }),
+                    then_branch: Box::new(Expr::Call {
+                        callee: Box::new(Expr::Identifier("panic".to_string())),
+                        args: vec![Expr::Literal(Literal::String(message))],
+                    }),
+                    else_branch: None,
+                }))
+            }
+            _ => Err(MacroError::invalid_argument(
+                "assert_ne expects two expressions to compare",
+            )),
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Assert two values are not equal"
+    }
+
+    fn min_args(&self) -> usize {
+        2
+    }
+}
+
+/// `#format` - Format a string with placeholders.
+///
+/// Similar to Rust's `format!` macro, substitutes `{}` placeholders with values.
+///
+/// # Syntax
+///
+/// ```dol
+/// let msg = #format("Hello, {}!", name);
+/// let info = #format("x={}, y={}", x, y);
+/// ```
+pub struct FormatMacro;
+
+impl Macro for FormatMacro {
+    fn name(&self) -> &str {
+        "format"
+    }
+
+    fn expand(&self, input: MacroInput, _ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        match input {
+            MacroInput::ExprList(exprs) if !exprs.is_empty() => {
+                let format_string = match &exprs[0] {
+                    Expr::Literal(Literal::String(s)) => s.clone(),
+                    _ => {
+                        return Err(MacroError::type_error(
+                            "string literal",
+                            "expression",
+                        ))
+                    }
+                };
+
+                let args = &exprs[1..];
+
+                // Count placeholders in format string
+                let placeholder_count = format_string.matches("{}").count();
+                if placeholder_count != args.len() {
+                    return Err(MacroError::invalid_argument(&format!(
+                        "format string has {} placeholders but {} arguments were provided",
+                        placeholder_count,
+                        args.len()
+                    )));
+                }
+
+                // Build concatenation expression
+                let parts: Vec<&str> = format_string.split("{}").collect();
+                let mut result_exprs: Vec<Expr> = Vec::new();
+
+                for (i, part) in parts.iter().enumerate() {
+                    if !part.is_empty() {
+                        result_exprs.push(Expr::Literal(Literal::String(part.to_string())));
+                    }
+                    if i < args.len() {
+                        // Wrap arg in a to_string call for runtime formatting
+                        result_exprs.push(Expr::Call {
+                            callee: Box::new(Expr::Member {
+                                object: Box::new(args[i].clone()),
+                                field: "to_string".to_string(),
+                            }),
+                            args: vec![],
+                        });
+                    }
+                }
+
+                // Generate concat call with all parts
+                Ok(MacroOutput::expr(Expr::Call {
+                    callee: Box::new(Expr::Identifier("concat".to_string())),
+                    args: result_exprs,
+                }))
+            }
+            MacroInput::Expr(expr) => match *expr {
+                Expr::Literal(Literal::String(s)) => {
+                    // No placeholders, just return the string
+                    Ok(MacroOutput::expr(Expr::Literal(Literal::String(s))))
+                }
+                _ => Err(MacroError::type_error("string literal", "expression")),
+            },
+            _ => Err(MacroError::invalid_argument(
+                "format expects a format string and arguments",
+            )),
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Format a string with placeholders"
+    }
+
+    fn min_args(&self) -> usize {
+        1
+    }
+}
+
+/// `#dbg` - Debug output macro.
+///
+/// Prints the expression and its value, returning the value.
+/// Useful for quick debugging.
+///
+/// # Syntax
+///
+/// ```dol
+/// let x = #dbg(calculate());  // prints: [file:line] calculate() = <value>
+/// ```
+pub struct DbgMacro;
+
+impl Macro for DbgMacro {
+    fn name(&self) -> &str {
+        "dbg"
+    }
+
+    fn expand(&self, input: MacroInput, ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        match input {
+            MacroInput::Expr(expr) => {
+                let expr_str = stringify_expr(&expr);
+                let location = format!(
+                    "[{}:{}]",
+                    ctx.file_path.as_deref().unwrap_or("<unknown>"),
+                    ctx.line
+                );
+
+                // Generate: { let __dbg_tmp = expr; print(location, expr_str, "=", __dbg_tmp); __dbg_tmp }
+                Ok(MacroOutput::expr(Expr::Block {
+                    statements: vec![
+                        crate::ast::Stmt::Let {
+                            name: "__dbg_tmp".to_string(),
+                            type_annotation: None,
+                            value: *expr,
+                        },
+                        crate::ast::Stmt::Expr(Expr::Call {
+                            callee: Box::new(Expr::Identifier("eprintln".to_string())),
+                            args: vec![
+                                Expr::Literal(Literal::String(format!(
+                                    "{} {} = {{:?}}",
+                                    location, expr_str
+                                ))),
+                                Expr::Identifier("__dbg_tmp".to_string()),
+                            ],
+                        }),
+                    ],
+                    final_expr: Some(Box::new(Expr::Identifier("__dbg_tmp".to_string()))),
+                }))
+            }
+            MacroInput::ExprList(exprs) if exprs.len() == 1 => {
+                let expr = exprs[0].clone();
+                let expr_str = stringify_expr(&expr);
+                let location = format!(
+                    "[{}:{}]",
+                    ctx.file_path.as_deref().unwrap_or("<unknown>"),
+                    ctx.line
+                );
+
+                Ok(MacroOutput::expr(Expr::Block {
+                    statements: vec![
+                        crate::ast::Stmt::Let {
+                            name: "__dbg_tmp".to_string(),
+                            type_annotation: None,
+                            value: expr,
+                        },
+                        crate::ast::Stmt::Expr(Expr::Call {
+                            callee: Box::new(Expr::Identifier("eprintln".to_string())),
+                            args: vec![
+                                Expr::Literal(Literal::String(format!(
+                                    "{} {} = {{:?}}",
+                                    location, expr_str
+                                ))),
+                                Expr::Identifier("__dbg_tmp".to_string()),
+                            ],
+                        }),
+                    ],
+                    final_expr: Some(Box::new(Expr::Identifier("__dbg_tmp".to_string()))),
+                }))
+            }
+            _ => Err(MacroError::invalid_argument("dbg expects an expression")),
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Debug print an expression and its value"
+    }
+
+    fn min_args(&self) -> usize {
+        1
+    }
+
+    fn max_args(&self) -> Option<usize> {
+        Some(1)
+    }
+}
+
+/// `#compile_error` - Emit a compile-time error.
+///
+/// Causes compilation to fail with the specified message.
+///
+/// # Syntax
+///
+/// ```dol
+/// #compile_error("This feature is not yet implemented");
+/// ```
+pub struct CompileErrorMacro;
+
+impl Macro for CompileErrorMacro {
+    fn name(&self) -> &str {
+        "compile_error"
+    }
+
+    fn expand(&self, input: MacroInput, _ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        let message = match input {
+            MacroInput::Expr(expr) => match *expr {
+                Expr::Literal(Literal::String(s)) => s,
+                _ => return Err(MacroError::type_error("string literal", "expression")),
+            },
+            MacroInput::ExprList(exprs) if exprs.len() == 1 => match &exprs[0] {
+                Expr::Literal(Literal::String(s)) => s.clone(),
+                _ => return Err(MacroError::type_error("string literal", "expression")),
+            },
+            _ => {
+                return Err(MacroError::invalid_argument(
+                    "compile_error expects a string message",
+                ))
+            }
+        };
+
+        Err(MacroError::new(format!("compile error: {}", message)))
+    }
+
+    fn description(&self) -> &str {
+        "Emit a compile-time error"
+    }
+
+    fn min_args(&self) -> usize {
+        1
+    }
+
+    fn max_args(&self) -> Option<usize> {
+        Some(1)
+    }
+}
+
+/// `#vec` - Create a vector literal.
+///
+/// Creates a vector containing the specified elements.
+///
+/// # Syntax
+///
+/// ```dol
+/// let numbers = #vec(1, 2, 3, 4, 5);
+/// let names = #vec("alice", "bob", "charlie");
+/// ```
+pub struct VecMacro;
+
+impl Macro for VecMacro {
+    fn name(&self) -> &str {
+        "vec"
+    }
+
+    fn expand(&self, input: MacroInput, _ctx: &MacroContext) -> Result<MacroOutput, MacroError> {
+        let elements = match input {
+            MacroInput::ExprList(exprs) => exprs,
+            MacroInput::Expr(expr) => vec![*expr],
+            MacroInput::Empty => vec![],
+            _ => {
+                return Err(MacroError::invalid_argument(
+                    "vec expects a list of expressions",
+                ))
+            }
+        };
+
+        // Generate: Vec::from([elem1, elem2, ...])
+        Ok(MacroOutput::expr(Expr::Call {
+            callee: Box::new(Expr::Member {
+                object: Box::new(Expr::Identifier("Vec".to_string())),
+                field: "from".to_string(),
+            }),
+            args: vec![Expr::Call {
+                callee: Box::new(Expr::Identifier("__array__".to_string())),
+                args: elements,
+            }],
+        }))
+    }
+
+    fn description(&self) -> &str {
+        "Create a vector from elements"
     }
 }
 
