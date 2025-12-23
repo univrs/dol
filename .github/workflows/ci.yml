@@ -39,13 +39,14 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --features cli,serde -- -D warnings
 
       - name: Check (default features)
         run: cargo check
 
-      - name: Check (all features)
-        run: cargo check --all-features
+      - name: Check (cli + serde features)
+        # Note: mlir and wasm features require LLVM 18 installation
+        run: cargo check --features cli,serde
 
   test:
     name: Test
@@ -79,7 +80,8 @@ jobs:
             ${{ runner.os }}-${{ matrix.rust }}-cargo-
 
       - name: Run tests
-        run: cargo test --all-features
+        # Note: mlir and wasm features require LLVM 18 installation
+        run: cargo test --features cli,serde
 
       - name: Run tests (no default features)
         run: cargo test --no-default-features
@@ -131,7 +133,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build documentation
-        run: cargo doc --all-features --no-deps
+        # Note: mlir and wasm features require LLVM 18 installation
+        run: cargo doc --features cli,serde --no-deps
 
       - name: Upload documentation
         uses: actions/upload-artifact@v4
@@ -154,7 +157,8 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage report
-        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+        # Note: mlir and wasm features require LLVM 18 installation
+        run: cargo llvm-cov --features cli,serde --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
