@@ -822,6 +822,9 @@ impl<'a> Parser<'a> {
             // Macro invocation: #macro_name(args)
             TokenKind::Macro => self.parse_macro_invocation_expr(),
 
+            // Idiom brackets: [| f a b |]
+            TokenKind::IdiomOpen => self.parse_idiom_bracket(),
+
             _ => Err(ParseError::UnexpectedToken {
                 expected: "expression".to_string(),
                 found: format!("'{}'", self.current.lexeme),
@@ -1439,6 +1442,28 @@ impl<'a> Parser<'a> {
         // We encode this as a Call with a special identifier prefix
         Ok(Expr::Call {
             callee: Box::new(Expr::Identifier(format!("#{}", name))),
+            args,
+        })
+    }
+
+    /// Parses idiom brackets: [| f a b |]
+    /// Desugars to f <$> a <*> b for applicative functor style.
+    fn parse_idiom_bracket(&mut self) -> Result<Expr, ParseError> {
+        self.expect(TokenKind::IdiomOpen)?; // consume [|
+
+        // Parse the function (first expression)
+        let func = self.parse_expr(0)?;
+
+        // Parse arguments until we hit |]
+        let mut args = Vec::new();
+        while self.current.kind != TokenKind::IdiomClose && self.current.kind != TokenKind::Eof {
+            args.push(self.parse_expr(0)?);
+        }
+
+        self.expect(TokenKind::IdiomClose)?; // consume |]
+
+        Ok(Expr::IdiomBracket {
+            func: Box::new(func),
             args,
         })
     }

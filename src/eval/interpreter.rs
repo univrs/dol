@@ -158,6 +158,44 @@ impl Interpreter {
             // Reflect - return type information
             Expr::Reflect(type_expr) => self.eval_reflect(type_expr),
 
+            // Idiom brackets: [| f a b |] desugars to f <$> a <*> b
+            // For evaluation, we treat it as function application over lifted values
+            Expr::IdiomBracket { func, args } => {
+                // Evaluate the function
+                let func_val = self.eval_in_env(func, env)?;
+
+                // Evaluate all arguments
+                let mut arg_vals = Vec::new();
+                for arg in args {
+                    arg_vals.push(self.eval_in_env(arg, env)?);
+                }
+
+                // Apply function to arguments (simplified: direct application)
+                // A full implementation would use Functor/Applicative type class instances
+                match func_val {
+                    Value::Function {
+                        params,
+                        body,
+                        env: closure_env,
+                    } => {
+                        if params.len() != arg_vals.len() {
+                            return Err(EvalError::arity_mismatch(params.len(), arg_vals.len()));
+                        }
+                        // Create new environment from closure
+                        let mut call_env = closure_env;
+                        for (param, val) in params.iter().zip(arg_vals) {
+                            call_env.bind(param, val);
+                        }
+                        self.eval_in_env(&body, &mut call_env)
+                    }
+                    Value::Builtin(name) => builtins::call_builtin(&name, &arg_vals),
+                    _ => Err(EvalError::new(format!(
+                        "cannot apply idiom brackets to non-function: {}",
+                        func_val.type_name()
+                    ))),
+                }
+            }
+
             // Unquote - used inside quasi-quotes for splicing
             Expr::Unquote(inner) => {
                 // Unquote only makes sense inside a quasi-quote context

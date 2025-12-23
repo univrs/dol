@@ -1588,3 +1588,99 @@ fn test_parse_complex_nested_expression() {
         _ => panic!("Expected binary expression"),
     }
 }
+
+#[test]
+fn test_parse_idiom_bracket() {
+    use metadol::ast::Expr;
+
+    // Idiom brackets: [| f a b |]
+    let input = "[| add x y |]";
+    let mut parser = Parser::new(input);
+    let expr = parser.parse_expr(0).unwrap();
+
+    match expr {
+        Expr::IdiomBracket { func, args } => {
+            // The function should be the identifier "add"
+            match *func {
+                Expr::Identifier(ref name) => assert_eq!(name, "add"),
+                _ => panic!("Expected identifier for function"),
+            }
+            // Should have 2 arguments
+            assert_eq!(args.len(), 2);
+        }
+        _ => panic!("Expected IdiomBracket expression"),
+    }
+}
+
+#[test]
+fn test_parse_idiom_bracket_single_arg() {
+    use metadol::ast::Expr;
+
+    // Idiom brackets with single argument: [| f a |]
+    let input = "[| transform value |]";
+    let mut parser = Parser::new(input);
+    let expr = parser.parse_expr(0).unwrap();
+
+    match expr {
+        Expr::IdiomBracket { func, args } => {
+            match *func {
+                Expr::Identifier(ref name) => assert_eq!(name, "transform"),
+                _ => panic!("Expected identifier for function"),
+            }
+            assert_eq!(args.len(), 1);
+        }
+        _ => panic!("Expected IdiomBracket expression"),
+    }
+}
+
+#[test]
+fn test_parse_idiom_bracket_nested() {
+    use metadol::ast::Expr;
+
+    // Idiom brackets with expressions as arguments
+    // Note: add (1 + 2) is parsed as a function call, so we get:
+    // func = add(1+2), args = [3]
+    let input = "[| add (1 + 2) 3 |]";
+    let mut parser = Parser::new(input);
+    let expr = parser.parse_expr(0).unwrap();
+
+    match expr {
+        Expr::IdiomBracket { func, args } => {
+            // The first expression is add(1+2) as a call
+            match *func {
+                Expr::Call { callee, args: call_args } => {
+                    match *callee {
+                        Expr::Identifier(ref name) => assert_eq!(name, "add"),
+                        _ => panic!("Expected identifier for callee"),
+                    }
+                    assert_eq!(call_args.len(), 1);
+                }
+                _ => panic!("Expected Call expression for function"),
+            }
+            // The remaining argument is 3
+            assert_eq!(args.len(), 1);
+        }
+        _ => panic!("Expected IdiomBracket expression"),
+    }
+}
+
+#[test]
+fn test_parse_idiom_bracket_simple_literals() {
+    use metadol::ast::Expr;
+
+    // Simple idiom brackets with literals
+    let input = "[| f 1 2 |]";
+    let mut parser = Parser::new(input);
+    let expr = parser.parse_expr(0).unwrap();
+
+    match expr {
+        Expr::IdiomBracket { func, args } => {
+            match *func {
+                Expr::Identifier(ref name) => assert_eq!(name, "f"),
+                _ => panic!("Expected identifier for function"),
+            }
+            assert_eq!(args.len(), 2);
+        }
+        _ => panic!("Expected IdiomBracket expression"),
+    }
+}

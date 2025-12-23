@@ -483,6 +483,23 @@ impl TypeChecker {
                     args: vec![],
                 })
             }
+            Expr::IdiomBracket { func, args } => {
+                // Idiom brackets [| f a b |] desugar to f <$> a <*> b
+                // For typing, we check that func is a function and args are applicative contexts
+                let func_type = self.infer(func)?;
+
+                // Infer types of all arguments
+                for arg in args {
+                    self.infer(arg)?;
+                }
+
+                // The result type depends on the function's return type wrapped in the applicative
+                // For now, return the function's return type (simplified)
+                match func_type {
+                    Type::Function { ref return_type, .. } => Ok((**return_type).clone()),
+                    _ => Ok(Type::Unknown),
+                }
+            }
             Expr::Unquote(inner) => {
                 // Unquote inside a quote evaluates the inner expression
                 self.infer(inner)

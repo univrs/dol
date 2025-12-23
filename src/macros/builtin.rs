@@ -865,6 +865,10 @@ fn stringify_expr(expr: &Expr) -> String {
             }
         }
         Expr::Reflect(type_expr) => format!("?{:?}", type_expr),
+        Expr::IdiomBracket { func, args } => {
+            let args_str = args.iter().map(stringify_expr).collect::<Vec<_>>().join(" ");
+            format!("[| {} {} |]", stringify_expr(func), args_str)
+        }
     }
 }
 

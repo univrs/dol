@@ -771,6 +771,14 @@ pub enum Expr {
     Eval(Box<Expr>),
     /// Type reflection
     Reflect(Box<TypeExpr>),
+    /// Idiom brackets for applicative functor style
+    /// [| f a b |] desugars to f <$> a <*> b
+    IdiomBracket {
+        /// The function to apply
+        func: Box<Expr>,
+        /// Arguments to lift and apply
+        args: Vec<Expr>,
+    },
 }
 
 /// Literal value.
