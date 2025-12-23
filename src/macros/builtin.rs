@@ -16,7 +16,18 @@
 //! | `#file` | Current file path | `#file()` |
 //! | `#line` | Current line number | `#line()` |
 //! | `#column` | Current column number | `#column()` |
-//! | `#include` | Include file contents | `#include("path/to/file")` |
+//! | `#include_str` | Include file contents | `#include_str("path/to/file")` |
+//! | `#debug_assert` | Debug-only assertion | `#debug_assert(x > 0)` |
+//! | `#todo` | Mark unimplemented code | `#todo("implement later")` |
+//! | `#unreachable` | Mark unreachable code | `#unreachable()` |
+//! | `#assert` | Assert condition | `#assert(x > 0)` |
+//! | `#assert_eq` | Assert equality | `#assert_eq(result, expected)` |
+//! | `#assert_ne` | Assert inequality | `#assert_ne(status, "error")` |
+//! | `#format` | String formatting | `#format("Hello, {}!", name)` |
+//! | `#dbg` | Debug print expression | `#dbg(calculate())` |
+//! | `#compile_error` | Compile-time error | `#compile_error("not supported")` |
+//! | `#vec` | Create vector literal | `#vec(1, 2, 3)` |
+//! | `#option_env` | Optional env access | `#option_env("VAR")` |
 
 use super::{Macro, MacroContext, MacroError, MacroInput, MacroOutput};
 use crate::ast::{Expr, Literal};

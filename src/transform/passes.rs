@@ -24,6 +24,7 @@ impl ConstantFolding {
 
     /// Fold an expression, evaluating constant subexpressions.
     #[allow(dead_code)]
+    #[allow(clippy::only_used_in_recursion)]
     pub fn fold_expr(&self, expr: Expr) -> Expr {
         match expr {
             Expr::Binary { left, op, right } => {
@@ -238,6 +239,7 @@ impl Simplify {
 
     /// Simplify an expression using algebraic identities.
     #[allow(dead_code)]
+    #[allow(clippy::only_used_in_recursion)]
     pub fn simplify_expr(&self, expr: Expr) -> Expr {
         match expr {
             Expr::Binary { left, op, right } => {
