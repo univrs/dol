@@ -1,197 +1,385 @@
 name: CI
 
+
+
 on:
+
   push:
+
     branches: [main]
+
     tags: ['v*']
+
   pull_request:
+
     branches: [main]
+
   workflow_dispatch:
 
+
+
 env:
+
   CARGO_TERM_COLOR: always
+
   RUST_BACKTRACE: 1
 
+
+
 jobs:
+
   check:
+
     name: Check
+
     runs-on: ubuntu-latest
+
     steps:
+
       - uses: actions/checkout@v4
 
+
+
       - name: Install Rust toolchain
+
         uses: dtolnay/rust-toolchain@stable
+
         with:
+
           components: rustfmt, clippy
 
+
+
       - name: Cache cargo registry
+
         uses: actions/cache@v4
+
         with:
+
           path: |
+
             ~/.cargo/registry
+
             ~/.cargo/git
+
             target
+
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
           restore-keys: |
+
             ${{ runner.os }}-cargo-
+
+
 
       - name: Check formatting
+
         run: cargo fmt --all -- --check
 
+
+
       - name: Run clippy
-        run: cargo clippy --all-targets --features cli,serde -- -D warnings
+
+        run: cargo clippy --all-targets --features "cli,serde" -- -D warnings
+
+
 
       - name: Check (default features)
+
         run: cargo check
 
+
+
       - name: Check (cli + serde features)
-        # Note: mlir and wasm features require LLVM 18 installation
-        run: cargo check --features cli,serde
+
+        run: cargo check --features "cli,serde"
+
+
 
   test:
+
     name: Test
+
     runs-on: ${{ matrix.os }}
+
     strategy:
+
       matrix:
+
         os: [ubuntu-latest, macos-latest, windows-latest]
+
         rust: [stable, 1.81.0]
+
         exclude:
+
           - os: macos-latest
+
             rust: 1.81.0
+
           - os: windows-latest
+
             rust: 1.81.0
+
     steps:
+
       - uses: actions/checkout@v4
 
+
+
       - name: Install Rust toolchain
+
         uses: dtolnay/rust-toolchain@master
+
         with:
+
           toolchain: ${{ matrix.rust }}
 
+
+
       - name: Cache cargo registry
+
         uses: actions/cache@v4
+
         with:
+
           path: |
+
             ~/.cargo/registry
+
             ~/.cargo/git
+
             target
+
           key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
           restore-keys: |
+
             ${{ runner.os }}-${{ matrix.rust }}-cargo-
 
+
+
       - name: Run tests
-        # Note: mlir and wasm features require LLVM 18 installation
-        run: cargo test --features cli,serde
+
+        run: cargo test --features "cli,serde"
+
+
 
       - name: Run tests (no default features)
+
         run: cargo test --no-default-features
 
+
+
   build:
+
     name: Build CLI
+
     runs-on: ubuntu-latest
+
     steps:
+
       - uses: actions/checkout@v4
 
+
+
       - name: Install Rust toolchain
+
         uses: dtolnay/rust-toolchain@stable
+
+
 
       - name: Cache cargo registry
+
         uses: actions/cache@v4
+
         with:
+
           path: |
+
             ~/.cargo/registry
+
             ~/.cargo/git
+
             target
+
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
           restore-keys: |
+
             ${{ runner.os }}-cargo-
 
+
+
       - name: Build CLI tools
+
         run: cargo build --features cli --release
 
+
+
       - name: Test dol-parse
+
         run: |
+
           echo 'gene test.example { thing has property } exegesis { Test. }' > /tmp/test.dol
+
           ./target/release/dol-parse /tmp/test.dol
 
+
+
       - name: Upload CLI binaries
+
         uses: actions/upload-artifact@v4
+
         with:
+
           name: cli-binaries
+
           path: |
+
             target/release/dol-parse
+
             target/release/dol-check
+
             target/release/dol-test
 
+
+
   docs:
+
     name: Documentation
+
     runs-on: ubuntu-latest
+
     steps:
+
       - uses: actions/checkout@v4
 
+
+
       - name: Install Rust toolchain
+
         uses: dtolnay/rust-toolchain@stable
+
+
 
       - name: Build documentation
-        # Note: mlir and wasm features require LLVM 18 installation
-        run: cargo doc --features cli,serde --no-deps
+
+        run: cargo doc --features "cli,serde" --no-deps
+
+
 
       - name: Upload documentation
+
         uses: actions/upload-artifact@v4
+
         with:
+
           name: documentation
+
           path: target/doc
 
+
+
   coverage:
+
     name: Code Coverage
+
     runs-on: ubuntu-latest
+
     steps:
+
       - uses: actions/checkout@v4
+
+
 
       - name: Install Rust toolchain
+
         uses: dtolnay/rust-toolchain@stable
+
         with:
+
           components: llvm-tools-preview
 
+
+
       - name: Install cargo-llvm-cov
+
         uses: taiki-e/install-action@cargo-llvm-cov
 
+
+
       - name: Generate coverage report
-        # Note: mlir and wasm features require LLVM 18 installation
-        run: cargo llvm-cov --features cli,serde --lcov --output-path lcov.info
+
+        run: cargo llvm-cov --features "cli,serde" --lcov --output-path lcov.info
+
+
 
       - name: Upload coverage to Codecov
+
         uses: codecov/codecov-action@v4
+
         with:
+
           files: lcov.info
+
           fail_ci_if_error: false
 
+
+
   release:
+
     name: Release
+
     needs: [check, test, build, docs]
+
     if: startsWith(github.ref, 'refs/tags/v')
+
     runs-on: ubuntu-latest
+
     permissions:
+
       contents: write
+
     steps:
+
       - uses: actions/checkout@v4
 
+
+
       - name: Download CLI binaries
+
         uses: actions/download-artifact@v4
+
         with:
+
           name: cli-binaries
+
           path: binaries
 
+
+
       - name: Create release archive
+
         run: |
+
           cd binaries
+
           chmod +x dol-*
+
           tar -czvf ../metadol-${{ github.ref_name }}-linux-x86_64.tar.gz dol-*
 
+
+
       - name: Create GitHub Release
+
         uses: softprops/action-gh-release@v1
+
         with:
+
           files: metadol-${{ github.ref_name }}-linux-x86_64.tar.gz
+
           generate_release_notes: true
+
           draft: false
+
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
