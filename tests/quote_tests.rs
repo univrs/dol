@@ -672,7 +672,7 @@ fn test_quote_preserves_all_literal_types() {
 
     let test_cases = vec![
         (int_lit(42), Type::Int64),
-        (float_lit(3.14), Type::Float64),
+        (float_lit(1.5), Type::Float64),
         (bool_lit(true), Type::Bool),
         (string_lit("test"), Type::String),
     ];

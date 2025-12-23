@@ -1313,7 +1313,7 @@ mod tests {
 
         assert_eq!(ty, Type::Error);
         assert!(!checker.is_ok());
-        assert!(checker.errors().len() > 0);
+        assert!(!checker.errors().is_empty());
         assert!(checker.errors()[0]
             .message
             .contains("cannot eval non-quoted type"));
@@ -1345,7 +1345,7 @@ mod tests {
         let mut checker = TypeChecker::new();
 
         // QuasiQuote should work like Quote
-        let expr = Expr::QuasiQuote(Box::new(float_lit(3.14)));
+        let expr = Expr::QuasiQuote(Box::new(float_lit(1.5)));
         let ty = checker.infer(&expr).unwrap();
 
         match ty {

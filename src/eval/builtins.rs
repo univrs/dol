@@ -197,7 +197,7 @@ mod tests {
         fields.insert("b".to_string(), Value::Int(2));
         let record = Value::Record(fields);
 
-        let keys = builtin_keys(&[record.clone()]).unwrap();
+        let keys = builtin_keys(std::slice::from_ref(&record)).unwrap();
         if let Value::Array(items) = keys {
             assert_eq!(items.len(), 2);
         } else {
