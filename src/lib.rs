@@ -56,6 +56,9 @@
 //! - [`macros`]: Macro system for compile-time metaprogramming
 //! - [`transform`]: AST transformation framework with passes
 //! - [`codegen`]: Code generation from DOL declarations
+//! - [`mcp`]: Model Context Protocol server
+//! - [`mlir`]: MLIR code generation backend (requires `mlir` feature)
+//! - [`wasm`]: WebAssembly compilation and runtime (requires `wasm` feature)
 
 #![doc(html_root_url = "https://docs.rs/metadol/0.0.1")]
 #![warn(missing_docs)]
@@ -67,12 +70,20 @@ pub mod error;
 pub mod eval;
 pub mod lexer;
 pub mod macros;
+pub mod mcp;
 pub mod parser;
 pub mod pratt;
 pub mod reflect;
 pub mod transform;
 pub mod typechecker;
 pub mod validator;
+
+// MLIR backend (requires mlir feature)
+pub mod mlir;
+
+// WASM backend (requires wasm feature)
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 // Test file parser for .dol.test files
 #[cfg(feature = "cli")]
@@ -107,6 +118,17 @@ pub use transform::{
 
 // Reflection system re-exports
 pub use reflect::{FieldInfo, MethodInfo, TypeInfo, TypeKind, TypeRegistry};
+
+// MLIR backend re-exports (requires mlir feature)
+#[cfg(feature = "mlir")]
+pub use mlir::{CodegenError, CodegenResult, MlirCodegen, MlirContext};
+
+// Always export MlirError since it doesn't require the mlir feature
+pub use mlir::MlirError;
+
+// WASM backend re-exports (requires wasm feature)
+#[cfg(feature = "wasm")]
+pub use wasm::{WasmCompiler, WasmError, WasmModule, WasmRuntime};
 
 /// Parse a DOL source string into an AST.
 ///
