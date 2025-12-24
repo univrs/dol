@@ -234,6 +234,26 @@ impl Interpreter {
                     self.eval_in_env(right, env)
                 }
             }
+
+            // Sex block - execute side-effecting code
+            Expr::SexBlock {
+                statements,
+                final_expr,
+            } => {
+                let mut block_env = env.child();
+
+                // Execute statements
+                for stmt in statements {
+                    self.eval_stmt(stmt, &mut block_env)?;
+                }
+
+                // Evaluate final expression or return Void
+                if let Some(expr) = final_expr {
+                    self.eval_in_env(expr, &mut block_env)
+                } else {
+                    Ok(Value::Void)
+                }
+            }
         }
     }
 

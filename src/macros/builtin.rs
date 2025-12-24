@@ -1406,6 +1406,13 @@ fn stringify_expr(expr: &Expr) -> String {
         Expr::Implies { left, right, .. } => {
             format!("({} => {})", stringify_expr(left), stringify_expr(right))
         }
+        Expr::SexBlock { final_expr, .. } => {
+            if let Some(expr) = final_expr {
+                format!("sex {{ {} }}", stringify_expr(expr))
+            } else {
+                "sex { }".to_string()
+            }
+        }
     }
 }
 

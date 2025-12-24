@@ -23,7 +23,10 @@
 //! | `List<T>` | `Vec<T>` |
 //! | `Map<K, V>` | `std::collections::HashMap<K, V>` |
 
-use crate::ast::{Constraint, Declaration, Evolution, Gene, Statement, System, Trait, TypeExpr};
+use crate::ast::{
+    Constraint, Declaration, Evolution, Expr, ExternDecl, FunctionDecl, FunctionParam, Gene,
+    Literal, Mutability, Statement, Stmt, System, Trait, TypeExpr, VarDecl,
+};
 use crate::typechecker::Type;
 
 use super::{to_pascal_case, to_snake_case, Codegen, CodegenOptions, TypeMapper, Visibility};
@@ -345,6 +348,409 @@ impl RustCodegen {
 
         derives.join(", ")
     }
+
+    // === SEX (Side Effect eXecution) Code Generation ===
+
+    /// Generate Rust visibility modifier from DOL Visibility.
+    pub fn gen_visibility(&self, vis: crate::ast::Visibility) -> &'static str {
+        match vis {
+            crate::ast::Visibility::Public => "pub ",
+            crate::ast::Visibility::PubSpirit => "pub(crate) ",
+            crate::ast::Visibility::PubParent => "pub(super) ",
+            crate::ast::Visibility::Private => "",
+        }
+    }
+
+    /// Generate Rust type from DOL TypeExpr.
+    pub fn gen_type(&self, ty: &TypeExpr) -> String {
+        Self::map_type_expr(ty)
+    }
+
+    /// Generate Rust code for a function parameter.
+    pub fn gen_param(&self, param: &FunctionParam) -> String {
+        format!("{}: {}", param.name, self.gen_type(&param.type_ann))
+    }
+
+    /// Generate Rust code for a sex function.
+    pub fn gen_sex_function(&self, vis: crate::ast::Visibility, func: &FunctionDecl) -> String {
+        let mut output = String::new();
+
+        // Doc comment noting side effects
+        output.push_str("    /// Side-effectful function\n");
+
+        // Function signature
+        output.push_str("    ");
+        output.push_str(self.gen_visibility(vis));
+        output.push_str("fn ");
+        output.push_str(&func.name);
+        output.push('(');
+
+        let params: Vec<String> = func.params.iter().map(|p| self.gen_param(p)).collect();
+        output.push_str(&params.join(", "));
+        output.push(')');
+
+        if let Some(ref ret) = func.return_type {
+            output.push_str(" -> ");
+            output.push_str(&self.gen_type(ret));
+        }
+
+        output.push_str(" {\n");
+
+        for stmt in &func.body {
+            output.push_str(&self.gen_stmt(stmt, 2));
+        }
+
+        output.push_str("    }\n");
+
+        output
+    }
+
+    /// Generate Rust code for a sex block.
+    pub fn gen_sex_block(&self, statements: &[Stmt], final_expr: Option<&Expr>) -> String {
+        let mut output = String::new();
+
+        output.push_str("    /* sex block */ {\n");
+
+        for stmt in statements {
+            output.push_str(&self.gen_stmt(stmt, 2));
+        }
+        if let Some(expr) = final_expr {
+            output.push_str("        ");
+            output.push_str(&self.gen_expr(expr));
+            output.push('\n');
+        }
+
+        output.push_str("    }\n");
+
+        output
+    }
+
+    /// Generate Rust code for a global mutable variable.
+    pub fn gen_global_var(&self, var: &VarDecl) -> String {
+        let mut output = String::new();
+
+        if var.mutability == Mutability::Mutable {
+            // Mutable globals become static mut (unsafe in Rust)
+            output.push_str("static mut ");
+        } else {
+            output.push_str("static ");
+        }
+
+        output.push_str(&var.name.to_uppercase());
+        output.push_str(": ");
+
+        if let Some(ref type_ann) = var.type_ann {
+            output.push_str(&self.gen_type(type_ann));
+        } else {
+            output.push('_');
+        }
+
+        if let Some(ref value) = var.value {
+            output.push_str(" = ");
+            output.push_str(&self.gen_expr(value));
+        }
+
+        output.push_str(";\n");
+        output
+    }
+
+    /// Generate Rust code for a constant.
+    pub fn gen_constant(&self, var: &VarDecl) -> String {
+        let mut output = String::new();
+
+        output.push_str("const ");
+        output.push_str(&var.name.to_uppercase());
+        output.push_str(": ");
+
+        if let Some(ref type_ann) = var.type_ann {
+            output.push_str(&self.gen_type(type_ann));
+        }
+
+        output.push_str(" = ");
+        if let Some(ref value) = var.value {
+            output.push_str(&self.gen_expr(value));
+        }
+
+        output.push_str(";\n");
+        output
+    }
+
+    /// Generate Rust code for an extern declaration.
+    pub fn gen_extern(&self, decl: &ExternDecl) -> String {
+        let mut output = String::new();
+
+        let abi = decl.abi.as_deref().unwrap_or("C");
+        output.push_str(&format!("extern \"{}\" {{\n", abi));
+
+        output.push_str("    fn ");
+        output.push_str(&decl.name);
+        output.push('(');
+
+        let params: Vec<String> = decl.params.iter().map(|p| self.gen_param(p)).collect();
+        output.push_str(&params.join(", "));
+        output.push(')');
+
+        if let Some(ref ret) = decl.return_type {
+            output.push_str(" -> ");
+            output.push_str(&self.gen_type(ret));
+        }
+
+        output.push_str(";\n");
+
+        output.push_str("}\n");
+
+        output
+    }
+
+    /// Generate Rust code for an extern block.
+    pub fn gen_extern_block(&self, abi: Option<&str>, functions: &[ExternDecl]) -> String {
+        let mut output = String::new();
+
+        let abi_str = abi.unwrap_or("C");
+        output.push_str(&format!("extern \"{}\" {{\n", abi_str));
+
+        for func in functions {
+            output.push_str("    fn ");
+            output.push_str(&func.name);
+            output.push('(');
+
+            let params: Vec<String> = func.params.iter().map(|p| self.gen_param(p)).collect();
+            output.push_str(&params.join(", "));
+            output.push(')');
+
+            if let Some(ref ret) = func.return_type {
+                output.push_str(" -> ");
+                output.push_str(&self.gen_type(ret));
+            }
+
+            output.push_str(";\n");
+        }
+
+        output.push_str("}\n");
+
+        output
+    }
+
+    /// Generate wrapper for mutable global access.
+    pub fn gen_global_access(&self, name: &str) -> String {
+        format!("unsafe {{ {} }}", name.to_uppercase())
+    }
+
+    /// Generate wrapper for mutable global mutation.
+    pub fn gen_global_mutation(&self, name: &str, value: &str) -> String {
+        format!("unsafe {{ {} = {}; }}", name.to_uppercase(), value)
+    }
+
+    /// Generate Rust code for a statement with indentation.
+    fn gen_stmt(&self, stmt: &Stmt, indent_level: usize) -> String {
+        let indent = "    ".repeat(indent_level);
+        let mut output = String::new();
+
+        match stmt {
+            Stmt::Let {
+                name,
+                type_ann,
+                value,
+            } => {
+                output.push_str(&indent);
+                output.push_str("let ");
+                output.push_str(name);
+                if let Some(ty) = type_ann {
+                    output.push_str(": ");
+                    output.push_str(&self.gen_type(ty));
+                }
+                output.push_str(" = ");
+                output.push_str(&self.gen_expr(value));
+                output.push_str(";\n");
+            }
+            Stmt::Assign { target, value } => {
+                output.push_str(&indent);
+                output.push_str(&self.gen_expr(target));
+                output.push_str(" = ");
+                output.push_str(&self.gen_expr(value));
+                output.push_str(";\n");
+            }
+            Stmt::Return(Some(expr)) => {
+                output.push_str(&indent);
+                output.push_str("return ");
+                output.push_str(&self.gen_expr(expr));
+                output.push_str(";\n");
+            }
+            Stmt::Return(None) => {
+                output.push_str(&indent);
+                output.push_str("return;\n");
+            }
+            Stmt::Expr(expr) => {
+                output.push_str(&indent);
+                output.push_str(&self.gen_expr(expr));
+                output.push_str(";\n");
+            }
+            Stmt::Break => {
+                output.push_str(&indent);
+                output.push_str("break;\n");
+            }
+            Stmt::Continue => {
+                output.push_str(&indent);
+                output.push_str("continue;\n");
+            }
+            Stmt::For {
+                binding,
+                iterable,
+                body,
+            } => {
+                output.push_str(&indent);
+                output.push_str("for ");
+                output.push_str(binding);
+                output.push_str(" in ");
+                output.push_str(&self.gen_expr(iterable));
+                output.push_str(" {\n");
+                for s in body {
+                    output.push_str(&self.gen_stmt(s, indent_level + 1));
+                }
+                output.push_str(&indent);
+                output.push_str("}\n");
+            }
+            Stmt::While { condition, body } => {
+                output.push_str(&indent);
+                output.push_str("while ");
+                output.push_str(&self.gen_expr(condition));
+                output.push_str(" {\n");
+                for s in body {
+                    output.push_str(&self.gen_stmt(s, indent_level + 1));
+                }
+                output.push_str(&indent);
+                output.push_str("}\n");
+            }
+            Stmt::Loop { body } => {
+                output.push_str(&indent);
+                output.push_str("loop {\n");
+                for s in body {
+                    output.push_str(&self.gen_stmt(s, indent_level + 1));
+                }
+                output.push_str(&indent);
+                output.push_str("}\n");
+            }
+        }
+
+        output
+    }
+
+    /// Generate Rust code for an expression.
+    fn gen_expr(&self, expr: &Expr) -> String {
+        match expr {
+            Expr::Literal(lit) => self.gen_literal(lit),
+            Expr::Identifier(name) => name.clone(),
+            Expr::Binary { left, op, right } => {
+                let left_str = self.gen_expr(left);
+                let right_str = self.gen_expr(right);
+                let op_str = match op {
+                    crate::ast::BinaryOp::Add => "+",
+                    crate::ast::BinaryOp::Sub => "-",
+                    crate::ast::BinaryOp::Mul => "*",
+                    crate::ast::BinaryOp::Div => "/",
+                    crate::ast::BinaryOp::Mod => "%",
+                    crate::ast::BinaryOp::Eq => "==",
+                    crate::ast::BinaryOp::Ne => "!=",
+                    crate::ast::BinaryOp::Lt => "<",
+                    crate::ast::BinaryOp::Le => "<=",
+                    crate::ast::BinaryOp::Gt => ">",
+                    crate::ast::BinaryOp::Ge => ">=",
+                    crate::ast::BinaryOp::And => "&&",
+                    crate::ast::BinaryOp::Or => "||",
+                    crate::ast::BinaryOp::Member => ".",
+                    _ => "/* unsupported op */",
+                };
+                format!("({} {} {})", left_str, op_str, right_str)
+            }
+            Expr::Unary { op, operand } => {
+                let operand_str = self.gen_expr(operand);
+                let op_str = match op {
+                    crate::ast::UnaryOp::Neg => "-",
+                    crate::ast::UnaryOp::Not => "!",
+                    _ => "/* unsupported op */",
+                };
+                format!("{}{}", op_str, operand_str)
+            }
+            Expr::Call { callee, args } => {
+                let callee_str = self.gen_expr(callee);
+                let args_str: Vec<String> = args.iter().map(|a| self.gen_expr(a)).collect();
+                format!("{}({})", callee_str, args_str.join(", "))
+            }
+            Expr::Member { object, field } => {
+                format!("{}.{}", self.gen_expr(object), field)
+            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let mut output = String::new();
+                output.push_str("if ");
+                output.push_str(&self.gen_expr(condition));
+                output.push_str(" { ");
+                output.push_str(&self.gen_expr(then_branch));
+                output.push_str(" }");
+                if let Some(else_br) = else_branch {
+                    output.push_str(" else { ");
+                    output.push_str(&self.gen_expr(else_br));
+                    output.push_str(" }");
+                }
+                output
+            }
+            Expr::Block {
+                statements,
+                final_expr,
+            } => {
+                let mut output = String::new();
+                output.push_str("{\n");
+                for stmt in statements {
+                    output.push_str(&self.gen_stmt(stmt, 1));
+                }
+                if let Some(expr) = final_expr {
+                    output.push_str("    ");
+                    output.push_str(&self.gen_expr(expr));
+                    output.push('\n');
+                }
+                output.push('}');
+                output
+            }
+            Expr::SexBlock {
+                statements,
+                final_expr,
+            } => {
+                let mut output = String::new();
+                output.push_str("/* sex */ {\n");
+                for stmt in statements {
+                    output.push_str(&self.gen_stmt(stmt, 1));
+                }
+                if let Some(expr) = final_expr {
+                    output.push_str("    ");
+                    output.push_str(&self.gen_expr(expr));
+                    output.push('\n');
+                }
+                output.push('}');
+                output
+            }
+            _ => "/* unsupported expression */".to_string(),
+        }
+    }
+
+    /// Generate Rust code for a literal.
+    fn gen_literal(&self, lit: &Literal) -> String {
+        match lit {
+            Literal::Int(n) => n.to_string(),
+            Literal::Float(f) => {
+                if f.fract() == 0.0 {
+                    format!("{:.1}", f)
+                } else {
+                    f.to_string()
+                }
+            }
+            Literal::Bool(b) => b.to_string(),
+            Literal::String(s) => format!("\"{}\"", s),
+            Literal::Null => "None".to_string(),
+        }
+    }
 }
 
 impl Codegen for RustCodegen {
@@ -614,5 +1020,180 @@ mod tests {
         assert!(code.contains("pub mod univrs_orchestrator"));
         assert!(code.contains("/// System version: 0.1.0"));
         assert!(code.contains("`container.lifecycle` >= 0.0.2"));
+    }
+
+    // === SEX Code Generation Tests ===
+
+    #[test]
+    fn test_gen_type_primitives() {
+        let gen = RustCodegen::new();
+
+        assert_eq!(gen.gen_type(&TypeExpr::Named("Int32".to_string())), "i32");
+        assert_eq!(gen.gen_type(&TypeExpr::Named("Int64".to_string())), "i64");
+        assert_eq!(gen.gen_type(&TypeExpr::Named("Bool".to_string())), "bool");
+        assert_eq!(
+            gen.gen_type(&TypeExpr::Named("String".to_string())),
+            "String"
+        );
+        assert_eq!(gen.gen_type(&TypeExpr::Named("Void".to_string())), "()");
+    }
+
+    #[test]
+    fn test_gen_type_generic() {
+        let gen = RustCodegen::new();
+
+        let list_type = TypeExpr::Generic {
+            name: "List".to_string(),
+            args: vec![TypeExpr::Named("Int32".to_string())],
+        };
+        assert_eq!(gen.gen_type(&list_type), "Vec<i32>");
+    }
+
+    #[test]
+    fn test_gen_constant() {
+        let gen = RustCodegen::new();
+
+        let var = VarDecl {
+            mutability: Mutability::Immutable,
+            name: "MAX_SIZE".to_string(),
+            type_ann: Some(TypeExpr::Named("Int64".to_string())),
+            value: Some(Expr::Literal(Literal::Int(100))),
+            span: Span::default(),
+        };
+
+        let output = gen.gen_constant(&var);
+        assert!(output.contains("const MAX_SIZE: i64 = 100;"));
+    }
+
+    #[test]
+    fn test_gen_global_var() {
+        let gen = RustCodegen::new();
+
+        let var = VarDecl {
+            mutability: Mutability::Mutable,
+            name: "counter".to_string(),
+            type_ann: Some(TypeExpr::Named("Int64".to_string())),
+            value: Some(Expr::Literal(Literal::Int(0))),
+            span: Span::default(),
+        };
+
+        let output = gen.gen_global_var(&var);
+        assert!(output.contains("static mut COUNTER: i64 = 0;"));
+    }
+
+    #[test]
+    fn test_gen_extern() {
+        let gen = RustCodegen::new();
+
+        let decl = ExternDecl {
+            abi: Some("C".to_string()),
+            name: "malloc".to_string(),
+            params: vec![FunctionParam {
+                name: "size".to_string(),
+                type_ann: TypeExpr::Named("UInt64".to_string()),
+            }],
+            return_type: Some(TypeExpr::Generic {
+                name: "Ptr".to_string(),
+                args: vec![TypeExpr::Named("Void".to_string())],
+            }),
+            span: Span::default(),
+        };
+
+        let output = gen.gen_extern(&decl);
+        assert!(output.contains("extern \"C\" {"));
+        assert!(output.contains("fn malloc(size: u64) -> Ptr<()>;"));
+    }
+
+    #[test]
+    fn test_gen_global_access() {
+        let gen = RustCodegen::new();
+        assert_eq!(gen.gen_global_access("counter"), "unsafe { COUNTER }");
+    }
+
+    #[test]
+    fn test_gen_global_mutation() {
+        let gen = RustCodegen::new();
+        assert_eq!(
+            gen.gen_global_mutation("counter", "42"),
+            "unsafe { COUNTER = 42; }"
+        );
+    }
+
+    #[test]
+    fn test_gen_literal() {
+        let gen = RustCodegen::new();
+        assert_eq!(gen.gen_literal(&Literal::Int(42)), "42");
+        assert_eq!(gen.gen_literal(&Literal::Float(2.5)), "2.5");
+        assert_eq!(gen.gen_literal(&Literal::Float(3.0)), "3.0");
+        assert_eq!(gen.gen_literal(&Literal::Bool(true)), "true");
+        assert_eq!(
+            gen.gen_literal(&Literal::String("hello".to_string())),
+            "\"hello\""
+        );
+        assert_eq!(gen.gen_literal(&Literal::Null), "None");
+    }
+
+    #[test]
+    fn test_gen_visibility() {
+        let gen = RustCodegen::new();
+        assert_eq!(gen.gen_visibility(crate::ast::Visibility::Public), "pub ");
+        assert_eq!(
+            gen.gen_visibility(crate::ast::Visibility::PubSpirit),
+            "pub(crate) "
+        );
+        assert_eq!(
+            gen.gen_visibility(crate::ast::Visibility::PubParent),
+            "pub(super) "
+        );
+        assert_eq!(gen.gen_visibility(crate::ast::Visibility::Private), "");
+    }
+
+    #[test]
+    fn test_gen_sex_function() {
+        let gen = RustCodegen::new();
+
+        let func = FunctionDecl {
+            name: "mutate".to_string(),
+            params: vec![FunctionParam {
+                name: "x".to_string(),
+                type_ann: TypeExpr::Named("Int32".to_string()),
+            }],
+            return_type: Some(TypeExpr::Named("Int32".to_string())),
+            body: vec![Stmt::Return(Some(Expr::Binary {
+                left: Box::new(Expr::Identifier("x".to_string())),
+                op: crate::ast::BinaryOp::Add,
+                right: Box::new(Expr::Literal(Literal::Int(1))),
+            }))],
+            span: Span::default(),
+        };
+
+        let output = gen.gen_sex_function(crate::ast::Visibility::Public, &func);
+        assert!(output.contains("/// Side-effectful function"));
+        assert!(output.contains("pub fn mutate(x: i32) -> i32"));
+        assert!(output.contains("return (x + 1);"));
+    }
+
+    #[test]
+    fn test_gen_expr_binary() {
+        let gen = RustCodegen::new();
+        let expr = Expr::Binary {
+            left: Box::new(Expr::Literal(Literal::Int(2))),
+            op: crate::ast::BinaryOp::Mul,
+            right: Box::new(Expr::Literal(Literal::Int(3))),
+        };
+        assert_eq!(gen.gen_expr(&expr), "(2 * 3)");
+    }
+
+    #[test]
+    fn test_gen_expr_call() {
+        let gen = RustCodegen::new();
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Identifier("foo".to_string())),
+            args: vec![
+                Expr::Literal(Literal::Int(1)),
+                Expr::Literal(Literal::Int(2)),
+            ],
+        };
+        assert_eq!(gen.gen_expr(&expr), "foo(1, 2)");
     }
 }

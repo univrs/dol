@@ -214,6 +214,19 @@ pub enum Purity {
     Sex,
 }
 
+/// Mutability marker for variable declarations.
+///
+/// Controls whether a variable can be reassigned after initialization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum Mutability {
+    /// Immutable (let, const)
+    #[default]
+    Immutable,
+    /// Mutable (var) - only in sex context
+    Mutable,
+}
+
 /// The top-level declaration types in Metal DOL.
 ///
 /// Every DOL file contains exactly one primary declaration followed by
@@ -958,6 +971,14 @@ pub enum Expr {
         /// Source location
         span: Span,
     },
+    /// Sex block expression for side-effecting code
+    /// Syntax: `sex { statements }`
+    SexBlock {
+        /// Statements in the sex block
+        statements: Vec<Stmt>,
+        /// Optional final expression (return value)
+        final_expr: Option<Box<Expr>>,
+    },
 }
 
 /// Literal value.
@@ -1105,8 +1126,8 @@ impl QuotedExpr {
                 // QuasiQuote is treated similar to Quote but allows unquotes
                 QuotedExpr::Quote(Box::new(QuotedExpr::from_expr(inner)))
             }
-            Expr::Forall(_) | Expr::Exists(_) | Expr::Implies { .. } => {
-                // For logical expressions, convert to identifier (simplified)
+            Expr::Forall(_) | Expr::Exists(_) | Expr::Implies { .. } | Expr::SexBlock { .. } => {
+                // For logical expressions and sex blocks, convert to identifier (simplified)
                 QuotedExpr::Ident(format!("{:?}", expr))
             }
             // For other expression types, convert to identifier (simplified)
@@ -1273,6 +1294,42 @@ pub struct FunctionParam {
     pub name: String,
     /// Parameter type
     pub type_ann: TypeExpr,
+}
+
+/// Variable declaration for DOL 2.0 (`var`, `const`, `let` keywords).
+///
+/// Represents a variable binding with optional type annotation and value.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct VarDecl {
+    /// Mutability (immutable for let/const, mutable for var)
+    pub mutability: Mutability,
+    /// Variable name
+    pub name: String,
+    /// Optional type annotation
+    pub type_ann: Option<TypeExpr>,
+    /// Optional initial value
+    pub value: Option<Expr>,
+    /// Source location
+    pub span: Span,
+}
+
+/// External function declaration for FFI.
+///
+/// Represents a `sex extern fun` declaration for foreign function interface.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ExternDecl {
+    /// Optional ABI specification (e.g., "C", "Rust")
+    pub abi: Option<String>,
+    /// Function name
+    pub name: String,
+    /// Function parameters
+    pub params: Vec<FunctionParam>,
+    /// Optional return type
+    pub return_type: Option<TypeExpr>,
+    /// Source location
+    pub span: Span,
 }
 
 /// Function declaration for DOL 2.0 (`fun` keyword).

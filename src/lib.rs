@@ -56,6 +56,7 @@
 //! - [`macros`]: Macro system for compile-time metaprogramming
 //! - [`transform`]: AST transformation framework with passes
 //! - [`codegen`]: Code generation from DOL declarations
+//! - [`sex`]: Side Effect eXecution system for purity tracking
 //! - [`mcp`]: Model Context Protocol server (requires `serde` feature)
 //! - [`mlir`]: MLIR code generation backend (requires `mlir` feature)
 //! - [`wasm`]: WebAssembly compilation and runtime (requires `wasm` feature)
@@ -73,6 +74,7 @@ pub mod macros;
 pub mod parser;
 pub mod pratt;
 pub mod reflect;
+pub mod sex;
 pub mod transform;
 pub mod typechecker;
 pub mod validator;
@@ -121,6 +123,12 @@ pub use transform::{
 
 // Reflection system re-exports
 pub use reflect::{FieldInfo, MethodInfo, TypeInfo, TypeKind, TypeRegistry};
+
+// SEX (Side Effect eXecution) system re-exports
+pub use sex::{
+    file_sex_context, is_sex_file, EffectTracker, FileContext, LintResult, SexContext,
+    SexLintError, SexLintWarning, SexLinter,
+};
 
 // MLIR backend re-exports (requires mlir feature)
 #[cfg(feature = "mlir")]

@@ -235,6 +235,55 @@ impl IdiomDesugar {
                 span,
             },
 
+            // Sex block - recursively desugar statements and final expression
+            Expr::SexBlock {
+                statements,
+                final_expr,
+            } => {
+                use crate::ast::Stmt;
+
+                // Desugar expressions within statements
+                let statements = statements
+                    .into_iter()
+                    .map(|stmt| match stmt {
+                        Stmt::Let {
+                            name,
+                            type_ann,
+                            value,
+                        } => Stmt::Let {
+                            name,
+                            type_ann,
+                            value: self.desugar_expr(value),
+                        },
+                        Stmt::Assign { target, value } => Stmt::Assign {
+                            target: self.desugar_expr(target),
+                            value: self.desugar_expr(value),
+                        },
+                        Stmt::For {
+                            binding,
+                            iterable,
+                            body,
+                        } => Stmt::For {
+                            binding,
+                            iterable: self.desugar_expr(iterable),
+                            body,
+                        },
+                        Stmt::While { condition, body } => Stmt::While {
+                            condition: self.desugar_expr(condition),
+                            body,
+                        },
+                        Stmt::Return(expr) => Stmt::Return(expr.map(|e| self.desugar_expr(e))),
+                        Stmt::Expr(e) => Stmt::Expr(self.desugar_expr(e)),
+                        other => other,
+                    })
+                    .collect();
+
+                Expr::SexBlock {
+                    statements,
+                    final_expr: final_expr.map(|e| Box::new(self.desugar_expr(*e))),
+                }
+            }
+
             // Leaf nodes - no transformation needed
             Expr::Literal(_) | Expr::Identifier(_) | Expr::Reflect(_) => expr,
         }

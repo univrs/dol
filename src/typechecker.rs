@@ -251,6 +251,16 @@ impl std::fmt::Display for Type {
     }
 }
 
+/// Effect context for tracking purity during type checking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EffectContext {
+    /// Pure context - no side effects allowed (default)
+    #[default]
+    Pure,
+    /// Sex context - side effects permitted
+    Sex,
+}
+
 /// Type checking error.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
@@ -344,6 +354,10 @@ pub struct TypeChecker {
     var_counter: usize,
     /// Collected type errors
     errors: Vec<TypeError>,
+    /// Current effect context
+    effect_context: EffectContext,
+    /// Effect context stack for nested contexts
+    effect_stack: Vec<EffectContext>,
 }
 
 impl Default for TypeChecker {
@@ -359,6 +373,8 @@ impl TypeChecker {
             env: TypeEnv::new(),
             var_counter: 0,
             errors: Vec::new(),
+            effect_context: EffectContext::Pure,
+            effect_stack: Vec::new(),
         }
     }
 
@@ -387,6 +403,27 @@ impl TypeChecker {
     /// Adds a type error.
     fn error(&mut self, err: TypeError) {
         self.errors.push(err);
+    }
+
+    /// Enter a sex context (e.g., for sex blocks or sex functions)
+    pub fn enter_sex_context(&mut self) {
+        self.effect_stack.push(self.effect_context);
+        self.effect_context = EffectContext::Sex;
+    }
+
+    /// Exit the current effect context
+    pub fn exit_sex_context(&mut self) {
+        self.effect_context = self.effect_stack.pop().unwrap_or(EffectContext::Pure);
+    }
+
+    /// Check if currently in a sex context
+    pub fn in_sex_context(&self) -> bool {
+        self.effect_context == EffectContext::Sex
+    }
+
+    /// Get the current effect context
+    pub fn current_effect_context(&self) -> EffectContext {
+        self.effect_context
     }
 
     /// Infers the type of an expression.
@@ -537,6 +574,16 @@ impl TypeChecker {
                     )));
                 }
                 Ok(Type::Bool)
+            }
+            // Sex block - enter sex context, infer type, exit context
+            Expr::SexBlock {
+                statements,
+                final_expr,
+            } => {
+                self.enter_sex_context();
+                let result = self.infer_block(statements, final_expr.as_deref());
+                self.exit_sex_context();
+                result
             }
         }
     }
@@ -1422,5 +1469,65 @@ mod tests {
             }
             _ => panic!("Expected Quoted<Int64>, found {}", ty),
         }
+    }
+
+    #[test]
+    fn test_effect_context_default() {
+        let checker = TypeChecker::new();
+        assert_eq!(checker.current_effect_context(), EffectContext::Pure);
+        assert!(!checker.in_sex_context());
+    }
+
+    #[test]
+    fn test_effect_context_enter_exit() {
+        let mut checker = TypeChecker::new();
+
+        // Initially pure
+        assert!(!checker.in_sex_context());
+
+        // Enter sex context
+        checker.enter_sex_context();
+        assert!(checker.in_sex_context());
+        assert_eq!(checker.current_effect_context(), EffectContext::Sex);
+
+        // Exit sex context
+        checker.exit_sex_context();
+        assert!(!checker.in_sex_context());
+        assert_eq!(checker.current_effect_context(), EffectContext::Pure);
+    }
+
+    #[test]
+    fn test_nested_effect_contexts() {
+        let mut checker = TypeChecker::new();
+
+        // Pure -> Sex -> Sex -> Pure (stack)
+        checker.enter_sex_context();
+        assert!(checker.in_sex_context());
+
+        checker.enter_sex_context();
+        assert!(checker.in_sex_context());
+
+        checker.exit_sex_context();
+        assert!(checker.in_sex_context());
+
+        checker.exit_sex_context();
+        assert!(!checker.in_sex_context());
+    }
+
+    #[test]
+    fn test_sex_block_inference() {
+        let mut checker = TypeChecker::new();
+
+        // Create a sex block with an integer literal
+        let sex_block = Expr::SexBlock {
+            statements: vec![],
+            final_expr: Some(Box::new(int_lit(42))),
+        };
+
+        let ty = checker.infer(&sex_block).unwrap();
+        assert_eq!(ty, Type::Int64);
+
+        // Should be back in pure context after inference
+        assert!(!checker.in_sex_context());
     }
 }

@@ -203,6 +203,21 @@ pub trait Fold {
                 right: Box::new(self.fold_expr(*right)),
                 span,
             },
+            Expr::SexBlock {
+                statements,
+                final_expr,
+            } => self.fold_sex_block(statements, final_expr.map(|e| *e)),
+        }
+    }
+
+    /// Fold a sex block expression.
+    fn fold_sex_block(&mut self, statements: Vec<Stmt>, final_expr: Option<Expr>) -> Expr {
+        Expr::SexBlock {
+            statements: statements
+                .into_iter()
+                .map(|stmt| self.fold_stmt(stmt))
+                .collect(),
+            final_expr: final_expr.map(|e| Box::new(self.fold_expr(e))),
         }
     }
 

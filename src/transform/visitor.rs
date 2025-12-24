@@ -290,6 +290,17 @@ fn walk_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
             v.visit_expr(left);
             v.visit_expr(right);
         }
+        Expr::SexBlock {
+            statements,
+            final_expr,
+        } => {
+            for stmt in statements {
+                v.visit_stmt(stmt);
+            }
+            if let Some(expr) = final_expr {
+                v.visit_expr(expr);
+            }
+        }
     }
 }
 
@@ -450,6 +461,17 @@ fn walk_expr_mut<V: MutVisitor + ?Sized>(v: &mut V, expr: &mut Expr) {
         Expr::Implies { left, right, .. } => {
             v.visit_expr(left);
             v.visit_expr(right);
+        }
+        Expr::SexBlock {
+            statements,
+            final_expr,
+        } => {
+            for stmt in statements {
+                v.visit_stmt(stmt);
+            }
+            if let Some(e) = final_expr {
+                v.visit_expr(e);
+            }
         }
         Expr::Literal(_) | Expr::Identifier(_) => {}
     }

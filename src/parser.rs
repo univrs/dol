@@ -1237,6 +1237,105 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parses a variable declaration: var/const name: Type [= value]
+    /// Used for sex var and const declarations.
+    pub fn parse_var_decl(&mut self, mutability: Mutability) -> Result<VarDecl, ParseError> {
+        let start_span = self.current.span;
+
+        let name = self.expect_identifier()?;
+
+        // Parse optional type annotation
+        let type_ann = if self.current.kind == TokenKind::Colon {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        // Parse optional value
+        let value = if self.current.kind == TokenKind::Equal {
+            self.advance();
+            Some(self.parse_expr(0)?)
+        } else {
+            None
+        };
+
+        Ok(VarDecl {
+            mutability,
+            name,
+            type_ann,
+            value,
+            span: start_span.merge(&self.previous.span),
+        })
+    }
+
+    /// Parses a sex var declaration: sex var name: Type [= value]
+    pub fn parse_sex_var(&mut self) -> Result<VarDecl, ParseError> {
+        self.expect(TokenKind::Sex)?;
+        self.expect(TokenKind::Var)?;
+        self.parse_var_decl(Mutability::Mutable)
+    }
+
+    /// Parses a const declaration: const name: Type = value
+    pub fn parse_const(&mut self) -> Result<VarDecl, ParseError> {
+        self.expect(TokenKind::Const)?;
+        self.parse_var_decl(Mutability::Immutable)
+    }
+
+    /// Parses an extern function declaration: sex extern [abi] fun name(...) -> Type
+    pub fn parse_sex_extern(&mut self) -> Result<ExternDecl, ParseError> {
+        let start_span = self.current.span;
+        self.expect(TokenKind::Sex)?;
+        self.expect(TokenKind::Extern)?;
+
+        // Parse optional ABI
+        let abi = if self.current.kind == TokenKind::String {
+            Some(self.expect_string()?)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::Function)?;
+
+        let name = self.expect_identifier()?;
+
+        // Parse parameters
+        self.expect(TokenKind::LeftParen)?;
+        let mut params = Vec::new();
+        while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof {
+            let param_name = self.expect_identifier()?;
+            self.expect(TokenKind::Colon)?;
+            let type_ann = self.parse_type()?;
+            params.push(FunctionParam {
+                name: param_name,
+                type_ann,
+            });
+
+            if self.current.kind == TokenKind::Comma {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.expect(TokenKind::RightParen)?;
+
+        // Parse optional return type
+        let return_type = if self.current.kind == TokenKind::Arrow {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        Ok(ExternDecl {
+            abi,
+            name,
+            params,
+            return_type,
+            span: start_span.merge(&self.previous.span),
+        })
+    }
+
     /// Parses the exegesis block.
     fn parse_exegesis(&mut self) -> Result<String, ParseError> {
         if self.current.kind != TokenKind::Exegesis {
@@ -1485,6 +1584,9 @@ impl<'a> Parser<'a> {
 
             // Block expression
             TokenKind::LeftBrace => self.parse_block_expr(),
+
+            // Sex block expression
+            TokenKind::Sex => self.parse_sex_block(),
 
             // Eval or logical not: handled by prefix operators
             // Type reflection: ?TypeName
@@ -1776,6 +1878,42 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
+    /// Parses a sex block expression: sex { statements }
+    fn parse_sex_block(&mut self) -> Result<Expr, ParseError> {
+        self.expect(TokenKind::Sex)?;
+        self.expect(TokenKind::LeftBrace)?;
+
+        let mut statements = Vec::new();
+        let mut final_expr = None;
+
+        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
+            // Check if this is a statement or final expression
+            if self.is_statement_keyword() {
+                statements.push(self.parse_stmt()?);
+            } else {
+                // Try to parse as expression
+                let expr = self.parse_expr(0)?;
+
+                // If followed by semicolon, it's a statement
+                if self.current.kind == TokenKind::Semicolon {
+                    self.advance();
+                    statements.push(Stmt::Expr(expr));
+                } else {
+                    // It's the final expression
+                    final_expr = Some(Box::new(expr));
+                    break;
+                }
+            }
+        }
+
+        self.expect(TokenKind::RightBrace)?;
+
+        Ok(Expr::SexBlock {
+            statements,
+            final_expr,
+        })
+    }
+
     /// Parses the interior of a block expression (without braces).
     fn parse_block_expr_inner(&mut self) -> Result<Expr, ParseError> {
         let mut statements = Vec::new();
@@ -1812,12 +1950,15 @@ impl<'a> Parser<'a> {
         matches!(
             self.current.kind,
             TokenKind::Let
+                | TokenKind::Var
+                | TokenKind::Const
                 | TokenKind::For
                 | TokenKind::While
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue
                 | TokenKind::Return
+                | TokenKind::Sex
         )
     }
 
@@ -1844,6 +1985,54 @@ impl<'a> Parser<'a> {
                     type_ann,
                     value,
                 })
+            }
+            TokenKind::Var => {
+                self.advance();
+                let name = self.expect_identifier()?;
+
+                let type_ann = if self.current.kind == TokenKind::Colon {
+                    self.advance();
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
+
+                self.expect(TokenKind::Equal)?;
+                let value = self.parse_expr(0)?;
+                self.expect(TokenKind::Semicolon)?;
+
+                Ok(Stmt::Let {
+                    name,
+                    type_ann,
+                    value,
+                })
+            }
+            TokenKind::Const => {
+                self.advance();
+                let name = self.expect_identifier()?;
+
+                let type_ann = if self.current.kind == TokenKind::Colon {
+                    self.advance();
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
+
+                self.expect(TokenKind::Equal)?;
+                let value = self.parse_expr(0)?;
+                self.expect(TokenKind::Semicolon)?;
+
+                Ok(Stmt::Let {
+                    name,
+                    type_ann,
+                    value,
+                })
+            }
+            TokenKind::Sex => {
+                // Parse as expression (sex block)
+                let expr = self.parse_expr(0)?;
+                self.expect(TokenKind::Semicolon)?;
+                Ok(Stmt::Expr(expr))
             }
             TokenKind::For => self.parse_for_stmt(),
             TokenKind::While => self.parse_while_stmt(),
