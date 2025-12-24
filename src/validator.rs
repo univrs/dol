@@ -192,38 +192,82 @@ fn validate_exegesis(decl: &Declaration, result: &mut ValidationResult) {
     }
 }
 
-/// Validates naming conventions.
+/// Validates naming conventions based on declaration type.
+///
+/// Conventions:
+/// - Genes: PascalCase (Vec3, Container, MyceliumNode) OR dot notation (container.exists)
+/// - Traits: PascalCase (Schedulable, Runnable) OR dot notation
+/// - Systems: PascalCase (Scheduler, Ecosystem) OR dot notation
+/// - Constraints: snake_case (valid_id, non_negative) OR dot notation
 fn validate_naming(decl: &Declaration, result: &mut ValidationResult) {
     let name = decl.name();
-
-    // Check for valid qualified identifier format
-    if !is_valid_qualified_identifier(name) {
-        result.add_error(ValidationError::InvalidIdentifier {
-            name: name.to_string(),
-            reason: "must be a valid qualified identifier (domain.property)".to_string(),
-        });
+    // Skip internal markers (e.g., _module_doc)
+    if name.starts_with('_') {
+        return;
+    }
+    // Skip empty names
+    if name.is_empty() {
         return;
     }
 
-    // Check naming convention based on declaration type
-    let parts: Vec<&str> = name.split('.').collect();
-    if parts.len() < 2 {
-        result.add_warning(ValidationWarning::NamingConvention {
-            name: name.to_string(),
-            suggestion: "use qualified name like 'domain.property'".to_string(),
-        });
+    // If it contains a dot, it's qualified notation - validate each part
+    if name.contains('.') {
+        // Validate qualified identifier format
+        if !is_valid_qualified_identifier(name) {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: name.to_string(),
+                reason: "must be a valid qualified identifier (domain.property)".to_string(),
+            });
+        }
+        return;
     }
 
-    // Check that parts are lowercase
-    for part in &parts {
-        if *part != part.to_lowercase() {
-            result.add_warning(ValidationWarning::NamingConvention {
-                name: name.to_string(),
-                suggestion: format!("use lowercase: '{}'", name.to_lowercase()),
-            });
-            break;
+    // Simple name - check based on declaration type
+    match decl {
+        // Types should be PascalCase
+        Declaration::Gene(_) | Declaration::Trait(_) | Declaration::System(_) => {
+            if !is_pascal_case(name) && !name.chars().next().is_some_and(|c| c.is_uppercase()) {
+                result.add_warning(ValidationWarning::NamingConvention {
+                    name: name.to_string(),
+                    suggestion: format!(
+                        "consider using PascalCase for type names: '{}'",
+                        to_pascal_case(name)
+                    ),
+                });
+            }
         }
+
+        // Constraints can be snake_case or PascalCase
+        Declaration::Constraint(_) => {
+            // Constraints are flexible - no warning needed
+        }
+
+        // Evolution names follow "From > To" pattern - no validation needed
+        Declaration::Evolution(_) => {}
     }
+}
+
+/// Check if a name is PascalCase (starts with uppercase, no underscores between words)
+fn is_pascal_case(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let first = s.chars().next().unwrap();
+    // PascalCase starts with uppercase and doesn't have underscores
+    first.is_uppercase() && !s.contains('_')
+}
+
+/// Convert to PascalCase
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().chain(chars).collect(),
+            }
+        })
+        .collect()
 }
 
 /// Validates statements in a declaration.

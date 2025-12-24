@@ -117,7 +117,7 @@ pub enum ParseError {
     },
 
     /// An invalid declaration type was encountered.
-    #[error("invalid declaration type '{found}' at line {}, column {} (expected gene, trait, constraint, system, or evolves)", span.line, span.column)]
+    #[error("invalid declaration type '{found}' at line {}, column {} (expected module, use, pub, fun, gene, trait, constraint, system, or evolves)", span.line, span.column)]
     InvalidDeclaration {
         /// The invalid declaration keyword found
         found: String,

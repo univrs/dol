@@ -102,10 +102,24 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Skip use declarations
-        while self.current.kind == TokenKind::Use {
+        // Skip use declarations (including pub use)
+        loop {
+            // Skip optional pub modifier
+            if self.current.kind == TokenKind::Pub {
+                if self.peek().kind == TokenKind::Use {
+                    self.advance(); // pub
+                } else {
+                    // pub followed by something else (like pub gene) - stop skipping
+                    break;
+                }
+            }
+
+            if self.current.kind != TokenKind::Use {
+                break;
+            }
+
             self.advance(); // use
-                            // Skip path (identifiers, ::, ., etc.)
+                            // Skip path (identifiers, ::, ., *, etc.)
             while self.current.kind != TokenKind::Eof
                 && self.current.kind != TokenKind::Gene
                 && self.current.kind != TokenKind::Trait
@@ -115,6 +129,7 @@ impl<'a> Parser<'a> {
                 && self.current.kind != TokenKind::Pub
                 && self.current.kind != TokenKind::Use
                 && self.current.kind != TokenKind::Module
+                && self.current.kind != TokenKind::Exegesis
             {
                 self.advance();
             }
@@ -209,6 +224,32 @@ impl<'a> Parser<'a> {
             TokenKind::Constraint => self.parse_constraint(),
             TokenKind::System => self.parse_system(),
             TokenKind::Evolves => self.parse_evolution(),
+            TokenKind::Exegesis => {
+                // Skip file-level exegesis block
+                self.advance(); // consume 'exegesis'
+                self.expect(TokenKind::LeftBrace)?;
+                let mut depth = 1;
+                while depth > 0 && self.current.kind != TokenKind::Eof {
+                    if self.current.kind == TokenKind::LeftBrace {
+                        depth += 1;
+                    }
+                    if self.current.kind == TokenKind::RightBrace {
+                        depth -= 1;
+                    }
+                    self.advance();
+                }
+                // Try to parse next declaration, or return placeholder if EOF
+                if self.current.kind == TokenKind::Eof {
+                    Ok(Declaration::Gene(Gene {
+                        name: "_module_doc".to_string(),
+                        statements: vec![],
+                        exegesis: "Module-level documentation".to_string(),
+                        span: self.current.span,
+                    }))
+                } else {
+                    self.parse_declaration()
+                }
+            }
             _ => Err(ParseError::InvalidDeclaration {
                 found: self.current.lexeme.clone(),
                 span: self.current.span,
@@ -2279,7 +2320,10 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         Ok(FunctionDecl {
+            visibility: Visibility::default(),
+            purity: Purity::default(),
             name,
+            type_params: None,
             params,
             return_type,
             body,

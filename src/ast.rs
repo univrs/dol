@@ -1336,11 +1336,31 @@ pub struct ExternDecl {
 ///
 /// Represents a function definition inside a gene or trait body.
 /// In DOL syntax, these are declared using the `fun` keyword.
+///
+/// # SEX System
+///
+/// Functions can be marked with `sex` to indicate they have side effects:
+/// - `fun name()` - pure function (default)
+/// - `sex fun name()` - impure function with side effects
+///
+/// # Visibility
+///
+/// Functions can have visibility modifiers:
+/// - private (default)
+/// - `pub` - public to all modules
+/// - `pub(spirit)` - public to the same spirit
+/// - `pub(parent)` - public to the parent module
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FunctionDecl {
+    /// Visibility of the function
+    pub visibility: Visibility,
+    /// Purity of the function (pure or sex)
+    pub purity: Purity,
     /// Function name
     pub name: String,
+    /// Optional type parameters for generic functions
+    pub type_params: Option<TypeParams>,
     /// Function parameters
     pub params: Vec<FunctionParam>,
     /// Optional return type

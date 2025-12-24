@@ -1153,7 +1153,10 @@ mod tests {
         let gen = RustCodegen::new();
 
         let func = FunctionDecl {
+            visibility: crate::ast::Visibility::Public,
+            purity: crate::ast::Purity::Sex,
             name: "mutate".to_string(),
+            type_params: None,
             params: vec![FunctionParam {
                 name: "x".to_string(),
                 type_ann: TypeExpr::Named("Int32".to_string()),
