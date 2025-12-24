@@ -3,7 +3,7 @@
 
 gene container.exists {
   container has identity
-  container has state
+  container has status
   container has boundaries
   container has resources
   container has image

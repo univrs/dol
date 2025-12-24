@@ -1404,11 +1404,7 @@ fn stringify_expr(expr: &Expr) -> String {
             )
         }
         Expr::Implies { left, right, .. } => {
-            format!(
-                "({} => {})",
-                stringify_expr(left),
-                stringify_expr(right)
-            )
+            format!("({} => {})", stringify_expr(left), stringify_expr(right))
         }
     }
 }

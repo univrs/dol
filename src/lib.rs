@@ -24,7 +24,7 @@
 //! let input = r#"
 //! gene container.exists {
 //!   container has identity
-//!   container has state
+//!   container has status
 //! }
 //!
 //! exegesis {

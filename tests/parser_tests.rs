@@ -43,7 +43,7 @@ fn test_parse_gene_multiple_statements() {
     let input = r#"
 gene container.exists {
   container has identity
-  container has state
+  container has status
   container has boundaries
   container has resources
 }
@@ -265,7 +265,7 @@ exegesis {
 fn test_parse_simple_constraint() {
     let input = r#"
 constraint container.integrity {
-  state matches declared
+  status matches declared
 }
 
 exegesis {
@@ -314,12 +314,12 @@ exegesis {
 #[test]
 fn test_parse_constraint_matches() {
     let input = r#"
-constraint state.consistency {
-  runtime matches declared state
+constraint status.consistency {
+  runtime matches declared status
 }
 
 exegesis {
-  State consistency constraint.
+  Status consistency constraint.
 }
 "#;
     let result = parse(input);
@@ -534,7 +534,7 @@ exegesis {
 fn test_is_statement_parsing() {
     let input = r#"
 gene test.is {
-  subject is state
+  subject is active
 }
 
 exegesis {
@@ -595,19 +595,21 @@ exegesis {
 // ============================================
 
 #[test]
-fn test_error_missing_exegesis() {
+fn test_missing_exegesis_is_tolerated() {
+    // DOL 2.0 tolerant: missing exegesis defaults to empty string
     let input = r#"
 gene container.exists {
   container has identity
 }
 "#;
     let result = parse(input);
-    assert!(result.is_err());
+    assert!(result.is_ok(), "DOL 2.0 should tolerate missing exegesis");
 
-    match result {
-        Err(ParseError::MissingExegesis { .. }) => {}
-        Err(e) => panic!("Expected MissingExegesis, got: {:?}", e),
-        Ok(_) => panic!("Expected error"),
+    if let Declaration::Gene(gene) = result.unwrap() {
+        // Exegesis should be empty when not provided
+        assert!(gene.exegesis.is_empty());
+    } else {
+        panic!("Expected Gene");
     }
 }
 
@@ -825,7 +827,7 @@ fn test_collect_dependencies() {
 trait test.deps {
   uses dep.one
   uses dep.two
-  subject is state
+  subject is active
 }
 
 exegesis {

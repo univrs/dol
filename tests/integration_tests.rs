@@ -139,7 +139,7 @@ fn test_gene_declaration_structure() {
     let input = r#"
 gene container.exists {
   container has identity
-  container has state
+  container has status
   container has boundaries
 }
 
@@ -194,7 +194,7 @@ exegesis {
 fn test_constraint_declaration_structure() {
     let input = r#"
 constraint container.integrity {
-  state matches declared
+  status matches declared
   identity never changes
   boundaries never expand
 }
@@ -298,7 +298,7 @@ fn test_collect_identifiers() {
     let input = r#"
 gene container.exists {
   container has identity
-  container has state
+  container has status
 }
 
 exegesis {
@@ -369,7 +369,7 @@ trait container.full {
   container is initialized
   container is active
 
-  each state change emits event
+  each status change emits event
   all operations is logged
 }
 
@@ -460,7 +460,7 @@ gene container.exists {
   // Property comment
   container has identity // inline comment
   // Another comment
-  container has state
+  container has status
 }
 
 // Pre-exegesis comment

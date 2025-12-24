@@ -44,7 +44,7 @@ fn test_backward_compatibility_basic_gene() {
     let input = r#"
 gene container.exists {
   container has identity
-  container has state
+  container has status
 }
 
 exegesis {
@@ -101,7 +101,7 @@ fn test_backward_compatibility_system() {
 system container.orchestration @1.0.0 {
   requires container.exists >= 1.0.0
   uses container.lifecycle
-  orchestrator has state
+  orchestrator has status
 }
 
 exegesis {
