@@ -495,7 +495,7 @@ mod tests {
             serde_json::Value::String(
                 r#"gene container.exists {
   container has identity
-  container has state
+  container has status
 }
 
 exegesis {
