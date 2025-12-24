@@ -1,0 +1,91 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL Biology Module - Modeling Systems of Life
+// ═══════════════════════════════════════════════════════════════
+
+module biology @ 1.0.0
+
+// Re-export all biology modules
+pub use types.*
+pub use hyphal.*
+pub use transport.*
+pub use ecosystem.*
+pub use evolution.*
+pub use mycelium.*
+
+exegesis {
+  The DOL Biology module provides primitives for modeling
+  biological systems, inspired by mycelium networks and
+  ecological dynamics.
+
+  # Core Concepts
+
+  ## Types (biology.types)
+  - Vec3: Spatial positioning
+  - Gradient<T>: Spatial fields
+  - Nutrient: Elemental resources (C, N, P, H2O)
+  - Energy: Trophic energy with quality
+  - GeoTime: Geological time scale
+
+  ## Hyphal Growth (biology.hyphal)
+  - HyphalTip: Growing tip of hypha
+  - HyphalSegment: Network edge
+  - Hyphal trait: Growth behaviors
+
+  ## Transport (biology.transport)
+  - TransportNode<T>: Network node
+  - Flow<T>: Resource flow
+  - Transport<T> trait: Source-sink dynamics
+
+  ## Ecosystem (biology.ecosystem)
+  - Species: Population with dynamics
+  - Interaction: Predator-prey
+  - Ecosystem system: Full simulation
+
+  ## Evolution (biology.evolution)
+  - Trait: Heritable characteristic
+  - Genome: Collection of traits
+  - Evolvable trait: Evolution mechanics
+  - evolves declarations: Speciation
+
+  ## Mycelium Network (biology.mycelium)
+  - MyceliumNode: Network node
+  - MyceliumNetwork: Complete simulation
+
+  # Usage
+
+  ```dol
+  use biology.{ MyceliumNetwork, Gradient, Nutrient }
+
+  // Create network from spore
+  network = MyceliumNetwork.from_spore(Vec3.origin())
+
+  // Define nutrient field
+  nutrients = Gradient<Nutrient> {
+    origin: Vec3 { x: 10.0, y: 0.0, z: 0.0 },
+    direction: Vec3 { x: -1.0, y: 0.0, z: 0.0 },
+    intensity: Nutrient { carbon: 100.0, nitrogen: 10.0, phosphorus: 1.0, water: 50.0 },
+    decay_rate: 0.1
+  }
+
+  // Grow network for 100 steps
+  for _ in 0..100 {
+    network = network.grow(nutrients)
+  }
+
+  // Check if ready to fruit
+  if network.can_fruit() {
+    println("Ready to produce mushrooms!")
+  }
+  ```
+
+  # Philosophy
+
+  DOL Biology enables modeling of living systems with:
+  - Ontological precision (what things ARE)
+  - Behavioral composition (what things DO)
+  - Constraint validation (what things MUST satisfy)
+  - Evolutionary tracking (how things CHANGE)
+
+  This foundation supports understanding human ontological
+  co-existence and building regenerative computing systems.
+}

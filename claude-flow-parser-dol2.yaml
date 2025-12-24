@@ -1,0 +1,1801 @@
+# claude-flow-parser-dol2.yaml
+#
+# Mission: Implement missing DOL 2.0 parser features
+# Priority: Critical - blocks biomimicry, SEX system, and all DOL 2.0 code
+#
+# Run: npx claude-flow@alpha swarm "read claude-flow-parser-dol2.yaml --workflow parser-full"
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUMMARY: Parser Modernization for DOL 2.0
+#
+# Current parser supports DOL 1.x syntax. This workflow implements:
+# - Visibility modifiers (pub, pub(spirit), pub(parent))
+# - Module declarations (module name @ version)
+# - Functions with bodies (fun name() { ... })
+# - Generic types (Gene<T>, List<T>)
+# - Named constraints (constraint name { ... })
+# - Logical operators (implies, forall, exists)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: parser-dol2
+version: 1.0.0
+description: |
+  Implement missing DOL 2.0 parser features to support biomimicry,
+  SEX system, and modern DOL syntax.
+
+config:
+  max_concurrent_agents: 3
+  checkpoint_interval: 30m
+  working_dir: ~/repos/univrs-metadol
+  log_level: info
+
+# ═══════════════════════════════════════════════════════════════════
+# CONTEXT
+# ═══════════════════════════════════════════════════════════════════
+
+context:
+  current_parser_supports:
+    - "gene Name { has field: Type }"
+    - "trait Name { is method() -> Type }"
+    - "constraint { expression }"
+    - "system Name { ... }"
+    - "evolves From > To { ... }"
+    - "Basic expressions and operators"
+    - "Pattern matching (match)"
+    - "Control flow (if/else, for, while, loop)"
+    
+  missing_features:
+    critical:
+      - "pub visibility modifier"
+      - "module declaration with version"
+      - "fun with body (not just signature)"
+      - "Generic type parameters <T>"
+    high:
+      - "Named constraints (constraint name { })"
+      - "implies operator"
+      - "forall/exists quantifiers"
+      - "use imports"
+    medium:
+      - "pub(spirit), pub(parent) scoped visibility"
+      - "Type aliases (type Name is Type)"
+      - "@ version annotation"
+
+  file_locations:
+    lexer: src/lexer.rs
+    ast: src/ast.rs
+    parser: src/parser.rs
+    pratt: src/pratt.rs
+    typechecker: src/typechecker.rs
+
+# ═══════════════════════════════════════════════════════════════════
+# STAGE 1: LEXER TOKENS
+# ═══════════════════════════════════════════════════════════════════
+
+agents:
+  lexer-tokens:
+    name: Lexer Token Updates
+    role: Add missing tokens to lexer
+    instructions: |
+      Add missing tokens to the lexer for DOL 2.0 features.
+      
+      UPDATE src/lexer.rs - Add these tokens to the Token enum:
+      
+      ```rust
+      #[derive(Logos, Debug, Clone, PartialEq)]
+      pub enum Token {
+          // ═══════════════════════════════════════════════════════════
+          // EXISTING TOKENS (keep all existing)
+          // ═══════════════════════════════════════════════════════════
+          
+          // ... existing tokens ...
+          
+          // ═══════════════════════════════════════════════════════════
+          // NEW: Visibility & Module Keywords
+          // ═══════════════════════════════════════════════════════════
+          
+          /// pub - public visibility
+          #[token("pub")]
+          Pub,
+          
+          /// module - module declaration
+          #[token("module")]
+          Module,
+          
+          /// use - import statement
+          #[token("use")]
+          Use,
+          
+          /// spirit - package declaration
+          #[token("spirit")]
+          Spirit,
+          
+          // ═══════════════════════════════════════════════════════════
+          // NEW: SEX Keywords
+          // ═══════════════════════════════════════════════════════════
+          
+          /// sex - side effect marker
+          #[token("sex")]
+          Sex,
+          
+          /// var - mutable variable
+          #[token("var")]
+          Var,
+          
+          /// const - constant
+          #[token("const")]
+          Const,
+          
+          /// extern - foreign function
+          #[token("extern")]
+          Extern,
+          
+          // ═══════════════════════════════════════════════════════════
+          // NEW: Logic Keywords
+          // ═══════════════════════════════════════════════════════════
+          
+          /// implies - logical implication
+          #[token("implies")]
+          Implies,
+          
+          /// forall - universal quantifier
+          #[token("forall")]
+          Forall,
+          
+          /// exists - existential quantifier  
+          #[token("exists")]
+          Exists,
+          
+          // ═══════════════════════════════════════════════════════════
+          // NEW: Other Keywords
+          // ═══════════════════════════════════════════════════════════
+          
+          /// impl - trait implementation
+          #[token("impl")]
+          Impl,
+          
+          /// as - type cast / alias
+          #[token("as")]
+          As,
+          
+          /// from - migration source
+          #[token("from")]
+          From,
+          
+          // ═══════════════════════════════════════════════════════════
+          // NEW: Operators
+          // ═══════════════════════════════════════════════════════════
+          
+          /// @ - version/attribute marker
+          #[token("@")]
+          At,
+          
+          /// :: - path separator
+          #[token("::")]
+          PathSep,
+          
+          /// += -= *= /= compound assignment
+          #[token("+=")]
+          PlusEquals,
+          
+          #[token("-=")]
+          MinusEquals,
+          
+          #[token("*=")]
+          StarEquals,
+          
+          #[token("/=")]
+          SlashEquals,
+      }
+      ```
+      
+      Add helper methods:
+      
+      ```rust
+      impl Token {
+          /// Check if token is a visibility modifier
+          pub fn is_visibility(&self) -> bool {
+              matches!(self, Token::Pub)
+          }
+          
+          /// Check if token starts a declaration
+          pub fn starts_declaration(&self) -> bool {
+              matches!(self, 
+                  Token::Gene | Token::Trait | Token::System |
+                  Token::Constraint | Token::Evolves | Token::Fun |
+                  Token::Module | Token::Use | Token::Spirit |
+                  Token::Const | Token::Impl
+              )
+          }
+          
+          /// Check if token is a keyword
+          pub fn is_keyword(&self) -> bool {
+              matches!(self,
+                  Token::Gene | Token::Trait | Token::System |
+                  Token::Constraint | Token::Evolves | Token::Fun |
+                  Token::Has | Token::Is | Token::Type |
+                  Token::If | Token::Else | Token::Match |
+                  Token::For | Token::While | Token::Loop |
+                  Token::Break | Token::Continue | Token::Return |
+                  Token::Pub | Token::Module | Token::Use |
+                  Token::Sex | Token::Var | Token::Const | Token::Extern |
+                  Token::Implies | Token::Forall | Token::Exists |
+                  Token::True | Token::False | Token::In | Token::Where
+              )
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/lexer.rs
+      
+      After editing, run:
+      ```bash
+      cargo test lexer -- --nocapture
+      ```
+
+  lexer-tests:
+    name: Lexer Tests
+    role: Add tests for new tokens
+    dependencies:
+      - lexer-tokens
+    instructions: |
+      Add tests for the new lexer tokens.
+      
+      UPDATE tests/lexer_tests.rs - Add these tests:
+      
+      ```rust
+      #[test]
+      fn test_lex_pub() {
+          let tokens = lex("pub gene Container");
+          assert_eq!(tokens[0], Token::Pub);
+          assert_eq!(tokens[1], Token::Gene);
+          assert_eq!(tokens[2], Token::Identifier("Container".to_string()));
+      }
+      
+      #[test]
+      fn test_lex_module() {
+          let tokens = lex("module biology.types @ 1.0.0");
+          assert_eq!(tokens[0], Token::Module);
+          assert_eq!(tokens[1], Token::Identifier("biology".to_string()));
+          assert_eq!(tokens[2], Token::Dot);
+          assert_eq!(tokens[3], Token::Identifier("types".to_string()));
+          assert_eq!(tokens[4], Token::At);
+      }
+      
+      #[test]
+      fn test_lex_sex_keywords() {
+          let tokens = lex("sex fun log() sex var COUNTER");
+          assert_eq!(tokens[0], Token::Sex);
+          assert_eq!(tokens[1], Token::Fun);
+          assert_eq!(tokens[4], Token::Sex);
+          assert_eq!(tokens[5], Token::Var);
+      }
+      
+      #[test]
+      fn test_lex_implies() {
+          let tokens = lex("x > 0 implies y > 0");
+          assert!(tokens.contains(&Token::Implies));
+      }
+      
+      #[test]
+      fn test_lex_forall_exists() {
+          let tokens = lex("forall x: T. exists y: T. x == y");
+          assert_eq!(tokens[0], Token::Forall);
+          assert!(tokens.contains(&Token::Exists));
+      }
+      
+      #[test]
+      fn test_lex_use_statement() {
+          let tokens = lex("use std.io.{ println, print }");
+          assert_eq!(tokens[0], Token::Use);
+      }
+      
+      #[test]
+      fn test_lex_compound_assignment() {
+          let tokens = lex("x += 1; y -= 2; z *= 3");
+          assert!(tokens.contains(&Token::PlusEquals));
+          assert!(tokens.contains(&Token::MinusEquals));
+          assert!(tokens.contains(&Token::StarEquals));
+      }
+      ```
+      
+      FILE: ~/repos/metadol/tests/lexer_tests.rs
+
+# ═══════════════════════════════════════════════════════════════════
+# STAGE 2: AST UPDATES
+# ═══════════════════════════════════════════════════════════════════
+
+  ast-visibility:
+    name: AST Visibility
+    role: Add visibility and module AST nodes
+    dependencies:
+      - lexer-tokens
+    instructions: |
+      Update the AST with visibility, module, and new declaration types.
+      
+      UPDATE src/ast.rs:
+      
+      ```rust
+      // ═══════════════════════════════════════════════════════════════
+      // VISIBILITY
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Visibility modifier for declarations
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+      pub enum Visibility {
+          /// Private to current module (default)
+          #[default]
+          Private,
+          /// Public, accessible everywhere
+          Public,
+          /// Public within Spirit package only
+          PubSpirit,
+          /// Public to parent module only
+          PubParent,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // MODULE SYSTEM
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Module declaration: module name.path @ version
+      #[derive(Debug, Clone)]
+      pub struct ModuleDecl {
+          pub path: Vec<String>,  // ["biology", "types"]
+          pub version: Option<Version>,
+          pub span: Span,
+      }
+      
+      /// Semantic version
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Version {
+          pub major: u32,
+          pub minor: u32,
+          pub patch: u32,
+          pub suffix: Option<String>,  // "alpha", "beta", "Gya" for geological
+      }
+      
+      /// Use/import statement
+      #[derive(Debug, Clone)]
+      pub struct UseDecl {
+          pub path: Vec<String>,
+          pub items: UseItems,
+          pub alias: Option<String>,
+          pub span: Span,
+      }
+      
+      /// What items are imported
+      #[derive(Debug, Clone)]
+      pub enum UseItems {
+          /// Import all: use path.*
+          All,
+          /// Import specific: use path.{ a, b, c }
+          Named(Vec<UseItem>),
+          /// Import single: use path.item
+          Single,
+      }
+      
+      #[derive(Debug, Clone)]
+      pub struct UseItem {
+          pub name: String,
+          pub alias: Option<String>,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // GENERIC TYPES
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Type parameter: <T>, <T: Trait>, <T: Trait + Other>
+      #[derive(Debug, Clone)]
+      pub struct TypeParam {
+          pub name: String,
+          pub bounds: Vec<TypeExpr>,
+          pub default: Option<TypeExpr>,
+          pub span: Span,
+      }
+      
+      /// Type parameters list: <T, U, V>
+      #[derive(Debug, Clone, Default)]
+      pub struct TypeParams {
+          pub params: Vec<TypeParam>,
+          pub span: Span,
+      }
+      
+      impl TypeParams {
+          pub fn is_empty(&self) -> bool {
+              self.params.is_empty()
+          }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // UPDATED DECLARATIONS
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Gene declaration with visibility and generics
+      #[derive(Debug, Clone)]
+      pub struct GeneDecl {
+          pub visibility: Visibility,
+          pub name: String,
+          pub type_params: TypeParams,
+          pub body: GeneBody,
+          pub span: Span,
+      }
+      
+      /// Trait declaration with visibility and generics
+      #[derive(Debug, Clone)]
+      pub struct TraitDecl {
+          pub visibility: Visibility,
+          pub name: String,
+          pub type_params: TypeParams,
+          pub bounds: Vec<TypeExpr>,  // extends
+          pub body: TraitBody,
+          pub span: Span,
+      }
+      
+      /// Function declaration with visibility and body
+      #[derive(Debug, Clone)]
+      pub struct FunctionDecl {
+          pub visibility: Visibility,
+          pub purity: Purity,
+          pub name: String,
+          pub type_params: TypeParams,
+          pub params: Vec<Parameter>,
+          pub return_type: Option<TypeExpr>,
+          pub body: Option<Block>,  // None for signatures
+          pub span: Span,
+      }
+      
+      /// Purity marker
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+      pub enum Purity {
+          #[default]
+          Pure,
+          Sex,
+      }
+      
+      /// Constraint declaration (now named)
+      #[derive(Debug, Clone)]
+      pub struct ConstraintDecl {
+          pub name: Option<String>,  // Optional name
+          pub body: Expr,
+          pub exegesis: Option<String>,
+          pub span: Span,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // UPDATED TYPE EXPRESSIONS
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Type expression with generics support
+      #[derive(Debug, Clone)]
+      pub enum TypeExpr {
+          /// Simple type: Int64, String
+          Named(String, Span),
+          
+          /// Generic type: List<T>, Map<K, V>
+          Generic {
+              name: String,
+              args: Vec<TypeExpr>,
+              span: Span,
+          },
+          
+          /// Function type: Fun<A, B> or A -> B
+          Function {
+              params: Vec<TypeExpr>,
+              ret: Box<TypeExpr>,
+              span: Span,
+          },
+          
+          /// Tuple type: Tuple<A, B, C>
+          Tuple {
+              elements: Vec<TypeExpr>,
+              span: Span,
+          },
+          
+          /// Reference: Ref<T>, MutRef<T>
+          Reference {
+              mutable: bool,
+              inner: Box<TypeExpr>,
+              span: Span,
+          },
+          
+          /// Self type
+          SelfType(Span),
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // LOGICAL EXPRESSIONS
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Universal quantifier: forall x: T. expr
+      #[derive(Debug, Clone)]
+      pub struct ForallExpr {
+          pub var: String,
+          pub type_: TypeExpr,
+          pub body: Box<Expr>,
+          pub span: Span,
+      }
+      
+      /// Existential quantifier: exists x: T. expr
+      #[derive(Debug, Clone)]
+      pub struct ExistsExpr {
+          pub var: String,
+          pub type_: TypeExpr,
+          pub body: Box<Expr>,
+          pub span: Span,
+      }
+      
+      // Add to Expr enum:
+      pub enum Expr {
+          // ... existing variants ...
+          
+          /// Forall quantifier
+          Forall(ForallExpr),
+          
+          /// Exists quantifier
+          Exists(ExistsExpr),
+          
+          /// Implies: a implies b
+          Implies {
+              left: Box<Expr>,
+              right: Box<Expr>,
+              span: Span,
+          },
+      }
+      
+      // Add Implies to BinaryOp:
+      pub enum BinaryOp {
+          // ... existing variants ...
+          
+          /// Logical implication
+          Implies,
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/ast.rs
+
+# ═══════════════════════════════════════════════════════════════════
+# STAGE 3: PARSER CORE
+# ═══════════════════════════════════════════════════════════════════
+
+  parser-visibility:
+    name: Parser Visibility
+    role: Parse visibility modifiers
+    dependencies:
+      - ast-visibility
+    instructions: |
+      Add visibility parsing to the parser.
+      
+      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ═════════════════════════════════════════════════════════════
+          // VISIBILITY PARSING
+          // ═════════════════════════════════════════════════════════════
+          
+          /// Parse optional visibility modifier
+          fn parse_visibility(&mut self) -> Visibility {
+              if !self.check(Token::Pub) {
+                  return Visibility::Private;
+              }
+              
+              self.advance(); // consume 'pub'
+              
+              // Check for pub(scope)
+              if self.check(Token::LParen) {
+                  self.advance();
+                  
+                  let scope = match self.current_token() {
+                      Token::Identifier(s) => s.clone(),
+                      _ => {
+                          self.error("Expected 'spirit' or 'parent' in visibility");
+                          return Visibility::Public;
+                      }
+                  };
+                  self.advance();
+                  
+                  if !self.check(Token::RParen) {
+                      self.error("Expected ')' after visibility scope");
+                  } else {
+                      self.advance();
+                  }
+                  
+                  match scope.as_str() {
+                      "spirit" => Visibility::PubSpirit,
+                      "parent" => Visibility::PubParent,
+                      _ => {
+                          self.error(&format!("Unknown visibility scope: {}", scope));
+                          Visibility::Public
+                      }
+                  }
+              } else {
+                  Visibility::Public
+              }
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  parser-module:
+    name: Parser Module
+    role: Parse module and use declarations
+    dependencies:
+      - parser-visibility
+    instructions: |
+      Add module and use parsing.
+      
+      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ═════════════════════════════════════════════════════════════
+          // MODULE PARSING
+          // ═════════════════════════════════════════════════════════════
+          
+          /// Parse module declaration: module path.to.module @ 1.0.0
+          fn parse_module_decl(&mut self) -> Result<ModuleDecl, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::Module)?;
+              
+              // Parse module path: biology.types
+              let path = self.parse_dotted_path()?;
+              
+              // Optional version: @ 1.0.0
+              let version = if self.check(Token::At) {
+                  self.advance();
+                  Some(self.parse_version()?)
+              } else {
+                  None
+              };
+              
+              Ok(ModuleDecl {
+                  path,
+                  version,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse dotted path: std.io.println
+          fn parse_dotted_path(&mut self) -> Result<Vec<String>, ParseError> {
+              let mut path = vec![self.expect_identifier()?];
+              
+              while self.check(Token::Dot) {
+                  self.advance();
+                  path.push(self.expect_identifier()?);
+              }
+              
+              Ok(path)
+          }
+          
+          /// Parse version: 1.0.0, 1.0, 3.5Gya
+          fn parse_version(&mut self) -> Result<Version, ParseError> {
+              // Could be: 1.0.0, 1.0, 3.5Gya
+              let major_str = match self.current_token() {
+                  Token::Integer(n) => {
+                      let s = n.to_string();
+                      self.advance();
+                      s
+                  }
+                  Token::Float(f) => {
+                      // Handle 1.0 or 3.5
+                      let s = f.to_string();
+                      self.advance();
+                      s
+                  }
+                  _ => return Err(self.error("Expected version number")),
+              };
+              
+              // Parse version components
+              let parts: Vec<&str> = major_str.split('.').collect();
+              let major = parts.get(0).and_then(|s| s.parse().ok()).unwrap_or(0);
+              let minor = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+              
+              // Check for patch or suffix
+              let (patch, suffix) = if self.check(Token::Dot) {
+                  self.advance();
+                  match self.current_token() {
+                      Token::Integer(n) => {
+                          let p = *n as u32;
+                          self.advance();
+                          (p, None)
+                      }
+                      _ => (0, None)
+                  }
+              } else if let Token::Identifier(s) = self.current_token() {
+                  // Handle suffix like "Gya", "alpha"
+                  let suffix = s.clone();
+                  self.advance();
+                  (0, Some(suffix))
+              } else {
+                  (0, None)
+              };
+              
+              Ok(Version { major, minor, patch, suffix })
+          }
+          
+          // ═════════════════════════════════════════════════════════════
+          // USE/IMPORT PARSING
+          // ═════════════════════════════════════════════════════════════
+          
+          /// Parse use statement: use path.{ items } or use path.*
+          fn parse_use_decl(&mut self) -> Result<UseDecl, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::Use)?;
+              
+              let path = self.parse_dotted_path()?;
+              
+              // Determine what's being imported
+              let items = if self.check(Token::Dot) {
+                  self.advance();
+                  
+                  if self.check(Token::Star) {
+                      self.advance();
+                      UseItems::All
+                  } else if self.check(Token::LBrace) {
+                      self.advance();
+                      let items = self.parse_use_items()?;
+                      self.expect(Token::RBrace)?;
+                      UseItems::Named(items)
+                  } else {
+                      UseItems::Single
+                  }
+              } else {
+                  UseItems::Single
+              };
+              
+              // Optional alias: as Name
+              let alias = if self.check(Token::As) {
+                  self.advance();
+                  Some(self.expect_identifier()?)
+              } else {
+                  None
+              };
+              
+              Ok(UseDecl {
+                  path,
+                  items,
+                  alias,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse use items: { a, b as B, c }
+          fn parse_use_items(&mut self) -> Result<Vec<UseItem>, ParseError> {
+              let mut items = Vec::new();
+              
+              loop {
+                  let name = self.expect_identifier()?;
+                  let alias = if self.check(Token::As) {
+                      self.advance();
+                      Some(self.expect_identifier()?)
+                  } else {
+                      None
+                  };
+                  
+                  items.push(UseItem { name, alias });
+                  
+                  if !self.check(Token::Comma) {
+                      break;
+                  }
+                  self.advance(); // consume comma
+              }
+              
+              Ok(items)
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  parser-generics:
+    name: Parser Generics
+    role: Parse generic type parameters
+    dependencies:
+      - parser-module
+    instructions: |
+      Add generic type parameter parsing.
+      
+      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ══════════════════════════════════â════════════════════
+          // GENERIC TYPE PARSING
+          // ═════════════════════════════════════════════════════════════
+          
+          /// Parse optional type parameters: <T>, <T, U>, <T: Trait>
+          fn parse_type_params(&mut self) -> Result<TypeParams, ParseError> {
+              if !self.check(Token::Less) {
+              return Ok(TypeParams::default());
+              }
+              
+              let start = self.current_span();
+              self.advance(); // consume '<'
+              
+              let mut params = Vec::new();
+              
+              loop {
+                  let param = self.parse_type_param()?;
+                  params.push(param);
+                  
+                  if !self.check(Token::Comma) {
+                      break;
+                  }
+                  self.advance();
+              }
+              
+              self.expect(Token::Greater)?;
+              
+              Ok(TypeParams {
+                  params,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse single type parameter: T, T: Bound, T: A + B
+          fn parse_type_param(&mut self) -> Result<TypeParam, ParseError> {
+              let start = self.current_span();
+              let name = self.expect_identifier()?;
+              
+              // Optional bounds: T: Trait or T: A + B
+              let bounds = if self.check(Token::Colon) {
+                  self.advance();
+                  self.parse_type_bounds()?
+              } else {
+                  Vec::new()
+              };
+              
+              // Optional default: T = Default
+              let default = if self.check(Token::Equals) {
+                  self.advance();
+                  Some(self.parse_type()?)
+              } else {
+                  None
+              };
+              
+              Ok(TypeParam {
+                  name,
+                  bounds,
+                  default,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse type bounds: Trait, A + B + C
+          fn parse_type_bounds(&mut self) -> Result<Vec<TypeExpr>, ParseError> {
+              let mut bounds = vec![self.parse_type()?];
+              
+              while self.check(Token::Plus) {
+                  self.advance();
+                  bounds.push(self.parse_type()?);
+              }
+              
+              Ok(bounds)
+          }
+          
+          /// Parse type expression with generic support
+          fn parse_type(&mut self) -> Result<TypeExpr, ParseError> {
+              let start = self.current_span();
+              
+              // Check for Self
+              if self.check(Token::SelfType) {
+                  self.advance();
+                  return Ok(TypeExpr::SelfType(start));
+              }
+              
+              // Parse base type name
+              let name = self.expect_identifier()?;
+              
+              // Check for generic arguments: Type<A, B>
+              if self.check(Token::Less) {
+                  self.advance();
+                  
+                  let mut args = Vec::new();
+                  loop {
+                      args.push(self.parse_type()?);
+                      if !self.check(Token::Comma) {
+                          break;
+                      }
+                      self.advance();
+                  }
+                  
+                  self.expect(Token::Greater)?;
+                  
+                  Ok(TypeExpr::Generic {
+                      name,
+                      args,
+                      span: start.merge(&self.previous_span()),
+                  })
+              } else {
+                  Ok(TypeExpr::Named(name, start))
+              }
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  parser-function:
+    name: Parser Function
+    role: Parse functions with bodies
+    dependencies:
+      - parser-generics
+    instructions: |
+      Update function parsing to support bodies and purity.
+      
+      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ═════════════════════════════════════════════════════════════
+          // FUNCTION PARSING
+          // ════════════════â═════════════════════════════════
+          
+          /// Parse function declaration with visibility, purity, generics, body
+          fn parse_function(&mut self, visibility: Visibility) -> Result<FunctionDecl, ParseError> {
+              let start = self.current_span();
+              
+              // Check for 'sex' purity marker
+              let purity = if self.check(Token::Sex) {
+                  self.advance();
+                  ty::Sex
+              } else {
+                  Purity::Pure
+              };
+              
+              self.expect(Token::Fun)?;
+              
+              let name = self.expect_identifier()?;
+              
+              // Optional type parameters
+              let type_params = self.parse_type_params()?;
+              
+              // Parameters
+              let params = self.parse_parameters()?;
+              
+              // Optional return type
+              let return_type = if self.check(Token::Arrow) {
+                  self.advance();
+                  Some(self.parse_type()?)
+              } else {
+                  None
+              };
+              
+              // Optional body
+              let body = if self.check(Token::LBrace) {
+                  Some(self.parse_block()?)
+              } else {
+                  None
+              };
+              
+              Ok(FunctionDecl {
+                  visibility,
+                  purity,
+                  name,
+                  type_params,
+                  params,
+                  return_type,
+                  body,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse parameter list: (a: Int64, b: String)
+          fn parse_parameters(&mut self) -> Result<Vec<Parameter>, ParseError> {
+              self.expect(Token::LParen)?;
+              
+              let mut params = Vec::new();
+              
+              if !self.check(Token::RParen) {
+                  loop {
+                      let name = self.expect_identifier()?;
+                      self.expect(Token::Colon)?;
+                      let type_ = self.parse_type()?;
+                      
+                      // Optional default value
+                      let default = if self.check(Token::Equals) {
+                          self.advance();
+                          Some(self.parse_expr()?)
+                      } else {
+                          None
+                      };
+                      
+                      params.push(Parameter {
+                          name,
+                          type_,
+                          default,
+                      });
+                      
+                      if !self.check(Token::Comma) {
+                          break;
+                      }
+                      self.advance();
+                  }
+              }
+              
+              self.expect(Token::RParen)?;
+              Ok(params)
+          }
+          
+          /// Parse block: { statements; expr? }
+          fn parse_block(&mut self) -> Result<Block, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::LBrace)?;
+              
+              let mut statements = Vec::new();
+              let mut final_expr = None;
+              
+              while !self.check(Token::RBrace) && !self.is_at_end() {
+                  // Try to parse statement
+                  if self.check(Token::Return) {
+                      statements.push(self.parse_return_stmt()?);
+                  } else if self.check(Token::For) {
+                      statements.push(self.parse_for_stmt()?);
+                  } else if self.check(Token::While) {
+                      statements.push(self.parse_while_stmt()?);
+                  } else if self.check(Token::If) {
+                      // Could be statement or expression
+                      let expr = self.parse_if_expr()?;
+                      if self.check(Token::RBrace) {
+                          final_expr = Some(expr);
+                      } else {
+                          statements.push(Stmt::Expr(expr));
+                      }
+                  } else {
+                      // Expression or let binding
+                      let expr = self.parse_expr()?;
+                      
+                      // Check for assignment: name = value
+                      if self.check(Token::Equals) {
+                          self.advance();
+                          let value = self.parse_expr()?;
+                          statements.push(Stmt::Let {
+                              name: self.expr_to_pattern(&expr)?,
+                              type_ann: None,
+                              value,
+                          });
+                      } else if self.check(Token::Colon) {
+                          // Typed let: name: Type = value
+                          self.advance();
+                          let type_ann = Some(self.parse_type()?);
+                          self.expect(Token::Equals)?;
+                          let value = self.parse_expr()?;
+                          statements.push(Stmt::Let {
+                              name: self.expr_to_pattern(&expr)?,
+                              type_ann,
+                              value,
+                          });
+                      } else if self.check(Token::RBrace) {
+                          // Final expression
+                          final_expr = Some(expr);
+                      } else {
+                          statements.push(Stmt::Expr(expr));
+                      }
+                  }
+              }
+              
+              self.expect(Token::RBrace)?;
+              
+              Ok(Block {
+                  statements,
+                  expr: final_expr.map(Box::new),
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  parser-constraint:
+    name: Parser Constraint
+    role: Parse named constraints
+    dependencies:
+      - parser-function
+    instructions: |
+      Update constraint parsing to support named constraints.
+      
+      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ═════════════════════════════════════════════════════════════
+          // CONSTRAINT PARSING
+          // ═════════════════════════════════â═════════════
+          
+          /// Parse constraint: constraint name { expr } or constraint { expr }
+          fn parse_constraint(&mut self) -> Result<ConstraintDecl, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::Constraint)?;
+              
+              // Optional name
+              let name = if !self.check(Token::LBrace) {
+                  Some(self.expect_identifier()?)
+              } else {
+                  None
+    
+              
+              self.expect(Token::LBrace)?;
+              
+              // Parse constraint body expression
+              let body = self.parse_expr()?;
+              
+              // Optional exegesis inside constraint
+              let exegesis = if self.check(Token::Exegesis) {
+                  self.advance();
+                  self.expect(Token::LBrace)?;
+                  let text = self.parse_exegesis_text()?;
+                  self.expect(Token::RBrace)?;
+                  Some(text)
+              } else {
+                  None
+              };
+              
+              self.expect(Token::RBrace)?;
+              
+              Ok(ConstraintDecl {
+                  name,
+                  body,
+                  exegesis,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  parser-logic:
+    name: Parser Logic Operators
+    role: Parse implies, forall, exists
+    dependencies:
+      - parser-constraint
+    instructions: |
+      Add parsing for logical operators.
+      
+      UPDATE src/pratt.rs:
+      
+      ```rust
+      impl PrattParser {
+          // ═════════════════════════════════════════════════════════════
+          // LOGICAL OPERATORS
+          // ══════════════════════════════════â══════════
+          
+          /// Get precedence for binary operators
+          fn precedence(&self, token: &Token) -> u8 {
+              match token {
+                  // ... existing precedences ...
+                  
+                  // Logical implication (very low precedence)
+                  Token::Implies => 0,
+                  
+                  // ... rest of operators ...
+                  _ => 0,
+              }
+          }
+          
+          /// Parse prefix expres         fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
+              match self.current_token() {
+                  // ... existing prefix parsing ...
+                  
+                  // Forall quantifier
+                  Token::Forall => self.parse_forall(),
+                  
+                  // Exists quantifier  
+                  Token::Exists => self.parse_exists(),
+                  
+                  // ... rest of prefix ...
+                  _ => self.parse_primary(),
+              }
+          }
+          
+          /// Parse forall: forall x: T. expr
+          fn parse_forall(&mut self) -> Result<Expr, ParseError> {
+              let start = self.current_span();
+              self.advance(); // consume 'forall'
+              
+              let var = self.expect_identifier()?;
+              self.expect(Token::Colon)?;
+              let type_ = self.parser.parse_type()?;
+              self.expect(Token::Dot)?;
+              let body = self.parse_expr(0)?;
+              
+              Ok(Expr::Forall(ForallExpr {
+                  var,
+                  type_,
+                  body: Box::new(body),
+                  span: start.merge(&self.previous_span()),
+              }))
+          }
+          
+          /// Parse exists: exists x: T. expr
+          fn parse_exists(&mut self) -> Result<Expr, ParseError> {
+              let start = self.current_span();
+              self.advance(); // consume 'exists'
+              
+              let var = self.expect_identifier()?;
+              self.expect(Token::Colon)?;
+              let type_ = self.parser.parse_type()?;
+              self.expect(Token::Dot)?;
+              let body = self.parse_expr(0)?;
+              
+              Ok(Expr::Exists(ExistsExpr {
+                  var,
+                  type_,
+                  body: Box::new(body),
+                  span: start.merge(&self.previous_span()),
+              }))
+          }
+          
+          /// Parse infix expression
+          fn parse_infix(&mut self, left: Expr, precedence: u8) -> Result<Expr, ParseError> {
+              let op_token = self.current_token().clone();
+              let start = self.current_span();
+              self.advance();
+              
+              let right = self.parse_expr(precedence)?;
+              
+              let op = match op_token {
+                  // ... existing operators ...
+                  
+                  Token::Implies => BinaryOp::Implies,
+                  
+                  // ... rest of operators ...
+                  _ => return Err(self.error("Unknown binary operator")),
+              };
+              
+              Ok(Expr::Binary {
+                  op,
+                  left: Box::new(left),
+                  right: Box::new(right),
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/pratt.rs
+
+# ═══════════════════════════════════════════════════════════════════
+# STAGE 4: INTEGRATION
+# ═══════════════════════════════════════════════════════════════════
+
+  parser-declarations:
+    name: Parser Declaration Router
+    role: Route declarations with visibility
+    dependencies:
+      - parser-logic
+    instructions: |
+      Update the main declaration parser to route all declarati      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ═════════════════════════════════════════════════════════════
+          // TOP-LEVEL DECLARATION PARSING
+          // ═════════════════════════════════════════════════════════════
+      
+          /// Parse a top-level declaration
+          pub fn parse_declaration(&mut self) -> Result<Declaration, ParseError> {
+              // Check for module declaration first
+              if self.check(Token::Module) {
+                  return Ok(Declaration::Module(self.parse_module_decl()?));
+              }
+              
+              // Check for use declaration
+              if self.check(Token::Use) {
+                  return Ok(Declaration::Use(self.parse_use_decl()?));
+              }
+              
+              // Parse optional visibility
+              let visibility = self.parse_visibility();
+              
+              // Parse optional 'sex' modifier
+              let is_sex = self.check(Token::Sex);
+              if is_sex {
+                  self.advance();
+              }
+              
+              // Route to specific declaration parser
+              match self.current_token() {
+                  Token::Gene => {
+                      let mut gene = self.parse_gene()?;
+                      gene.visibility = visibility;
+                      Ok(Declaration::Gene(gene))
+                  }
+                  Token::Trait => {
+                      let mut trait_ = self.parse_trait()?;
+                      trait_.visibility = visibility;
+                      Ok(Declaration::Trait(trait_))
+                  }
+                  Token::System => {
+                      let mut system = self.parse_system()?;
+                      system.visibility = visibility;
+                      Ok(Declaration::System(system))
+                  }
+                  Token::Fun => {
+                      let mut func = self.parse_function(visibility)?;
+                      if is_sex {
+                          func.purity = Purity::Sex;
+                      }
+                      Ok(Declaration::Function(func))
+                  }
+                  Token::Constraint => {
+                      Ok(Declaration::Constraint(self.parse_constraint()?))
+                  }
+                  Token::Evolves => {
+                      Ok(Declaration::Evolves(self.parse_evolves()?))
+                  }
+                  Token::Const => {
+                      Ok(Declaration::Const(self.parse_const()?))
+                  }
+                  Token::Var if is_sex => {
+                      Ok(Declaration::Var(self.parse_var()?))
+                  }
+                  Token::Extern if is_sex => {
+                      Ok(Declaration::Extern(self.parse_extern()?))
+                  }
+                  Token::Impl => {
+                      Ok(Declaration::Impl(self.parse_impl()?))
+                  }
+                  _ => Err(self.error(&format!(
+                      "Expected declaration, found {:?}",
+                      self.current_token()
+                  ))),
+              }
+          }
+          
+          /// Parse gene with visibility and generics
+          fn parse_gene(&mut self) -> Result<GeneDecl, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::Gene)?;
+              
+              let name = self.expect_identifier()?;
+              let type_params = self.parse_type_params()?;
+              
+              self.expect(Token::LBrace)?;
+              let body = self.parse_gene_body()?;
+              self.expect(Token::RBrace)?;
+              
+              Ok(GeneDecl {
+                  visibility: Visibility::Private, // Set by caller
+                  name,
+                  type_params,
+                  body,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          // Similar updates for parse_trait, parse_system...
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  parser-tests:
+    name: Parser Tests
+    role: Add comprehensive parser tests
+    dependencies:
+      - parser-declarations
+    instructions: |
+      Add tests for all new parser features.
+      
+      CREATE tests/parser_dol2_tests.rs:
+      
+      ```rust
+      //! Tests for DOL 2.0 parser features
+      
+      use metadol::parse;
+      
+      // ═══════════════════════════════════════════════════════════════
+      // VISIBILITY TESTS
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_pub_gene() {
+          let source = "pubner { has id: UInt64 }";
+          let result = parse(source);
+          assert!(result.is_ok(), "Failed: {:?}", result.err());
+      }
+      
+      #[test]
+      fn test_parse_pub_spirit_gene() {
+          let source = "pub(spirit) gene Internal { has value: Int64 }";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ════════════════════════════════════════════════â═════════════
+      // MODULE TESTS
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_module_declaration() {
+          let source = "module biology.types @ 1.0.0";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_module_ersion() {
+          let source = "module biology.evolution @ 3.5Gya";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_use_all() {
+          let source = "use std.io.*";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_use_named() {
+          let source = "use std.io.{ println, print as p }";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // GENERIC TESTS
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_generic_gene() {
+          let so Container<T> { has value: T }";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_generic_with_bounds() {
+          let source = "gene Box<T: Display + Clone> { has inner: T }";
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_generic_type_usage() {
+          let source = r#"
+              gene Container {
+                  has items: List<Int64>
+                  has lookup: Map<String, UInt64>
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // FUNCTION TESTS
+      // ═══════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_function_with_body() {
+          let source = r#"
+              fun add(a: Int64, b: Int64) -> Int64 {
+                  return a + b
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_pub_function() {
+          let source = r#"
+              pub fun process(x: Int64) -> Int64 {
+                  result = x * 2
+                  return result
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_sex_function() {
+          let source = r#"
+              sex fun log(msg: String) -> Void {
+                  println(msg)
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_pub_sex_function() {
+          let source = r#"
+              pub sex fun increment() -> Int64 {
+                  COUNTER += 1
+                  return COUNTER
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_generic_function() {
+          let source = r#"
+              fun map<A, B>(f: Fun<A, B>, list: List<A>) -> List<B> {
+                  return list.transform(f)
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // CONSTRAINT TESTS
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_named_constraint() {
+      ce = r#"
+              gene Nutrient {
+                  has carbon: Float64
+                  has nitrogen: Float64
+                  
+                  constraint stoichiometry {
+                      this.carbon / this.nitrogen >= 6.0
+                  }
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ══════════════════════════════════════════â═══════════════
+      // LOGIC OPERATOR TESTS
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_implies() {
+          let source = r#"
+              constraint valid {
+                  this.x > 0 implies this.y > 0
+              }
+          "#;
+          let result = parse(source);
+     esult.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_forall() {
+          let source = r#"
+              constraint all_positive {
+                  forall item: Int64. item > 0
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_exists() {
+          let source = r#"
+              constraint has_positive {
+                  exists item: Int64. item > 0
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // INTEGRATION TESTS
+      // ═══════════════════════════════════════════════════════════════
+      
+      # fn test_parse_full_module() {
+          let source = r#"
+              module biology.types @ 1.0.0
+              
+              use std.math.{ sqrt, pow }
+              
+              pub gene Vec3 {
+                  has x: Float64
+                  has y: Float64
+                  has z: Float64
+                  
+                  fun magnitude() -> Float64 {
+                      return sqrt(this.x * this.x + this.y * this.y + this.z * this.z)
+                  }
+                  
+                  constraint finite {
+                      not this.x.is_nan() && not this.y.is_nan() && not this.z.is_nan()
+                  }
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok(), "Failed to parse full module: {:?}", result.err());
+      }
+      ```
+      
+      FILE: ~/repos/metadol/tests/parser_dol2_tests.rs
+
+  validator:
+    name: Parser Validator
+    role: Validate all parser changes
+    dependencies:
+      - parser-tests
+    instructions: |
+      Validate all parser changes and run tests.
+      
+      ```bash
+      cd ~/repos/metadol
+      
+      # Format code
+      cargo fmt --all
+      
+      # Run clippy
+      cargo clippy -- -D warnings
+      
+      # Run all tests
+      cargo test
+      
+      # Run specific test suites
+      cargo test lexer
+      cargo test parser_dol2
+      cargo test biology
+      
+      # Count tests
+      cargo test 2>&1 | grep -E "^test result"
+      ```
+      
+      When all tests pass:
+      
+      ```bash
+      git add -A
+      git commit -m "feat(parser): implement DOL 2.0 syntax
+      
+      New features:
+      - Visibility modifiers: pub, pub(spirit), pub(parent)
+      - Module declarations: module path @ version
+      - Use/import statements: use path.{ items }
+      - Generic type parameters: <T>, <T: Bound>
+      - Functions with bodies
+      - Named constraints: constraint name { }
+      - Logic operators: implies, forall, exists
+      - SEX keywords: sex, var, const, extern
+      
+      This enables parsing of biomimicry and SEX system code."
+      
+      git push
+      ```
+
+# ═══════════════════════════════════════════════════════════════════
+# WORKFLOWS
+# ═══════════════════════════════════════════════════════════════════
+
+workflows:
+  parser-full:
+    namer Implementation
+    description: Implement all missing DOL 2.0 parser features
+    stages:
+      - name: lexer
+        description: Add new tokens
+        agents:
+          - lexer-tokens
+          - lexer-tests
+          
+      - name: ast
+        description: Update AST structures
+        agents:
+          - ast-visibility
+        depends_on:
+          - lexer
+          
+      - name: parser-core
+        description: Core parser features
+        agents:
+          - parser-visibility
+          - parser-module
+          - parser-generics
+        depends_on:
+          - ast
+          
+      - name: parser-advanced
+        description: Advanced parser features
+        agents:
+          - parser-function
+          - parser-constraint
+          - parser-logic
+        depends_on:
+          - parser-core
+          
+      - name: integration
+        description: Integration and testing
+        agents:
+          - parser-declarations
+          - parser-tests
+          - validator
+        depends_on:
+          - parser-advanced
+
+  lexer-only:
+    name: Lexer Only
+    stages:
+      - name: lexer
+        agents: [lexer-tokens, lexer-tests]
+
+  visibility-only:
+    name: Visibility Only
+    stages:
+      - name: vis
+        agents: [lexer-tokens, ast-visibility, parser-visibility]
+
+  generics-only:
+    name: Generics Only
+    stages:
+      - name: gen
+        agents: [lexer-tokens, ast-visibility, parser-generics]
+
+  functions-only:
+    name: Functions Only
+    stages:
+      - name: func
+        agents: [parser-function]
+
+# ═══════════════════════════════════════════════════════════════════
+# CHECKPOINTS
+# ═══════════════════════════════════════════════════════════════════
+
+checkpoints:
+  lexer-complete:
+    trigger: command_success
+    command: "cargo test lexage: "Lexer tokens added"
+
+  visibility-complete:
+    trigger: command_success
+    command: "cargo test parse_pub"
+    message: "Visibility parsing implemented"
+
+  module-complete:
+    trigger: command_success
+    command: "cargo test parse_module"
+    message: "Module system parsing implemented"
+
+  generics-complete:
+    trigger: command_success
+    command: "cargo test parse_generic"
+    message: "Generic types parsing implemented"
+
+  functions-complete:
+    trigger: command_success
+    command: "cargo test parse_function"
+    message: "Functions with bodies implemented"
+
+  biology-parses:
+    trigger: command_success
+    command: "cargo test biology"
+    message: "Biology module now parses successfully!"
+
+  parser-complete:
+    trigger: all_checkpoints
+    checkpoints:
+      - lexer-complete
+      - visibility-complete
+      - module-complete
+      - generics-complete
+      - functions-complete
+      - biology-parses
+    message: |
+      ═════════════════════════════════════════════════
+      DOL 2.0 PARSER IMPLEMENTATION COMPLETE
+      
+      Implemented:
+      - pub, pub(spirit), pub(parent) visibility
+      - module path @ version declarations
+      - use path.{ items } imports
+      - Generic type parameters <T>, <T: Bound>
+      - Functions with bodies { ... }
+      - Named constraints
+      - implies, forall, exists operators
+      - SEX keywords (sex, var, const, extern)
+      
+      The biomimicry module parses successfully!
+      Ready to proceed with type checking and code generation.
+      ═══════════════════════════════════════════════════════════════

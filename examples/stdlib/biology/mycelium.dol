@@ -1,0 +1,240 @@
+// ═══════════════════════════════════════════════════════════════
+// Mycelium Network - Complete Fungal Network Simulation
+// ═══════════════════════════════════════════════════════════════
+
+module biology.mycelium @ 1.0.0
+
+use biology.types.{ Vec3, Gradient, Nutrient, Energy }
+use biology.hyphal.{ Hyphal, HyphalTip, HyphalSegment }
+use biology.transport.{ Transport, TransportNode, Flow }
+use biology.evolution.{ Evolvable, Fungus }
+
+/// Node in mycelium network
+pub gene MyceliumNode {
+  has id: UInt64
+  has position: Vec3
+  has tips: List<HyphalTip>
+  has stored_nutrients: Nutrient
+  has connections: List<UInt64>  // Connected node IDs
+
+  fun is_branching_point() -> Bool {
+    return this.connections.len() > 2
+  }
+
+  fun is_tip() -> Bool {
+    return this.connections.len() == 1
+  }
+
+  exegesis {
+    A node in the mycelium network graph.
+    Can be a tip (edge), relay (path), or junction (branch).
+  }
+}
+
+/// Complete mycelium network
+pub system MyceliumNetwork {
+  uses Hyphal
+  uses Transport<Nutrient>
+  uses Evolvable
+
+  state nodes: Map<UInt64, MyceliumNode>
+  state edges: List<HyphalSegment>
+  state next_id: UInt64
+  state total_biomass: Float64
+  state generation: UInt64
+
+  // ─────────────────────────────────────────────────────────────
+  // Network Constraints
+  // ─────────────────────────────────────────────────────────────
+
+  constraint network_connected {
+    // Network must be fully connected
+    forall node1, node2 in this.nodes.values().
+      exists_path(node1, node2)
+  }
+
+  constraint biomass_conservation {
+    // Total biomass equals sum of node biomass
+    this.total_biomass ==
+      sum(this.nodes.values().map(|n| n.stored_nutrients.total_mass()))
+  }
+
+  constraint transport_capacity {
+    // Transport limited by edge diameter
+    forall edge in this.edges.
+      edge.transport_capacity <= edge.diameter * 10.0
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Network Growth Functions
+  // ─────────────────────────────────────────────────────────────
+
+  /// Initialize network from spore
+  pub fun from_spore(position: Vec3) -> MyceliumNetwork {
+    initial_tip = HyphalTip {
+      position: position,
+      direction: Vec3 { x: 0.0, y: 0.0, z: 1.0 },
+      age: 0.0,
+      branching_potential: 1.0,
+      nutrients_absorbed: Nutrient.zero()
+    }
+
+    initial_node = MyceliumNode {
+      id: 0,
+      position: position,
+      tips: [initial_tip],
+      stored_nutrients: Nutrient.zero(),
+      connections: []
+    }
+
+    return MyceliumNetwork {
+      nodes: Map.from([(0, initial_node)]),
+      edges: [],
+      next_id: 1,
+      total_biomass: 0.0,
+      generation: 0
+    }
+  }
+
+  /// Grow network one time step
+  pub fun grow(nutrient_field: Gradient<Nutrient>) -> MyceliumNetwork {
+    new_nodes = Map.new()
+    new_edges = this.edges.clone()
+    mut next_id = this.next_id
+
+    for (id, node) in this.nodes {
+      new_tips = []
+
+      for tip in node.tips {
+        // Extend tip toward nutrients
+        extended = tip.extend(nutrient_field)
+
+        // Check for branching
+        if extended.branching_potential > 2.0 {
+          branches = extended.branch(2.0)
+          for branch in branches {
+            new_tips.push(branch)
+            // Create new node at branch point
+            new_node = MyceliumNode {
+              id: next_id,
+              position: branch.position,
+              tips: [branch],
+              stored_nutrients: Nutrient.zero(),
+              connections: [id]
+            }
+            new_nodes.insert(next_id, new_node)
+
+            // Add edge
+            new_edges.push(HyphalSegment {
+              start: node.position,
+              end: branch.position,
+              diameter: 0.1,
+              transport_capacity: 1.0
+            })
+
+            next_id += 1
+          }
+        } else {
+          new_tips.push(extended)
+        }
+      }
+
+      // Check for anastomosis (fusion)
+      for other_id in this.find_nearby_nodes(node.position, 0.5) {
+        if other_id != id && not node.connections.contains(other_id) {
+          // Fuse networks
+          node.connections.push(other_id)
+          other_node = this.nodes.get(other_id)
+          other_node.connections.push(id)
+        }
+      }
+
+      new_nodes.insert(id, MyceliumNode {
+        ...node,
+        tips: new_tips
+      })
+    }
+
+    return MyceliumNetwork {
+      nodes: new_nodes,
+      edges: new_edges,
+      next_id: next_id,
+      total_biomass: this.calculate_biomass(),
+      generation: this.generation + 1
+    }
+  }
+
+  /// Find nodes within distance
+  fun find_nearby_nodes(pos: Vec3, max_dist: Float64) -> List<UInt64> {
+    result = []
+    for (id, node) in this.nodes {
+      dx = pos.x - node.position.x
+      dy = pos.y - node.position.y
+      dz = pos.z - node.position.z
+      dist = (dx * dx + dy * dy + dz * dz).sqrt()
+      if dist <= max_dist {
+        result.push(id)
+      }
+    }
+    return result
+  }
+
+  /// Calculate total network biomass
+  fun calculate_biomass() -> Float64 {
+    node_mass = sum(this.nodes.values().map(|n| n.stored_nutrients.total_mass()))
+    edge_mass = sum(this.edges.map(|e| e.length() * e.diameter * 0.1))
+    return node_mass + edge_mass
+  }
+
+  /// Check if network is ready to fruit
+  pub fun can_fruit() -> Bool {
+    // Fruiting requires sufficient biomass and network complexity
+    return this.total_biomass > 100.0 &&
+           this.nodes.len() > 50 &&
+           this.has_enough_branching_points()
+  }
+
+  fun has_enough_branching_points() -> Bool {
+    branch_count = this.nodes.values()
+      .filter(|n| n.is_branching_point())
+      .len()
+    return branch_count > 10
+  }
+
+  /// Visualize network as DOT graph
+  pub fun to_dot() -> String {
+    mut output = "digraph Mycelium {\n"
+
+    for (id, node) in this.nodes {
+      label = if node.is_tip() { "tip" }
+             else if node.is_branching_point() { "branch" }
+             else { "relay" }
+      output += "  " + id.to_string() + " [label=\"" + label + "\"];\n"
+    }
+
+    for edge in this.edges {
+      // Find node IDs from positions (simplified)
+      output += "  /* edge */\n"
+    }
+
+    output += "}\n"
+    return output
+  }
+
+  exegesis {
+    Complete mycelium network simulation.
+
+    Biological behaviors modeled:
+    - Hyphal tip extension toward nutrients
+    - Branching at high-nutrient locations
+    - Anastomosis (network fusion)
+    - Nutrient transport through network
+    - Fruiting body formation
+
+    Applications:
+    - Understanding fungal ecology
+    - Bio-inspired network design
+    - Distributed system architecture
+    - Resource allocation algorithms
+  }
+}

@@ -1,0 +1,112 @@
+// ═══════════════════════════════════════════════════════════════
+// Transport - Source-Sink Resource Flow
+// ═══════════════════════════════════════════════════════════════
+
+module biology.transport @ 1.0.0
+
+use biology.types.{ Nutrient, Energy }
+
+/// A node in the transport network
+pub gene TransportNode<T> {
+  has id: UInt64
+  has content: T
+  has capacity: Float64
+  has is_source: Bool
+  has is_sink: Bool
+
+  constraint valid_role {
+    // Can be source, sink, both, or neither (relay)
+    true
+  }
+
+  constraint within_capacity {
+    this.content.total_mass() <= this.capacity
+  }
+
+  exegesis {
+    A node in the transport network.
+    Sources produce resources, sinks consume them,
+    relays just pass resources through.
+  }
+}
+
+/// Flow between nodes
+pub gene Flow<T> {
+  has from_id: UInt64
+  has to_id: UInt64
+  has amount: T
+  has rate: Float64  // units per time
+
+  constraint positive_rate {
+    this.rate > 0.0
+  }
+
+  exegesis {
+    Directed flow of resources between nodes.
+    Rate determines transport speed.
+  }
+}
+
+/// Transport network trait
+pub trait Transport<T> {
+  /// Move resources from source to sink
+  is transport(
+    source: TransportNode<T>,
+    sink: TransportNode<T>,
+    amount: T
+  ) -> Result<Flow<T>, TransportError>
+
+  /// Calculate optimal flow distribution
+  is optimize_flow(nodes: List<TransportNode<T>>) -> List<Flow<T>>
+
+  /// Check network connectivity
+  is is_connected(a: TransportNode<T>, b: TransportNode<T>) -> Bool
+
+  // ─────────────────────────────────────────────────────────────
+  // Laws (Conservation Principles)
+  // ─────────────────────────────────────────────────────────────
+
+  law mass_conservation {
+    // Total mass in network is constant (closed system)
+    // Or: inflow == outflow + accumulation (open system)
+    forall network: Self.
+      network.total_inflow() ==
+        network.total_outflow() + network.accumulation()
+  }
+
+  law flow_continuity {
+    // Flow into a node equals flow out (for relays)
+    forall node: TransportNode<T>.
+      node.is_relay() implies
+        node.inflow() == node.outflow()
+  }
+
+  law capacity_respected {
+    // Flow cannot exceed pipe capacity
+    forall flow: Flow<T>, edge: Edge.
+      flow.amount <= edge.capacity
+  }
+
+  exegesis {
+    Transport trait models resource flow in networks.
+    Inspired by:
+    - Mycorrhizal nutrient exchange
+    - Vascular plant transport
+    - Economic supply chains
+    - Data network routing
+  }
+}
+
+/// Transport error types
+pub gene TransportError {
+  type: enum {
+    NotConnected { from: UInt64, to: UInt64 },
+    InsufficientCapacity { available: Float64, requested: Float64 },
+    SourceEmpty { node_id: UInt64 },
+    SinkFull { node_id: UInt64 }
+  }
+
+  exegesis {
+    Errors that can occur during transport operations.
+  }
+}

@@ -1,0 +1,1580 @@
+# claude-flow-sex-system.yaml
+#
+# Mission: Implement DOL SEX (Side Effect eXecution) System
+# Purpose: Effect tracking, pure/impure separation, FFI support
+#
+# Run: npx claude-flow@alpha swarm "read claude-flow-sex-system.yaml --workflow sex-full"
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUMMARY: Side Effect eXecution for DOL
+#
+# The SEX system enables:
+# - Explicit marking of side-effectful code
+# - Compiler tracking of effect propagation
+# - FFI for external system calls
+# - Sandboxed execution boundaries
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: sex-system
+version: 1.0.0
+description: |
+  Implement the SEX (Side Effect eXecution) system for DOL.
+  Provides explicit effect tracking, FFI support, and purity guarantees.
+
+config:
+  max_concurrent_agents: 4
+  checkpoint_interval: 30m
+  working_dir: ~/repos/univrs-metadol
+  log_level: info
+
+# ═══════════════════════════════════════════════════════════════════
+# CONTEXT
+# ═══════════════════════════════════════════════════════════════════
+
+context:
+  biological_metaphor: |
+    In biology, SEX enables:
+    - Genetic recombination (mixing code across boundaries)
+    - Mutation (changing state destructively)
+    - Crossing barriers (breaking isolation)
+    - Creating new combinations (FFI, interop)
+    
+    In DOL, SEX represents code that:
+    - Mutates global state (side effects)
+    - Crosses module boundaries (unsafe access)
+    - Performs FFI (external system calls)
+    - Breaks referential transparency (impure functions)
+
+  syntax_overview:
+    sex_fun: "sex fun log(msg: String) -> Void { ... }"
+    sex_var: "sex var COUNTER: Int64 = 0"
+    sex_block: "sex { /* effectful code */ }"
+    sex_extern: "sex extern fun malloc(size: UInt64) -> Ptr<Void>"
+    sex_file: "*.sex.dol files are sex context"
+    sex_dir: "sex/ directory is sex context"
+
+  safety_hierarchy:
+    - "PURE (default): No side effects, referentially transparent"
+    - "PUB: Exported from module, still pure unless sex"
+    - "SEX: Can mutate, perform I/O, call FFI"
+
+  new_keywords:
+    - "sex"       # Side effect marker
+    - "pub"       # Public visibility
+    - "extern"    # FFI declaration
+    - "var"       # Mutable variable (only in sex)
+    - "const"     # Immutable constant
+
+# ═══════════════════════════════════════════════════════════════════
+# AGENTS
+# ═══════════════════════════════════════════════════════════════════
+
+agents:
+  # ─────────────────────────────────────────────────────────────────
+  # Lexer Updates
+  # ─────────────────────────────────────────────────────────────────
+  sex-lexer:
+    name: SEX Lexer Updates
+    role: Add SEX tokens to lexer
+    instructions: |
+      Update the lexer to recognize SEX-related keywords.
+      
+      UPDATE src/lexer.rs:
+      
+      ```rust
+      // Add to Token enum
+      #[derive(Logos, Debug, Clone, PartialEq)]
+      pub enum Token {
+          // ... existing tokens ...
+          
+          // ═══════════════════════════════════════════════════════════
+          // SEX (Side Effect eXecution) Keywords
+          // ═══════════════════════════════════════════════════════════
+          
+          /// sex - marks side-effectful code
+          #[token("sex")]
+          Sex,
+          
+          /// pub - public visibility
+          #[token("pub")]
+          Pub,
+          
+          /// extern - foreign function interface
+          #[token("extern")]
+          Extern,
+          
+          /// var - mutable variable (only in sex context)
+          #[token("var")]
+          Var,
+          
+          /// const - immutable constant
+          #[token("const")]
+          Const,
+          
+          // ... rest of tokens ...
+      }
+      ```
+      
+      Add helper method to check sex context:
+      
+      ```rust
+      impl Token {
+          /// Check if token can only appear in sex context
+          pub fn requires_sex_context(&self) -> bool {
+              matches!(self, Token::Var | Token::Extern)
+          }
+          
+          /// Check if token starts a sex construct
+          pub fn starts_sex_construct(&self) -> bool {
+              matches!(self, Token::Sex)
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/lexer.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # AST Updates
+  # ─────────────────────────────────────────────────────────────────
+  sex-ast:
+    name: SEX AST Updates
+    role: Add SEX constructs to AST
+    dependencies:
+      - sex-lexer
+    instructions: |
+      Update the AST to represent SEX constructs.
+      
+      UPDATE src/ast.rs:
+      
+      ```rust
+      // ═══════════════════════════════════════════════════════════════
+      // Visibility Modifiers
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub enum Visibility {
+          /// Private to current module (default)
+          Private,
+          /// Public, accessible everywhere
+          Public,
+          /// Public within Spirit only
+          PubSpirit,
+          /// Public to parent module
+          PubParent,
+      }
+      
+      impl Default for Visibility {
+          fn default() -> Self {
+              Visibility::Private
+          }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Effect Markers
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+      pub enum Purity {
+          /// Pure function (default)
+          #[default]
+          Pure,
+          /// Has side effects (sex)
+          Sex,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Variable Mutability
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub enum Mutability {
+          /// Immutable (let, const)
+          Immutable,
+          /// Mutable (var) - only in sex context
+          Mutable,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Declaration Updates
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Function declaration with visibility and purity
+      #[derive(Debug, Clone)]
+      pub struct FunctionDecl {
+          pub visibility: Visibility,
+          pub purity: Purity,
+          pub name: String,
+          pub params: Vec<Parameter>,
+          pub return_type: Option<TypeExpr>,
+          pub body: Option<Block>,
+          pub span: Span,
+      }
+      
+      /// Global variable declaration
+      #[derive(Debug, Clone)]
+      pub struct VarDecl {
+          pub mutability: Mutability,
+          pub name: String,
+          pub type_ann: Option<TypeExpr>,
+          pub value: Option<Expr>,
+          pub span: Span,
+      }
+      
+      /// Extern function declaration (FFI)
+      #[derive(Debug, Clone)]
+      pub struct ExternDecl {
+          pub abi: Option<String>,  // "C", "wasi", etc.
+          pub name: String,
+          pub params: Vec<Parameter>,
+          pub return_type: Option<TypeExpr>,
+          pub span: Span,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Expression Updates
+      // ═══════════════════════════════════════════════════════════════
+      
+      pub enum Expr {
+          // ... existing variants ...
+          
+          /// Sex block - contains side-effectful code
+          SexBlock {
+              body: Box<Block>,
+              span: Span,
+          },
+          
+          // ... rest of variants ...
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Declaration Updates
+      // ═══════════════════════════════════════════════════════════════
+      
+      pub enum Declaration {
+          // ... existing variants ...
+          
+          /// Global variable (sex var)
+          GlobalVar(VarDecl),
+          
+          /// Constant (const)
+          Constant(VarDecl),
+          
+          /// External function (sex extern)
+          Extern(ExternDecl),
+          
+          /// External block (sex extern "C" { ... })
+          ExternBlock {
+              abi: Option<String>,
+              functions: Vec<ExternDecl>,
+              span: Span,
+          },
+          
+          // ... rest of variants ...
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/ast.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Parser Updates
+  # ─────────────────────────────────────────────────────────────────
+  sex-parser:
+    name: SEX Parser Updates
+    role: Parse SEX constructs
+    dependencies:
+      - sex-ast
+    instructions: |
+      Update the parser to handle SEX constructs.
+      
+      UPDATE src/parser.rs:
+      
+      ```rust
+      impl Parser {
+          // ═════════════════════════════════════════════════════════════
+          // SEX Parsing
+          // ═════════════════════════════════════════════════════════════
+          
+          /// Parse visibility modifier
+          fn parse_visibility(&mut self) -> Visibility {
+              if self.check(Token::Pub) {
+                  self.advance();
+                  
+                  // Check for pub(spirit) or pub(parent)
+                  if self.check(Token::LParen) {
+                      self.advance();
+                      let scope = self.expect_identifier()?;
+                      self.expect(Token::RParen)?;
+                      
+                      match scope.as_str() {
+                          "spirit" => Visibility::PubSpirit,
+                          "parent" => Visibility::PubParent,
+                          _ => {
+                              self.error("Expected 'spirit' or 'parent'");
+                              Visibility::Public
+                          }
+                      }
+                  } else {
+                      Visibility::Public
+                  }
+              } else {
+                  Visibility::Private
+              }
+          }
+          
+          /// Parse purity modifier
+          fn parse_purity(&mut self) -> Purity {
+              if self.check(Token::Sex) {
+                  self.advance();
+                  Purity::Sex
+              } else {
+                  Purity::Pure
+              }
+          }
+          
+          /// Parse sex block expression
+          fn parse_sex_block(&mut self) -> Result<Expr, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::Sex)?;
+              
+              let body = self.parse_block()?;
+              
+              Ok(Expr::SexBlock {
+                  body: Box::new(body),
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse sex function declaration
+          fn parse_sex_function(&mut self, visibility: Visibility) -> Result<Declaration, ParseError> {
+              let start = self.current_span();
+              
+              // Already consumed 'sex', now expect 'fun'
+              self.expect(Token::Fun)?;
+              
+              let name = self.expect_identifier()?;
+              let params = self.parse_parameters()?;
+              
+              let return_type = if self.check(Token::Arrow) {
+                  self.advance();
+                  Some(self.parse_type()?)
+              } else {
+                  None
+              };
+              
+              let body = if self.check(Token::LBrace) {
+                  Some(self.parse_block()?)
+              } else {
+                  None
+              };
+              
+              Ok(Declaration::Function(FunctionDecl {
+                  visibility,
+                  purity: Purity::Sex,
+                  name,
+                  params,
+                  return_type,
+                  body,
+                  span: start.merge(&self.previous_span()),
+              }))
+          }
+          
+          /// Parse sex var declaration
+          fn parse_sex_var(&mut self) -> Result<Declaration, ParseError> {
+              let start = self.current_span();
+              
+              // Already consumed 'sex', now expect 'var'
+              self.expect(Token::Var)?;
+              
+              let name = self.expect_identifier()?;
+              
+              let type_ann = if self.check(Token::Colon) {
+                  self.advance();
+                  Some(self.parse_type()?)
+              } else {
+                  None
+              };
+              
+              let value = if self.check(Token::Equals) {
+                  self.advance();
+                  Some(self.parse_expr()?)
+              } else {
+                  None
+              };
+              
+              Ok(Declaration::GlobalVar(VarDecl {
+                  mutability: Mutability::Mutable,
+                  name,
+                  type_ann,
+                  value,
+                  span: start.merge(&self.previous_span()),
+              }))
+          }
+          
+          /// Parse sex extern declaration
+          fn parse_sex_extern(&mut self) -> Result<Declaration, ParseError> {
+              let start = self.current_span();
+              
+              // Already consumed 'sex', now expect 'extern'
+              self.expect(Token::Extern)?;
+              
+              // Optional ABI string: sex extern "C" { ... }
+              let abi = if self.check(Token::String) {
+                  Some(self.parse_string()?)
+              } else {
+                  None
+              };
+              
+              // Check for block or single function
+              if self.check(Token::LBrace) {
+                  // Extern block: sex extern "C" { fn a(); fn b(); }
+                  self.advance();
+                  let mut functions = Vec::new();
+                  
+                  while !self.check(Token::RBrace) {
+                      functions.push(self.parse_extern_function()?);
+                  }
+                  
+                  self.expect(Token::RBrace)?;
+                  
+                  Ok(Declaration::ExternBlock {
+                      abi,
+                      functions,
+                      span: start.merge(&self.previous_span()),
+                  })
+              } else {
+                  // Single extern function: sex extern fun malloc(...)
+                  self.expect(Token::Fun)?;
+                  let func = self.parse_extern_function()?;
+                  Ok(Declaration::Extern(func))
+              }
+          }
+          
+          /// Parse extern function signature
+          fn parse_extern_function(&mut self) -> Result<ExternDecl, ParseError> {
+              let start = self.current_span();
+              
+              let name = self.expect_identifier()?;
+              let params = self.parse_parameters()?;
+              
+              let return_type = if self.check(Token::Arrow) {
+                  self.advance();
+                  Some(self.parse_type()?)
+              } else {
+                  None
+              };
+              
+              Ok(ExternDecl {
+                  abi: None,  // Inherited from block
+                  name,
+                  params,
+                  return_type,
+                  span: start.merge(&self.previous_span()),
+              })
+          }
+          
+          /// Parse const declaration
+          fn parse_const(&mut self) -> Result<Declaration, ParseError> {
+              let start = self.current_span();
+              self.expect(Token::Const)?;
+              
+              let name = self.expect_identifier()?;
+              
+              let type_ann = if self.check(Token::Colon) {
+                  self.advance();
+                  Some(self.parse_type()?)
+              } else {
+                  None
+              };
+              
+              self.expect(Token::Equals)?;
+              let value = self.parse_expr()?;
+              
+              Ok(Declaration::Constant(VarDecl {
+                  mutability: Mutability::Immutable,
+                  name,
+                  type_ann,
+                  value: Some(value),
+                  span: start.merge(&self.previous_span()),
+              }))
+          }
+          
+          /// Main declaration parser update
+          fn parse_declaration(&mut self) -> Result<Declaration, ParseError> {
+              let visibility = self.parse_visibility();
+              
+              match self.current_token() {
+                  Token::Sex => {
+                      self.advance();
+                      match self.current_token() {
+                          Token::Fun => self.parse_sex_function(visibility),
+                          Token::Var => self.parse_sex_var(),
+                          Token::Extern => self.parse_sex_extern(),
+                          _ => Err(self.error("Expected 'fun', 'var', or 'extern' after 'sex'")),
+                      }
+                  }
+                  Token::Const => self.parse_const(),
+                  Token::Fun => self.parse_function(visibility, Purity::Pure),
+                  // ... other cases ...
+                  _ => Err(self.error("Expected declaration")),
+              }
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/parser.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Type Checker Updates
+  # ─────────────────────────────────────────────────────────────────
+  sex-typechecker:
+    name: SEX Type Checker
+    role: Implement effect tracking in type checker
+    dependencies:
+      - sex-parser
+    instructions: |
+      Update the type checker to track and validate effects.
+      
+      UPDATE src/typechecker.rs:
+      
+      ```rust
+      // ═══════════════════════════════════════════════════════════════
+      // Effect Tracking
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Effect context for tracking purity
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub enum EffectContext {
+          /// Pure context - no side effects allowed
+          Pure,
+          /// Sex context - side effects permitted
+          Sex,
+      }
+      
+      /// Type checker state extension
+      pub struct TypeChecker {
+          // ... existing fields ...
+          
+          /// Current effect context
+          effect_context: EffectContext,
+          
+          /// Stack of effect contexts (for nested blocks)
+          effect_stack: Vec<EffectContext>,
+      }
+      
+      impl TypeChecker {
+          /// Enter a sex context
+          fn enter_sex_context(&mut self) {
+              self.effect_stack.push(self.effect_context);
+              self.effect_context = EffectContext::Sex;
+          }
+          
+          /// Exit sex context
+          fn exit_sex_context(&mut self) {
+              self.effect_context = self.effect_stack.pop().unwrap_or(EffectContext::Pure);
+          }
+          
+          /// Check if currently in sex context
+          fn in_sex_context(&self) -> bool {
+              self.effect_context == EffectContext::Sex
+          }
+          
+          /// Error: sex in pure context
+          fn error_sex_in_pure(&self, span: &Span, what: &str) -> TypeError {
+              TypeError::SexInPure {
+                  message: format!("Cannot {} in pure context", what),
+                  span: span.clone(),
+                  hint: "Wrap in 'sex { }' block or mark function as 'sex fun'".to_string(),
+              }
+          }
+          
+          // ═════════════════════════════════════════════════════════════
+          // Type Checking with Effects
+          // ═════════════════════════════════════════════════════════════
+          
+          /// Check a sex block
+          fn check_sex_block(&mut self, body: &Block, span: &Span) -> Result<Type, TypeError> {
+              self.enter_sex_context();
+              let result = self.check_block(body);
+              self.exit_sex_context();
+              result
+          }
+          
+          /// Check a function call with effect tracking
+          fn check_call(&mut self, callee: &Expr, args: &[Expr], span: &Span) -> Result<Type, TypeError> {
+              let callee_type = self.check_expr(callee)?;
+              
+              // Check if callee is a sex function
+              if let Type::Function { purity: Purity::Sex, .. } = callee_type {
+                  if !self.in_sex_context() {
+                      return Err(self.error_sex_in_pure(span, "call sex function"));
+                  }
+              }
+              
+              // ... rest of call checking ...
+              self.check_call_args(&callee_type, args, span)
+          }
+          
+          /// Check global variable access
+          fn check_global_var(&mut self, name: &str, span: &Span) -> Result<Type, TypeError> {
+              if let Some(var) = self.globals.get(name) {
+                  if var.mutability == Mutability::Mutable && !self.in_sex_context() {
+                      return Err(self.error_sex_in_pure(span, "access mutable global"));
+                  }
+                  Ok(var.type_.clone())
+              } else {
+                  Err(TypeError::UndefinedVariable {
+                      name: name.to_string(),
+                      span: span.clone(),
+                  })
+              }
+          }
+          
+          /// Check assignment to mutable global
+          fn check_assignment(&mut self, target: &Expr, value: &Expr, span: &Span) -> Result<Type, TypeError> {
+              // Mutation requires sex context
+              if !self.in_sex_context() {
+                  return Err(self.error_sex_in_pure(span, "mutate variable"));
+              }
+              
+              let target_type = self.check_expr(target)?;
+              let value_type = self.check_expr(value)?;
+              
+              self.unify(&target_type, &value_type, span)?;
+              Ok(Type::Void)
+          }
+          
+          /// Check extern function declaration
+          fn check_extern(&mut self, decl: &ExternDecl) -> Result<(), TypeError> {
+              // Extern is implicitly sex
+              // Just register the function type
+              let param_types: Vec<Type> = decl.params.iter()
+                  .map(|p| self.resolve_type(&p.type_))
+                  .collect::<Result<Vec<_>, _>>()?;
+              
+              let return_type = decl.return_type.as_ref()
+                  .map(|t| self.resolve_type(t))
+                  .transpose()?
+                  .unwrap_or(Type::Void);
+              
+              let func_type = Type::Function {
+                  params: param_types,
+                  ret: Box::new(return_type),
+                  purity: Purity::Sex,  // All FFI is sex
+              };
+              
+              self.bind_global(&decl.name, func_type);
+              Ok(())
+          }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Type Definitions for Effects
+      // ═══════════════════════════════════════════════════════════════
+      
+      /// Extend Type enum with purity
+      pub enum Type {
+ ... existing variants ...
+          
+          /// Function type with purity annotation
+          Function {
+              params: Vec<Type>,
+              ret: Box<Type>,
+              purity: Purity,
+          },
+          
+          /// Sex wrapper type (for higher-order functions)
+          Sex(Box<Type>),
+          
+          // ... rest of variants ...
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // Error Types
+      // ═══════════════════════════════════════════════════════════════
+      
+      pub enum TypeError {
+          // ... existing variants ...
+          
+          /// Sex code in pure context
+          SexInPure {
+              message: String,
+              span: Span,
+              hint: String,
+          },
+          
+          /// Mutable global outside sex
+          MutableGlobalOutsideSex {
+              name: String,
+              span: Span,
+          },
+          
+          /// Extern outside sex
+          ExternOutsideSex {
+              name: String,
+              span: Span,
+          },
+          
+          // ... rest of variants ...
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/typechecker.rs
+
+  # ─────────────────────────────â────────────────────────
+  # Code Generator Updates
+  # ─────────────────────────────────────────────────────────────────
+  sex-codegen-rust:
+    name: SEX Rust Codegen
+    role: Generate Rust code for SEX constructs
+    dependencies:
+      - sex-typechecker
+    instructions: |
+      Update the Rust code generator for SEX constru
+      
+      UPDATE src/codegen/rust.rs:
+      
+      ```rust
+      impl RustCodegen {
+          // ═════════════════════════════════════════════════════════════
+          // SEX Code Generation
+          // ════════════════════════════════════════════════════════════â       
+          /// Generate code for sex function
+          fn gen_sex_function(&mut self, func: &FunctionDecl) -> String {
+              let mut output = String::new();
+              
+              // Add doc comment noting side effects
+              output.push_str("/// ⚠️ Side-effectful function\n");
+              
+              // Visibility
+              if func.visibility == Visibility::Public {
+                  output.push_str("pub ");
+              }
+              
+              output.pusr(&format!("fn {}(", func.name));
+              
+              // Parameters
+              let params: Vec<String> = func.params.iter()
+                  .map(|p| format!("{}: {}", p.name, self.gen_type(&p.type_)))
+                  .collect();
+              output.push_str(&params.join(", "));
+              output.push(')');
+              
+              // Return type
+              if let Some(ret) = &func.return_type {
+                  output.push_str(&format!(" -> {}", self.gen_type(ret)));
+              }
+              
+              // Body
+              if let Some(body) = &func.body {
+                  output.push_str(" {\n");
+                  output.push_str(&self.gen_block(body));
+                  output.push_str("}\n");
+              } else {
+                  output.push_str(";\n");
+              }
+              
+              output
+          }
+          
+          /// Generate code for sex block
+          fn gen_sex_block(&mut self, body: &Block) -> String {
+              // In Rust, we use unsafe for certain operations
+              // but most side effects don't need unsafe
+              let mut output = String::new();
+              
+              output.push_str("/* sex block */ {\n");
+              output.push_str(&self.gen_block(body));
+              output.push_str("}\n");
+              
+              output
+          }
+          
+          /// Generate code for global mutable variable
+          fn gen_global_var(&mut self, var: &VarDecl) -> String {
+              let mut output = String::new();
+              
+              // Mutable globals become static mut (unsafe in Rust)
+              output.push_str("static mut ");
+              output.push_str(&var.name.to_uppercase());
+              output.push_str(": ");
+              
+              if let Some(type_ann) = &var.type_ann {
+                  output.push_str(&self.gen_type(type_ann));
+              }
+              
+              if let Some(value) = &var.value {
+                  output.push_str(" = ");
+                  output.push_str(&self.gen_expr(value));
+              }
+              
+              output.push_str(";\n");
+              output
+          }
+          
+          /// Generate code for constant
+          fn gen_constant(&mut self, var: &VarDecl) -> String {
+              let mut output = String::new();
+              
+              output.push_str("const ");
+              output.push_str(&var.name.to_uppercase());
+              output.push_str(": ");
+              
+              if let Some(type_ann) = &var.type_ann {
+                  output.push_str(&self.gen_type(type_ann));
+              }
+              
+              output.push_str(" = ");
+              if let Some(value) = &var.value {
+                  output.push_str(&self.gen_expr(value));
+              }
+              
+              output.push_str(";\n");
+              output
+          }
+          
+          /// Generate code for extern declaration
+          fn gen_extern(&mut self, decl: &ExternDecl) -> String {
+              let mut output = String::new();
+              
+              let abi = decl.abi.as_deref().unwrap_or("C");
+              output.push_str(&format!("extern \"{}\" {{\n", abi));
+              
+              output.push_str("    fn ");
+              output.push_str(&decl.name);
+              output.push('(');
+              
+              let params: Vec<String> = decl.params.iter()
+                  .map(|p| format!("{}: {}", p.name, self.gen_type(&p.type_)))
+                  .collect();
+              output.push_str(&params.join(", "));
+              output.push(')');
+              
+              if let Some(ret) = &decl.return_type {
+                  output.push_str(&format!(" -> {}", self.gen_type(ret)));
+              }
+              
+              output.push_str(";\n}\n");
+              output
+          }
+          
+          /// Generate code for extern block
+          fn gen_extern_block(&mut self, abi: Option<&str>, functions: &[ExternDecl]) -> String {
+              let mut output = String::new();
+              
+              let abi = abi.unwrap_or("C");
+              output.push_str(&format!("extern \"{}\" {{\n", abi));
+              
+              for func in functions {
+                  output.push_str("    fn ");
+                  output.push_str(&func.name);
+                  output.push('(');
+                  
+                  let params: Vec<String> = func.params.iter()
+                      .map(|p| format!("{}: {}", p.name, self.gen_type(&p.type_)))
+                      .collect();
+                  output.push_str(&params.join(", "));
+                  output.push(')');
+                  
+                  if let Some(ret) = &func.return_type {
+                      output.push_str(&format!(" -> {}", self.gen_type(ret)));
+                  }
+                  
+                  output.push_str(";\n");
+              }
+              
+              output.push_str("}\n");
+              output
+          }
+          
+          /// Generate wrapper for mutable global access
+          fn gen_global_access(&mut self, name: &str) -> String {
+              // Access to static mut requires unsafe in Rust
+              format!("unsafe {{ {} }}", name.to_uppercase())
+          }
+          
+          /// Generate wrapper for mutable global mutation
+          fn gen_global_mutation(&mut self, name: &str, value: &str) -> String {
+              format!("unsafe {{ {} = {}; }}", name.to_uppercase(), value)
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/codegen/rust.rs
+
+  # ────────────────â──────────────────────────────────────────────
+  # File Context Detection
+  # ─────────────────────────────────────────────────────────────────
+  sex-file-context:
+    name: SEX File Context
+    role: Detect sex context from file path
+    dependencies:
+      - sex-parser
+    instructions: |
+      Create file context detection for .sex.dol files and sex/ directories.
+      
+      CREATE src/sex/mod.rs:
+      
+      ```rust
+      //! SEX (Side Effect eXecution) System
+      //!
+      //! This module handles:
+      //! - Effect tracking and propagation
+      //! - File-based sex context detection
+      //! - FFI wrapper generation
+      
+      pub mod context;
+      pub mod tracking;
+      pub mod lint;
+      
+      pub use context::SexContext;
+      pub use tracking::EffectTracker;
+      
+      use std::path::Path;
+      
+      /// Determine if a file is in sex context based on its path
+      pub fn is_sex_file(path: &Path) -> bool {
+          let path_str = path.to_string_lossy();
+          
+          // Check for .sex.dol extension
+          if path_str.ends_with(".sex.dol") {
+              return true;
+          }
+          
+          // Check if in sex/ directory
+          for component in path.components() {
+              if component.as_os_str() == "sex" {
+                  return true;
+              }
+          }
+          
+          false
+      }
+      
+      /// Get the sex context for a file
+      pub fn file_sex_context(path: &Path) -> SexContext {
+          if is_sex_file(path) {
+              SexContext::Sex
+          } else {
+              SexContext::Pure
+          }
+      }
+      
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+          
+          #[test]
+          fn test_sex_file_detection() {
+              assert!(is_sex_file(Path::new("io.sex.dol")));
+              assert!(is_sex_file(Path::new("src/sex/globals.dol")));
+              assert!(is_sex_file(Path::new("sex/ffi.dol")));
+              assert!(!is_sex_file(Path::new("container.dol")));
+              assert!(!is_sex_file(Path::new("src/genes/process.dol")));
+          }
+      }
+      ```
+      
+      CREATE src/sex/context.rs:
+      
+      ```rust
+      //! Sex context management
+      
+      use std::path::PathBuf;
+      
+      /// Sex context for a compilation unit
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub enum SexContext {
+          /// Pure context - no side effects allowed
+          Pure,
+          /// Sex context - side effects permitted
+          Sex,
+      }
+      
+      impl Default for SexContext {
+          fn default() -> Self {
+              SexContext::Pure
+          }
+      }
+      
+      /// Context for a specific file being compiled
+      #[derive(Debug, Clone)]
+      pub struct FileContext {
+          pub path: PathBuf,
+          pub sex_context: SexContext,
+      }
+      
+      impl FileContext {
+          pub fn new(path: PathBuf) -> Self {
+              let sex_context = super::file_sex_context(&path);
+              Self { path, sex_context }
+          }
+          
+          pub fn is_sex(&self) -> bool {
+              self.sex_context == SexContext::Sex
+          }
+      }
+      ```
+      
+      CREATE src/sex/tracking.rs:
+      
+      ```rust
+      //! Effect tracking for sex propagation
+      
+      use std::collections::HashSet;
+      use crate::ast::{Purity, Span};
+      
+      /// Tracks effects during type checking
+      #[derive(Debug, Default)]
+      pub struct EffectTracker {
+          /// Functions that have sex effects
+          sex_functions: HashSet<String>,
+          
+          /// Current effect context stack
+          context_stack: Vec<Purity>,
+          
+          /// Detected effect violations
+          violations: Vec<EffectViolation>,
+      }
+      
+      /// An effect violation
+      #[derive(Debug, Clone)]
+      pub struct EffectViolation {
+          pub kind: ViolationKind,
+          pub span: Span,
+          pub message: String,
+      }
+      
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub enum ViolationKind {
+          /// Sex function called from pure context
+          SexInPure,
+          /// Mutable global accessed outside sex
+          MutableGlobalOutsideSex,
+          /// FFI call outside sex
+          FfiOutsideSex,
+          /// I/O operation outside sex
+          IoOutsideSex,
+      }
+      
+      impl EffectTracker {
+          pub fn new() -> Self {
+              Self::default()
+          }
+          
+          /// Register a sex function
+          pub fn register_sex_function(&mut self, name: &str) {
+              self.sex_functions.insert(name.to_string());
+          }
+          
+          /// Check if a function is sex
+          pub fn is_sex_function(&self, name: &str) -> bool {
+              self.sex_functions.contains(name)
+          }
+          
+          /// Enter a context
+          pub fn push_context(&mut self, purity: Purity) {
+              self.context_stack.push(purity);
+          }
+          
+          /// Exit a context
+          pub fn pop_context(&mut self) {
+              self.context_stack.pop();
+          }
+          
+          /// Get current context
+          pub fn current_purity(&self) -> Purity {
+              self.context_stack.last().copied().unwrap_or(Purity::Pure)
+          }
+          
+          /// Check if in sex context
+          pub fn in_sex_context(&self) -> bool {
+              self.current_purity() == Purity::Sex
+          }
+          
+          /// Record a violation
+          pub fn record_violation(&mut self, kind: ViolationKind, span: Span, message: String) {
+              self.violations.push(EffectViolation { kind, span, message });
+          }
+          
+          /// Get all violations
+          pub fn violations(&self) -> &[EffectViolation] {
+              &self.violations
+          }
+          
+          /// Check if there are any violations
+          pub fn has_violations(&self) -> bool {
+              !self.violations.is_empty()
+          }
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/sex/mod.rs, ~/repos/metadol/src/sex/context.rs, ~/repos/metadol/src/sex/tracking.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # SEX Linting
+  # ────────────────────────────â────────────────────────
+  sex-lint:
+    name: SEX Linter
+    role: Implement SEX lint rules
+    dependencies:
+      - sex-file-context
+    instructions: |
+      Create lint rules for SEX code.
+      
+      CREATE src/sex/lint.rs:
+      
+      ```rust
+      //! SEX lint rules
+      //!
+      //! E001: Sex in pure context
+      //! E002: Mutable global outside sex
+      //! E003: FFI outside sex
+      //! E004: I/O outside sex
+      //! W001: Large sex block     //! W002: Sex function without documentation
+      
+      use crate::ast::{Declaration, Expr, FunctionDecl, Purity, Span};
+      use std::collections::HashSet;
+      
+      /// A lint diagnostic
+      #[derive(Debug, Clone)]
+      pub struct SexLint {
+          pub code: &'static str,
+          pub severity: Severity,
+          pub message: String,
+          pub span: Span,
+          pub suggestion: Option<String>,
+      }
+      
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      pub enum Severity {
+          Error,
+          Warning,
+          Info,
+      }
+      
+      /// Sex linter
+      #[derive(Debug, Default)]
+      pub struct SexLinter {
+          diagnostics: Vec<SexLint>,
+          sex_function_names: HashSet<String>,
+          current_purity: Purity,
+      }
+      
+      impl SexLinter {
+          pub fn new() -> Self {
+              Self::default()
+          }
+          
+          /// Lint a function
+          pub fn lint_function(&mut self, func: &FunctionDecl) {
+              // W002: Sex function without documentation
+              if func.purity == Purity::Sex {
+                  self.sex_function_names.insert(func.name.clone());
+                  
+                  // Check for exegesis/doc comment
+                  // (This would require tracking comments in AST)
+              }
+          }
+          
+          /// Lint a function call
+          pub fn lint_call(&mut self, callee: &str, span: &Span) {
+              // E001: Sex in pure context
+              if self.sex_function_names.contains(callee) && self.current_purity == Purity::Pure {
+                  self.diagnostics.push(SexLint {
+                      code: "E001",
+                      severity: Severity::Error,
+                      message: format!("Cannot call sex function '{}' in pure context", callee),
+                      span: span.clone(),
+                      suggestion: Some("Wrap in 'sex { }' block or mark function as 'sex fun'".to_string()),
+                  });
+              }
+          }
+          
+          /// Lint a sex block
+          pub fn lint_sex_block(&mut self, body_size: usize, span: &Span) {
+              // W001: Large sex block
+              if body_size > 20 {
+                  self.diagnostics.push(SexLint {
+                      code: "W001",
+                      severity: Severity::Warning,
+                      message: "Large sex block - consider extracting to sex function".to_string(),
+                      span: span.clone(),
+                      suggestion: Some("Extract to 'sex fun name() { ... }'".to_string()),
+                  });
+              }
+          }
+          
+          /// Enter sex context
+          pub fn enter_sex(&mut self) {
+              self.current_purity = Purity::Sex;
+          }
+          
+          /// Exit sex context
+          pub fn exit_sex(&mut self) {
+              self.current_purity = Purity::Pure;
+          }
+          
+          /// Get all diagnostics
+          pub fn diagnostics(&self) -> &[SexLint] {
+              &self.diagnostics
+          }
+          
+          /// Get errors only
+          pub fn errors(&self) -> Vec<&SexLint> {
+              self.diagnostics.iter()
+                  .filter(|d| d.severity == Severity::Error)
+                  .collect()
+          }
+          
+          /// Get warnings only
+          pub fn warnings(&self) -> Vec<&SexLint> {
+              self.diagnostics.iter()
+                  .filter(|d| d.severity == Severity::Warning)
+                  .collect()
+          }
+      }
+      
+      /// Known I/O functions that require sex
+      pub const IO_FUNCTIONS: &[&str] = &[
+          "println", "print", "read", "write",
+          "read_file", "write_file", "open", "close",
+          "http_get", "http_post", "connect", "listen",
+          "random", "random_int", "random_float",
+          "now", "sleep", "timestamp",
+      ];
+      
+      /// Check if a function name is a known I/O function
+      pub fn is_io_function(name: &str) -> bool {
+          IO_FUNCTIONS.contains(&name)
+      }
+      ```
+      
+      FILE: ~/repos/metadol/src/sex/lint.rs
+
+  # ─────────────────────────────────────────────────────────────────
+  # Tests
+  # ─────────────────────────────────────────────────────────────────
+  sex-tests:
+    name: SEX Tests
+    role: Write comprehensive tests for SEX em
+    dependencies:
+      - sex-lint
+    instructions: |
+      Create tests for the SEX system.
+      
+      CREATE tests/sex_tests.rs:
+      
+      ```rust
+      //! Tests for SEX (Side Effect eXecution) system
+      
+      use metadol::{parse, typecheck};
+      use metadol::sex::{is_sex_file, EffectTracker, SexLinter};
+      use std::path::Path;
+      
+      // ════════════════════════════════════════════════â═════════════
+      // File Context Tests
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_sex_file_extension() {
+          assert!(is_sex_file(Path::new("io.sex.dol")));
+          assert!(is_sex_file(Path::new("network.sex.dol")));
+          assert!(!is_sex_file(Path::new("container.dol")));
+    
+      #[test]
+      fn test_sex_directory() {
+          assert!(is_sex_file(Path::new("sex/globals.dol")));
+          assert!(is_sex_file(Path::new("src/sex/io.dol")));
+          assert!(!is_sex_file(Path::new("src/genes/process.dol")));
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Parsing Tests
+      // ═══════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_parse_sex_function() {
+          let source = r#"
+              sex fun log(msg: String) -> Void {
+                  println(msg)
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_pub_sex_function() {
+          lr#"
+              pub sex fun increment() -> Int64 {
+                  COUNTER += 1
+                  return COUNTER
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_sex_var() {
+          let source = r#"
+              sex var COUNTER: Int64 = 0
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_const() {
+          let source = r#"
+              const MAX_SIZE: Int64 = 100
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_sex_extern() {
+          let source = r#"
+              sex extern fun malloc(size: UInt64) -> Ptr<Void>
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_sex_extern_block() {
+          let source = r#"
+              sex extern "C" {
+                  fun getpid() -> Int32
+                  fun fork() -> Int32
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_parse_sex_block() {
+          let source = r#"
+              fun mostly_pure(x: Int64) -> Int64 {
+                  result = x * 2
+                  sex {
+                      println("Result: " + result)
+                  }
+                  return result
+              }
+          "#;
+          let result = parse(source);
+          assert!(result.is_ok());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Type Checking Tests
+      // ═══════════════════════════════════════════════════════════════
+ #[test]
+      fn test_sex_function_allowed_in_sex_context() {
+          let source = r#"
+              sex fun log(msg: String) -> Void { }
+              
+              sex fun caller() -> Void {
+                  log("hello")
+              }
+          "#;
+          let ast = parse(source).unwrap();
+          let result = typecheck(&ast);
+          assert!(result.is_ok());
+      }
+      
+      #[test]
+      fn test_sex_function_error_in_pure_context() {
+          let source = r#"
+              sex fun log(msg: String) -> Void { }
+              
+              fun pure_caller() -> Void {
+                  log("hello")  // ERROR: sex in pure
+              }
+          "#;
+          let ast = parse(source).unwrap();
+          let result = typecheck(&ast);
+          assert!(result.is_err());
+      }
+      
+      #[test]
+      fn test_sex_block_allows_sex_calls() {
+          let source = r#"
+              sex fun log(msg: String) -> Void { }
+              
+              fun mixed() -> Void {
+                  sex {
+                      log("hello")  // OK: in sex block
+                  }
+              }
+          "#;
+          let ast = parse(source).unwrap();
+          let result = typecheck(&ast);
+          assert!(result.is_ok());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Effect Tracking Tests
+      // ═══════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_effect_tracker() {
+          use metadol::ast::Purity;
+          
+          let mut tracker = EffectTracker::new();
+          
+          // Register sex function
+          tracker.register_sex_function("log");
+          assert!(tracker.is_sex_function("log"));
+          assert!(!tracker.is_sex_function("pure_fn"));
+          
+          // Context management
+          assert_eq!(tracker.current_purity(), Purity::Pure);
+          
+          tracker.push_context(Purity::Sex);
+          assert!(tracker.in_sex_context());
+          
+          tracker.pop_context();
+          assert!(!tracker.in_sex_context());
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // Lint Tes═════════════════════════════════════════════════════════════
+      
+      #[test]
+      fn test_lint_sex_in_pure() {
+          use metadol::ast::Span;
+          
+          let mut linter = SexLinter::new();
+          
+          // Register a sex function
+          // (Would normally come from parsing)
+          
+          // Check for E001 error
+          let diagnostics = linter.diagno         // Would check for E001 errors here
+      }
+      
+      #[test]
+      fn test_lint_large_sex_block() {
+          use metadol::ast::Span;
+          
+          let mut linter = SexLinter::new();
+          
+          // Large sex block should trigger W001
+          linter.lint_sex_block(25, &Span::default());
+          
+          let warnings = linter.warnings();
+          assert!(!warnings.is_empty());
+          assert_eq!(warnings[0].code, "W001");
+      }
+      ```
+      
+      FILE: ~/repos/metadol/tests/sex_tests.rs
+
+# ═══════════════════════════════════════════════════════════════════
+# WORKFLOWS
+# ═══════════════════════════════════════════════════════════════════
+
+workflows:
+  sex-full:
+    name: Full SEX System Implementation
+     Implement complete SEX system
+    stages:
+      - name: lexer-parser
+        description: Lexer and parser updates
+        agents:
+          - sex-lexer
+          - sex-ast
+          - sex-parser
+          
+      - name: typechecker
+        description: Effect tracking in type checker
+        agents:
+          - sex-typechecker
+        depends_on:
+          - lexer-parser
+          
+      - name: codegen
+        description: Code generation
+        agents:
+          - sex-codegen-rust
+        depends_on:
+          - typechecker
+          
+      - name: infrastructure
+        description: File context and tracking
+        agents:
+          - sex-file-context
+          - sex-lint
+        depends_on:
+          - lexer-parser
+          
+      - name: tests
+        description: Comprehensive tests
+        agents:
+          - sex-tests
+        depends_on:
+          - codegen
+          - infrastructure
+
+  parsing-only:
+    name: SEX Parsing Only
+    stages:
+      - name: parsing
+        agents: [sex-lexer, sex-ast, sex-parser]
+
+  tracking-only:
+    name: SEX Tracking Only
+    stages:
+      - name: tracking
+        agents: [sex-file-context, sex-lint]
+
+# ═══════════════════════════════════════════════════════════════════
+# CHECKPOINTS
+# ══════════════════════════════════════════════════â════
+
+checkpoints:
+  parsing-complete:
+    trigger: command_success
+    command: "cargo test sex_parse"
+    message: "SEX parsing implemented"
+
+  typechecker-complete:
+    trigger: command_success
+    command: "cargo test sex_type"
+    message: "SEX type checking implemented"
+
+  tests-pass:
+    trigger: command_success
+    command: "cargo test sex"
+    message: "All SEX tests passing"
+
+  sex-complete:
+    trigger: all_checkpoints
+    checkpoints:
+      - parsing-complete
+      - typechecker-compl- tests-pass
+    message: |
+      ═══════════════════════════════════════════════════════════════
+      SEX SYSTEM IMPLEMENTATION COMPLETE
+      
+      Implemented:
+      - sex fun: Functions with side effects
+      - sex var: Mutable global variables
+      - sex { }: Inline effect blocks
+      - sex extern: FFI declarations
+      - pub: Visibility modifier
+      - const: Immutable c - Effect tracking in type checker
+      - File-based sex context (.sex.dol, sex/)
+      - Lint rules (E001-E004, W001-W002)
+      - Rust code generation for all constructs
+      
+      Philosophy:
+      "In pure functional programming, sex is forbidden.
+       In DOL, sex is acknowledged, contained, and tracked.
+       Because sometimes, to create something new,
+       boundaries must be crossed."
+      ══════════════════════════════════â══════════════════════

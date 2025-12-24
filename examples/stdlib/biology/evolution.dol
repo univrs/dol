@@ -1,0 +1,254 @@
+// ═══════════════════════════════════════════════════════════════
+// Evolution - Speciation and Lineage Tracking
+// ═══════════════════════════════════════════════════════════════
+
+module biology.evolution @ 1.0.0
+
+use biology.types.{ GeoTime, Generation }
+
+/// Genetic trait (simplified)
+pub gene Trait {
+  has name: String
+  has value: Float64
+  has heritability: Float64  // 0.0 - 1.0
+  has mutation_rate: Float64
+
+  constraint heritability_bounds {
+    this.heritability >= 0.0 && this.heritability <= 1.0
+  }
+
+  constraint mutation_rate_bounds {
+    this.mutation_rate >= 0.0 && this.mutation_rate <= 1.0
+  }
+
+  /// Inherit trait with possible mutation
+  fun inherit(parent_value: Float64) -> Trait {
+    // Heritability determines how much of parent value is kept
+    inherited = parent_value * this.heritability
+
+    // Mutation adds variance
+    mutation = if random() < this.mutation_rate {
+      (random() - 0.5) * 0.1  // Small random change
+    } else {
+      0.0
+    }
+
+    return Trait {
+      ...this,
+      value: inherited + mutation
+    }
+  }
+
+  exegesis {
+    A heritable trait subject to mutation.
+    Heritability determines parent-offspring correlation.
+  }
+}
+
+/// Genome (collection of traits)
+pub gene Genome {
+  has traits: Map<String, Trait>
+  has fitness: Float64
+
+  constraint positive_fitness {
+    this.fitness >= 0.0
+  }
+
+  /// Calculate fitness from traits (placeholder)
+  fun calculate_fitness(environment: Environment) -> Float64 {
+    // Fitness is environment-dependent
+    total = 0.0
+    for (name, trait) in this.traits {
+      optimal = environment.optimal_values.get(name).unwrap_or(0.5)
+      distance = (trait.value - optimal).abs()
+      total += 1.0 - distance  // Closer to optimal = higher fitness
+    }
+    return total / this.traits.len() as Float64
+  }
+
+  /// Sexual reproduction (recombination)
+  fun recombine(other: Genome) -> Genome {
+    new_traits = Map.new()
+    for (name, trait) in this.traits {
+      other_trait = other.traits.get(name)
+      // 50% chance to inherit from each parent
+      chosen = if random() < 0.5 { trait } else { other_trait }
+      // Then possibly mutate
+      new_traits.insert(name, chosen.inherit(chosen.value))
+    }
+    return Genome { traits: new_traits, fitness: 0.0 }
+  }
+
+  exegesis {
+    A genome as a collection of heritable traits.
+    Fitness is calculated relative to environment.
+  }
+}
+
+/// Species lineage for tracking evolution
+pub gene Lineage {
+  has ancestor_id: Option<UInt64>
+  has divergence_time: GeoTime
+  has innovations: List<String>  // Key evolutionary innovations
+
+  exegesis {
+    Tracks evolutionary lineage and innovations.
+    Used for phylogenetic reconstruction.
+  }
+}
+
+/// Trait for entities that can evolve
+pub trait Evolvable {
+  /// Mutate traits
+  is mutate(rate: Float64) -> Self
+
+  /// Reproduce with recombination
+  is reproduce(other: Self) -> Self
+
+  /// Calculate fitness in environment
+  is fitness(env: Environment) -> Float64
+
+  /// Check if speciation should occur
+  is should_speciate(population: List<Self>) -> Bool
+
+  law fitness_inheritance {
+    // Offspring fitness correlates with parent fitness
+    // (but not perfectly due to recombination and mutation)
+    forall p1: Self, p2: Self.
+      offspring = p1.reproduce(p2).
+      offspring.fitness(env) is_correlated_with
+        (p1.fitness(env) + p2.fitness(env)) / 2.0
+  }
+
+  law speciation_requires_isolation {
+    // Speciation requires some form of isolation
+    forall population: List<Self>.
+      self.should_speciate(population) implies
+        (reproductive_isolation(self, population) > threshold)
+  }
+
+  exegesis {
+    Evolvable trait for entities subject to evolution.
+    Combines mutation, recombination, and selection.
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Using DOL's evolves keyword for speciation
+// ─────────────────────────────────────────────────────────────────
+
+/// Base organism
+pub gene Organism {
+  has species_id: UInt64
+  has genome: Genome
+  has lineage: Lineage
+  has generation: Generation
+
+  exegesis {
+    Base organism type from which species evolve.
+  }
+}
+
+/// Prokaryote evolved from Organism
+evolves Organism > Prokaryote @ 3.5Gya {
+  removed eukaryotic_features
+
+  added cell_wall: CellWall
+  added circular_chromosome: Bool = true
+
+  constraint no_nucleus {
+    // Prokaryotes lack membrane-bound nucleus
+    not this.has_nucleus
+  }
+
+  migrate from Organism {
+    return Prokaryote {
+      species_id: old.species_id,
+      genome: old.genome,
+      lineage: Lineage {
+        ancestor_id: Some(old.species_id),
+        divergence_time: GeoTime { mya: 3500.0 },
+        innovations: ["cell_wall", "circular_chromosome"]
+      },
+      generation: old.generation,
+      cell_wall: CellWall.default(),
+      circular_chromosome: true
+    }
+  }
+
+  exegesis {
+    Prokaryotes: first cellular life forms.
+    Evolved ~3.5 billion years ago.
+    Lack membrane-bound organelles.
+  }
+}
+
+/// Eukaryote evolved from Organism (via endosymbiosis)
+evolves Organism > Eukaryote @ 2.0Gya {
+  added nucleus: Nucleus
+  added mitochondria: List<Mitochondrion>
+  added endomembrane_system: Bool = true
+
+  constraint has_nucleus {
+    this.nucleus is not null
+  }
+
+  constraint has_mitochondria {
+    // All eukaryotes have mitochondria (or remnants)
+    this.mitochondria.len() >= 1
+  }
+
+  migrate from Organism {
+    return Eukaryote {
+      species_id: old.species_id,
+      genome: old.genome,
+      lineage: Lineage {
+        ancestor_id: Some(old.species_id),
+        divergence_time: GeoTime { mya: 2000.0 },
+        innovations: ["nucleus", "mitochondria", "endosymbiosis"]
+      },
+      generation: old.generation,
+      nucleus: Nucleus.default(),
+      mitochondria: [Mitochondrion.default()],
+      endomembrane_system: true
+    }
+  }
+
+  exegesis {
+    Eukaryotes: complex cells with membrane-bound organelles.
+    Evolved ~2 billion years ago via endosymbiosis.
+    Mitochondria were once free-living bacteria.
+  }
+}
+
+/// Fungi evolved from Eukaryote
+evolves Eukaryote > Fungus @ 1.0Gya {
+  added chitin_cell_wall: Bool = true
+  added hyphal_growth: Bool = true
+
+  removed chloroplasts
+
+  constraint heterotrophic {
+    // Fungi are heterotrophs (cannot photosynthesize)
+    not this.can_photosynthesize
+  }
+
+  migrate from Eukaryote {
+    return Fungus {
+      ...old,
+      lineage: Lineage {
+        ancestor_id: Some(old.species_id),
+        divergence_time: GeoTime { mya: 1000.0 },
+        innovations: ["chitin_wall", "hyphal_growth", "heterotrophy"]
+      },
+      chitin_cell_wall: true,
+      hyphal_growth: true
+    }
+  }
+
+  exegesis {
+    Fungi: heterotrophic eukaryotes with chitin cell walls.
+    Evolved ~1 billion years ago.
+    Include yeasts, molds, and mushrooms.
+  }
+}

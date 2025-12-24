@@ -718,6 +718,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "dol"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "colored",
+ "criterion",
+ "home",
+ "insta",
+ "logos",
+ "melior",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "wasmtime",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1223,26 +1243,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "metadol"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "clap",
- "colored",
- "criterion",
- "home",
- "insta",
- "logos",
- "melior",
- "pretty_assertions",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "wasmtime",
 ]
 
 [[package]]

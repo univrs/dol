@@ -1,0 +1,169 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL Biological Types - Foundation for Life Modeling
+// ═══════════════════════════════════════════════════════════════
+
+module biology.types @ 1.0.0
+
+// ─────────────────────────────────────────────────────────────────
+// Spatial Types
+// ─────────────────────────────────────────────────────────────────
+
+/// 3D position vector
+pub gene Vec3 {
+  has x: Float64
+  has y: Float64
+  has z: Float64
+
+  fun magnitude() -> Float64 {
+    return (this.x * this.x + this.y * this.y + this.z * this.z).sqrt()
+  }
+
+  fun normalize() -> Vec3 {
+    mag = this.magnitude()
+    return Vec3 { x: this.x / mag, y: this.y / mag, z: this.z / mag }
+  }
+
+  fun dot(other: Vec3) -> Float64 {
+    return this.x * other.x + this.y * other.y + this.z * other.z
+  }
+
+  exegesis {
+    Three-dimensional vector for spatial positioning.
+    Used for hyphal growth direction, nutrient gradients, etc.
+  }
+}
+
+/// Gradient field - maps positions to intensity
+pub gene Gradient<T> {
+  has origin: Vec3
+  has direction: Vec3
+  has intensity: T
+  has decay_rate: Float64
+
+  fun sample_at(pos: Vec3) -> T {
+    distance = (pos.x - this.origin.x).abs() +
+               (pos.y - this.origin.y).abs() +
+               (pos.z - this.origin.z).abs()
+    factor = (-distance * this.decay_rate).exp()
+    return this.intensity * factor
+  }
+
+  exegesis {
+    Spatial gradient field with exponential decay.
+    Models nutrient concentration, chemical signals, etc.
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Resource Types
+// ─────────────────────────────────────────────────────────────────
+
+/// Elemental nutrients (Redfield ratio)
+pub gene Nutrient {
+  has carbon: Float64
+  has nitrogen: Float64
+  has phosphorus: Float64
+  has water: Float64
+
+  constraint non_negative {
+    this.carbon >= 0.0 &&
+    this.nitrogen >= 0.0 &&
+    this.phosphorus >= 0.0 &&
+    this.water >= 0.0
+  }
+
+  constraint stoichiometry {
+    // Redfield ratio: C:N:P ≈ 106:16:1
+    // Allow some flexibility: C/N between 6-10
+    this.nitrogen > 0.0 implies (
+      this.carbon / this.nitrogen >= 6.0 &&
+      this.carbon / this.nitrogen <= 10.0
+    )
+  }
+
+  fun total_mass() -> Float64 {
+    return this.carbon + this.nitrogen + this.phosphorus + this.water
+  }
+
+  fun combine(other: Nutrient) -> Nutrient {
+    return Nutrient {
+      carbon: this.carbon + other.carbon,
+      nitrogen: this.nitrogen + other.nitrogen,
+      phosphorus: this.phosphorus + other.phosphorus,
+      water: this.water + other.water
+    }
+  }
+
+  exegesis {
+    Nutrient package following ecological stoichiometry.
+    The Redfield ratio (C:N:P ≈ 106:16:1) constrains valid
+    nutrient compositions for biological realism.
+  }
+}
+
+/// Energy quantum for trophic transfers
+pub gene Energy {
+  has joules: Float64
+  has quality: Float64  // 0.0 = heat, 1.0 = chemical potential
+
+  constraint positive {
+    this.joules >= 0.0
+  }
+
+  constraint quality_bounds {
+    this.quality >= 0.0 && this.quality <= 1.0
+  }
+
+  /// Trophic transfer loses ~90% of energy
+  fun trophic_transfer() -> Energy {
+    return Energy {
+      joules: this.joules * 0.10,
+      quality: this.quality * 0.8  // Also degrades
+    }
+  }
+
+  exegesis {
+    Energy packet for ecological energy flow.
+    Encodes the ~10% trophic transfer efficiency.
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Temporal Types
+// ─────────────────────────────────────────────────────────────────
+
+/// Geological time (for evolution tracking)
+pub gene GeoTime {
+  has mya: Float64  // Millions of years ago
+
+  constraint non_negative {
+    this.mya >= 0.0
+  }
+
+  fun is_before(other: GeoTime) -> Bool {
+    return this.mya > other.mya  // Larger MYA = earlier
+  }
+
+  exegesis {
+    Geological time for evolutionary lineage tracking.
+    Measured in millions of years ago (MYA).
+  }
+}
+
+/// Generation counter for population dynamics
+pub gene Generation {
+  has count: UInt64
+  has started_at: Timestamp
+
+  fun next() -> Generation {
+    return Generation {
+      count: this.count + 1,
+      started_at: Timestamp.now()
+    }
+  }
+
+  exegesis {
+    Generation marker for tracking evolutionary time
+    in population dynamics simulations.
+  }
+}

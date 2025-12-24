@@ -1,0 +1,222 @@
+// ═══════════════════════════════════════════════════════════════
+// Hyphal Growth - Mycelium Network Primitives
+// ═══════════════════════════════════════════════════════════════
+
+module biology.hyphal @ 1.0.0
+
+use biology.types.{ Vec3, Gradient, Nutrient }
+
+/// State of a hyphal tip
+pub gene HyphalTip {
+  has position: Vec3
+  has direction: Vec3
+  has age: Float64
+  has branching_potential: Float64
+  has nutrients_absorbed: Nutrient
+
+  constraint unit_direction {
+    this.direction.magnitude() >= 0.99 &&
+    this.direction.magnitude() <= 1.01
+  }
+
+  constraint positive_age {
+    this.age >= 0.0
+  }
+
+  exegesis {
+    The growing tip of a fungal hypha.
+    Direction is a unit vector indicating growth heading.
+    Branching potential increases with nutrient absorption.
+  }
+}
+
+/// Hyphal segment (between tips and branches)
+pub gene HyphalSegment {
+  has start: Vec3
+  has end: Vec3
+  has diameter: Float64
+  has transport_capacity: Float64
+
+  constraint positive_diameter {
+    this.diameter > 0.0
+  }
+
+  fun length() -> Float64 {
+    dx = this.end.x - this.start.x
+    dy = this.end.y - this.start.y
+    dz = this.end.z - this.start.z
+    return (dx * dx + dy * dy + dz * dz).sqrt()
+  }
+
+  exegesis {
+    A tubular segment of hypha connecting nodes.
+    Transport capacity determines nutrient flow rate.
+  }
+}
+
+/// Trait for hyphal-like growth behavior
+pub trait Hyphal {
+  /// Extend toward nutrient gradient
+  is extend(gradient: Gradient<Nutrient>) -> Self
+
+  /// Branch into multiple hyphae
+  is branch(factor: Float64) -> List<Self>
+
+  /// Fuse with another hypha (anastomosis)
+  is fuse(other: Self) -> Option<Self>
+
+  /// Absorb nutrients at current position
+  is absorb(available: Nutrient) -> Tuple<Self, Nutrient>
+
+  /// Check if ready to fruit
+  is can_fruit() -> Bool
+
+  // ─────────────────────────────────────────────────────────────
+  // Laws (Biological Constraints)
+  // ─────────────────────────────────────────────────────────────
+
+  law conservation_of_mass {
+    // Mass in = mass out + mass stored
+    forall self: Self.
+      self.absorbed_mass() ==
+        self.transported_mass() + self.stored_mass()
+  }
+
+  law branching_conserves_potential {
+    // Branching distributes potential, doesn't create it
+    forall self: Self, factor: Float64.
+      sum(self.branch(factor).map(|b| b.branching_potential))
+        <= self.branching_potential
+  }
+
+  law fusion_requires_compatibility {
+    // Only compatible hyphae can fuse (same species/network)
+    forall a: Self, b: Self.
+      a.fuse(b).is_some() implies a.is_compatible(b)
+  }
+
+  exegesis {
+    Hyphal trait encodes fungal growth behaviors:
+    - Chemotropic extension toward nutrients
+    - Branching to explore space
+    - Anastomosis (fusion) to form networks
+    - Nutrient absorption and transport
+
+    These patterns apply to any network that "grows"
+    toward resources: neural networks, vascular systems,
+    social networks, supply chains.
+  }
+}
+
+/// Default implementation for HyphalTip
+impl Hyphal for HyphalTip {
+  fun extend(gradient: Gradient<Nutrient>) -> HyphalTip {
+    // Sample gradient to determine turn angle
+    nutrient_level = gradient.sample_at(this.position)
+
+    // Bias direction toward higher concentration
+    new_direction = this.direction
+      .combine(gradient.direction, weight: nutrient_level.total_mass())
+      .normalize()
+
+    // Calculate new position
+    growth_rate = 0.1 + nutrient_level.total_mass() * 0.01
+    new_position = Vec3 {
+      x: this.position.x + new_direction.x * growth_rate,
+      y: this.position.y + new_direction.y * growth_rate,
+      z: this.position.z + new_direction.z * growth_rate
+    }
+
+    return HyphalTip {
+      position: new_position,
+      direction: new_direction,
+      age: this.age + 1.0,
+      branching_potential: this.branching_potential + nutrient_level.total_mass() * 0.1,
+      nutrients_absorbed: this.nutrients_absorbed
+    }
+  }
+
+  fun branch(factor: Float64) -> List<HyphalTip> {
+    if this.branching_potential < factor {
+      return [this]  // Not enough potential
+    }
+
+    // Create two branches at angles
+    branch_angle = 0.5  // radians
+
+    left_dir = this.direction.rotate_y(branch_angle)
+    right_dir = this.direction.rotate_y(-branch_angle)
+
+    return [
+      HyphalTip {
+        position: this.position,
+        direction: left_dir,
+        age: 0.0,
+        branching_potential: this.branching_potential / 2.0,
+        nutrients_absorbed: Nutrient.zero()
+      },
+      HyphalTip {
+        position: this.position,
+        direction: right_dir,
+        age: 0.0,
+        branching_potential: this.branching_potential / 2.0,
+        nutrients_absorbed: Nutrient.zero()
+      }
+    ]
+  }
+
+  fun fuse(other: HyphalTip) -> Option<HyphalTip> {
+    // Check proximity
+    distance = (this.position.x - other.position.x).abs() +
+               (this.position.y - other.position.y).abs() +
+               (this.position.z - other.position.z).abs()
+
+    if distance > 0.5 {
+      return None  // Too far apart
+    }
+
+    // Merge nutrients and potential
+    return Some(HyphalTip {
+      position: Vec3 {
+        x: (this.position.x + other.position.x) / 2.0,
+        y: (this.position.y + other.position.y) / 2.0,
+        z: (this.position.z + other.position.z) / 2.0
+      },
+      direction: this.direction.combine(other.direction, weight: 0.5).normalize(),
+      age: max(this.age, other.age),
+      branching_potential: this.branching_potential + other.branching_potential,
+      nutrients_absorbed: this.nutrients_absorbed.combine(other.nutrients_absorbed)
+    })
+  }
+
+  fun absorb(available: Nutrient) -> Tuple<HyphalTip, Nutrient> {
+    // Absorb up to capacity
+    absorption_rate = 0.1
+    absorbed = Nutrient {
+      carbon: available.carbon * absorption_rate,
+      nitrogen: available.nitrogen * absorption_rate,
+      phosphorus: available.phosphorus * absorption_rate,
+      water: available.water * absorption_rate
+    }
+
+    remaining = Nutrient {
+      carbon: available.carbon - absorbed.carbon,
+      nitrogen: available.nitrogen - absorbed.nitrogen,
+      phosphorus: available.phosphorus - absorbed.phosphorus,
+      water: available.water - absorbed.water
+    }
+
+    new_tip = HyphalTip {
+      ...this,
+      nutrients_absorbed: this.nutrients_absorbed.combine(absorbed)
+    }
+
+    return (new_tip, remaining)
+  }
+
+  fun can_fruit() -> Bool {
+    // Fruiting requires accumulated nutrients and age
+    return this.nutrients_absorbed.total_mass() > 100.0 &&
+           this.age > 10.0
+  }
+}
