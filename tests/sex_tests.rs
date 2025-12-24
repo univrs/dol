@@ -657,7 +657,10 @@ fn test_codegen_sex_function() {
     let gen = RustCodegen::new();
 
     let func = FunctionDecl {
+        visibility: Visibility::Public,
+        purity: Purity::Sex,
         name: "log".to_string(),
+        type_params: None,
         params: vec![FunctionParam {
             name: "msg".to_string(),
             type_ann: TypeExpr::Named("String".to_string()),
