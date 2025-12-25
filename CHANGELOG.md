@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2024-12-25 - "Community"
+
 ### Added
+- **CHANGELOG.md** - Keep a Changelog format with full version history
+- **GitHub Issue Templates** (`.github/ISSUE_TEMPLATE/`)
+  - Bug report template with DOL code blocks
+  - Feature request template with syntax proposals
+  - Documentation issue template
+  - Template chooser config with helpful links
+- **Release Workflow** (`.github/workflows/release.yml`)
+  - Automated builds for Linux, macOS (x86_64 + ARM), Windows
+  - GitHub Release creation with changelog excerpt
+  - crates.io publishing support
+
+### Fixed
 - Improved codegen operators with Box for HasField variant
 
 ## [0.2.0] - 2024-12-25 - "Meta-Programming"
@@ -114,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/univrs/dol/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/univrs/dol/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/univrs/dol/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/univrs/dol/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/univrs/dol/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/univrs/dol/releases/tag/v0.0.1
