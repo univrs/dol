@@ -126,6 +126,31 @@ pub fn to_snake_case(s: &str) -> String {
         .collect()
 }
 
+/// Rust reserved keywords that need r# escaping when used as identifiers.
+const RUST_KEYWORDS: &[&str] = &[
+    // Strict keywords
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", // Reserved keywords
+    "abstract", "become", "box", "do", "final", "macro", "override", "priv", "try", "typeof",
+    "unsized", "virtual", "yield",
+];
+
+/// Escape a Rust keyword with r# prefix if necessary.
+pub fn escape_rust_keyword(s: &str) -> String {
+    if RUST_KEYWORDS.contains(&s) {
+        format!("r#{}", s)
+    } else {
+        s.to_string()
+    }
+}
+
+/// Convert a DOL identifier to a valid Rust identifier (snake_case, keyword-escaped).
+pub fn to_rust_ident(s: &str) -> String {
+    escape_rust_keyword(&to_snake_case(s))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

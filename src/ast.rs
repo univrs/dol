@@ -694,6 +694,9 @@ pub enum Statement {
         /// Source location
         span: Span,
     },
+
+    /// Function declaration inside a gene or trait: `fun name(...) -> Type { ... }`
+    Function(Box<FunctionDecl>),
 }
 
 /// Quantifier for statements.
@@ -883,6 +886,8 @@ pub enum Expr {
     Literal(Literal),
     /// Variable or identifier reference
     Identifier(String),
+    /// List literal: [expr, expr, ...]
+    List(Vec<Expr>),
     /// Binary operation
     Binary {
         /// Left operand
@@ -999,6 +1004,8 @@ pub enum Literal {
     Float(f64),
     /// String literal
     String(String),
+    /// Character literal
+    Char(char),
     /// Boolean literal
     Bool(bool),
     /// Null literal

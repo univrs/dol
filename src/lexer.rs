@@ -364,6 +364,8 @@ pub enum TokenKind {
     Version,
     /// A quoted string literal
     String,
+    /// A character literal (single-quoted)
+    Char,
 
     // === Special ===
     /// End of file
@@ -618,6 +620,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Identifier => write!(f, "identifier"),
             TokenKind::Version => write!(f, "version"),
             TokenKind::String => write!(f, "string"),
+            TokenKind::Char => write!(f, "char"),
             // Special
             TokenKind::Eof => write!(f, "end of file"),
             TokenKind::Error => write!(f, "error"),
@@ -714,6 +717,11 @@ impl<'a> Lexer<'a> {
 
         // Try to match various token types
         if let Some(token) = self.try_string() {
+            return token;
+        }
+
+        // Check for char literals before operators (since ' could be Quote or char literal)
+        if let Some(token) = self.try_char() {
             return token;
         }
 
@@ -858,6 +866,72 @@ impl<'a> Lexer<'a> {
             content,
             Span::new(start_pos, self.position, start_line, start_col),
         ))
+    }
+
+    /// Tries to lex a character literal.
+    /// Character literals are single-quoted like 'a', '\n', '\\'
+    fn try_char(&mut self) -> Option<Token> {
+        if !self.remaining.starts_with('\'') {
+            return None;
+        }
+
+        // Look ahead to see if this is a char literal (pattern: 'x' or '\x')
+        let chars: Vec<char> = self.remaining.chars().take(5).collect();
+        if chars.len() < 2 {
+            return None; // Not enough chars for a char literal
+        }
+
+        // Check for escaped char: '\x'
+        if chars.len() >= 4 && chars[1] == '\\' && chars[3] == '\'' {
+            let start_pos = self.position;
+            let start_line = self.line;
+            let start_col = self.column;
+
+            self.advance(1); // Skip opening quote
+            self.advance(1); // Skip backslash
+
+            let escaped_char = chars[2];
+            let actual_char = match escaped_char {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '\\' => '\\',
+                '\'' => '\'',
+                '"' => '"',
+                '0' => '\0',
+                _ => escaped_char,
+            };
+
+            self.advance(escaped_char.len_utf8()); // Skip the escaped char
+            self.advance(1); // Skip closing quote
+
+            return Some(Token::new(
+                TokenKind::Char,
+                actual_char.to_string(),
+                Span::new(start_pos, self.position, start_line, start_col),
+            ));
+        }
+
+        // Check for simple char: 'x'
+        if chars.len() >= 3 && chars[2] == '\'' && chars[1] != '\\' {
+            let start_pos = self.position;
+            let start_line = self.line;
+            let start_col = self.column;
+
+            self.advance(1); // Skip opening quote
+            let ch = chars[1];
+            self.advance(ch.len_utf8()); // Skip the char
+            self.advance(1); // Skip closing quote
+
+            return Some(Token::new(
+                TokenKind::Char,
+                ch.to_string(),
+                Span::new(start_pos, self.position, start_line, start_col),
+            ));
+        }
+
+        // Not a char literal, might be a quote operator
+        None
     }
 
     /// Tries to lex an operator.
@@ -1151,6 +1225,7 @@ impl<'a> Lexer<'a> {
             // DOL 2.0 visibility keywords
             "pub" => Some(TokenKind::Pub),
             "module" => Some(TokenKind::Module),
+            "mod" => Some(TokenKind::Module), // Short form of module
             "use" => Some(TokenKind::Use),
             "spirit" => Some(TokenKind::Spirit),
             // DOL 2.0 SEX keywords

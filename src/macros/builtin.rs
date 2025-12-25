@@ -1294,6 +1294,7 @@ fn stringify_expr(expr: &Expr) -> String {
             Literal::Int(n) => n.to_string(),
             Literal::Float(f) => f.to_string(),
             Literal::String(s) => format!("\"{}\"", s),
+            Literal::Char(c) => format!("'{}'", c),
             Literal::Bool(b) => b.to_string(),
             Literal::Null => "null".to_string(),
         },
@@ -1412,6 +1413,10 @@ fn stringify_expr(expr: &Expr) -> String {
             } else {
                 "sex { }".to_string()
             }
+        }
+        Expr::List(elements) => {
+            let elems_str: Vec<String> = elements.iter().map(stringify_expr).collect();
+            format!("[{}]", elems_str.join(", "))
         }
     }
 }

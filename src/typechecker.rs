@@ -435,7 +435,8 @@ impl TypeChecker {
                 Literal::Float(_) => Ok(Type::Float64),
                 Literal::Bool(_) => Ok(Type::Bool),
                 Literal::String(_) => Ok(Type::String),
-                Literal::Null => Ok(Type::Unknown), // Null is polymorphic
+                Literal::Char(_) => Ok(Type::String), // Char treated as String
+                Literal::Null => Ok(Type::Unknown),   // Null is polymorphic
             },
 
             // Identifiers
@@ -584,6 +585,33 @@ impl TypeChecker {
                 let result = self.infer_block(statements, final_expr.as_deref());
                 self.exit_sex_context();
                 result
+            }
+            // List literal
+            Expr::List(elements) => {
+                if elements.is_empty() {
+                    // Empty list: List<Unknown>
+                    Ok(Type::Generic {
+                        name: "List".to_string(),
+                        args: vec![Type::Unknown],
+                    })
+                } else {
+                    // Infer element type from first element
+                    let elem_type = self.infer(&elements[0])?;
+                    // Check that all elements have the same type
+                    for elem in elements.iter().skip(1) {
+                        let t = self.infer(elem)?;
+                        if t != elem_type {
+                            self.error(TypeError::new(format!(
+                                "list elements have inconsistent types: {} vs {}",
+                                elem_type, t
+                            )));
+                        }
+                    }
+                    Ok(Type::Generic {
+                        name: "List".to_string(),
+                        args: vec![elem_type],
+                    })
+                }
             }
         }
     }

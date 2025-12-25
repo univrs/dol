@@ -29,7 +29,9 @@ use crate::ast::{
 };
 use crate::typechecker::Type;
 
-use super::{to_pascal_case, to_snake_case, Codegen, CodegenOptions, TypeMapper, Visibility};
+use super::{
+    to_pascal_case, to_rust_ident, to_snake_case, Codegen, CodegenOptions, TypeMapper, Visibility,
+};
 
 /// Rust code generator.
 ///
@@ -165,7 +167,7 @@ impl RustCodegen {
         output.push_str(&format!("{visibility}struct {struct_name} {{\n"));
 
         for (field_name, field_type, _, _) in &fields {
-            let rust_field = to_snake_case(field_name);
+            let rust_field = to_rust_ident(field_name);
             output.push_str(&format!("    {visibility}{rust_field}: {field_type},\n"));
         }
 
@@ -205,7 +207,7 @@ impl RustCodegen {
         ));
 
         for (method_name, return_type) in &methods {
-            let rust_method = to_snake_case(method_name);
+            let rust_method = to_rust_ident(method_name);
             output.push_str(&format!(
                 "    /// Get the {} state.\n",
                 method_name.replace('_', " ")
@@ -227,7 +229,7 @@ impl RustCodegen {
 
     /// Generate Rust assertions/invariants from a constraint declaration.
     fn generate_constraint(&self, constraint: &Constraint) -> String {
-        let fn_name = to_snake_case(&constraint.name);
+        let fn_name = to_rust_ident(&constraint.name);
         let visibility = self.visibility_str();
 
         let mut output = String::new();
@@ -354,13 +356,13 @@ impl RustCodegen {
         output.push_str(&format!("    {visibility}fn new("));
         let params: Vec<String> = fields
             .iter()
-            .map(|(name, ty, _, _)| format!("{}: {}", to_snake_case(name), ty))
+            .map(|(name, ty, _, _)| format!("{}: {}", to_rust_ident(name), ty))
             .collect();
         output.push_str(&params.join(", "));
         output.push_str(") -> Self {\n");
         output.push_str("        Self {\n");
         for (name, _, _, _) in fields {
-            let field = to_snake_case(name);
+            let field = to_rust_ident(name);
             output.push_str(&format!("            {field},\n"));
         }
         output.push_str("        }\n");
@@ -369,7 +371,7 @@ impl RustCodegen {
         // Generate validators for fields with constraints
         for (name, _, _, constraint) in fields {
             if constraint.is_some() {
-                let field = to_snake_case(name);
+                let field = to_rust_ident(name);
                 output.push_str(&format!(
                     "\n    {visibility}fn validate_{field}(&self) -> bool {{\n"
                 ));
@@ -387,7 +389,7 @@ impl RustCodegen {
             ));
             for (name, _, _, constraint) in fields {
                 if constraint.is_some() {
-                    let field = to_snake_case(name);
+                    let field = to_rust_ident(name);
                     output.push_str(&format!(
                         "        if !self.validate_{field}() {{ return false; }}\n"
                     ));
@@ -987,6 +989,11 @@ impl RustCodegen {
             Expr::Forall(_) | Expr::Exists(_) | Expr::Implies { .. } => {
                 "/* logical expression not yet supported */".to_string()
             }
+            // List literal
+            Expr::List(elements) => {
+                let elems: Vec<String> = elements.iter().map(|e| self.gen_expr(e)).collect();
+                format!("vec![{}]", elems.join(", "))
+            }
         }
     }
 
@@ -1003,6 +1010,7 @@ impl RustCodegen {
             }
             Literal::Bool(b) => b.to_string(),
             Literal::String(s) => format!("\"{}\"", s),
+            Literal::Char(c) => format!("'{}'", c.escape_default()),
             Literal::Null => "None".to_string(),
         }
     }

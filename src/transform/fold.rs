@@ -207,6 +207,9 @@ pub trait Fold {
                 statements,
                 final_expr,
             } => self.fold_sex_block(statements, final_expr.map(|e| *e)),
+            Expr::List(elements) => {
+                Expr::List(elements.into_iter().map(|e| self.fold_expr(e)).collect())
+            }
         }
     }
 

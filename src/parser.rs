@@ -49,6 +49,9 @@ pub struct Parser<'a> {
 
     /// Peeked token for lookahead (if any)
     peeked: Option<Token>,
+
+    /// Second peeked token for two-token lookahead (if any)
+    peeked2: Option<Token>,
 }
 
 impl<'a> Parser<'a> {
@@ -64,6 +67,7 @@ impl<'a> Parser<'a> {
             current,
             previous,
             peeked: None,
+            peeked2: None,
         }
     }
 
@@ -179,8 +183,22 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        // Regular type expression: consume identifier and optional generics
-        if self.current.kind == TokenKind::Identifier {
+        // Regular type expression: consume identifier/type keyword and optional generics
+        // Handle built-in type keywords (String, Int8, Int16, etc.)
+        if self.current.kind == TokenKind::Identifier
+            || self.current.kind == TokenKind::StringType
+            || self.current.kind == TokenKind::Int8
+            || self.current.kind == TokenKind::Int16
+            || self.current.kind == TokenKind::Int32
+            || self.current.kind == TokenKind::Int64
+            || self.current.kind == TokenKind::UInt8
+            || self.current.kind == TokenKind::UInt16
+            || self.current.kind == TokenKind::UInt32
+            || self.current.kind == TokenKind::UInt64
+            || self.current.kind == TokenKind::Float32
+            || self.current.kind == TokenKind::Float64
+            || self.current.kind == TokenKind::BoolType
+        {
             self.advance();
         } else if self.current.kind == TokenKind::LeftBracket {
             // Array type: [Type] or [Type; size]
@@ -245,6 +263,70 @@ impl<'a> Parser<'a> {
                         name: "_module_doc".to_string(),
                         statements: vec![],
                         exegesis: "Module-level documentation".to_string(),
+                        span: self.current.span,
+                    }))
+                } else {
+                    self.parse_declaration()
+                }
+            }
+            TokenKind::Use => {
+                // Skip use statement and parse next declaration
+                self.advance(); // consume 'use'
+                                // Skip path (identifiers, ::, ., *, { }, etc.)
+                while self.current.kind != TokenKind::Eof
+                    && self.current.kind != TokenKind::Gene
+                    && self.current.kind != TokenKind::Trait
+                    && self.current.kind != TokenKind::Constraint
+                    && self.current.kind != TokenKind::System
+                    && self.current.kind != TokenKind::Evolves
+                    && self.current.kind != TokenKind::Pub
+                    && self.current.kind != TokenKind::Use
+                    && self.current.kind != TokenKind::Exegesis
+                    && self.current.kind != TokenKind::Sex
+                    && self.current.kind != TokenKind::Function
+                    && self.current.kind != TokenKind::Module
+                {
+                    self.advance();
+                }
+                // Parse next declaration
+                if self.current.kind == TokenKind::Eof {
+                    Ok(Declaration::Gene(Gene {
+                        name: "_use_only".to_string(),
+                        statements: vec![],
+                        exegesis: "Use-only file".to_string(),
+                        span: self.current.span,
+                    }))
+                } else {
+                    self.parse_declaration()
+                }
+            }
+            TokenKind::Module => {
+                // Skip mod/module submodule declaration and parse next declaration
+                self.advance(); // consume 'mod' or 'module'
+                                // Skip module name
+                if self.current.kind == TokenKind::Identifier {
+                    self.advance();
+                }
+                // Skip block content if present
+                if self.current.kind == TokenKind::LeftBrace {
+                    self.advance();
+                    let mut depth = 1;
+                    while depth > 0 && self.current.kind != TokenKind::Eof {
+                        if self.current.kind == TokenKind::LeftBrace {
+                            depth += 1;
+                        }
+                        if self.current.kind == TokenKind::RightBrace {
+                            depth -= 1;
+                        }
+                        self.advance();
+                    }
+                }
+                // Parse next declaration
+                if self.current.kind == TokenKind::Eof {
+                    Ok(Declaration::Gene(Gene {
+                        name: "_module_decl".to_string(),
+                        statements: vec![],
+                        exegesis: "Module-only file".to_string(),
                         span: self.current.span,
                     }))
                 } else {
@@ -353,11 +435,11 @@ impl<'a> Parser<'a> {
         let start_span = self.current.span;
         self.expect(TokenKind::Use)?;
 
-        // Parse path with :: separators
+        // Parse path with :: or . separators (both supported for DOL compatibility)
         let mut path = Vec::new();
         path.push(self.expect_identifier()?);
 
-        while self.current.kind == TokenKind::PathSep {
+        while self.current.kind == TokenKind::PathSep || self.current.kind == TokenKind::Dot {
             self.advance();
             if self.current.kind == TokenKind::LeftBrace {
                 break; // Items list
@@ -691,11 +773,9 @@ impl<'a> Parser<'a> {
     fn parse_statements(&mut self) -> Result<Vec<Statement>, ParseError> {
         let mut statements = Vec::new();
 
-        // Stop at RightBrace, Eof, or Exegesis (DOL 2.0 puts exegesis inside declaration braces)
-        while self.current.kind != TokenKind::RightBrace
-            && self.current.kind != TokenKind::Eof
-            && self.current.kind != TokenKind::Exegesis
-        {
+        // Stop at RightBrace or Eof
+        // DOL 2.0/v0.4.0: exegesis blocks can appear throughout gene body, handled in parse_statement
+        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
             statements.push(self.parse_statement()?);
         }
 
@@ -705,6 +785,31 @@ impl<'a> Parser<'a> {
     /// Parses a single statement.
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         let start_span = self.current.span;
+
+        // Handle DOL 2.0/v0.4.0 inline exegesis blocks - skip them
+        while self.current.kind == TokenKind::Exegesis {
+            self.advance(); // consume 'exegesis'
+            if self.current.kind == TokenKind::LeftBrace {
+                self.advance();
+                let mut depth = 1;
+                while depth > 0 && self.current.kind != TokenKind::Eof {
+                    match self.current.kind {
+                        TokenKind::LeftBrace => depth += 1,
+                        TokenKind::RightBrace => depth -= 1,
+                        _ => {}
+                    }
+                    self.advance();
+                }
+            }
+            // If we're at the end of the block, return a no-op marker
+            if self.current.kind == TokenKind::RightBrace || self.current.kind == TokenKind::Eof {
+                return Ok(Statement::Is {
+                    subject: "_skip".to_string(),
+                    state: "_noop".to_string(),
+                    span: start_span.merge(&self.previous.span),
+                });
+            }
+        }
 
         // Handle 'uses' statements
         if self.current.kind == TokenKind::Uses {
@@ -778,45 +883,35 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // Handle DOL 2.0 'fun' function declarations inside genes
-        if self.current.kind == TokenKind::Function {
+        // Handle DOL 2.0 function declarations inside genes: [pub] [sex] fun name(...) -> Type { ... }
+        // Check for optional visibility modifier
+        let mut visibility = Visibility::Private;
+        let mut purity = Purity::Pure;
+
+        if self.current.kind == TokenKind::Pub {
+            visibility = Visibility::Public;
             self.advance();
-            let name = self.expect_identifier()?;
-            // Skip function params and body
-            if self.current.kind == TokenKind::LeftParen {
-                self.advance();
-                let mut depth = 1;
-                while depth > 0 && self.current.kind != TokenKind::Eof {
-                    match self.current.kind {
-                        TokenKind::LeftParen => depth += 1,
-                        TokenKind::RightParen => depth -= 1,
-                        _ => {}
-                    }
-                    self.advance();
-                }
-            }
-            // Skip return type
-            if self.current.kind == TokenKind::Arrow {
-                self.advance();
-                self.parse_type()?;
-            }
-            // Skip function body
-            if self.current.kind == TokenKind::LeftBrace {
-                self.advance();
-                let mut depth = 1;
-                while depth > 0 && self.current.kind != TokenKind::Eof {
-                    match self.current.kind {
-                        TokenKind::LeftBrace => depth += 1,
-                        TokenKind::RightBrace => depth -= 1,
-                        _ => {}
-                    }
-                    self.advance();
-                }
-            }
-            return Ok(Statement::Has {
-                subject: "self".to_string(),
-                property: name,
-                span: start_span.merge(&self.previous.span),
+        }
+
+        // Check for optional purity modifier (sex = side-effecting)
+        if self.current.kind == TokenKind::Sex {
+            purity = Purity::Sex;
+            self.advance();
+        }
+
+        if self.current.kind == TokenKind::Function {
+            let mut func = self.parse_function_decl()?;
+            func.visibility = visibility;
+            func.purity = purity;
+            return Ok(Statement::Function(Box::new(func)));
+        }
+
+        // If we consumed pub/sex but didn't find 'fun', this is an error
+        if visibility != Visibility::Private || purity != Purity::Pure {
+            return Err(ParseError::UnexpectedToken {
+                expected: "'fun' after visibility/purity modifier".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
             });
         }
 
@@ -1345,7 +1440,8 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LeftParen)?;
         let mut params = Vec::new();
         while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof {
-            let param_name = self.expect_identifier()?;
+            // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
+            let param_name = self.expect_identifier_or_keyword()?;
             self.expect(TokenKind::Colon)?;
             let type_ann = self.parse_type()?;
             params.push(FunctionParam {
@@ -1533,8 +1629,79 @@ impl<'a> Parser<'a> {
 
         // Parse infix operators with binding power
         loop {
-            // Check for infix operators
+            // Special case: member access (.) should only consume an identifier
+            if self.current.kind == TokenKind::Dot {
+                self.advance();
+                let field = self.expect_identifier()?;
+
+                // Check if this is a struct literal: Type.Variant { ... }
+                // Only treat as struct literal if:
+                // 1. The field starts with uppercase (type name convention)
+                // 2. The content looks like struct fields (identifier: value or empty)
+                let is_type_name = field.chars().next().map_or(false, |c| c.is_uppercase());
+                // Check if this is a struct literal: Type.Variant { ... }
+                // A struct literal has fields in the form `identifier: value`
+                // Use two-token lookahead to check for `{ identifier :` pattern
+                let is_struct_literal = self.current.kind == TokenKind::LeftBrace
+                    && is_type_name
+                    && (self.peek().kind == TokenKind::RightBrace
+                        || (self.peek().kind == TokenKind::Identifier
+                            && self.peek2().kind == TokenKind::Colon));
+
+                if is_struct_literal {
+                    // This is a struct literal like Type.Variant { field: value }
+                    // Combine the lhs and field into a path name
+                    let path_name = match &lhs {
+                        Expr::Identifier(name) => format!("{}.{}", name, field),
+                        Expr::Member { object, field: f } => {
+                            if let Expr::Identifier(name) = object.as_ref() {
+                                format!("{}.{}.{}", name, f, field)
+                            } else {
+                                field.clone()
+                            }
+                        }
+                        _ => field.clone(),
+                    };
+
+                    self.advance(); // consume '{'
+                    let mut fields = Vec::new();
+
+                    while self.current.kind != TokenKind::RightBrace
+                        && self.current.kind != TokenKind::Eof
+                    {
+                        let field_name = self.expect_identifier()?;
+                        self.expect(TokenKind::Colon)?;
+                        let value = self.parse_expr(0)?;
+                        fields.push((field_name, value));
+
+                        if self.current.kind == TokenKind::Comma {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(TokenKind::RightBrace)?;
+
+                    // Create struct literal expression
+                    lhs = Expr::Call {
+                        callee: Box::new(Expr::Identifier(path_name)),
+                        args: fields.into_iter().map(|(_, v)| v).collect(),
+                    };
+                } else {
+                    lhs = Expr::Member {
+                        object: Box::new(lhs),
+                        field,
+                    };
+                }
+                continue;
+            }
+
+            // Check for infix operators (excluding Dot which is handled above)
             if let Some((left_bp, right_bp)) = infix_binding_power(&self.current.kind) {
+                if self.current.kind == TokenKind::Dot {
+                    // Already handled above
+                    break;
+                }
                 if left_bp < min_bp {
                     break;
                 }
@@ -1572,6 +1739,57 @@ impl<'a> Parser<'a> {
                     callee: Box::new(lhs),
                     args: vec![index],
                 };
+            } else if self.current.kind == TokenKind::LeftBrace {
+                // Struct literal without path: Identifier { field: value }
+                // Only treat as struct literal if:
+                // 1. The name starts with uppercase (type name convention)
+                // 2. The content looks like struct fields (identifier: value or empty)
+                if let Expr::Identifier(name) = &lhs {
+                    let is_type_name = name.chars().next().map_or(false, |c| c.is_uppercase());
+                    if !is_type_name {
+                        break;
+                    }
+
+                    // Use two-token lookahead to check for struct literal pattern
+                    // - Empty: `Foo {}` - next token is `}`
+                    // - With fields: `Foo { x: y }` - next is identifier, then `:`
+                    let is_struct_literal = self.peek().kind == TokenKind::RightBrace
+                        || (self.peek().kind == TokenKind::Identifier
+                            && self.peek2().kind == TokenKind::Colon);
+
+                    if !is_struct_literal {
+                        // Not a struct literal, likely a block like `if x != None { ... }`
+                        break;
+                    }
+
+                    let struct_name = name.clone();
+                    self.advance(); // consume '{'
+                    let mut fields = Vec::new();
+
+                    while self.current.kind != TokenKind::RightBrace
+                        && self.current.kind != TokenKind::Eof
+                    {
+                        let field_name = self.expect_identifier()?;
+                        self.expect(TokenKind::Colon)?;
+                        let value = self.parse_expr(0)?;
+                        fields.push((field_name, value));
+
+                        if self.current.kind == TokenKind::Comma {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(TokenKind::RightBrace)?;
+
+                    // Create struct literal expression
+                    lhs = Expr::Call {
+                        callee: Box::new(Expr::Identifier(struct_name)),
+                        args: fields.into_iter().map(|(_, v)| v).collect(),
+                    };
+                } else {
+                    break;
+                }
             } else {
                 break;
             }
@@ -1637,6 +1855,11 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Expr::Literal(Literal::String(value)))
             }
+            TokenKind::Char => {
+                let value = self.current.lexeme.chars().next().unwrap_or('\0');
+                self.advance();
+                Ok(Expr::Literal(Literal::Char(value)))
+            }
             TokenKind::Identifier => {
                 let name = self.current.lexeme.clone();
                 self.advance();
@@ -1648,6 +1871,21 @@ impl<'a> Parser<'a> {
                     return Ok(Expr::Literal(Literal::Bool(false)));
                 }
 
+                Ok(Expr::Identifier(name))
+            }
+
+            // Allow DOL keywords to be used as identifiers in expression context
+            TokenKind::Gene
+            | TokenKind::Trait
+            | TokenKind::System
+            | TokenKind::Constraint
+            | TokenKind::Evolves
+            | TokenKind::Exegesis
+            | TokenKind::Test
+            | TokenKind::Law
+            | TokenKind::State => {
+                let name = self.current.lexeme.clone();
+                self.advance();
                 Ok(Expr::Identifier(name))
             }
 
@@ -1702,6 +1940,24 @@ impl<'a> Parser<'a> {
             TokenKind::Null => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Null))
+            }
+
+            // List literal: [] or [expr, expr, ...]
+            TokenKind::LeftBracket => {
+                self.advance();
+                let mut elements = Vec::new();
+                while self.current.kind != TokenKind::RightBracket
+                    && self.current.kind != TokenKind::Eof
+                {
+                    elements.push(self.parse_expr(0)?);
+                    if self.current.kind == TokenKind::Comma {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(TokenKind::RightBracket)?;
+                Ok(Expr::List(elements))
             }
 
             _ => Err(ParseError::UnexpectedToken {
@@ -1872,9 +2128,20 @@ impl<'a> Parser<'a> {
                 None
             };
 
-            self.expect(TokenKind::FatArrow)?;
-
-            let body = Box::new(self.parse_expr(0)?);
+            // Support both `pattern => body` and `pattern { body }` syntax
+            let body = if self.current.kind == TokenKind::FatArrow {
+                self.advance();
+                Box::new(self.parse_expr(0)?)
+            } else if self.current.kind == TokenKind::LeftBrace {
+                // Parse block expression for brace syntax
+                Box::new(self.parse_block_expr()?)
+            } else {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "'=>' or '{'".to_string(),
+                    found: format!("'{}'", self.current.lexeme),
+                    span: self.current.span,
+                });
+            };
 
             arms.push(MatchArm {
                 pattern,
@@ -1904,11 +2171,37 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::String(value)))
             }
-            TokenKind::Identifier => {
+            TokenKind::Char => {
+                let value = self.current.lexeme.chars().next().unwrap_or('\0');
+                self.advance();
+                Ok(Pattern::Literal(Literal::Char(value)))
+            }
+            // Allow DOL keywords to be used as pattern identifiers
+            TokenKind::Gene
+            | TokenKind::Trait
+            | TokenKind::System
+            | TokenKind::Constraint
+            | TokenKind::Evolves
+            | TokenKind::Exegesis
+            | TokenKind::Test
+            | TokenKind::Law
+            | TokenKind::State => {
                 let name = self.current.lexeme.clone();
                 self.advance();
+                Ok(Pattern::Identifier(name))
+            }
+            TokenKind::Identifier => {
+                let mut name = self.current.lexeme.clone();
+                self.advance();
 
-                // Check for constructor pattern
+                // Handle path patterns like `Statement.Matches`
+                while self.current.kind == TokenKind::Dot {
+                    self.advance();
+                    let part = self.expect_identifier()?;
+                    name = format!("{}.{}", name, part);
+                }
+
+                // Check for constructor pattern with tuple args: `Some(x)`
                 if self.current.kind == TokenKind::LeftParen {
                     self.advance();
                     let mut fields = Vec::new();
@@ -1923,6 +2216,49 @@ impl<'a> Parser<'a> {
                         }
                     }
                     self.expect(TokenKind::RightParen)?;
+                    Ok(Pattern::Constructor { name, fields })
+                }
+                // Check for struct destructuring pattern: `Foo { field, field }`
+                // Must distinguish from match arm body `Foo { stmt; }`.
+                // Struct patterns have: `{ }`, `{ ident }`, `{ ident: ... }`, `{ ident, ... }`
+                // Match arm bodies have: `{ expr.method() }`, `{ func() }`, etc.
+                // So we check that the token after the first identifier is `:`, `,`, or `}`
+                else if self.current.kind == TokenKind::LeftBrace
+                    && self.peek().kind == TokenKind::Identifier
+                    && matches!(
+                        self.peek2().kind,
+                        TokenKind::Colon | TokenKind::Comma | TokenKind::RightBrace
+                    )
+                {
+                    self.advance();
+                    let mut fields = Vec::new();
+                    while self.current.kind != TokenKind::RightBrace
+                        && self.current.kind != TokenKind::Eof
+                    {
+                        // Parse field name
+                        let field_name = self.expect_identifier()?;
+                        // Check for field rename pattern: `field: pattern`
+                        if self.current.kind == TokenKind::Colon {
+                            self.advance();
+                            let pattern = self.parse_pattern()?;
+                            // Store as a nested pattern with the field name
+                            fields.push(Pattern::Constructor {
+                                name: field_name,
+                                fields: vec![pattern],
+                            });
+                        } else {
+                            // Simple field binding: `field` (shorthand for `field: field`)
+                            fields.push(Pattern::Identifier(field_name));
+                        }
+
+                        if self.current.kind == TokenKind::Comma {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(TokenKind::RightBrace)?;
+                    // Use Constructor pattern with the struct name and field patterns
                     Ok(Pattern::Constructor { name, fields })
                 } else if name == "true" {
                     Ok(Pattern::Literal(Literal::Bool(true)))
@@ -2010,17 +2346,31 @@ impl<'a> Parser<'a> {
             if self.is_statement_keyword() {
                 statements.push(self.parse_stmt()?);
             } else {
-                // Try to parse as expression
+                // Try to parse as expression, then check if it's an assignment
                 let expr = self.parse_expr(0)?;
 
-                // If followed by semicolon, it's a statement
-                if self.current.kind == TokenKind::Semicolon {
+                // Check for assignment (e.g., a.b = expr)
+                if self.current.kind == TokenKind::Equal {
+                    self.advance(); // consume '='
+                    let value = self.parse_expr(0)?;
+                    self.consume_optional_semicolon();
+                    statements.push(Stmt::Assign {
+                        target: expr,
+                        value,
+                    });
+                } else if self.current.kind == TokenKind::Semicolon {
+                    // It's an expression statement
                     self.advance();
                     statements.push(Stmt::Expr(expr));
-                } else {
-                    // It's the final expression
+                } else if self.current.kind == TokenKind::RightBrace
+                    || self.current.kind == TokenKind::Eof
+                {
+                    // It's the final expression (no semicolon needed before })
                     final_expr = Some(Box::new(expr));
                     break;
+                } else {
+                    // Assume it's a statement without semicolon (DOL style)
+                    statements.push(Stmt::Expr(expr));
                 }
             }
         }
@@ -2049,6 +2399,13 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a statement.
+    /// Consume a semicolon if present (DOL makes semicolons optional)
+    fn consume_optional_semicolon(&mut self) {
+        if self.current.kind == TokenKind::Semicolon {
+            self.advance();
+        }
+    }
+
     pub fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         match self.current.kind {
             TokenKind::Let => {
@@ -2064,7 +2421,7 @@ impl<'a> Parser<'a> {
 
                 self.expect(TokenKind::Equal)?;
                 let value = self.parse_expr(0)?;
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
 
                 Ok(Stmt::Let {
                     name,
@@ -2085,7 +2442,7 @@ impl<'a> Parser<'a> {
 
                 self.expect(TokenKind::Equal)?;
                 let value = self.parse_expr(0)?;
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
 
                 Ok(Stmt::Let {
                     name,
@@ -2106,7 +2463,7 @@ impl<'a> Parser<'a> {
 
                 self.expect(TokenKind::Equal)?;
                 let value = self.parse_expr(0)?;
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
 
                 Ok(Stmt::Let {
                     name,
@@ -2117,7 +2474,7 @@ impl<'a> Parser<'a> {
             TokenKind::Sex => {
                 // Parse as expression (sex block)
                 let expr = self.parse_expr(0)?;
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
                 Ok(Stmt::Expr(expr))
             }
             TokenKind::For => self.parse_for_stmt(),
@@ -2125,27 +2482,58 @@ impl<'a> Parser<'a> {
             TokenKind::Loop => self.parse_loop_stmt(),
             TokenKind::Break => {
                 self.advance();
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
                 Ok(Stmt::Break)
             }
             TokenKind::Continue => {
                 self.advance();
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
                 Ok(Stmt::Continue)
             }
             TokenKind::Return => {
                 self.advance();
-                let value = if self.current.kind != TokenKind::Semicolon {
+                let value = if self.current.kind != TokenKind::Semicolon
+                    && self.current.kind != TokenKind::RightBrace
+                    && self.current.kind != TokenKind::Eof
+                {
                     Some(self.parse_expr(0)?)
                 } else {
                     None
                 };
-                self.expect(TokenKind::Semicolon)?;
+                self.consume_optional_semicolon();
                 Ok(Stmt::Return(value))
             }
             _ => {
+                // Try to parse as simple assignment (identifier = expr) first
+                // This handles DOL's simple assignment syntax without 'let'
+                // Use peek() to avoid consuming tokens we can't restore
+                if self.current.kind == TokenKind::Identifier
+                    && self.peek().kind == TokenKind::Equal
+                {
+                    let name = self.expect_identifier()?;
+                    self.advance(); // consume '='
+                    let value = self.parse_expr(0)?;
+                    self.consume_optional_semicolon();
+                    return Ok(Stmt::Assign {
+                        target: Expr::Identifier(name),
+                        value,
+                    });
+                }
+
                 let expr = self.parse_expr(0)?;
-                self.expect(TokenKind::Semicolon)?;
+
+                // Check for assignment after expression (e.g., a.b = expr or a[i] = expr)
+                if self.current.kind == TokenKind::Equal {
+                    self.advance(); // consume '='
+                    let value = self.parse_expr(0)?;
+                    self.consume_optional_semicolon();
+                    return Ok(Stmt::Assign {
+                        target: expr,
+                        value,
+                    });
+                }
+
+                self.consume_optional_semicolon();
                 Ok(Stmt::Expr(expr))
             }
         }
@@ -2155,7 +2543,8 @@ impl<'a> Parser<'a> {
     fn parse_for_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.expect(TokenKind::For)?;
 
-        let binding = self.expect_identifier()?;
+        // Allow DOL keywords as loop variable names (e.g., `for law in laws`)
+        let binding = self.expect_identifier_or_keyword()?;
         self.expect(TokenKind::In)?;
         let iterable = self.parse_expr(0)?;
 
@@ -2322,17 +2711,18 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a fun declaration (for DOL 2.0 gene/trait bodies).
-    #[allow(dead_code)]
     fn parse_function_decl(&mut self) -> Result<FunctionDecl, ParseError> {
         let start_span = self.current.span;
         self.expect(TokenKind::Function)?;
 
-        let name = self.expect_identifier()?;
+        // Allow DOL keywords as function names (e.g., `fun test()`)
+        let name = self.expect_identifier_or_keyword()?;
 
         self.expect(TokenKind::LeftParen)?;
         let mut params = Vec::new();
         while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof {
-            let param_name = self.expect_identifier()?;
+            // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
+            let param_name = self.expect_identifier_or_keyword()?;
             self.expect(TokenKind::Colon)?;
             let type_ann = self.parse_type()?;
             params.push(FunctionParam {
@@ -2393,7 +2783,8 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LeftParen)?;
         let mut params = Vec::new();
         while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof {
-            let param_name = self.expect_identifier()?;
+            // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
+            let param_name = self.expect_identifier_or_keyword()?;
             self.expect(TokenKind::Colon)?;
             let type_ann = self.parse_type()?;
             params.push(FunctionParam {
@@ -2631,8 +3022,13 @@ impl<'a> Parser<'a> {
             &mut self.current,
             self.peeked
                 .take()
+                .or_else(|| self.peeked2.take())
                 .unwrap_or_else(|| self.lexer.next_token()),
         );
+        // Shift peeked2 to peeked if we consumed peeked
+        if self.peeked.is_none() && self.peeked2.is_some() {
+            self.peeked = self.peeked2.take();
+        }
     }
 
     /// Peeks at the next token without consuming it.
@@ -2641,6 +3037,19 @@ impl<'a> Parser<'a> {
             self.peeked = Some(self.lexer.next_token());
         }
         self.peeked.as_ref().unwrap()
+    }
+
+    /// Peeks at the token after the next token (two-token lookahead).
+    fn peek2(&mut self) -> &Token {
+        // Ensure peeked is populated
+        if self.peeked.is_none() {
+            self.peeked = Some(self.lexer.next_token());
+        }
+        // Ensure peeked2 is populated
+        if self.peeked2.is_none() {
+            self.peeked2 = Some(self.lexer.next_token());
+        }
+        self.peeked2.as_ref().unwrap()
     }
 
     /// Expects the current token to be of a specific kind.
@@ -2669,6 +3078,32 @@ impl<'a> Parser<'a> {
                 found: format!("'{}'", self.current.lexeme),
                 span: self.current.span,
             })
+        }
+    }
+
+    /// Expects an identifier or a DOL keyword that can be used as a variable/function name.
+    /// This allows keywords like `gene`, `trait`, `test`, etc. to be used as names.
+    fn expect_identifier_or_keyword(&mut self) -> Result<String, ParseError> {
+        match self.current.kind {
+            TokenKind::Identifier
+            | TokenKind::Gene
+            | TokenKind::Trait
+            | TokenKind::System
+            | TokenKind::Constraint
+            | TokenKind::Evolves
+            | TokenKind::Exegesis
+            | TokenKind::Test
+            | TokenKind::Law
+            | TokenKind::State => {
+                let lexeme = self.current.lexeme.clone();
+                self.advance();
+                Ok(lexeme)
+            }
+            _ => Err(ParseError::UnexpectedToken {
+                expected: "identifier".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
+            }),
         }
     }
 

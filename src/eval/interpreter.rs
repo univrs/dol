@@ -254,6 +254,15 @@ impl Interpreter {
                     Ok(Value::Void)
                 }
             }
+
+            // List literal - evaluate elements
+            Expr::List(elements) => {
+                let mut values = Vec::new();
+                for elem in elements {
+                    values.push(self.eval_in_env(elem, env)?);
+                }
+                Ok(Value::Array(values))
+            }
         }
     }
 
@@ -264,7 +273,8 @@ impl Interpreter {
             Literal::Float(f) => Value::Float(*f),
             Literal::Bool(b) => Value::Bool(*b),
             Literal::String(s) => Value::String(s.clone()),
-            Literal::Null => Value::Void, // Null maps to Void
+            Literal::Char(c) => Value::String(c.to_string()), // Char as single-char string
+            Literal::Null => Value::Void,                     // Null maps to Void
         })
     }
 

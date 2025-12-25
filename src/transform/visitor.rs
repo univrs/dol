@@ -301,6 +301,11 @@ fn walk_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
                 v.visit_expr(expr);
             }
         }
+        Expr::List(elements) => {
+            for elem in elements {
+                v.visit_expr(elem);
+            }
+        }
     }
 }
 
@@ -474,6 +479,11 @@ fn walk_expr_mut<V: MutVisitor + ?Sized>(v: &mut V, expr: &mut Expr) {
             }
         }
         Expr::Literal(_) | Expr::Identifier(_) => {}
+        Expr::List(elements) => {
+            for elem in elements {
+                v.visit_expr(elem);
+            }
+        }
     }
 }
 

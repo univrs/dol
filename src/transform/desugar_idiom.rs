@@ -286,6 +286,11 @@ impl IdiomDesugar {
 
             // Leaf nodes - no transformation needed
             Expr::Literal(_) | Expr::Identifier(_) | Expr::Reflect(_) => expr,
+
+            // List - transform elements
+            Expr::List(elements) => {
+                Expr::List(elements.into_iter().map(|e| self.desugar_expr(e)).collect())
+            }
         }
     }
 }
