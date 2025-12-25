@@ -717,26 +717,79 @@ impl RustCodegen {
             Expr::Literal(lit) => self.gen_literal(lit),
             Expr::Identifier(name) => name.clone(),
             Expr::Binary { left, op, right } => {
-                let left_str = self.gen_expr(left);
-                let right_str = self.gen_expr(right);
-                let op_str = match op {
-                    crate::ast::BinaryOp::Add => "+",
-                    crate::ast::BinaryOp::Sub => "-",
-                    crate::ast::BinaryOp::Mul => "*",
-                    crate::ast::BinaryOp::Div => "/",
-                    crate::ast::BinaryOp::Mod => "%",
-                    crate::ast::BinaryOp::Eq => "==",
-                    crate::ast::BinaryOp::Ne => "!=",
-                    crate::ast::BinaryOp::Lt => "<",
-                    crate::ast::BinaryOp::Le => "<=",
-                    crate::ast::BinaryOp::Gt => ">",
-                    crate::ast::BinaryOp::Ge => ">=",
-                    crate::ast::BinaryOp::And => "&&",
-                    crate::ast::BinaryOp::Or => "||",
-                    crate::ast::BinaryOp::Member => ".",
-                    _ => "/* unsupported op */",
-                };
-                format!("({} {} {})", left_str, op_str, right_str)
+                match op {
+                    // Pipe operator: x |> f becomes f(x)
+                    crate::ast::BinaryOp::Pipe => {
+                        let arg = self.gen_expr(left);
+                        let func = self.gen_expr(right);
+                        format!("{}({})", func, arg)
+                    }
+                    // Compose operator: f >> g becomes |__x| g(f(__x))
+                    crate::ast::BinaryOp::Compose => {
+                        let f = self.gen_expr(left);
+                        let g = self.gen_expr(right);
+                        format!("|__x| {}({}(__x))", g, f)
+                    }
+                    // Apply operator: f @ x becomes f(x)
+                    crate::ast::BinaryOp::Apply => {
+                        let func = self.gen_expr(left);
+                        let arg = self.gen_expr(right);
+                        format!("{}({})", func, arg)
+                    }
+                    // Implies operator: a => b becomes (!a || b)
+                    crate::ast::BinaryOp::Implies => {
+                        let a = self.gen_expr(left);
+                        let b = self.gen_expr(right);
+                        format!("(!{} || {})", a, b)
+                    }
+                    // Monadic bind: m := f (depends on monad implementation)
+                    crate::ast::BinaryOp::Bind => {
+                        let m = self.gen_expr(left);
+                        let f = self.gen_expr(right);
+                        format!("{}.and_then({})", m, f)
+                    }
+                    // Functor map: f <$> m becomes m.map(f)
+                    crate::ast::BinaryOp::Map => {
+                        let f = self.gen_expr(left);
+                        let m = self.gen_expr(right);
+                        format!("{}.map({})", m, f)
+                    }
+                    // Applicative apply: mf <*> mx (depends on applicative implementation)
+                    crate::ast::BinaryOp::Ap => {
+                        let mf = self.gen_expr(left);
+                        let mx = self.gen_expr(right);
+                        format!("/* applicative apply */ {}.ap({})", mf, mx)
+                    }
+                    // Exponentiation: x ^ y becomes x.pow(y) for integers
+                    crate::ast::BinaryOp::Pow => {
+                        let base = self.gen_expr(left);
+                        let exp = self.gen_expr(right);
+                        format!("{}.pow({} as u32)", base, exp)
+                    }
+                    // Standard infix operators
+                    _ => {
+                        let left_str = self.gen_expr(left);
+                        let right_str = self.gen_expr(right);
+                        let op_str = match op {
+                            crate::ast::BinaryOp::Add => "+",
+                            crate::ast::BinaryOp::Sub => "-",
+                            crate::ast::BinaryOp::Mul => "*",
+                            crate::ast::BinaryOp::Div => "/",
+                            crate::ast::BinaryOp::Mod => "%",
+                            crate::ast::BinaryOp::Eq => "==",
+                            crate::ast::BinaryOp::Ne => "!=",
+                            crate::ast::BinaryOp::Lt => "<",
+                            crate::ast::BinaryOp::Le => "<=",
+                            crate::ast::BinaryOp::Gt => ">",
+                            crate::ast::BinaryOp::Ge => ">=",
+                            crate::ast::BinaryOp::And => "&&",
+                            crate::ast::BinaryOp::Or => "||",
+                            crate::ast::BinaryOp::Member => ".",
+                            _ => "/* unsupported op */",
+                        };
+                        format!("({} {} {})", left_str, op_str, right_str)
+                    }
+                }
             }
             Expr::Unary { op, operand } => {
                 let operand_str = self.gen_expr(operand);
@@ -842,7 +895,18 @@ impl RustCodegen {
 
                 output
             }
-            _ => "/* unsupported expression */".to_string(),
+            Expr::Match { scrutinee, arms } => self.gen_match(scrutinee, arms),
+            // Meta-programming expressions
+            Expr::Quote(inner) => self.gen_quote(inner),
+            Expr::Eval(inner) => self.gen_eval(inner),
+            Expr::Reflect(ty) => self.gen_reflect(ty),
+            Expr::QuasiQuote(inner) => self.gen_quasi_quote(inner),
+            Expr::Unquote(inner) => self.gen_unquote(inner),
+            Expr::IdiomBracket { func, args } => self.gen_idiom_bracket(func, args),
+            // Logical expressions
+            Expr::Forall(_) | Expr::Exists(_) | Expr::Implies { .. } => {
+                "/* logical expression not yet supported */".to_string()
+            }
         }
     }
 
@@ -860,6 +924,227 @@ impl RustCodegen {
             Literal::Bool(b) => b.to_string(),
             Literal::String(s) => format!("\"{}\"", s),
             Literal::Null => "None".to_string(),
+        }
+    }
+
+    /// Generate Rust code for a pattern in a match expression.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The pattern to generate code for
+    ///
+    /// # Returns
+    ///
+    /// Rust code representing the pattern
+    ///
+    /// # Example Output
+    ///
+    /// ```ignore
+    /// // Pattern::Wildcard => "_"
+    /// // Pattern::Identifier("x") => "x"
+    /// // Pattern::Literal(Literal::Int(42)) => "42_i64"
+    /// // Pattern::Constructor { name: "Some", fields: [Pattern::Identifier("x")] } => "Some(x)"
+    /// // Pattern::Tuple([Pattern::Identifier("x"), Pattern::Identifier("y")]) => "(x, y)"
+    /// ```
+    fn gen_pattern(&self, pattern: &crate::ast::Pattern) -> String {
+        match pattern {
+            crate::ast::Pattern::Wildcard => "_".to_string(),
+            crate::ast::Pattern::Identifier(name) => name.clone(),
+            crate::ast::Pattern::Literal(lit) => self.gen_literal(lit),
+            crate::ast::Pattern::Constructor { name, fields } => {
+                let fields_str: Vec<String> = fields.iter().map(|p| self.gen_pattern(p)).collect();
+                if fields.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}({})", name, fields_str.join(", "))
+                }
+            }
+            crate::ast::Pattern::Tuple(patterns) => {
+                let patterns_str: Vec<String> =
+                    patterns.iter().map(|p| self.gen_pattern(p)).collect();
+                format!("({})", patterns_str.join(", "))
+            }
+        }
+    }
+
+    /// Generate Rust code for a match expression.
+    ///
+    /// # Arguments
+    ///
+    /// * `scrutinee` - The expression being matched
+    /// * `arms` - The match arms (patterns, guards, and bodies)
+    ///
+    /// # Returns
+    ///
+    /// Rust code for the complete match expression
+    ///
+    /// # Example Output
+    ///
+    /// ```ignore
+    /// match value {
+    ///     Some(x) => x,
+    ///     None => 0_i64
+    /// }
+    /// ```
+    fn gen_match(&self, scrutinee: &Expr, arms: &[crate::ast::MatchArm]) -> String {
+        let scrutinee_code = self.gen_expr(scrutinee);
+        let arms_code: Vec<String> = arms
+            .iter()
+            .map(|arm| {
+                let pattern = self.gen_pattern(&arm.pattern);
+                let guard = arm
+                    .guard
+                    .as_ref()
+                    .map(|g| format!(" if {}", self.gen_expr(g)))
+                    .unwrap_or_default();
+                let body = self.gen_expr(&arm.body);
+                format!("{}{} => {}", pattern, guard, body)
+            })
+            .collect();
+        format!("match {} {{\n    {}\n}}", scrutinee_code, arms_code.join(",\n    "))
+    }
+
+    // === Meta-Programming Code Generation ===
+
+    /// Generate Rust code for a quote expression.
+    ///
+    /// Converts an expression to a QuotedExpr literal that can be manipulated at runtime.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - The expression to quote
+    ///
+    /// # Returns
+    ///
+    /// Rust code that creates a QuotedExpr from the expression
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // '(1 + 2) => QuotedExpr::from_expr(&Expr::Binary { ... })
+    /// ```
+    fn gen_quote(&self, expr: &Expr) -> String {
+        // Convert expression to QuotedExpr literal
+        format!("QuotedExpr::from_expr(&{})", self.gen_expr(expr))
+    }
+
+    /// Generate Rust code for an eval expression.
+    ///
+    /// Evaluates a quoted expression at runtime.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - The expression containing the quoted code to evaluate
+    ///
+    /// # Returns
+    ///
+    /// Rust code that evaluates the expression
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // eval(quoted_expr) => eval(quoted_expr)
+    /// ```
+    fn gen_eval(&self, expr: &Expr) -> String {
+        format!("eval({})", self.gen_expr(expr))
+    }
+
+    /// Generate Rust code for type reflection.
+    ///
+    /// Generates code that retrieves type information at runtime.
+    ///
+    /// # Arguments
+    ///
+    /// * `ty` - The type to reflect on
+    ///
+    /// # Returns
+    ///
+    /// Rust code that gets type information
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // ?Int32 => TypeInfo::get::<i32>()
+    /// ```
+    fn gen_reflect(&self, ty: &TypeExpr) -> String {
+        format!("TypeInfo::get::<{}>()", self.gen_type(ty))
+    }
+
+    /// Generate Rust code for a quasi-quote expression.
+    ///
+    /// Similar to quote but allows unquote/splice operations inside.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - The expression to quasi-quote
+    ///
+    /// # Returns
+    ///
+    /// Rust code for the quasi-quoted expression
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // `(1 + ,x) => allows unquoting x inside the quote
+    /// ```
+    fn gen_quasi_quote(&self, expr: &Expr) -> String {
+        // Similar to quote but supports unquotes
+        format!("QuotedExpr::from_expr(&{})", self.gen_expr(expr))
+    }
+
+    /// Generate Rust code for an unquote/splice expression.
+    ///
+    /// Splices an evaluated expression into a quasi-quoted context.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - The expression to unquote
+    ///
+    /// # Returns
+    ///
+    /// Rust code for the unquoted expression
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // ,x inside a quasi-quote evaluates x and splices it in
+    /// ```
+    fn gen_unquote(&self, expr: &Expr) -> String {
+        // Unquote evaluates and splices the expression
+        self.gen_expr(expr)
+    }
+
+    /// Generate Rust code for idiom bracket expressions.
+    ///
+    /// Idiom brackets provide applicative functor style: [| f a b |] desugars to f <$> a <*> b
+    ///
+    /// # Arguments
+    ///
+    /// * `func` - The function to apply
+    /// * `args` - The arguments to lift and apply
+    ///
+    /// # Returns
+    ///
+    /// Rust code for the applicative style expression
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // [| f a b |] => a.map(f).ap(b)
+    /// // [| f |] => f (no lifting needed)
+    /// ```
+    fn gen_idiom_bracket(&self, func: &Expr, args: &[Expr]) -> String {
+        if args.is_empty() {
+            // No arguments, just return the function
+            self.gen_expr(func)
+        } else {
+            // [| f a b c |] desugars to f <$> a <*> b <*> c
+            // In Rust: a.map(f).ap(b).ap(c)
+            let mut result = format!("{}.map({})", self.gen_expr(&args[0]), self.gen_expr(func));
+            for arg in args.iter().skip(1) {
+                result = format!("{}.ap({})", result, self.gen_expr(arg));
+            }
+            result
         }
     }
 
@@ -1643,4 +1928,515 @@ mod tests {
             "collection.map(|x| { (x * 2_i64) })"
         );
     }
+
+    // === Meta-Programming Tests ===
+
+    #[test]
+    fn test_gen_quote() {
+        let gen = RustCodegen::new();
+        // '(1 + 2)
+        let expr = Expr::Quote(Box::new(Expr::Binary {
+            left: Box::new(Expr::Literal(Literal::Int(1))),
+            op: crate::ast::BinaryOp::Add,
+            right: Box::new(Expr::Literal(Literal::Int(2))),
+        }));
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "QuotedExpr::from_expr(&(1_i64 + 2_i64))"
+        );
+    }
+
+    #[test]
+    fn test_gen_quote_identifier() {
+        let gen = RustCodegen::new();
+        // 'x
+        let expr = Expr::Quote(Box::new(Expr::Identifier("x".to_string())));
+        assert_eq!(gen.gen_expr(&expr), "QuotedExpr::from_expr(&x)");
+    }
+
+    #[test]
+    fn test_gen_eval() {
+        let gen = RustCodegen::new();
+        // eval(quoted_expr)
+        let expr = Expr::Eval(Box::new(Expr::Identifier("quoted_expr".to_string())));
+        assert_eq!(gen.gen_expr(&expr), "eval(quoted_expr)");
+    }
+
+    #[test]
+    fn test_gen_eval_with_quote() {
+        let gen = RustCodegen::new();
+        // eval('(1 + 2))
+        let expr = Expr::Eval(Box::new(Expr::Quote(Box::new(Expr::Binary {
+            left: Box::new(Expr::Literal(Literal::Int(1))),
+            op: crate::ast::BinaryOp::Add,
+            right: Box::new(Expr::Literal(Literal::Int(2))),
+        }))));
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "eval(QuotedExpr::from_expr(&(1_i64 + 2_i64)))"
+        );
+    }
+
+    #[test]
+    fn test_gen_reflect() {
+        let gen = RustCodegen::new();
+        // ?Int32
+        let expr = Expr::Reflect(Box::new(TypeExpr::Named("Int32".to_string())));
+        assert_eq!(gen.gen_expr(&expr), "TypeInfo::get::<i32>()");
+    }
+
+    #[test]
+    fn test_gen_reflect_generic() {
+        let gen = RustCodegen::new();
+        // ?List<Int32>
+        let expr = Expr::Reflect(Box::new(TypeExpr::Generic {
+            name: "List".to_string(),
+            args: vec![TypeExpr::Named("Int32".to_string())],
+        }));
+        assert_eq!(gen.gen_expr(&expr), "TypeInfo::get::<Vec<i32>>()");
+    }
+
+    #[test]
+    fn test_gen_quasi_quote() {
+        let gen = RustCodegen::new();
+        // `(1 + 2)
+        let expr = Expr::QuasiQuote(Box::new(Expr::Binary {
+            left: Box::new(Expr::Literal(Literal::Int(1))),
+            op: crate::ast::BinaryOp::Add,
+            right: Box::new(Expr::Literal(Literal::Int(2))),
+        }));
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "QuotedExpr::from_expr(&(1_i64 + 2_i64))"
+        );
+    }
+
+    #[test]
+    fn test_gen_unquote() {
+        let gen = RustCodegen::new();
+        // ,x (inside a quasi-quote)
+        let expr = Expr::Unquote(Box::new(Expr::Identifier("x".to_string())));
+        assert_eq!(gen.gen_expr(&expr), "x");
+    }
+
+    #[test]
+    fn test_gen_idiom_bracket_no_args() {
+        let gen = RustCodegen::new();
+        // [| f |] => f
+        let expr = Expr::IdiomBracket {
+            func: Box::new(Expr::Identifier("f".to_string())),
+            args: vec![],
+        };
+        assert_eq!(gen.gen_expr(&expr), "f");
+    }
+
+    #[test]
+    fn test_gen_idiom_bracket_one_arg() {
+        let gen = RustCodegen::new();
+        // [| f a |] => a.map(f)
+        let expr = Expr::IdiomBracket {
+            func: Box::new(Expr::Identifier("f".to_string())),
+            args: vec![Expr::Identifier("a".to_string())],
+        };
+        assert_eq!(gen.gen_expr(&expr), "a.map(f)");
+    }
+
+    #[test]
+    fn test_gen_idiom_bracket_two_args() {
+        let gen = RustCodegen::new();
+        // [| f a b |] => a.map(f).ap(b)
+        let expr = Expr::IdiomBracket {
+            func: Box::new(Expr::Identifier("f".to_string())),
+            args: vec![
+                Expr::Identifier("a".to_string()),
+                Expr::Identifier("b".to_string()),
+            ],
+        };
+        assert_eq!(gen.gen_expr(&expr), "a.map(f).ap(b)");
+    }
+
+    #[test]
+    fn test_gen_idiom_bracket_three_args() {
+        let gen = RustCodegen::new();
+        // [| f a b c |] => a.map(f).ap(b).ap(c)
+        let expr = Expr::IdiomBracket {
+            func: Box::new(Expr::Identifier("f".to_string())),
+            args: vec![
+                Expr::Identifier("a".to_string()),
+                Expr::Identifier("b".to_string()),
+                Expr::Identifier("c".to_string()),
+            ],
+        };
+        assert_eq!(gen.gen_expr(&expr), "a.map(f).ap(b).ap(c)");
+    }
+
+    #[test]
+    fn test_gen_idiom_bracket_with_lambda() {
+        let gen = RustCodegen::new();
+        // [| |x| x + 1  opt_val |] => opt_val.map(|x| { (x + 1_i64) })
+        let lambda = Expr::Lambda {
+            params: vec![("x".to_string(), None)],
+            return_type: None,
+            body: Box::new(Expr::Binary {
+                left: Box::new(Expr::Identifier("x".to_string())),
+                op: crate::ast::BinaryOp::Add,
+                right: Box::new(Expr::Literal(Literal::Int(1))),
+            }),
+        };
+        let expr = Expr::IdiomBracket {
+            func: Box::new(lambda),
+            args: vec![Expr::Identifier("opt_val".to_string())],
+        };
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "opt_val.map(|x| { (x + 1_i64) })"
+        );
+    }
+
+    #[test]
+    fn test_gen_nested_quote() {
+        let gen = RustCodegen::new();
+        // ''x
+        let expr = Expr::Quote(Box::new(Expr::Quote(Box::new(Expr::Identifier(
+            "x".to_string(),
+        )))));
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "QuotedExpr::from_expr(&QuotedExpr::from_expr(&x))"
+        );
+    }
+
+    #[test]
+    fn test_gen_quote_function_call() {
+        let gen = RustCodegen::new();
+        // '(f(1, 2))
+        let expr = Expr::Quote(Box::new(Expr::Call {
+            callee: Box::new(Expr::Identifier("f".to_string())),
+            args: vec![
+                Expr::Literal(Literal::Int(1)),
+                Expr::Literal(Literal::Int(2)),
+            ],
+        }));
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "QuotedExpr::from_expr(&f(1_i64, 2_i64))"
+        );
+    }
+
+    #[test]
+    fn test_gen_reflect_function_type() {
+        let gen = RustCodegen::new();
+        // ?(Int32 -> Bool)
+        let expr = Expr::Reflect(Box::new(TypeExpr::Function {
+            params: vec![TypeExpr::Named("Int32".to_string())],
+            return_type: Box::new(TypeExpr::Named("Bool".to_string())),
+        }));
+        assert_eq!(gen.gen_expr(&expr), "TypeInfo::get::<fn(i32) -> bool>()");
+    }
+
+    // === Pattern Matching Codegen Tests ===
+
+    #[test]
+    fn test_gen_pattern_wildcard() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Wildcard;
+        assert_eq!(gen.gen_pattern(&pattern), "_");
+    }
+
+    #[test]
+    fn test_gen_pattern_identifier() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Identifier("x".to_string());
+        assert_eq!(gen.gen_pattern(&pattern), "x");
+    }
+
+    #[test]
+    fn test_gen_pattern_literal_int() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Literal(Literal::Int(42));
+        assert_eq!(gen.gen_pattern(&pattern), "42_i64");
+    }
+
+    #[test]
+    fn test_gen_pattern_literal_string() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Literal(Literal::String("hello".to_string()));
+        assert_eq!(gen.gen_pattern(&pattern), "\"hello\"");
+    }
+
+    #[test]
+    fn test_gen_pattern_literal_bool() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Literal(Literal::Bool(true));
+        assert_eq!(gen.gen_pattern(&pattern), "true");
+    }
+
+    #[test]
+    fn test_gen_pattern_constructor_no_fields() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Constructor {
+            name: "None".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(gen.gen_pattern(&pattern), "None");
+    }
+
+    #[test]
+    fn test_gen_pattern_constructor_with_fields() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Constructor {
+            name: "Some".to_string(),
+            fields: vec![crate::ast::Pattern::Identifier("x".to_string())],
+        };
+        assert_eq!(gen.gen_pattern(&pattern), "Some(x)");
+    }
+
+    #[test]
+    fn test_gen_pattern_constructor_multiple_fields() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Constructor {
+            name: "Point".to_string(),
+            fields: vec![
+                crate::ast::Pattern::Identifier("x".to_string()),
+                crate::ast::Pattern::Identifier("y".to_string()),
+            ],
+        };
+        assert_eq!(gen.gen_pattern(&pattern), "Point(x, y)");
+    }
+
+    #[test]
+    fn test_gen_pattern_tuple() {
+        let gen = RustCodegen::new();
+        let pattern = crate::ast::Pattern::Tuple(vec![
+            crate::ast::Pattern::Identifier("x".to_string()),
+            crate::ast::Pattern::Identifier("y".to_string()),
+        ]);
+        assert_eq!(gen.gen_pattern(&pattern), "(x, y)");
+    }
+
+    #[test]
+    fn test_gen_pattern_nested_constructor() {
+        let gen = RustCodegen::new();
+        // Some(Point(x, y))
+        let pattern = crate::ast::Pattern::Constructor {
+            name: "Some".to_string(),
+            fields: vec![crate::ast::Pattern::Constructor {
+                name: "Point".to_string(),
+                fields: vec![
+                    crate::ast::Pattern::Identifier("x".to_string()),
+                    crate::ast::Pattern::Identifier("y".to_string()),
+                ],
+            }],
+        };
+        assert_eq!(gen.gen_pattern(&pattern), "Some(Point(x, y))");
+    }
+
+    #[test]
+    fn test_gen_match_simple() {
+        let gen = RustCodegen::new();
+        // match value { Some(x) => x, None => 0_i64 }
+        let scrutinee = Expr::Identifier("value".to_string());
+        let arms = vec![
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "Some".to_string(),
+                    fields: vec![crate::ast::Pattern::Identifier("x".to_string())],
+                },
+                guard: None,
+                body: Box::new(Expr::Identifier("x".to_string())),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "None".to_string(),
+                    fields: vec![],
+                },
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::Int(0))),
+            },
+        ];
+        let result = gen.gen_match(&scrutinee, &arms);
+        assert!(result.contains("match value {"));
+        assert!(result.contains("Some(x) => x"));
+        assert!(result.contains("None => 0_i64"));
+    }
+
+    #[test]
+    fn test_gen_match_with_guard() {
+        let gen = RustCodegen::new();
+        // match value { x if x > 0 => x, _ => 0 }
+        let scrutinee = Expr::Identifier("value".to_string());
+        let arms = vec![
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Identifier("x".to_string()),
+                guard: Some(Box::new(Expr::Binary {
+                    left: Box::new(Expr::Identifier("x".to_string())),
+                    op: crate::ast::BinaryOp::Gt,
+                    right: Box::new(Expr::Literal(Literal::Int(0))),
+                })),
+                body: Box::new(Expr::Identifier("x".to_string())),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Wildcard,
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::Int(0))),
+            },
+        ];
+        let result = gen.gen_match(&scrutinee, &arms);
+        assert!(result.contains("match value {"));
+        assert!(result.contains("x if (x > 0_i64) => x"));
+        assert!(result.contains("_ => 0_i64"));
+    }
+
+    #[test]
+    fn test_gen_match_tuple_patterns() {
+        let gen = RustCodegen::new();
+        // match point { (0, 0) => "origin", (x, 0) => "x-axis", (0, y) => "y-axis", _ => "plane" }
+        let scrutinee = Expr::Identifier("point".to_string());
+        let arms = vec![
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Tuple(vec![
+                    crate::ast::Pattern::Literal(Literal::Int(0)),
+                    crate::ast::Pattern::Literal(Literal::Int(0)),
+                ]),
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::String("origin".to_string()))),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Tuple(vec![
+                    crate::ast::Pattern::Identifier("x".to_string()),
+                    crate::ast::Pattern::Literal(Literal::Int(0)),
+                ]),
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::String("x-axis".to_string()))),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Tuple(vec![
+                    crate::ast::Pattern::Literal(Literal::Int(0)),
+                    crate::ast::Pattern::Identifier("y".to_string()),
+                ]),
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::String("y-axis".to_string()))),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Wildcard,
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::String("plane".to_string()))),
+            },
+        ];
+        let result = gen.gen_match(&scrutinee, &arms);
+        assert!(result.contains("match point {"));
+        assert!(result.contains("(0_i64, 0_i64) => \"origin\""));
+        assert!(result.contains("(x, 0_i64) => \"x-axis\""));
+        assert!(result.contains("(0_i64, y) => \"y-axis\""));
+        assert!(result.contains("_ => \"plane\""));
+    }
+
+    #[test]
+    fn test_gen_expr_match() {
+        let gen = RustCodegen::new();
+        // match option { Some(x) => x, None => 0 }
+        let expr = Expr::Match {
+            scrutinee: Box::new(Expr::Identifier("option".to_string())),
+            arms: vec![
+                crate::ast::MatchArm {
+                    pattern: crate::ast::Pattern::Constructor {
+                        name: "Some".to_string(),
+                        fields: vec![crate::ast::Pattern::Identifier("x".to_string())],
+                    },
+                    guard: None,
+                    body: Box::new(Expr::Identifier("x".to_string())),
+                },
+                crate::ast::MatchArm {
+                    pattern: crate::ast::Pattern::Constructor {
+                        name: "None".to_string(),
+                        fields: vec![],
+                    },
+                    guard: None,
+                    body: Box::new(Expr::Literal(Literal::Int(0))),
+                },
+            ],
+        };
+        let result = gen.gen_expr(&expr);
+        assert!(result.contains("match option {"));
+        assert!(result.contains("Some(x) => x"));
+        assert!(result.contains("None => 0_i64"));
+    }
+
+    #[test]
+    fn test_gen_match_nested_patterns() {
+        let gen = RustCodegen::new();
+        // match result { Ok(Some(x)) => x, Ok(None) => 0, Err(_) => -1 }
+        let scrutinee = Expr::Identifier("result".to_string());
+        let arms = vec![
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "Ok".to_string(),
+                    fields: vec![crate::ast::Pattern::Constructor {
+                        name: "Some".to_string(),
+                        fields: vec![crate::ast::Pattern::Identifier("x".to_string())],
+                    }],
+                },
+                guard: None,
+                body: Box::new(Expr::Identifier("x".to_string())),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "Ok".to_string(),
+                    fields: vec![crate::ast::Pattern::Constructor {
+                        name: "None".to_string(),
+                        fields: vec![],
+                    }],
+                },
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::Int(0))),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "Err".to_string(),
+                    fields: vec![crate::ast::Pattern::Wildcard],
+                },
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::Int(-1))),
+            },
+        ];
+        let result = gen.gen_match(&scrutinee, &arms);
+        assert!(result.contains("match result {"));
+        assert!(result.contains("Ok(Some(x)) => x"));
+        assert!(result.contains("Ok(None) => 0_i64"));
+        assert!(result.contains("Err(_) => -1_i64"));
+    }
+
+    #[test]
+    fn test_gen_match_with_complex_body() {
+        let gen = RustCodegen::new();
+        // match value { Some(x) => x + 1, None => 0 }
+        let scrutinee = Expr::Identifier("value".to_string());
+        let arms = vec![
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "Some".to_string(),
+                    fields: vec![crate::ast::Pattern::Identifier("x".to_string())],
+                },
+                guard: None,
+                body: Box::new(Expr::Binary {
+                    left: Box::new(Expr::Identifier("x".to_string())),
+                    op: crate::ast::BinaryOp::Add,
+                    right: Box::new(Expr::Literal(Literal::Int(1))),
+                }),
+            },
+            crate::ast::MatchArm {
+                pattern: crate::ast::Pattern::Constructor {
+                    name: "None".to_string(),
+                    fields: vec![],
+                },
+                guard: None,
+                body: Box::new(Expr::Literal(Literal::Int(0))),
+            },
+        ];
+        let result = gen.gen_match(&scrutinee, &arms);
+        assert!(result.contains("match value {"));
+        assert!(result.contains("Some(x) => (x + 1_i64)"));
+        assert!(result.contains("None => 0_i64"));
+    }
 }
+
