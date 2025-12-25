@@ -1,4 +1,6 @@
-
+archive/
+archives/
+archive_docs/
 
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
