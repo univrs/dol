@@ -14,42 +14,66 @@ fn parse(input: &str) -> Result<Declaration, ParseError> {
 fn test_parse_nutrient_gene() {
     let source = include_str!("../examples/stdlib/biology/types.dol");
     let result = parse(source);
-    assert!(result.is_ok(), "Failed to parse types.dol: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to parse types.dol: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_parse_hyphal_trait() {
     let source = include_str!("../examples/stdlib/biology/hyphal.dol");
     let result = parse(source);
-    assert!(result.is_ok(), "Failed to parse hyphal.dol: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to parse hyphal.dol: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_parse_transport_trait() {
     let source = include_str!("../examples/stdlib/biology/transport.dol");
     let result = parse(source);
-    assert!(result.is_ok(), "Failed to parse transport.dol: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to parse transport.dol: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_parse_ecosystem_system() {
     let source = include_str!("../examples/stdlib/biology/ecosystem.dol");
     let result = parse(source);
-    assert!(result.is_ok(), "Failed to parse ecosystem.dol: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to parse ecosystem.dol: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_parse_evolution() {
     let source = include_str!("../examples/stdlib/biology/evolution.dol");
     let result = parse(source);
-    assert!(result.is_ok(), "Failed to parse evolution.dol: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to parse evolution.dol: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_parse_mycelium_network() {
     let source = include_str!("../examples/stdlib/biology/mycelium.dol");
     let result = parse(source);
-    assert!(result.is_ok(), "Failed to parse mycelium.dol: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to parse mycelium.dol: {:?}",
+        result.err()
+    );
 }
 
 #[test]
