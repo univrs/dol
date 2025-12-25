@@ -322,7 +322,9 @@ impl RustCodegen {
             for (name, _, _, constraint) in fields {
                 if constraint.is_some() {
                     let field = to_snake_case(name);
-                    output.push_str(&format!("        if !self.validate_{field}() {{ return false; }}\n"));
+                    output.push_str(&format!(
+                        "        if !self.validate_{field}() {{ return false; }}\n"
+                    ));
                 }
             }
             output.push_str("        true\n");
@@ -712,7 +714,7 @@ impl RustCodegen {
     }
 
     /// Generate Rust code for an expression.
-    fn gen_expr(&self, expr: &Expr) -> String {
+    pub fn gen_expr(&self, expr: &Expr) -> String {
         match expr {
             Expr::Literal(lit) => self.gen_literal(lit),
             Expr::Identifier(name) => name.clone(),
@@ -1001,7 +1003,11 @@ impl RustCodegen {
                 format!("{}{} => {}", pattern, guard, body)
             })
             .collect();
-        format!("match {} {{\n    {}\n}}", scrutinee_code, arms_code.join(",\n    "))
+        format!(
+            "match {} {{\n    {}\n}}",
+            scrutinee_code,
+            arms_code.join(",\n    ")
+        )
     }
 
     // === Meta-Programming Code Generation ===
@@ -1860,10 +1866,7 @@ mod tests {
             }),
             args: vec![Expr::Literal(Literal::Int(42))],
         };
-        assert_eq!(
-            gen.gen_expr(&outer_call),
-            "obj.method1().method2(42_i64)"
-        );
+        assert_eq!(gen.gen_expr(&outer_call), "obj.method1().method2(42_i64)");
     }
 
     #[test]
@@ -2087,10 +2090,7 @@ mod tests {
             func: Box::new(lambda),
             args: vec![Expr::Identifier("opt_val".to_string())],
         };
-        assert_eq!(
-            gen.gen_expr(&expr),
-            "opt_val.map(|x| { (x + 1_i64) })"
-        );
+        assert_eq!(gen.gen_expr(&expr), "opt_val.map(|x| { (x + 1_i64) })");
     }
 
     #[test]
@@ -2439,4 +2439,3 @@ mod tests {
         assert!(result.contains("None => 0_i64"));
     }
 }
-
