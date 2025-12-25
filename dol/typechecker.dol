@@ -1,0 +1,1550 @@
+module dol.typechecker @ 0.4.0
+
+exegesis {
+    The DOL type checker implements bidirectional type inference.
+    It performs type checking and inference on the DOL AST,
+    collecting type errors for reporting.
+}
+
+use dol.ast.*
+use dol.types.{ Type, TypeEnv, TypeError }
+
+// ═══════════════════════════════════════════════════════════════
+// TYPE CHECKER STATE
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    The TypeChecker gene maintains state during type checking:
+    - env: The type environment mapping names to types
+    - errors: Accumulated type errors
+    - var_counter: Counter for generating fresh type variables
+}
+
+/// Main type checker state
+pub gene TypeChecker {
+    has env: TypeEnv
+    has errors: List<TypeError> = []
+    has var_counter: UInt64 = 0
+
+    // ═══════════════════════════════════════════════════════════════
+    // FRESH TYPE VARIABLES
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Generate a fresh type variable for type inference.
+        Each call produces a unique type variable like T0, T1, T2, etc.
+    }
+
+    /// Create a fresh type variable for inference
+    fun fresh_var() -> Type {
+        let id = this.var_counter
+        this.var_counter = this.var_counter + 1
+        return Type.Var { id: id, name: "T" + id.to_string() }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FILE-LEVEL CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Type check an entire DOL file.
+        Returns all type errors found during checking.
+    }
+
+    /// Check an entire DOL file
+    fun check_file(file: DolFile) -> List<TypeError> {
+        // First pass: register all top-level declarations
+        for decl in file.decls {
+            this.register_decl(decl)
+        }
+
+        // Second pass: check all declarations
+        for decl in file.decls {
+            this.check_decl(decl)
+        }
+
+        return this.errors
+    }
+
+    exegesis {
+        Register a declaration in the type environment.
+        This is the first pass before full type checking.
+    }
+
+    /// Register a declaration in the type environment
+    fun register_decl(decl: Decl) {
+        match decl {
+            GeneDecl(gene) {
+                let gene_type = Type.Gene { name: gene.name, type_params: gene.type_params }
+                this.env.define(gene.name, gene_type)
+            }
+            TraitDecl(trait_decl) {
+                let trait_type = Type.Trait { name: trait_decl.name, type_params: trait_decl.type_params }
+                this.env.define(trait_decl.name, trait_type)
+            }
+            FunctionDecl(func) {
+                let func_type = this.function_signature_type(func)
+                this.env.define(func.name, func_type)
+            }
+            SystemDecl(sys) {
+                let sys_type = Type.System { name: sys.name }
+                this.env.define(sys.name, sys_type)
+            }
+            ConstraintDecl(constraint) {
+                let constraint_type = Type.Constraint { name: constraint.name }
+                this.env.define(constraint.name, constraint_type)
+            }
+            _ { }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // DECLARATION CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Check a declaration for type correctness.
+        Dispatches to specialized checkers based on declaration type.
+    }
+
+    /// Check a declaration
+    fun check_decl(decl: Decl) {
+        match decl {
+            GeneDecl(gene) { this.check_gene(gene) }
+            TraitDecl(trait_decl) { this.check_trait(trait_decl) }
+            FunctionDecl(func) { this.check_function(func) }
+            SystemDecl(sys) { this.check_system(sys) }
+            ConstraintDecl(constraint) { this.check_constraint(constraint) }
+            UseDecl(_) { } // Imports are handled separately
+            ModuleDecl(_) { } // Module declarations are metadata
+        }
+    }
+
+    exegesis {
+        Type check a gene declaration.
+        Verifies field types, method signatures, and body expressions.
+    }
+
+    /// Check a gene declaration
+    fun check_gene(gene: GeneDecl) {
+        // Enter gene scope with type parameters
+        let saved_env = this.env.clone()
+        for param in gene.type_params {
+            this.env.define(param.name, Type.Param { name: param.name, bound: param.bound })
+        }
+
+        // Check each field
+        for field in gene.fields {
+            let field_type = this.resolve_type(field.ty)
+            if field.default != None {
+                let default_type = this.infer_expr(field.default.unwrap())
+                this.unify(field_type, default_type, field.span)
+            }
+            this.env.define(field.name, field_type)
+        }
+
+        // Check each method
+        for method in gene.methods {
+            this.check_function(method)
+        }
+
+        // Restore environment
+        this.env = saved_env
+    }
+
+    exegesis {
+        Type check a trait declaration.
+        Verifies method signatures and default implementations.
+    }
+
+    /// Check a trait declaration
+    fun check_trait(trait_decl: TraitDecl) {
+        let saved_env = this.env.clone()
+
+        // Bind type parameters
+        for param in trait_decl.type_params {
+            this.env.define(param.name, Type.Param { name: param.name, bound: param.bound })
+        }
+
+        // Check required methods
+        for method in trait_decl.methods {
+            this.check_function(method)
+        }
+
+        this.env = saved_env
+    }
+
+    exegesis {
+        Type check a function declaration.
+        Verifies parameter types, return type, and body type.
+    }
+
+    /// Check a function declaration
+    fun check_function(func: FunctionDecl) {
+        let saved_env = this.env.clone()
+
+        // Bind type parameters
+        for param in func.type_params {
+            this.env.define(param.name, Type.Param { name: param.name, bound: param.bound })
+        }
+
+        // Bind parameters
+        for param in func.params {
+            let param_type = this.resolve_type(param.ty)
+            this.env.define(param.name, param_type)
+        }
+
+        // Determine return type
+        let return_type = if func.return_ty != None {
+            this.resolve_type(func.return_ty.unwrap())
+        } else {
+            Type.Unit
+        }
+
+        // Check body against return type
+        if func.body != None {
+            this.check_block(func.body.unwrap(), return_type)
+        }
+
+        this.env = saved_env
+    }
+
+    exegesis {
+        Type check a system declaration.
+    }
+
+    /// Check a system declaration
+    fun check_system(sys: SystemDecl) {
+        let saved_env = this.env.clone()
+
+        // Check each component
+        for component in sys.components {
+            this.check_decl(component)
+        }
+
+        this.env = saved_env
+    }
+
+    exegesis {
+        Type check a constraint declaration.
+    }
+
+    /// Check a constraint declaration
+    fun check_constraint(constraint: ConstraintDecl) {
+        // Check constraint predicates
+        for pred in constraint.predicates {
+            this.check_predicate(pred)
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // EXPRESSION CHECKING (Bidirectional)
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Check an expression against an expected type.
+        This is the "checking" direction of bidirectional typing.
+    }
+
+    /// Check an expression against an expected type
+    fun check_expr(expr: Expr, expected: Type) -> Type {
+        match expr {
+            Lambda(params, body, span) {
+                // Deconstruct expected function type
+                match expected {
+                    Type.Function(param_types, return_type) {
+                        if params.length() != param_types.length() {
+                            this.errors.push(TypeError {
+                                message: "Lambda has " + params.length().to_string() +
+                                         " parameters, expected " + param_types.length().to_string(),
+                                span: span
+                            })
+                            return expected
+                        }
+
+                        let saved_env = this.env.clone()
+                        for i in 0..params.length() {
+                            this.env.define(params[i].name, param_types[i])
+                        }
+                        this.check_expr(body, return_type.deref())
+                        this.env = saved_env
+                        return expected
+                    }
+                    _ {
+                        // Fall back to inference
+                        let inferred = this.infer_expr(expr)
+                        this.unify(expected, inferred, span)
+                        return inferred
+                    }
+                }
+            }
+            If(cond, then_branch, else_branch, span) {
+                this.check_expr(cond, Type.Bool)
+                this.check_block(then_branch, expected)
+                if else_branch != None {
+                    this.check_block(else_branch.unwrap(), expected)
+                }
+                return expected
+            }
+            Match(scrutinee, arms, span) {
+                let scrutinee_type = this.infer_expr(scrutinee)
+                for arm in arms {
+                    this.check_pattern(arm.pattern, scrutinee_type)
+                    this.check_expr(arm.body, expected)
+                }
+                return expected
+            }
+            _ {
+                // Fall back to inference and unification
+                let inferred = this.infer_expr(expr)
+                this.unify(expected, inferred, this.expr_span(expr))
+                return inferred
+            }
+        }
+    }
+
+    exegesis {
+        Infer the type of an expression.
+        This is the "inference" direction of bidirectional typing.
+    }
+
+    /// Infer the type of an expression
+    fun infer_expr(expr: Expr) -> Type {
+        match expr {
+            // Literals
+            IntLit(_, span) { return Type.Int64 }
+            FloatLit(_, span) { return Type.Float64 }
+            StringLit(_, span) { return Type.String }
+            BoolLit(_, span) { return Type.Bool }
+
+            // Variable reference
+            Ident(name, span) {
+                match this.env.lookup(name) {
+                    Some(ty) { return ty }
+                    None {
+                        this.errors.push(TypeError {
+                            message: "Undefined variable: " + name,
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Binary operations
+            Binary(op, left, right, span) {
+                return this.infer_binary(op, left, right, span)
+            }
+
+            // Unary operations
+            Unary(op, operand, span) {
+                let operand_type = this.infer_expr(operand.deref())
+                match op {
+                    UnaryOp.Neg {
+                        if !this.is_numeric(operand_type) {
+                            this.errors.push(TypeError {
+                                message: "Cannot negate non-numeric type",
+                                span: span
+                            })
+                        }
+                        return operand_type
+                    }
+                    UnaryOp.Not {
+                        this.unify(operand_type, Type.Bool, span)
+                        return Type.Bool
+                    }
+                    _ { return operand_type }
+                }
+            }
+
+            // Function calls
+            Call(callee, args, span) {
+                let callee_type = this.infer_expr(callee.deref())
+                match callee_type {
+                    Type.Function(param_types, return_type) {
+                        if args.length() != param_types.length() {
+                            this.errors.push(TypeError {
+                                message: "Expected " + param_types.length().to_string() +
+                                         " arguments, got " + args.length().to_string(),
+                                span: span
+                            })
+                        } else {
+                            for i in 0..args.length() {
+                                this.check_expr(args[i], param_types[i])
+                            }
+                        }
+                        return return_type.deref()
+                    }
+                    Type.Var(_) {
+                        // Polymorphic call - create fresh return type
+                        let arg_types = args.map(|arg| this.infer_expr(arg))
+                        let return_var = this.fresh_var()
+                        let func_type = Type.Function(arg_types, Box.new(return_var))
+                        this.unify(callee_type, func_type, span)
+                        return return_var
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Cannot call non-function type",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Lambda expressions
+            Lambda(params, body, span) {
+                let saved_env = this.env.clone()
+                let param_types = []
+                for param in params {
+                    let param_type = if param.ty != None {
+                        this.resolve_type(param.ty.unwrap())
+                    } else {
+                        this.fresh_var()
+                    }
+                    this.env.define(param.name, param_type)
+                    param_types.push(param_type)
+                }
+                let body_type = this.infer_expr(body.deref())
+                this.env = saved_env
+                return Type.Function(param_types, Box.new(body_type))
+            }
+
+            // If expressions
+            If(cond, then_branch, else_branch, span) {
+                this.check_expr(cond, Type.Bool)
+                let then_type = this.infer_block(then_branch)
+                if else_branch != None {
+                    let else_type = this.infer_block(else_branch.unwrap())
+                    this.unify(then_type, else_type, span)
+                }
+                return then_type
+            }
+
+            // Match expressions
+            Match(scrutinee, arms, span) {
+                let scrutinee_type = this.infer_expr(scrutinee.deref())
+                if arms.length() == 0 {
+                    this.errors.push(TypeError {
+                        message: "Match expression requires at least one arm",
+                        span: span
+                    })
+                    return Type.Error
+                }
+
+                // Check patterns and infer result type from first arm
+                let result_type = None
+                for arm in arms {
+                    this.check_pattern(arm.pattern, scrutinee_type)
+                    let arm_type = this.infer_expr(arm.body)
+                    if result_type == None {
+                        result_type = Some(arm_type)
+                    } else {
+                        this.unify(result_type.unwrap(), arm_type, arm.span)
+                    }
+                }
+                return result_type.unwrap_or(Type.Unit)
+            }
+
+            // Block expression
+            Block(block, span) {
+                return this.infer_block(block)
+            }
+
+            // Field access
+            FieldAccess(object, field, span) {
+                let object_type = this.infer_expr(object.deref())
+                match object_type {
+                    Type.Gene(name, _) {
+                        match this.env.lookup_field(name, field) {
+                            Some(field_type) { return field_type }
+                            None {
+                                this.errors.push(TypeError {
+                                    message: "Unknown field: " + field + " on type " + name,
+                                    span: span
+                                })
+                                return Type.Error
+                            }
+                        }
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Cannot access field on non-gene type",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Index access
+            Index(array, index, span) {
+                let array_type = this.infer_expr(array.deref())
+                let index_type = this.infer_expr(index.deref())
+                this.unify(index_type, Type.Int64, span)
+                match array_type {
+                    Type.List(elem_type) { return elem_type.deref() }
+                    Type.Array(elem_type, _) { return elem_type.deref() }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Cannot index non-array type",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Gene instantiation
+            GeneInit(name, fields, span) {
+                match this.env.lookup(name) {
+                    Some(Type.Gene(gene_name, type_params)) {
+                        // Check each field
+                        for field in fields {
+                            match this.env.lookup_field(gene_name, field.name) {
+                                Some(expected_type) {
+                                    this.check_expr(field.value, expected_type)
+                                }
+                                None {
+                                    this.errors.push(TypeError {
+                                        message: "Unknown field: " + field.name,
+                                        span: field.span
+                                    })
+                                }
+                            }
+                        }
+                        return Type.Gene(gene_name, type_params)
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Unknown gene: " + name,
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // List literal
+            ListLit(elements, span) {
+                if elements.length() == 0 {
+                    let elem_var = this.fresh_var()
+                    return Type.List(Box.new(elem_var))
+                }
+                let elem_type = this.infer_expr(elements[0])
+                for i in 1..elements.length() {
+                    let t = this.infer_expr(elements[i])
+                    this.unify(elem_type, t, span)
+                }
+                return Type.List(Box.new(elem_type))
+            }
+
+            // Tuple literal
+            TupleLit(elements, span) {
+                let types = elements.map(|e| this.infer_expr(e))
+                return Type.Tuple(types)
+            }
+
+            // Method call
+            MethodCall(receiver, method, args, span) {
+                let receiver_type = this.infer_expr(receiver.deref())
+                match this.env.lookup_method(receiver_type, method) {
+                    Some(method_type) {
+                        match method_type {
+                            Type.Function(param_types, return_type) {
+                                // First param is self, already have receiver
+                                let expected_args = param_types.slice(1)
+                                if args.length() != expected_args.length() {
+                                    this.errors.push(TypeError {
+                                        message: "Wrong number of arguments for method " + method,
+                                        span: span
+                                    })
+                                }
+                                for i in 0..args.length() {
+                                    if i < expected_args.length() {
+                                        this.check_expr(args[i], expected_args[i])
+                                    }
+                                }
+                                return return_type.deref()
+                            }
+                            _ { return Type.Error }
+                        }
+                    }
+                    None {
+                        this.errors.push(TypeError {
+                            message: "Unknown method: " + method,
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Quote meta-programming
+            Quote(inner, span) {
+                // Quote produces an AST representation
+                return Type.Quoted(Box.new(this.infer_expr(inner.deref())))
+            }
+
+            // Eval meta-programming
+            Eval(inner, span) {
+                let inner_type = this.infer_expr(inner.deref())
+                match inner_type {
+                    Type.Quoted(inner_quoted_type) {
+                        return inner_quoted_type.deref()
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Can only eval quoted expressions",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Reflect type introspection
+            Reflect(inner, span) {
+                // Reflect produces type metadata
+                let _ = this.infer_expr(inner.deref())
+                return Type.TypeInfo
+            }
+
+            // Range expression
+            Range(start, end, inclusive, span) {
+                let start_type = this.infer_expr(start.deref())
+                let end_type = this.infer_expr(end.deref())
+                this.unify(start_type, Type.Int64, span)
+                this.unify(end_type, Type.Int64, span)
+                return Type.Range
+            }
+
+            // This expression
+            This(span) {
+                match this.env.lookup("this") {
+                    Some(ty) { return ty }
+                    None {
+                        this.errors.push(TypeError {
+                            message: "'this' used outside of method context",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Return expression
+            Return(value, span) {
+                if value != None {
+                    let _ = this.infer_expr(value.unwrap())
+                }
+                return Type.Never
+            }
+
+            // Break/Continue
+            Break(span) { return Type.Never }
+            Continue(span) { return Type.Never }
+
+            _ {
+                return Type.Error
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // BINARY OPERATION TYPING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Infer the type of a binary operation.
+        Handles arithmetic, comparison, logical, and composition operators.
+    }
+
+    /// Infer the type of a binary operation
+    fun infer_binary(op: BinOp, left: Box<Expr>, right: Box<Expr>, span: Span) -> Type {
+        let left_type = this.infer_expr(left.deref())
+        let right_type = this.infer_expr(right.deref())
+
+        match op {
+            // Arithmetic operators
+            BinOp.Add | BinOp.Sub | BinOp.Mul | BinOp.Div | BinOp.Mod | BinOp.Pow {
+                return this.check_numeric(left_type, right_type, span)
+            }
+
+            // Comparison operators
+            BinOp.Eq | BinOp.Ne {
+                this.check_same(left_type, right_type, span)
+                return Type.Bool
+            }
+            BinOp.Lt | BinOp.Le | BinOp.Gt | BinOp.Ge {
+                if !this.is_comparable(left_type) || !this.is_comparable(right_type) {
+                    this.errors.push(TypeError {
+                        message: "Types are not comparable",
+                        span: span
+                    })
+                }
+                this.check_same(left_type, right_type, span)
+                return Type.Bool
+            }
+
+            // Logical operators
+            BinOp.And | BinOp.Or {
+                this.unify(left_type, Type.Bool, span)
+                this.unify(right_type, Type.Bool, span)
+                return Type.Bool
+            }
+
+            // Pipe operator (|>)
+            BinOp.Pipe {
+                match right_type {
+                    Type.Function(param_types, return_type) {
+                        if param_types.length() >= 1 {
+                            this.unify(left_type, param_types[0], span)
+                            return return_type.deref()
+                        }
+                        this.errors.push(TypeError {
+                            message: "Pipe target must accept at least one argument",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Pipe target must be a function",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // Compose operator (>>)
+            BinOp.Compose {
+                match (left_type, right_type) {
+                    (Type.Function(l_params, l_return), Type.Function(r_params, r_return)) {
+                        if r_params.length() >= 1 {
+                            this.unify(l_return.deref(), r_params[0], span)
+                            return Type.Function(l_params, r_return)
+                        }
+                        this.errors.push(TypeError {
+                            message: "Cannot compose: second function needs at least one parameter",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Compose operator requires two functions",
+                            span: span
+                        })
+                        return Type.Error
+                    }
+                }
+            }
+
+            // String concatenation
+            BinOp.Concat {
+                this.unify(left_type, Type.String, span)
+                this.unify(right_type, Type.String, span)
+                return Type.String
+            }
+
+            _ {
+                this.errors.push(TypeError {
+                    message: "Unknown binary operator",
+                    span: span
+                })
+                return Type.Error
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NUMERIC TYPE CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Check that both operands are numeric and return the common numeric type.
+    }
+
+    /// Check numeric operands and return result type
+    fun check_numeric(left: Type, right: Type, span: Span) -> Type {
+        if !this.is_numeric(left) {
+            this.errors.push(TypeError {
+                message: "Left operand must be numeric",
+                span: span
+            })
+            return Type.Error
+        }
+        if !this.is_numeric(right) {
+            this.errors.push(TypeError {
+                message: "Right operand must be numeric",
+                span: span
+            })
+            return Type.Error
+        }
+
+        // Numeric type promotion: if either is Float64, result is Float64
+        match (left, right) {
+            (Type.Float64, _) { return Type.Float64 }
+            (_, Type.Float64) { return Type.Float64 }
+            (Type.Float32, _) { return Type.Float32 }
+            (_, Type.Float32) { return Type.Float32 }
+            _ {
+                // Both are integer types - check they're the same
+                this.unify(left, right, span)
+                return left
+            }
+        }
+    }
+
+    exegesis {
+        Check if a type is numeric.
+    }
+
+    /// Check if type is numeric
+    fun is_numeric(ty: Type) -> Bool {
+        match ty {
+            Type.Int8 { return true }
+            Type.Int16 { return true }
+            Type.Int32 { return true }
+            Type.Int64 { return true }
+            Type.UInt8 { return true }
+            Type.UInt16 { return true }
+            Type.UInt32 { return true }
+            Type.UInt64 { return true }
+            Type.Float32 { return true }
+            Type.Float64 { return true }
+            Type.Var(_) { return true } // Assume type variables could be numeric
+            _ { return false }
+        }
+    }
+
+    exegesis {
+        Check if a type supports comparison operators.
+    }
+
+    /// Check if type is comparable
+    fun is_comparable(ty: Type) -> Bool {
+        match ty {
+            Type.Int8 { return true }
+            Type.Int16 { return true }
+            Type.Int32 { return true }
+            Type.Int64 { return true }
+            Type.UInt8 { return true }
+            Type.UInt16 { return true }
+            Type.UInt32 { return true }
+            Type.UInt64 { return true }
+            Type.Float32 { return true }
+            Type.Float64 { return true }
+            Type.String { return true }
+            Type.Char { return true }
+            Type.Var(_) { return true }
+            _ { return false }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // TYPE UNIFICATION
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Check that two types are the same, reporting an error if not.
+    }
+
+    /// Check that two types are the same
+    fun check_same(left: Type, right: Type, span: Span) {
+        this.unify(left, right, span)
+    }
+
+    exegesis {
+        Unify two types, binding type variables as needed.
+        This is the core of Hindley-Milner type inference.
+    }
+
+    /// Unify two types
+    fun unify(a: Type, b: Type, span: Span) {
+        let a_resolved = this.env.resolve(a)
+        let b_resolved = this.env.resolve(b)
+
+        match (a_resolved, b_resolved) {
+            // Same type
+            _ if a_resolved == b_resolved { return }
+
+            // Type variables
+            (Type.Var(id_a), _) {
+                if this.occurs_in(id_a, b_resolved) {
+                    this.errors.push(TypeError {
+                        message: "Infinite type detected",
+                        span: span
+                    })
+                    return
+                }
+                this.env.bind_var(id_a, b_resolved)
+            }
+            (_, Type.Var(id_b)) {
+                if this.occurs_in(id_b, a_resolved) {
+                    this.errors.push(TypeError {
+                        message: "Infinite type detected",
+                        span: span
+                    })
+                    return
+                }
+                this.env.bind_var(id_b, a_resolved)
+            }
+
+            // Function types
+            (Type.Function(params_a, ret_a), Type.Function(params_b, ret_b)) {
+                if params_a.length() != params_b.length() {
+                    this.errors.push(TypeError {
+                        message: "Function parameter count mismatch",
+                        span: span
+                    })
+                    return
+                }
+                for i in 0..params_a.length() {
+                    this.unify(params_a[i], params_b[i], span)
+                }
+                this.unify(ret_a.deref(), ret_b.deref(), span)
+            }
+
+            // List types
+            (Type.List(elem_a), Type.List(elem_b)) {
+                this.unify(elem_a.deref(), elem_b.deref(), span)
+            }
+
+            // Option types
+            (Type.Option(inner_a), Type.Option(inner_b)) {
+                this.unify(inner_a.deref(), inner_b.deref(), span)
+            }
+
+            // Result types
+            (Type.Result(ok_a, err_a), Type.Result(ok_b, err_b)) {
+                this.unify(ok_a.deref(), ok_b.deref(), span)
+                this.unify(err_a.deref(), err_b.deref(), span)
+            }
+
+            // Tuple types
+            (Type.Tuple(elems_a), Type.Tuple(elems_b)) {
+                if elems_a.length() != elems_b.length() {
+                    this.errors.push(TypeError {
+                        message: "Tuple length mismatch",
+                        span: span
+                    })
+                    return
+                }
+                for i in 0..elems_a.length() {
+                    this.unify(elems_a[i], elems_b[i], span)
+                }
+            }
+
+            // Gene types
+            (Type.Gene(name_a, params_a), Type.Gene(name_b, params_b)) {
+                if name_a != name_b {
+                    this.errors.push(TypeError {
+                        message: "Type mismatch: expected " + name_a + ", got " + name_b,
+                        span: span
+                    })
+                    return
+                }
+                if params_a.length() != params_b.length() {
+                    this.errors.push(TypeError {
+                        message: "Type parameter count mismatch",
+                        span: span
+                    })
+                    return
+                }
+                for i in 0..params_a.length() {
+                    this.unify(params_a[i], params_b[i], span)
+                }
+            }
+
+            // Quoted types
+            (Type.Quoted(inner_a), Type.Quoted(inner_b)) {
+                this.unify(inner_a.deref(), inner_b.deref(), span)
+            }
+
+            // Error types unify with anything (to prevent cascading errors)
+            (Type.Error, _) { return }
+            (_, Type.Error) { return }
+
+            // Never type (bottom) unifies with anything
+            (Type.Never, _) { return }
+            (_, Type.Never) { return }
+
+            // No match - type error
+            _ {
+                this.errors.push(TypeError {
+                    message: "Type mismatch: expected " + a_resolved.to_string() +
+                             ", got " + b_resolved.to_string(),
+                    span: span
+                })
+            }
+        }
+    }
+
+    exegesis {
+        Occurs check for preventing infinite types.
+    }
+
+    /// Check if a type variable occurs in a type
+    fun occurs_in(var_id: UInt64, ty: Type) -> Bool {
+        match ty {
+            Type.Var(id) { return id == var_id }
+            Type.Function(params, ret) {
+                for param in params {
+                    if this.occurs_in(var_id, param) { return true }
+                }
+                return this.occurs_in(var_id, ret.deref())
+            }
+            Type.List(elem) { return this.occurs_in(var_id, elem.deref()) }
+            Type.Option(inner) { return this.occurs_in(var_id, inner.deref()) }
+            Type.Result(ok, err) {
+                return this.occurs_in(var_id, ok.deref()) ||
+                       this.occurs_in(var_id, err.deref())
+            }
+            Type.Tuple(elems) {
+                for elem in elems {
+                    if this.occurs_in(var_id, elem) { return true }
+                }
+                return false
+            }
+            Type.Gene(_, params) {
+                for param in params {
+                    if this.occurs_in(var_id, param) { return true }
+                }
+                return false
+            }
+            Type.Quoted(inner) { return this.occurs_in(var_id, inner.deref()) }
+            _ { return false }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // TYPE RESOLUTION
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Resolve a type expression from the AST to a concrete Type.
+    }
+
+    /// Resolve a type expression to a Type
+    fun resolve_type(ty: TypeExpr) -> Type {
+        match ty {
+            TypeExpr.Named(name, args, span) {
+                // Built-in types
+                match name {
+                    "Int8" { return Type.Int8 }
+                    "Int16" { return Type.Int16 }
+                    "Int32" { return Type.Int32 }
+                    "Int64" { return Type.Int64 }
+                    "UInt8" { return Type.UInt8 }
+                    "UInt16" { return Type.UInt16 }
+                    "UInt32" { return Type.UInt32 }
+                    "UInt64" { return Type.UInt64 }
+                    "Float32" { return Type.Float32 }
+                    "Float64" { return Type.Float64 }
+                    "Bool" { return Type.Bool }
+                    "String" { return Type.String }
+                    "Char" { return Type.Char }
+                    "Unit" { return Type.Unit }
+                    "Never" { return Type.Never }
+                    "List" {
+                        if args.length() != 1 {
+                            this.errors.push(TypeError {
+                                message: "List requires exactly one type argument",
+                                span: span
+                            })
+                            return Type.Error
+                        }
+                        return Type.List(Box.new(this.resolve_type(args[0])))
+                    }
+                    "Option" {
+                        if args.length() != 1 {
+                            this.errors.push(TypeError {
+                                message: "Option requires exactly one type argument",
+                                span: span
+                            })
+                            return Type.Error
+                        }
+                        return Type.Option(Box.new(this.resolve_type(args[0])))
+                    }
+                    "Result" {
+                        if args.length() != 2 {
+                            this.errors.push(TypeError {
+                                message: "Result requires exactly two type arguments",
+                                span: span
+                            })
+                            return Type.Error
+                        }
+                        return Type.Result(
+                            Box.new(this.resolve_type(args[0])),
+                            Box.new(this.resolve_type(args[1]))
+                        )
+                    }
+                    "Box" {
+                        if args.length() != 1 {
+                            this.errors.push(TypeError {
+                                message: "Box requires exactly one type argument",
+                                span: span
+                            })
+                            return Type.Error
+                        }
+                        return Type.Box(Box.new(this.resolve_type(args[0])))
+                    }
+                    _ {
+                        // Look up user-defined type
+                        match this.env.lookup(name) {
+                            Some(ty) {
+                                match ty {
+                                    Type.Gene(gene_name, _) {
+                                        let resolved_args = args.map(|a| this.resolve_type(a))
+                                        return Type.Gene(gene_name, resolved_args)
+                                    }
+                                    Type.Param(param_name, _) {
+                                        return ty
+                                    }
+                                    _ { return ty }
+                                }
+                            }
+                            None {
+                                this.errors.push(TypeError {
+                                    message: "Unknown type: " + name,
+                                    span: span
+                                })
+                                return Type.Error
+                            }
+                        }
+                    }
+                }
+            }
+            TypeExpr.Function(params, ret, span) {
+                let param_types = params.map(|p| this.resolve_type(p))
+                let ret_type = this.resolve_type(ret.deref())
+                return Type.Function(param_types, Box.new(ret_type))
+            }
+            TypeExpr.Tuple(elems, span) {
+                let elem_types = elems.map(|e| this.resolve_type(e))
+                return Type.Tuple(elem_types)
+            }
+            TypeExpr.Array(elem, size, span) {
+                let elem_type = this.resolve_type(elem.deref())
+                return Type.Array(Box.new(elem_type), size)
+            }
+            TypeExpr.Inferred(span) {
+                return this.fresh_var()
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // BLOCK CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Infer the type of a block expression.
+        The type is the type of the last expression, or Unit if empty.
+    }
+
+    /// Infer the type of a block
+    fun infer_block(block: Block) -> Type {
+        let saved_env = this.env.clone()
+
+        for stmt in block.stmts {
+            this.check_stmt(stmt)
+        }
+
+        let result_type = if block.expr != None {
+            this.infer_expr(block.expr.unwrap())
+        } else {
+            Type.Unit
+        }
+
+        this.env = saved_env
+        return result_type
+    }
+
+    exegesis {
+        Check a block against an expected type.
+    }
+
+    /// Check a block against an expected type
+    fun check_block(block: Block, expected: Type) {
+        let saved_env = this.env.clone()
+
+        for stmt in block.stmts {
+            this.check_stmt(stmt)
+        }
+
+        if block.expr != None {
+            this.check_expr(block.expr.unwrap(), expected)
+        } else {
+            this.unify(Type.Unit, expected, block.span)
+        }
+
+        this.env = saved_env
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STATEMENT CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Type check a statement.
+    }
+
+    /// Check a statement
+    fun check_stmt(stmt: Stmt) {
+        match stmt {
+            Stmt.Let(name, ty, init, span) {
+                let var_type = if ty != None {
+                    let declared_type = this.resolve_type(ty.unwrap())
+                    if init != None {
+                        this.check_expr(init.unwrap(), declared_type)
+                    }
+                    declared_type
+                } else if init != None {
+                    this.infer_expr(init.unwrap())
+                } else {
+                    this.errors.push(TypeError {
+                        message: "Variable must have either a type annotation or initializer",
+                        span: span
+                    })
+                    Type.Error
+                }
+                this.env.define(name, var_type)
+            }
+            Stmt.Var(name, ty, init, span) {
+                // Same as Let but mutable
+                let var_type = if ty != None {
+                    let declared_type = this.resolve_type(ty.unwrap())
+                    if init != None {
+                        this.check_expr(init.unwrap(), declared_type)
+                    }
+                    declared_type
+                } else if init != None {
+                    this.infer_expr(init.unwrap())
+                } else {
+                    this.errors.push(TypeError {
+                        message: "Variable must have either a type annotation or initializer",
+                        span: span
+                    })
+                    Type.Error
+                }
+                this.env.define(name, var_type)
+            }
+            Stmt.Assign(target, value, span) {
+                let target_type = this.infer_expr(target)
+                this.check_expr(value, target_type)
+            }
+            Stmt.Expr(expr, span) {
+                let _ = this.infer_expr(expr)
+            }
+            Stmt.Return(value, span) {
+                // Return type checking handled by function context
+                if value != None {
+                    let _ = this.infer_expr(value.unwrap())
+                }
+            }
+            Stmt.If(cond, then_branch, else_branch, span) {
+                this.check_expr(cond, Type.Bool)
+                this.check_block(then_branch, Type.Unit)
+                if else_branch != None {
+                    this.check_block(else_branch.unwrap(), Type.Unit)
+                }
+            }
+            Stmt.While(cond, body, span) {
+                this.check_expr(cond, Type.Bool)
+                this.check_block(body, Type.Unit)
+            }
+            Stmt.For(var_name, iter, body, span) {
+                let iter_type = this.infer_expr(iter)
+                let elem_type = match iter_type {
+                    Type.List(elem) { elem.deref() }
+                    Type.Range { Type.Int64 }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "For loop requires an iterable",
+                            span: span
+                        })
+                        Type.Error
+                    }
+                }
+                let saved_env = this.env.clone()
+                this.env.define(var_name, elem_type)
+                this.check_block(body, Type.Unit)
+                this.env = saved_env
+            }
+            Stmt.Loop(body, span) {
+                this.check_block(body, Type.Unit)
+            }
+            Stmt.Break(span) { }
+            Stmt.Continue(span) { }
+            Stmt.Match(scrutinee, arms, span) {
+                let scrutinee_type = this.infer_expr(scrutinee)
+                for arm in arms {
+                    this.check_pattern(arm.pattern, scrutinee_type)
+                    this.check_block(arm.body, Type.Unit)
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PATTERN CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Check a pattern against an expected type and bind pattern variables.
+    }
+
+    /// Check a pattern
+    fun check_pattern(pattern: Pattern, expected: Type) {
+        match pattern {
+            Pattern.Wildcard(span) { }
+            Pattern.Ident(name, span) {
+                this.env.define(name, expected)
+            }
+            Pattern.Literal(lit, span) {
+                let lit_type = this.infer_expr(lit)
+                this.unify(expected, lit_type, span)
+            }
+            Pattern.Tuple(patterns, span) {
+                match expected {
+                    Type.Tuple(types) {
+                        if patterns.length() != types.length() {
+                            this.errors.push(TypeError {
+                                message: "Tuple pattern length mismatch",
+                                span: span
+                            })
+                            return
+                        }
+                        for i in 0..patterns.length() {
+                            this.check_pattern(patterns[i], types[i])
+                        }
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Expected tuple type for tuple pattern",
+                            span: span
+                        })
+                    }
+                }
+            }
+            Pattern.Gene(name, fields, span) {
+                match expected {
+                    Type.Gene(gene_name, _) {
+                        if name != gene_name {
+                            this.errors.push(TypeError {
+                                message: "Pattern gene type mismatch",
+                                span: span
+                            })
+                            return
+                        }
+                        for field in fields {
+                            match this.env.lookup_field(gene_name, field.name) {
+                                Some(field_type) {
+                                    this.check_pattern(field.pattern, field_type)
+                                }
+                                None {
+                                    this.errors.push(TypeError {
+                                        message: "Unknown field in pattern: " + field.name,
+                                        span: field.span
+                                    })
+                                }
+                            }
+                        }
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Expected gene type for gene pattern",
+                            span: span
+                        })
+                    }
+                }
+            }
+            Pattern.Enum(variant, inner, span) {
+                // Handle enum variant patterns
+                match expected {
+                    Type.Option(inner_type) {
+                        match variant {
+                            "Some" {
+                                if inner != None {
+                                    this.check_pattern(inner.unwrap(), inner_type.deref())
+                                }
+                            }
+                            "None" { }
+                            _ {
+                                this.errors.push(TypeError {
+                                    message: "Unknown Option variant: " + variant,
+                                    span: span
+                                })
+                            }
+                        }
+                    }
+                    Type.Result(ok_type, err_type) {
+                        match variant {
+                            "Ok" {
+                                if inner != None {
+                                    this.check_pattern(inner.unwrap(), ok_type.deref())
+                                }
+                            }
+                            "Err" {
+                                if inner != None {
+                                    this.check_pattern(inner.unwrap(), err_type.deref())
+                                }
+                            }
+                            _ {
+                                this.errors.push(TypeError {
+                                    message: "Unknown Result variant: " + variant,
+                                    span: span
+                                })
+                            }
+                        }
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: "Enum pattern requires enum type",
+                            span: span
+                        })
+                    }
+                }
+            }
+            Pattern.Or(patterns, span) {
+                for p in patterns {
+                    this.check_pattern(p, expected)
+                }
+            }
+            Pattern.Guard(inner, guard, span) {
+                this.check_pattern(inner.deref(), expected)
+                this.check_expr(guard, Type.Bool)
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PREDICATE CHECKING
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Check a constraint predicate.
+    }
+
+    /// Check a predicate
+    fun check_predicate(pred: Predicate) {
+        match pred {
+            Predicate.Has(subject, property, ty, span) {
+                // Verify property type if specified
+                if ty != None {
+                    let _ = this.resolve_type(ty.unwrap())
+                }
+            }
+            Predicate.Is(subject, trait_name, span) {
+                // Verify trait exists
+                match this.env.lookup(trait_name) {
+                    Some(Type.Trait(_, _)) { }
+                    None {
+                        this.errors.push(TypeError {
+                            message: "Unknown trait: " + trait_name,
+                            span: span
+                        })
+                    }
+                    _ {
+                        this.errors.push(TypeError {
+                            message: trait_name + " is not a trait",
+                            span: span
+                        })
+                    }
+                }
+            }
+            Predicate.Requires(expr, span) {
+                this.check_expr(expr, Type.Bool)
+            }
+            Predicate.Ensures(expr, span) {
+                this.check_expr(expr, Type.Bool)
+            }
+            Predicate.Invariant(expr, span) {
+                this.check_expr(expr, Type.Bool)
+            }
+            Predicate.Law(name, expr, span) {
+                this.check_expr(expr, Type.Bool)
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════
+
+    exegesis {
+        Get the span of an expression for error reporting.
+    }
+
+    /// Get expression span
+    fun expr_span(expr: Expr) -> Span {
+        match expr {
+            IntLit(_, span) { return span }
+            FloatLit(_, span) { return span }
+            StringLit(_, span) { return span }
+            BoolLit(_, span) { return span }
+            Ident(_, span) { return span }
+            Binary(_, _, _, span) { return span }
+            Unary(_, _, span) { return span }
+            Call(_, _, span) { return span }
+            Lambda(_, _, span) { return span }
+            If(_, _, _, span) { return span }
+            Match(_, _, span) { return span }
+            Block(_, span) { return span }
+            FieldAccess(_, _, span) { return span }
+            Index(_, _, span) { return span }
+            GeneInit(_, _, span) { return span }
+            ListLit(_, span) { return span }
+            TupleLit(_, span) { return span }
+            MethodCall(_, _, _, span) { return span }
+            Quote(_, span) { return span }
+            Eval(_, span) { return span }
+            Reflect(_, span) { return span }
+            Range(_, _, _, span) { return span }
+            This(span) { return span }
+            Return(_, span) { return span }
+            Break(span) { return span }
+            Continue(span) { return span }
+            _ { return Span { start: 0, end: 0, line: 0, column: 0 } }
+        }
+    }
+
+    exegesis {
+        Get the function signature type from a function declaration.
+    }
+
+    /// Get function signature type
+    fun function_signature_type(func: FunctionDecl) -> Type {
+        let param_types = func.params.map(|p| this.resolve_type(p.ty))
+        let return_type = if func.return_ty != None {
+            this.resolve_type(func.return_ty.unwrap())
+        } else {
+            Type.Unit
+        }
+        return Type.Function(param_types, Box.new(return_type))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC API
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    The main entry point for type checking a DOL file.
+    Creates a fresh TypeChecker and returns all type errors found.
+}
+
+/// Type check a DOL file
+pub fun typecheck(file: DolFile) -> List<TypeError> {
+    let checker = TypeChecker {
+        env: TypeEnv.new(),
+        errors: [],
+        var_counter: 0
+    }
+    return checker.check_file(file)
+}

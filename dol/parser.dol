@@ -1,0 +1,2764 @@
+module dol.parser @ 0.4.0
+
+exegesis {
+    Recursive descent parser with Pratt expression parsing for DOL.
+    Transforms a token stream into an Abstract Syntax Tree (AST).
+
+    Parsing Strategy:
+    - Top-level declarations use recursive descent
+    - Expressions use Pratt parsing for correct precedence
+    - Error recovery via synchronization to statement boundaries
+}
+
+use dol.token.{ Token, TokenKind, Span }
+use dol.ast.*
+use dol.lexer.lex
+
+// =======================================================================
+// PRECEDENCE LEVELS (for Pratt parsing)
+// =======================================================================
+
+exegesis {
+    Operator precedence levels for Pratt parsing.
+    Higher values bind tighter.
+}
+
+pub gene Precedence {
+    type: enum {
+        None      = 0,
+        Or        = 10,     // ||
+        And       = 20,     // &&
+        Equality  = 30,     // == !=
+        Compare   = 40,     // < <= > >=
+        Pipe      = 50,     // |> <|
+        Compose   = 60,     // >>
+        Bind      = 70,     // :=
+        Apply     = 80,     // @
+        Term      = 90,     // + -
+        Factor    = 100,    // * / %
+        Power     = 110     // **
+    }
+}
+
+// =======================================================================
+// PARSE ERROR
+// =======================================================================
+
+exegesis {
+    Represents a parsing error with location information.
+}
+
+pub gene ParseError {
+    has message: String
+    has span: Span
+    has kind: ParseErrorKind = ParseErrorKind.Generic
+
+    fun to_string() -> String {
+        return this.message + " at line " + this.span.line.to_string() +
+               ", column " + this.span.column.to_string()
+    }
+}
+
+pub gene ParseErrorKind {
+    type: enum {
+        Generic,
+        UnexpectedToken,
+        UnexpectedEof,
+        InvalidExpression,
+        InvalidDeclaration,
+        MissingIdentifier,
+        MissingType,
+        MissingBrace,
+        MissingParen,
+        InvalidOperator,
+        DuplicateModifier
+    }
+}
+
+// =======================================================================
+// PARSER STATE
+// =======================================================================
+
+exegesis {
+    Parser state maintaining position in token stream and accumulated errors.
+}
+
+pub gene Parser {
+    has tokens: List<Token>
+    has pos: UInt64 = 0
+    has errors: List<ParseError> = []
+
+    // ===================================================================
+    // HELPER METHODS
+    // ===================================================================
+
+    exegesis {
+        Returns the current token without advancing.
+    }
+
+    fun current() -> Token {
+        if this.pos >= this.tokens.length() {
+            return Token {
+                kind: TokenKind.Eof,
+                span: Span { start: 0, end: 0, line: 0, column: 0 },
+                text: ""
+            }
+        }
+        return this.tokens[this.pos]
+    }
+
+    exegesis {
+        Peeks at a token at the given offset from current position.
+    }
+
+    fun peek(offset: UInt64) -> Token {
+        let idx = this.pos + offset
+        if idx >= this.tokens.length() {
+            return Token {
+                kind: TokenKind.Eof,
+                span: Span { start: 0, end: 0, line: 0, column: 0 },
+                text: ""
+            }
+        }
+        return this.tokens[idx]
+    }
+
+    exegesis {
+        Returns current token and advances position.
+    }
+
+    fun advance() -> Token {
+        let token = this.current()
+        if this.pos < this.tokens.length() {
+            this.pos = this.pos + 1
+        }
+        return token
+    }
+
+    exegesis {
+        Checks if current token matches the given kind.
+    }
+
+    fun check(kind: TokenKind) -> Bool {
+        return this.current().kind == kind
+    }
+
+    exegesis {
+        Checks if current token matches any of the given kinds.
+    }
+
+    fun check_any(kinds: List<TokenKind>) -> Bool {
+        let current_kind = this.current().kind
+        for kind in kinds {
+            if current_kind == kind {
+                return true
+            }
+        }
+        return false
+    }
+
+    exegesis {
+        Consumes current token if it matches, otherwise returns error.
+    }
+
+    fun consume(kind: TokenKind, msg: String) -> Result<Token, ParseError> {
+        if this.check(kind) {
+            return Ok(this.advance())
+        }
+        let err = ParseError {
+            message: msg + ", found '" + this.current().text + "'",
+            span: this.current().span,
+            kind: ParseErrorKind.UnexpectedToken
+        }
+        this.errors.push(err)
+        return Err(err)
+    }
+
+    exegesis {
+        Tries to match and consume any of the given token kinds.
+        Returns true and advances if matched, false otherwise.
+    }
+
+    fun match_any(kinds: List<TokenKind>) -> Bool {
+        if this.check_any(kinds) {
+            this.advance()
+            return true
+        }
+        return false
+    }
+
+    exegesis {
+        Matches a specific kind and advances if found.
+    }
+
+    fun match_kind(kind: TokenKind) -> Bool {
+        if this.check(kind) {
+            this.advance()
+            return true
+        }
+        return false
+    }
+
+    exegesis {
+        Error recovery: skip tokens until we find a synchronization point.
+    }
+
+    fun synchronize() {
+        this.advance()
+
+        while !this.check(TokenKind.Eof) {
+            // Synchronize after statement-ending tokens
+            if this.peek(-1).kind == TokenKind.RBrace ||
+               this.peek(-1).kind == TokenKind.Semicolon {
+                return
+            }
+
+            // Synchronize at declaration keywords
+            match this.current().kind {
+                Module | Use | Pub | Gene | Trait | System |
+                Constraint | Evolves | Fun | Exegesis {
+                    return
+                }
+                _ {
+                    this.advance()
+                }
+            }
+        }
+    }
+
+    exegesis {
+        Reports an error and adds it to the error list.
+    }
+
+    fun report_error(message: String, span: Span, kind: ParseErrorKind) {
+        let err = ParseError {
+            message: message,
+            span: span,
+            kind: kind
+        }
+        this.errors.push(err)
+    }
+
+    exegesis {
+        Checks if we're at the end of the token stream.
+    }
+
+    fun is_at_end() -> Bool {
+        return this.check(TokenKind.Eof)
+    }
+
+    // ===================================================================
+    // FILE-LEVEL PARSING
+    // ===================================================================
+
+    exegesis {
+        Parses a complete DOL source file.
+    }
+
+    fun parse_file() -> DolFile {
+        let file = DolFile {
+            module_decl: None,
+            uses: [],
+            declarations: []
+        }
+
+        // Skip leading newlines
+        while this.match_kind(TokenKind.Newline) {}
+
+        // Parse module declaration (optional but recommended)
+        if this.check(TokenKind.Module) {
+            match this.parse_module() {
+                Ok(mod_decl) { file.module_decl = Some(mod_decl) }
+                Err(_) { this.synchronize() }
+            }
+        }
+
+        // Parse use statements
+        while this.check(TokenKind.Use) {
+            match this.parse_use() {
+                Ok(use_stmt) { file.uses.push(use_stmt) }
+                Err(_) { this.synchronize() }
+            }
+        }
+
+        // Parse declarations
+        while !this.is_at_end() {
+            // Skip newlines between declarations
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.is_at_end() {
+                break
+            }
+
+            match this.parse_declaration() {
+                Ok(decl) { file.declarations.push(decl) }
+                Err(_) { this.synchronize() }
+            }
+        }
+
+        return file
+    }
+
+    // ===================================================================
+    // MODULE AND USE STATEMENTS
+    // ===================================================================
+
+    exegesis {
+        Parses a module declaration: `module name.path @ version`
+    }
+
+    fun parse_module() -> Result<ModuleDecl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Module, "Expected 'module'")?
+
+        let name = this.parse_qualified_name()?
+
+        // Version is optional
+        let version = None
+        if this.match_kind(TokenKind.At) {
+            let ver_token = this.consume(TokenKind.Ident, "Expected version number")?
+            version = Some(ver_token.text)
+        }
+
+        // Skip optional newline
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(ModuleDecl {
+            name: name,
+            version: version,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a use statement: `use path.to.module` or `use path.{ item1, item2 }`
+    }
+
+    fun parse_use() -> Result<UseStmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Use, "Expected 'use'")?
+
+        let path = this.parse_qualified_name()?
+        let items = []
+
+        // Check for selective imports: use path.{ a, b, c }
+        if this.match_kind(TokenKind.Dot) {
+            if this.match_kind(TokenKind.LBrace) {
+                // Parse import list
+                loop {
+                    let item = this.consume(TokenKind.Ident, "Expected identifier in use list")?
+                    items.push(item.text)
+
+                    if !this.match_kind(TokenKind.Comma) {
+                        break
+                    }
+                }
+                this.consume(TokenKind.RBrace, "Expected '}' after use list")?
+            }
+        }
+
+        // Skip optional newline
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(UseStmt {
+            path: path,
+            items: items,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a qualified name like `foo.bar.baz`
+    }
+
+    fun parse_qualified_name() -> Result<String, ParseError> {
+        let first = this.consume(TokenKind.Ident, "Expected identifier")?
+        let name = first.text
+
+        while this.check(TokenKind.Dot) && this.peek(1).kind == TokenKind.Ident {
+            this.advance()  // consume dot
+            let part = this.advance()
+            name = name + "." + part.text
+        }
+
+        return Ok(name)
+    }
+
+    // ===================================================================
+    // DECLARATION PARSING
+    // ===================================================================
+
+    exegesis {
+        Parses any top-level declaration.
+    }
+
+    fun parse_declaration() -> Result<Decl, ParseError> {
+        // Check for visibility modifier
+        let is_pub = this.match_kind(TokenKind.Pub)
+
+        // Check for sex modifier (side effects)
+        let is_sex = this.match_kind(TokenKind.Sex)
+
+        match this.current().kind {
+            Gene { return this.parse_gene(is_pub) }
+            Trait { return this.parse_trait(is_pub) }
+            System { return this.parse_system(is_pub) }
+            Constraint { return this.parse_constraint(is_pub) }
+            Evolves { return this.parse_evolves(is_pub) }
+            Fun { return this.parse_function(is_pub, is_sex) }
+            Var { return this.parse_var_decl(is_pub, is_sex) }
+            Exegesis { return this.parse_exegesis() }
+            Extern { return this.parse_extern(is_pub, is_sex) }
+            _ {
+                let err = ParseError {
+                    message: "Expected declaration, found '" + this.current().text + "'",
+                    span: this.current().span,
+                    kind: ParseErrorKind.InvalidDeclaration
+                }
+                this.errors.push(err)
+                return Err(err)
+            }
+        }
+    }
+
+    exegesis {
+        Parses a gene declaration.
+    }
+
+    fun parse_gene(is_pub: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Gene, "Expected 'gene'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected gene name")?
+
+        // Parse optional type parameters
+        let type_params = []
+        if this.match_kind(TokenKind.Lt) {
+            type_params = this.parse_type_params()?
+            this.consume(TokenKind.Gt, "Expected '>' after type parameters")?
+        }
+
+        // Parse gene body
+        this.consume(TokenKind.LBrace, "Expected '{' after gene name")?
+
+        let members = []
+        let exegesis = None
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            // Skip newlines
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            match this.current().kind {
+                Has {
+                    let field = this.parse_field()?
+                    members.push(GeneMember.Field(field))
+                }
+                Type {
+                    let type_alias = this.parse_type_member()?
+                    members.push(GeneMember.TypeAlias(type_alias))
+                }
+                Fun {
+                    let method = this.parse_method(false)?
+                    members.push(GeneMember.Method(method))
+                }
+                Sex {
+                    this.advance()
+                    if this.check(TokenKind.Fun) {
+                        let method = this.parse_method(true)?
+                        members.push(GeneMember.Method(method))
+                    } else {
+                        let err = ParseError {
+                            message: "Expected 'fun' after 'sex' in gene body",
+                            span: this.current().span,
+                            kind: ParseErrorKind.UnexpectedToken
+                        }
+                        return Err(err)
+                    }
+                }
+                Exegesis {
+                    let ex = this.parse_exegesis_block()?
+                    exegesis = Some(ex)
+                }
+                _ {
+                    let err = ParseError {
+                        message: "Unexpected token in gene body: '" + this.current().text + "'",
+                        span: this.current().span,
+                        kind: ParseErrorKind.UnexpectedToken
+                    }
+                    this.errors.push(err)
+                    this.synchronize()
+                }
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after gene body")?
+
+        return Ok(Decl.Gene(GeneDecl {
+            name: name.text,
+            is_pub: is_pub,
+            type_params: type_params,
+            members: members,
+            exegesis: exegesis,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a field declaration: `has name: Type = default`
+    }
+
+    fun parse_field() -> Result<FieldDecl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Has, "Expected 'has'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected field name")?
+        this.consume(TokenKind.Colon, "Expected ':' after field name")?
+
+        let type_expr = this.parse_type()?
+
+        // Parse optional default value
+        let default_value = None
+        if this.match_kind(TokenKind.Eq) {
+            let expr = this.parse_expression()?
+            default_value = Some(expr)
+        }
+
+        // Skip optional newline
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(FieldDecl {
+            name: name.text,
+            type_expr: type_expr,
+            default_value: default_value,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a trait declaration.
+    }
+
+    fun parse_trait(is_pub: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Trait, "Expected 'trait'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected trait name")?
+
+        // Parse optional type parameters
+        let type_params = []
+        if this.match_kind(TokenKind.Lt) {
+            type_params = this.parse_type_params()?
+            this.consume(TokenKind.Gt, "Expected '>' after type parameters")?
+        }
+
+        // Parse optional supertrait bounds
+        let supertraits = []
+        if this.match_kind(TokenKind.Colon) {
+            supertraits = this.parse_trait_bounds()?
+        }
+
+        // Parse trait body
+        this.consume(TokenKind.LBrace, "Expected '{' after trait declaration")?
+
+        let members = []
+        let exegesis = None
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            match this.current().kind {
+                Is {
+                    let method = this.parse_trait_method()?
+                    members.push(TraitMember.Required(method))
+                }
+                Fun {
+                    let method = this.parse_method(false)?
+                    members.push(TraitMember.Provided(method))
+                }
+                Type {
+                    let assoc = this.parse_associated_type()?
+                    members.push(TraitMember.Associated(assoc))
+                }
+                Exegesis {
+                    let ex = this.parse_exegesis_block()?
+                    exegesis = Some(ex)
+                }
+                _ {
+                    let err = ParseError {
+                        message: "Unexpected token in trait body",
+                        span: this.current().span,
+                        kind: ParseErrorKind.UnexpectedToken
+                    }
+                    this.errors.push(err)
+                    this.synchronize()
+                }
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after trait body")?
+
+        return Ok(Decl.Trait(TraitDecl {
+            name: name.text,
+            is_pub: is_pub,
+            type_params: type_params,
+            supertraits: supertraits,
+            members: members,
+            exegesis: exegesis,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a trait method declaration: `is method_name(params) -> ReturnType`
+    }
+
+    fun parse_trait_method() -> Result<MethodSig, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Is, "Expected 'is'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected method name")?
+        let params = this.parse_params()?
+
+        let return_type = None
+        if this.match_kind(TokenKind.Arrow) {
+            return_type = Some(this.parse_type()?)
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(MethodSig {
+            name: name.text,
+            params: params,
+            return_type: return_type,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a system declaration.
+    }
+
+    fun parse_system(is_pub: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.System, "Expected 'system'")?
+
+        let name = this.parse_qualified_name()?
+
+        // Parse optional version
+        let version = None
+        if this.match_kind(TokenKind.At) {
+            let ver = this.consume(TokenKind.Ident, "Expected version")?
+            version = Some(ver.text)
+        }
+
+        // Parse system body
+        this.consume(TokenKind.LBrace, "Expected '{' after system declaration")?
+
+        let requirements = []
+        let statements = []
+        let exegesis = None
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            match this.current().kind {
+                Requires {
+                    let req = this.parse_requires()?
+                    requirements.push(req)
+                }
+                Exegesis {
+                    let ex = this.parse_exegesis_block()?
+                    exegesis = Some(ex)
+                }
+                Ident {
+                    // System-level statements like: component has property
+                    let stmt = this.parse_system_statement()?
+                    statements.push(stmt)
+                }
+                _ {
+                    let err = ParseError {
+                        message: "Unexpected token in system body",
+                        span: this.current().span,
+                        kind: ParseErrorKind.UnexpectedToken
+                    }
+                    this.errors.push(err)
+                    this.synchronize()
+                }
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after system body")?
+
+        return Ok(Decl.System(SystemDecl {
+            name: name,
+            is_pub: is_pub,
+            version: version,
+            requirements: requirements,
+            statements: statements,
+            exegesis: exegesis,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a requires statement: `requires name >= version`
+    }
+
+    fun parse_requires() -> Result<RequiresStmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Requires, "Expected 'requires'")?
+
+        let name = this.parse_qualified_name()?
+
+        let version_constraint = None
+        if this.check_any([TokenKind.Ge, TokenKind.Le, TokenKind.Eq,
+                           TokenKind.Lt, TokenKind.Gt]) {
+            let op = this.advance()
+            let ver = this.consume(TokenKind.Ident, "Expected version")?
+            version_constraint = Some(VersionConstraint {
+                op: op.text,
+                version: ver.text
+            })
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(RequiresStmt {
+            name: name,
+            version_constraint: version_constraint,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a system statement like: `component has property`
+    }
+
+    fun parse_system_statement() -> Result<SystemStmt, ParseError> {
+        let start = this.current().span
+        let subject = this.parse_qualified_name()?
+
+        this.consume(TokenKind.Has, "Expected 'has' in system statement")?
+
+        let property = this.parse_qualified_name()?
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(SystemStmt {
+            subject: subject,
+            property: property,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a constraint declaration.
+    }
+
+    fun parse_constraint(is_pub: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Constraint, "Expected 'constraint'")?
+
+        let name = this.parse_qualified_name()?
+
+        // Parse optional version
+        let version = None
+        if this.match_kind(TokenKind.At) {
+            let ver = this.consume(TokenKind.Ident, "Expected version")?
+            version = Some(ver.text)
+        }
+
+        // Parse constraint body
+        this.consume(TokenKind.LBrace, "Expected '{' after constraint declaration")?
+
+        let laws = []
+        let exegesis = None
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            match this.current().kind {
+                Law {
+                    let law = this.parse_law()?
+                    laws.push(law)
+                }
+                Exegesis {
+                    let ex = this.parse_exegesis_block()?
+                    exegesis = Some(ex)
+                }
+                _ {
+                    let err = ParseError {
+                        message: "Expected 'law' in constraint body",
+                        span: this.current().span,
+                        kind: ParseErrorKind.UnexpectedToken
+                    }
+                    this.errors.push(err)
+                    this.synchronize()
+                }
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after constraint body")?
+
+        return Ok(Decl.Constraint(ConstraintDecl {
+            name: name,
+            is_pub: is_pub,
+            version: version,
+            laws: laws,
+            exegesis: exegesis,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a law statement: `law name: expression`
+    }
+
+    fun parse_law() -> Result<LawDecl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Law, "Expected 'law'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected law name")?
+
+        // Optional type parameters for universal quantification
+        let params = []
+        if this.match_kind(TokenKind.LBracket) {
+            params = this.parse_law_params()?
+            this.consume(TokenKind.RBracket, "Expected ']' after law parameters")?
+        }
+
+        this.consume(TokenKind.Colon, "Expected ':' after law name")?
+
+        let body = this.parse_expression()?
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(LawDecl {
+            name: name.text,
+            params: params,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses an evolves declaration.
+    }
+
+    fun parse_evolves(is_pub: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Evolves, "Expected 'evolves'")?
+
+        let from_name = this.parse_qualified_name()?
+
+        // Parse version
+        let from_version = None
+        if this.match_kind(TokenKind.At) {
+            let ver = this.consume(TokenKind.Ident, "Expected version")?
+            from_version = Some(ver.text)
+        }
+
+        this.consume(TokenKind.Arrow, "Expected '->' in evolves declaration")?
+
+        let to_name = this.parse_qualified_name()?
+
+        let to_version = None
+        if this.match_kind(TokenKind.At) {
+            let ver = this.consume(TokenKind.Ident, "Expected version")?
+            to_version = Some(ver.text)
+        }
+
+        // Parse evolution body
+        this.consume(TokenKind.LBrace, "Expected '{' after evolves declaration")?
+
+        let migrations = []
+        let exegesis = None
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            match this.current().kind {
+                Ident {
+                    let migration = this.parse_migration()?
+                    migrations.push(migration)
+                }
+                Exegesis {
+                    let ex = this.parse_exegesis_block()?
+                    exegesis = Some(ex)
+                }
+                _ {
+                    let err = ParseError {
+                        message: "Unexpected token in evolves body",
+                        span: this.current().span,
+                        kind: ParseErrorKind.UnexpectedToken
+                    }
+                    this.errors.push(err)
+                    this.synchronize()
+                }
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after evolves body")?
+
+        return Ok(Decl.Evolves(EvolvesDecl {
+            from_name: from_name,
+            from_version: from_version,
+            to_name: to_name,
+            to_version: to_version,
+            is_pub: is_pub,
+            migrations: migrations,
+            exegesis: exegesis,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a migration statement: `field -> expression` or `field => renamed_field`
+    }
+
+    fun parse_migration() -> Result<MigrationStmt, ParseError> {
+        let start = this.current().span
+        let field = this.consume(TokenKind.Ident, "Expected field name")?
+
+        let kind: MigrationKind
+        let target: String
+        let transform = None
+
+        if this.match_kind(TokenKind.FatArrow) {
+            // Rename: field => new_name
+            let new_name = this.consume(TokenKind.Ident, "Expected new field name")?
+            kind = MigrationKind.Rename
+            target = new_name.text
+        } else if this.match_kind(TokenKind.Arrow) {
+            // Transform: field -> expression
+            kind = MigrationKind.Transform
+            target = field.text
+            let expr = this.parse_expression()?
+            transform = Some(expr)
+        } else {
+            let err = ParseError {
+                message: "Expected '->' or '=>' in migration",
+                span: this.current().span,
+                kind: ParseErrorKind.UnexpectedToken
+            }
+            return Err(err)
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(MigrationStmt {
+            field: field.text,
+            kind: kind,
+            target: target,
+            transform: transform,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a function declaration.
+    }
+
+    fun parse_function(is_pub: Bool, is_sex: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Fun, "Expected 'fun'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected function name")?
+
+        // Parse optional type parameters
+        let type_params = []
+        if this.match_kind(TokenKind.Lt) {
+            type_params = this.parse_type_params()?
+            this.consume(TokenKind.Gt, "Expected '>' after type parameters")?
+        }
+
+        let params = this.parse_params()?
+
+        let return_type = None
+        if this.match_kind(TokenKind.Arrow) {
+            return_type = Some(this.parse_type()?)
+        }
+
+        // Parse where clause (optional)
+        let where_clause = []
+        if this.check(TokenKind.Where) {
+            where_clause = this.parse_where_clause()?
+        }
+
+        // Parse function body
+        let body = this.parse_block()?
+
+        return Ok(Decl.Function(FunctionDecl {
+            name: name.text,
+            is_pub: is_pub,
+            is_sex: is_sex,
+            type_params: type_params,
+            params: params,
+            return_type: return_type,
+            where_clause: where_clause,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a method (function inside a gene/trait).
+    }
+
+    fun parse_method(is_sex: Bool) -> Result<MethodDecl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Fun, "Expected 'fun'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected method name")?
+
+        // Parse optional type parameters
+        let type_params = []
+        if this.match_kind(TokenKind.Lt) {
+            type_params = this.parse_type_params()?
+            this.consume(TokenKind.Gt, "Expected '>' after type parameters")?
+        }
+
+        let params = this.parse_params()?
+
+        let return_type = None
+        if this.match_kind(TokenKind.Arrow) {
+            return_type = Some(this.parse_type()?)
+        }
+
+        let body = this.parse_block()?
+
+        return Ok(MethodDecl {
+            name: name.text,
+            is_sex: is_sex,
+            type_params: type_params,
+            params: params,
+            return_type: return_type,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a variable declaration: `var name: Type = value` or `sex var ...`
+    }
+
+    fun parse_var_decl(is_pub: Bool, is_sex: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Var, "Expected 'var'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected variable name")?
+
+        let type_expr = None
+        if this.match_kind(TokenKind.Colon) {
+            type_expr = Some(this.parse_type()?)
+        }
+
+        let init_value = None
+        if this.match_kind(TokenKind.Eq) {
+            init_value = Some(this.parse_expression()?)
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(Decl.Variable(VarDecl {
+            name: name.text,
+            is_pub: is_pub,
+            is_sex: is_sex,
+            type_expr: type_expr,
+            init_value: init_value,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses an extern declaration.
+    }
+
+    fun parse_extern(is_pub: Bool, is_sex: Bool) -> Result<Decl, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Extern, "Expected 'extern'")?
+
+        // Parse optional ABI string
+        let abi = "C"
+        if this.check(TokenKind.StringLiteral) {
+            let abi_token = this.advance()
+            abi = abi_token.text.trim_quotes()
+        }
+
+        this.consume(TokenKind.Fun, "Expected 'fun' after extern")?
+
+        let name = this.consume(TokenKind.Ident, "Expected function name")?
+        let params = this.parse_params()?
+
+        let return_type = None
+        if this.match_kind(TokenKind.Arrow) {
+            return_type = Some(this.parse_type()?)
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(Decl.Extern(ExternDecl {
+            name: name.text,
+            is_pub: is_pub,
+            is_sex: is_sex,
+            abi: abi,
+            params: params,
+            return_type: return_type,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a standalone exegesis block.
+    }
+
+    fun parse_exegesis() -> Result<Decl, ParseError> {
+        let ex = this.parse_exegesis_block()?
+        return Ok(Decl.Exegesis(ex))
+    }
+
+    exegesis {
+        Parses an exegesis block: `exegesis { ... }`
+    }
+
+    fun parse_exegesis_block() -> Result<ExegesisBlock, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Exegesis, "Expected 'exegesis'")?
+        this.consume(TokenKind.LBrace, "Expected '{' after exegesis")?
+
+        let content = ""
+        let depth = 1
+
+        // Collect all content until matching brace
+        while depth > 0 && !this.is_at_end() {
+            let token = this.advance()
+            match token.kind {
+                LBrace { depth = depth + 1 }
+                RBrace { depth = depth - 1 }
+                _ {}
+            }
+            if depth > 0 {
+                content = content + token.text
+                // Add space between tokens
+                if !this.check(TokenKind.RBrace) {
+                    content = content + " "
+                }
+            }
+        }
+
+        return Ok(ExegesisBlock {
+            content: content.trim(),
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    // ===================================================================
+    // TYPE PARSING
+    // ===================================================================
+
+    exegesis {
+        Parses a type expression.
+    }
+
+    fun parse_type() -> Result<TypeExpr, ParseError> {
+        // Check for enum type inline
+        if this.check(TokenKind.Enum) {
+            return this.parse_enum_type()
+        }
+
+        let base = this.parse_base_type()?
+
+        // Check for optional/nullable type: Type?
+        if this.match_kind(TokenKind.Question) {
+            return Ok(TypeExpr.Optional(Box.new(base)))
+        }
+
+        return Ok(base)
+    }
+
+    exegesis {
+        Parses a base type (without optional modifier).
+    }
+
+    fun parse_base_type() -> Result<TypeExpr, ParseError> {
+        let name_token = this.consume(TokenKind.Ident, "Expected type name")?
+        let name = name_token.text
+
+        // Check for generic type parameters
+        let type_args = []
+        if this.match_kind(TokenKind.Lt) {
+            loop {
+                let arg = this.parse_type()?
+                type_args.push(arg)
+                if !this.match_kind(TokenKind.Comma) {
+                    break
+                }
+            }
+            this.consume(TokenKind.Gt, "Expected '>' after type arguments")?
+        }
+
+        if type_args.length() > 0 {
+            return Ok(TypeExpr.Generic(name, type_args))
+        }
+
+        return Ok(TypeExpr.Named(name))
+    }
+
+    exegesis {
+        Parses an inline enum type.
+    }
+
+    fun parse_enum_type() -> Result<TypeExpr, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Enum, "Expected 'enum'")?
+        this.consume(TokenKind.LBrace, "Expected '{' after enum")?
+
+        let variants = []
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+            while this.match_kind(TokenKind.Comma) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            let variant = this.consume(TokenKind.Ident, "Expected variant name")?
+
+            // Check for associated value
+            let value = None
+            if this.match_kind(TokenKind.Eq) {
+                let val_expr = this.parse_expression()?
+                value = Some(val_expr)
+            }
+
+            variants.push(EnumVariant {
+                name: variant.text,
+                value: value
+            })
+
+            // Allow trailing comma or newline
+            if !this.match_kind(TokenKind.Comma) {
+                this.match_kind(TokenKind.Newline)
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after enum variants")?
+
+        return Ok(TypeExpr.Enum(variants))
+    }
+
+    exegesis {
+        Parses type parameters for generics: `<T, U: Bound>`
+    }
+
+    fun parse_type_params() -> Result<List<TypeParam>, ParseError> {
+        let params = []
+
+        loop {
+            let name = this.consume(TokenKind.Ident, "Expected type parameter name")?
+
+            let bounds = []
+            if this.match_kind(TokenKind.Colon) {
+                bounds = this.parse_trait_bounds()?
+            }
+
+            let default_type = None
+            if this.match_kind(TokenKind.Eq) {
+                default_type = Some(this.parse_type()?)
+            }
+
+            params.push(TypeParam {
+                name: name.text,
+                bounds: bounds,
+                default_type: default_type
+            })
+
+            if !this.match_kind(TokenKind.Comma) {
+                break
+            }
+        }
+
+        return Ok(params)
+    }
+
+    exegesis {
+        Parses trait bounds: `Trait1 + Trait2`
+    }
+
+    fun parse_trait_bounds() -> Result<List<String>, ParseError> {
+        let bounds = []
+
+        loop {
+            let bound = this.parse_qualified_name()?
+            bounds.push(bound)
+
+            if !this.match_kind(TokenKind.Plus) {
+                break
+            }
+        }
+
+        return Ok(bounds)
+    }
+
+    exegesis {
+        Parses type member in gene: `type Name = Type`
+    }
+
+    fun parse_type_member() -> Result<TypeAlias, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Type, "Expected 'type'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected type alias name")?
+        this.consume(TokenKind.Eq, "Expected '=' after type name")?
+
+        let type_expr = this.parse_type()?
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(TypeAlias {
+            name: name.text,
+            type_expr: type_expr,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses associated type in trait: `type Name`
+    }
+
+    fun parse_associated_type() -> Result<AssociatedType, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Type, "Expected 'type'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected associated type name")?
+
+        let bounds = []
+        if this.match_kind(TokenKind.Colon) {
+            bounds = this.parse_trait_bounds()?
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(AssociatedType {
+            name: name.text,
+            bounds: bounds,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    // ===================================================================
+    // PARAMETER PARSING
+    // ===================================================================
+
+    exegesis {
+        Parses function/method parameters: `(param1: Type1, param2: Type2)`
+    }
+
+    fun parse_params() -> Result<List<Param>, ParseError> {
+        this.consume(TokenKind.LParen, "Expected '(' for parameters")?
+
+        let params = []
+
+        if !this.check(TokenKind.RParen) {
+            loop {
+                // Handle variadic: `...`
+                let is_variadic = false
+                if this.check(TokenKind.Dot) &&
+                   this.peek(1).kind == TokenKind.Dot &&
+                   this.peek(2).kind == TokenKind.Dot {
+                    this.advance()
+                    this.advance()
+                    this.advance()
+                    is_variadic = true
+                }
+
+                let name = this.consume(TokenKind.Ident, "Expected parameter name")?
+
+                let type_expr = None
+                if this.match_kind(TokenKind.Colon) {
+                    type_expr = Some(this.parse_type()?)
+                }
+
+                let default_value = None
+                if this.match_kind(TokenKind.Eq) {
+                    default_value = Some(this.parse_expression()?)
+                }
+
+                params.push(Param {
+                    name: name.text,
+                    type_expr: type_expr,
+                    default_value: default_value,
+                    is_variadic: is_variadic
+                })
+
+                if !this.match_kind(TokenKind.Comma) {
+                    break
+                }
+            }
+        }
+
+        this.consume(TokenKind.RParen, "Expected ')' after parameters")?
+
+        return Ok(params)
+    }
+
+    exegesis {
+        Parses law parameters: `[forall x: T, y: U]`
+    }
+
+    fun parse_law_params() -> Result<List<Param>, ParseError> {
+        let params = []
+
+        loop {
+            let name = this.consume(TokenKind.Ident, "Expected parameter name")?
+
+            let type_expr = None
+            if this.match_kind(TokenKind.Colon) {
+                type_expr = Some(this.parse_type()?)
+            }
+
+            params.push(Param {
+                name: name.text,
+                type_expr: type_expr,
+                default_value: None,
+                is_variadic: false
+            })
+
+            if !this.match_kind(TokenKind.Comma) {
+                break
+            }
+        }
+
+        return Ok(params)
+    }
+
+    exegesis {
+        Parses a where clause: `where T: Bound, U: OtherBound`
+    }
+
+    fun parse_where_clause() -> Result<List<WhereClause>, ParseError> {
+        this.consume(TokenKind.Where, "Expected 'where'")?
+
+        let clauses = []
+
+        loop {
+            let type_name = this.consume(TokenKind.Ident, "Expected type name")?
+            this.consume(TokenKind.Colon, "Expected ':' after type name")?
+
+            let bounds = this.parse_trait_bounds()?
+
+            clauses.push(WhereClause {
+                type_name: type_name.text,
+                bounds: bounds
+            })
+
+            if !this.match_kind(TokenKind.Comma) {
+                break
+            }
+        }
+
+        return Ok(clauses)
+    }
+
+    // ===================================================================
+    // STATEMENT PARSING
+    // ===================================================================
+
+    exegesis {
+        Parses a block of statements: `{ stmt1; stmt2; ... }`
+    }
+
+    fun parse_block() -> Result<Block, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.LBrace, "Expected '{'")?
+
+        let stmts = []
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            let stmt = this.parse_statement()?
+            stmts.push(stmt)
+
+            // Optional semicolon or newline between statements
+            this.match_any([TokenKind.Semicolon, TokenKind.Newline])
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}'")?
+
+        return Ok(Block {
+            statements: stmts,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a single statement.
+    }
+
+    fun parse_statement() -> Result<Stmt, ParseError> {
+        match this.current().kind {
+            Let { return this.parse_let() }
+            Var { return this.parse_local_var() }
+            Return { return this.parse_return() }
+            If { return this.parse_if() }
+            Match { return this.parse_match() }
+            For { return this.parse_for() }
+            While { return this.parse_while() }
+            Loop { return this.parse_loop() }
+            Break { return this.parse_break() }
+            Continue { return this.parse_continue() }
+            Sex { return this.parse_sex_block() }
+            _ {
+                // Could be assignment or expression statement
+                return this.parse_expr_or_assign()
+            }
+        }
+    }
+
+    exegesis {
+        Parses a let statement: `let name = expr` or `let name: Type = expr`
+    }
+
+    fun parse_let() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Let, "Expected 'let'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected variable name")?
+
+        let type_expr = None
+        if this.match_kind(TokenKind.Colon) {
+            type_expr = Some(this.parse_type()?)
+        }
+
+        this.consume(TokenKind.Eq, "Expected '=' after let binding")?
+
+        let value = this.parse_expression()?
+
+        return Ok(Stmt.Let(LetStmt {
+            name: name.text,
+            type_expr: type_expr,
+            value: value,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a local var statement.
+    }
+
+    fun parse_local_var() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Var, "Expected 'var'")?
+
+        let name = this.consume(TokenKind.Ident, "Expected variable name")?
+
+        let type_expr = None
+        if this.match_kind(TokenKind.Colon) {
+            type_expr = Some(this.parse_type()?)
+        }
+
+        let value = None
+        if this.match_kind(TokenKind.Eq) {
+            value = Some(this.parse_expression()?)
+        }
+
+        return Ok(Stmt.Var(VarStmt {
+            name: name.text,
+            type_expr: type_expr,
+            value: value,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a return statement.
+    }
+
+    fun parse_return() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Return, "Expected 'return'")?
+
+        let value = None
+        if !this.check_any([TokenKind.RBrace, TokenKind.Semicolon, TokenKind.Newline]) {
+            value = Some(this.parse_expression()?)
+        }
+
+        return Ok(Stmt.Return(ReturnStmt {
+            value: value,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses an if statement.
+    }
+
+    fun parse_if() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.If, "Expected 'if'")?
+
+        let condition = this.parse_expression()?
+        let then_block = this.parse_block()?
+
+        let else_block = None
+        if this.match_kind(TokenKind.Else) {
+            if this.check(TokenKind.If) {
+                // else if -> parse as single statement block
+                let elif = this.parse_if()?
+                else_block = Some(Block {
+                    statements: [elif],
+                    span: elif.span()
+                })
+            } else {
+                else_block = Some(this.parse_block()?)
+            }
+        }
+
+        return Ok(Stmt.If(IfStmt {
+            condition: condition,
+            then_block: then_block,
+            else_block: else_block,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a match expression.
+    }
+
+    fun parse_match() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Match, "Expected 'match'")?
+
+        let scrutinee = this.parse_expression()?
+
+        this.consume(TokenKind.LBrace, "Expected '{' after match expression")?
+
+        let arms = []
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            let arm = this.parse_match_arm()?
+            arms.push(arm)
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after match arms")?
+
+        return Ok(Stmt.Match(MatchStmt {
+            scrutinee: scrutinee,
+            arms: arms,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a match arm: `pattern { body }` or `pattern => expr`
+    }
+
+    fun parse_match_arm() -> Result<MatchArm, ParseError> {
+        let start = this.current().span
+
+        let pattern = this.parse_pattern()?
+
+        let body: ArmBody
+
+        if this.match_kind(TokenKind.FatArrow) {
+            // Single expression body
+            let expr = this.parse_expression()?
+            body = ArmBody.Expr(expr)
+        } else {
+            // Block body
+            let block = this.parse_block()?
+            body = ArmBody.Block(block)
+        }
+
+        this.match_kind(TokenKind.Newline)
+
+        return Ok(MatchArm {
+            pattern: pattern,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        })
+    }
+
+    exegesis {
+        Parses a pattern for match arms.
+    }
+
+    fun parse_pattern() -> Result<Pattern, ParseError> {
+        let start = this.current().span
+
+        // Wildcard pattern
+        if this.match_kind(TokenKind.Underscore) {
+            return Ok(Pattern.Wildcard(start))
+        }
+
+        // Literal patterns
+        if this.check(TokenKind.IntLiteral) {
+            let lit = this.advance()
+            return Ok(Pattern.Literal(LiteralPattern.Int(lit.text.parse_int())))
+        }
+
+        if this.check(TokenKind.StringLiteral) {
+            let lit = this.advance()
+            return Ok(Pattern.Literal(LiteralPattern.String(lit.text.trim_quotes())))
+        }
+
+        if this.check(TokenKind.BoolTrue) {
+            this.advance()
+            return Ok(Pattern.Literal(LiteralPattern.Bool(true)))
+        }
+
+        if this.check(TokenKind.BoolFalse) {
+            this.advance()
+            return Ok(Pattern.Literal(LiteralPattern.Bool(false)))
+        }
+
+        // Or patterns (multiple patterns with |)
+        let patterns = [this.parse_simple_pattern()?]
+
+        while this.match_kind(TokenKind.Pipe) {
+            patterns.push(this.parse_simple_pattern()?)
+        }
+
+        if patterns.length() > 1 {
+            return Ok(Pattern.Or(patterns))
+        }
+
+        return Ok(patterns[0])
+    }
+
+    exegesis {
+        Parses a simple pattern (identifier or constructor).
+    }
+
+    fun parse_simple_pattern() -> Result<Pattern, ParseError> {
+        let start = this.current().span
+
+        if this.match_kind(TokenKind.Underscore) {
+            return Ok(Pattern.Wildcard(start))
+        }
+
+        let name = this.consume(TokenKind.Ident, "Expected pattern")?
+
+        // Check for constructor pattern with fields
+        if this.match_kind(TokenKind.LBrace) {
+            let fields = []
+
+            while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+                let field_name = this.consume(TokenKind.Ident, "Expected field name")?
+
+                let field_pattern = None
+                if this.match_kind(TokenKind.Colon) {
+                    field_pattern = Some(this.parse_pattern()?)
+                }
+
+                fields.push(FieldPattern {
+                    name: field_name.text,
+                    pattern: field_pattern
+                })
+
+                if !this.match_kind(TokenKind.Comma) {
+                    break
+                }
+            }
+
+            this.consume(TokenKind.RBrace, "Expected '}' after pattern fields")?
+
+            return Ok(Pattern.Constructor(name.text, fields))
+        }
+
+        // Check for constructor pattern with positional args
+        if this.match_kind(TokenKind.LParen) {
+            let args = []
+
+            while !this.check(TokenKind.RParen) && !this.is_at_end() {
+                let arg = this.parse_pattern()?
+                args.push(arg)
+
+                if !this.match_kind(TokenKind.Comma) {
+                    break
+                }
+            }
+
+            this.consume(TokenKind.RParen, "Expected ')' after pattern args")?
+
+            return Ok(Pattern.Tuple(name.text, args))
+        }
+
+        return Ok(Pattern.Binding(name.text))
+    }
+
+    exegesis {
+        Parses a for loop: `for item in iterable { ... }`
+    }
+
+    fun parse_for() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.For, "Expected 'for'")?
+
+        let binding = this.consume(TokenKind.Ident, "Expected loop variable")?
+
+        this.consume(TokenKind.In, "Expected 'in' after loop variable")?
+
+        let iterable = this.parse_expression()?
+        let body = this.parse_block()?
+
+        return Ok(Stmt.For(ForStmt {
+            binding: binding.text,
+            iterable: iterable,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a while loop: `while condition { ... }`
+    }
+
+    fun parse_while() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.While, "Expected 'while'")?
+
+        let condition = this.parse_expression()?
+        let body = this.parse_block()?
+
+        return Ok(Stmt.While(WhileStmt {
+            condition: condition,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses an infinite loop: `loop { ... }`
+    }
+
+    fun parse_loop() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Loop, "Expected 'loop'")?
+
+        let body = this.parse_block()?
+
+        return Ok(Stmt.Loop(LoopStmt {
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a break statement.
+    }
+
+    fun parse_break() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Break, "Expected 'break'")?
+
+        return Ok(Stmt.Break(BreakStmt {
+            span: start
+        }))
+    }
+
+    exegesis {
+        Parses a continue statement.
+    }
+
+    fun parse_continue() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Continue, "Expected 'continue'")?
+
+        return Ok(Stmt.Continue(ContinueStmt {
+            span: start
+        }))
+    }
+
+    exegesis {
+        Parses a sex block for side effects.
+    }
+
+    fun parse_sex_block() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Sex, "Expected 'sex'")?
+
+        let body = this.parse_block()?
+
+        return Ok(Stmt.Sex(SexBlock {
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses an expression statement or assignment.
+    }
+
+    fun parse_expr_or_assign() -> Result<Stmt, ParseError> {
+        let start = this.current().span
+        let expr = this.parse_expression()?
+
+        // Check for assignment operators
+        if this.check_any([TokenKind.Eq, TokenKind.Bind]) {
+            let op = this.advance()
+            let value = this.parse_expression()?
+
+            return Ok(Stmt.Assign(AssignStmt {
+                target: expr,
+                op: op.text,
+                value: value,
+                span: Span {
+                    start: start.start,
+                    end: this.peek(-1).span.end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        // Check for compound assignment: +=, -=, *=, /=
+        if this.check(TokenKind.Plus) && this.peek(1).kind == TokenKind.Eq {
+            this.advance()
+            this.advance()
+            let value = this.parse_expression()?
+            return Ok(Stmt.Assign(AssignStmt {
+                target: expr,
+                op: "+=",
+                value: value,
+                span: Span {
+                    start: start.start,
+                    end: this.peek(-1).span.end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        if this.check(TokenKind.Minus) && this.peek(1).kind == TokenKind.Eq {
+            this.advance()
+            this.advance()
+            let value = this.parse_expression()?
+            return Ok(Stmt.Assign(AssignStmt {
+                target: expr,
+                op: "-=",
+                value: value,
+                span: Span {
+                    start: start.start,
+                    end: this.peek(-1).span.end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        return Ok(Stmt.Expr(ExprStmt {
+            expr: expr,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    // ===================================================================
+    // PRATT EXPRESSION PARSING
+    // ===================================================================
+
+    exegesis {
+        Entry point for expression parsing using Pratt algorithm.
+    }
+
+    fun parse_expression() -> Result<Expr, ParseError> {
+        return this.parse_precedence(0)
+    }
+
+    exegesis {
+        Pratt parser: parse expression with minimum precedence level.
+    }
+
+    fun parse_precedence(min_prec: Int32) -> Result<Expr, ParseError> {
+        // Parse prefix expression
+        let left = this.parse_prefix()?
+
+        // Parse infix operators while they have high enough precedence
+        while !this.is_at_end() {
+            let prec = this.get_precedence()
+            if prec < min_prec {
+                break
+            }
+
+            // Handle right-associative operators (like **)
+            let next_prec = prec
+            if this.is_right_associative() {
+                next_prec = prec
+            } else {
+                next_prec = prec + 1
+            }
+
+            let op = this.parse_infix_op()
+            let right = this.parse_precedence(next_prec)?
+
+            left = Expr.Binary(BinaryExpr {
+                left: Box.new(left),
+                op: op,
+                right: Box.new(right),
+                span: Span {
+                    start: left.span().start,
+                    end: right.span().end,
+                    line: left.span().line,
+                    column: left.span().column
+                }
+            })
+        }
+
+        return Ok(left)
+    }
+
+    exegesis {
+        Parses a prefix expression (literals, identifiers, unary ops, etc.)
+    }
+
+    fun parse_prefix() -> Result<Expr, ParseError> {
+        let start = this.current().span
+
+        // Unary operators
+        if this.check_any([TokenKind.Minus, TokenKind.Not, TokenKind.Bang]) {
+            let op_token = this.advance()
+            let op = match op_token.kind {
+                Minus { UnaryOp.Neg }
+                Not { UnaryOp.Not }
+                Bang { UnaryOp.Bang }
+                _ { UnaryOp.Neg }
+            }
+            let operand = this.parse_prefix()?
+            return Ok(Expr.Unary(UnaryExpr {
+                op: op,
+                operand: Box.new(operand),
+                span: Span {
+                    start: start.start,
+                    end: operand.span().end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        // Quote operator
+        if this.match_kind(TokenKind.Quote) {
+            let expr = this.parse_prefix()?
+            return Ok(Expr.Quote(QuoteExpr {
+                expr: Box.new(expr),
+                span: Span {
+                    start: start.start,
+                    end: expr.span().end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        // Grouping: (expr)
+        if this.match_kind(TokenKind.LParen) {
+            let expr = this.parse_expression()?
+            this.consume(TokenKind.RParen, "Expected ')' after expression")?
+            return Ok(expr)
+        }
+
+        // Idiom brackets: [| expr |]
+        if this.match_kind(TokenKind.IdiomOpen) {
+            let expr = this.parse_expression()?
+            this.consume(TokenKind.IdiomClose, "Expected '|]' after idiom expression")?
+            return Ok(Expr.Idiom(IdiomExpr {
+                expr: Box.new(expr),
+                span: Span {
+                    start: start.start,
+                    end: this.peek(-1).span.end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        // Array/List literal: [a, b, c]
+        if this.match_kind(TokenKind.LBracket) {
+            let elements = []
+            if !this.check(TokenKind.RBracket) {
+                loop {
+                    let elem = this.parse_expression()?
+                    elements.push(elem)
+                    if !this.match_kind(TokenKind.Comma) {
+                        break
+                    }
+                }
+            }
+            this.consume(TokenKind.RBracket, "Expected ']' after array elements")?
+            return Ok(Expr.Array(ArrayExpr {
+                elements: elements,
+                span: Span {
+                    start: start.start,
+                    end: this.peek(-1).span.end,
+                    line: start.line,
+                    column: start.column
+                }
+            }))
+        }
+
+        // Literals
+        if this.check(TokenKind.IntLiteral) {
+            let token = this.advance()
+            return Ok(Expr.Literal(Literal.Int(token.text.parse_int())))
+        }
+
+        if this.check(TokenKind.FloatLiteral) {
+            let token = this.advance()
+            return Ok(Expr.Literal(Literal.Float(token.text.parse_float())))
+        }
+
+        if this.check(TokenKind.StringLiteral) {
+            let token = this.advance()
+            return Ok(Expr.Literal(Literal.String(token.text.trim_quotes())))
+        }
+
+        if this.match_kind(TokenKind.BoolTrue) {
+            return Ok(Expr.Literal(Literal.Bool(true)))
+        }
+
+        if this.match_kind(TokenKind.BoolFalse) {
+            return Ok(Expr.Literal(Literal.Bool(false)))
+        }
+
+        // Lambda expression: |params| expr or |params| { body }
+        if this.check(TokenKind.Pipe) {
+            return this.parse_lambda()
+        }
+
+        // If expression
+        if this.check(TokenKind.If) {
+            return this.parse_if_expr()
+        }
+
+        // Match expression
+        if this.check(TokenKind.Match) {
+            return this.parse_match_expr()
+        }
+
+        // Identifier (possibly followed by call, field access, index, or struct literal)
+        if this.check(TokenKind.Ident) {
+            return this.parse_identifier_expr()
+        }
+
+        // This/self reference
+        if this.check(TokenKind.This) {
+            let token = this.advance()
+            return Ok(Expr.This(ThisExpr {
+                span: token.span
+            }))
+        }
+
+        let err = ParseError {
+            message: "Expected expression, found '" + this.current().text + "'",
+            span: this.current().span,
+            kind: ParseErrorKind.InvalidExpression
+        }
+        this.errors.push(err)
+        return Err(err)
+    }
+
+    exegesis {
+        Returns the precedence of the current token as an operator.
+    }
+
+    fun get_precedence() -> Int32 {
+        match this.current().kind {
+            Or { return 10 }
+            And { return 20 }
+            Eq | Ne { return 30 }
+            Lt | Le | Gt | Ge { return 40 }
+            Pipe | BackPipe { return 50 }
+            Compose { return 60 }
+            Bind { return 70 }
+            Apply { return 80 }
+            Plus | Minus { return 90 }
+            Star | Slash | Percent { return 100 }
+            StarStar { return 110 }
+            _ { return 0 }
+        }
+    }
+
+    exegesis {
+        Checks if current operator is right-associative.
+    }
+
+    fun is_right_associative() -> Bool {
+        match this.current().kind {
+            StarStar { return true }
+            _ { return false }
+        }
+    }
+
+    exegesis {
+        Consumes and returns the current infix operator.
+    }
+
+    fun parse_infix_op() -> BinOp {
+        let token = this.advance()
+        match token.kind {
+            Plus { return BinOp.Add }
+            Minus { return BinOp.Sub }
+            Star { return BinOp.Mul }
+            Slash { return BinOp.Div }
+            Percent { return BinOp.Mod }
+            StarStar { return BinOp.Pow }
+            Eq { return BinOp.Eq }
+            Ne { return BinOp.Ne }
+            Lt { return BinOp.Lt }
+            Le { return BinOp.Le }
+            Gt { return BinOp.Gt }
+            Ge { return BinOp.Ge }
+            And { return BinOp.And }
+            Or { return BinOp.Or }
+            Pipe { return BinOp.Pipe }
+            BackPipe { return BinOp.BackPipe }
+            Compose { return BinOp.Compose }
+            Bind { return BinOp.Bind }
+            Apply { return BinOp.Apply }
+            _ { return BinOp.Add }
+        }
+    }
+
+    exegesis {
+        Parses identifier expressions with optional postfix operations.
+    }
+
+    fun parse_identifier_expr() -> Result<Expr, ParseError> {
+        let start = this.current().span
+        let name = this.advance()
+
+        let expr: Expr = Expr.Ident(IdentExpr {
+            name: name.text,
+            span: name.span
+        })
+
+        // Handle postfix operations
+        loop {
+            if this.match_kind(TokenKind.LParen) {
+                // Function call
+                let args = this.parse_call_args()?
+                expr = Expr.Call(CallExpr {
+                    callee: Box.new(expr),
+                    args: args,
+                    span: Span {
+                        start: start.start,
+                        end: this.peek(-1).span.end,
+                        line: start.line,
+                        column: start.column
+                    }
+                })
+            } else if this.match_kind(TokenKind.Dot) {
+                // Field access or method call
+                let field = this.consume(TokenKind.Ident, "Expected field name")?
+
+                if this.match_kind(TokenKind.LParen) {
+                    // Method call
+                    let args = this.parse_call_args()?
+                    expr = Expr.MethodCall(MethodCallExpr {
+                        receiver: Box.new(expr),
+                        method: field.text,
+                        args: args,
+                        span: Span {
+                            start: start.start,
+                            end: this.peek(-1).span.end,
+                            line: start.line,
+                            column: start.column
+                        }
+                    })
+                } else {
+                    // Field access
+                    expr = Expr.Field(FieldExpr {
+                        object: Box.new(expr),
+                        field: field.text,
+                        span: Span {
+                            start: start.start,
+                            end: field.span.end,
+                            line: start.line,
+                            column: start.column
+                        }
+                    })
+                }
+            } else if this.match_kind(TokenKind.LBracket) {
+                // Index access
+                let index = this.parse_expression()?
+                this.consume(TokenKind.RBracket, "Expected ']' after index")?
+                expr = Expr.Index(IndexExpr {
+                    object: Box.new(expr),
+                    index: Box.new(index),
+                    span: Span {
+                        start: start.start,
+                        end: this.peek(-1).span.end,
+                        line: start.line,
+                        column: start.column
+                    }
+                })
+            } else if this.match_kind(TokenKind.LBrace) {
+                // Struct literal
+                let fields = this.parse_struct_fields()?
+                expr = Expr.Struct(StructExpr {
+                    name: name.text,
+                    fields: fields,
+                    span: Span {
+                        start: start.start,
+                        end: this.peek(-1).span.end,
+                        line: start.line,
+                        column: start.column
+                    }
+                })
+            } else {
+                break
+            }
+        }
+
+        return Ok(expr)
+    }
+
+    exegesis {
+        Parses call arguments.
+    }
+
+    fun parse_call_args() -> Result<List<Arg>, ParseError> {
+        let args = []
+
+        if !this.check(TokenKind.RParen) {
+            loop {
+                // Check for named argument
+                let name = None
+                if this.check(TokenKind.Ident) && this.peek(1).kind == TokenKind.Colon {
+                    let name_token = this.advance()
+                    this.advance()  // consume colon
+                    name = Some(name_token.text)
+                }
+
+                let value = this.parse_expression()?
+
+                args.push(Arg {
+                    name: name,
+                    value: value
+                })
+
+                if !this.match_kind(TokenKind.Comma) {
+                    break
+                }
+            }
+        }
+
+        this.consume(TokenKind.RParen, "Expected ')' after arguments")?
+
+        return Ok(args)
+    }
+
+    exegesis {
+        Parses struct literal fields.
+    }
+
+    fun parse_struct_fields() -> Result<List<StructField>, ParseError> {
+        let fields = []
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            let name = this.consume(TokenKind.Ident, "Expected field name")?
+            this.consume(TokenKind.Colon, "Expected ':' after field name")?
+            let value = this.parse_expression()?
+
+            fields.push(StructField {
+                name: name.text,
+                value: value
+            })
+
+            if !this.match_kind(TokenKind.Comma) {
+                this.match_kind(TokenKind.Newline)
+            }
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after struct fields")?
+
+        return Ok(fields)
+    }
+
+    exegesis {
+        Parses a lambda expression: |params| expr or |params| { body }
+    }
+
+    fun parse_lambda() -> Result<Expr, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Pipe, "Expected '|' to start lambda")?
+
+        let params = []
+
+        if !this.check(TokenKind.Pipe) {
+            loop {
+                let param_name = this.consume(TokenKind.Ident, "Expected parameter name")?
+
+                let param_type = None
+                if this.match_kind(TokenKind.Colon) {
+                    param_type = Some(this.parse_type()?)
+                }
+
+                params.push(LambdaParam {
+                    name: param_name.text,
+                    type_expr: param_type
+                })
+
+                if !this.match_kind(TokenKind.Comma) {
+                    break
+                }
+            }
+        }
+
+        this.consume(TokenKind.Pipe, "Expected '|' after lambda parameters")?
+
+        let body: LambdaBody
+        if this.check(TokenKind.LBrace) {
+            let block = this.parse_block()?
+            body = LambdaBody.Block(block)
+        } else {
+            let expr = this.parse_expression()?
+            body = LambdaBody.Expr(Box.new(expr))
+        }
+
+        return Ok(Expr.Lambda(LambdaExpr {
+            params: params,
+            body: body,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses an if expression (returns a value).
+    }
+
+    fun parse_if_expr() -> Result<Expr, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.If, "Expected 'if'")?
+
+        let condition = this.parse_expression()?
+        this.consume(TokenKind.LBrace, "Expected '{' after if condition")?
+        let then_expr = this.parse_expression()?
+        this.consume(TokenKind.RBrace, "Expected '}' after then expression")?
+
+        this.consume(TokenKind.Else, "Expected 'else' in if expression")?
+        this.consume(TokenKind.LBrace, "Expected '{' after else")?
+        let else_expr = this.parse_expression()?
+        this.consume(TokenKind.RBrace, "Expected '}' after else expression")?
+
+        return Ok(Expr.If(IfExpr {
+            condition: Box.new(condition),
+            then_expr: Box.new(then_expr),
+            else_expr: Box.new(else_expr),
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+
+    exegesis {
+        Parses a match expression (returns a value).
+    }
+
+    fun parse_match_expr() -> Result<Expr, ParseError> {
+        let start = this.current().span
+        this.consume(TokenKind.Match, "Expected 'match'")?
+
+        let scrutinee = this.parse_expression()?
+        this.consume(TokenKind.LBrace, "Expected '{' after match expression")?
+
+        let arms = []
+
+        while !this.check(TokenKind.RBrace) && !this.is_at_end() {
+            while this.match_kind(TokenKind.Newline) {}
+
+            if this.check(TokenKind.RBrace) {
+                break
+            }
+
+            let arm = this.parse_match_arm()?
+            arms.push(arm)
+        }
+
+        this.consume(TokenKind.RBrace, "Expected '}' after match arms")?
+
+        return Ok(Expr.Match(MatchExpr {
+            scrutinee: Box.new(scrutinee),
+            arms: arms,
+            span: Span {
+                start: start.start,
+                end: this.peek(-1).span.end,
+                line: start.line,
+                column: start.column
+            }
+        }))
+    }
+}
+
+// =======================================================================
+// PUBLIC API
+// =======================================================================
+
+exegesis {
+    Main entry point: parses DOL source code into an AST.
+    Returns either the parsed file or a list of errors.
+}
+
+pub fun parse(source: String) -> Result<DolFile, List<ParseError>> {
+    // Lex the source into tokens
+    let tokens = lex(source)
+
+    // Create parser
+    let parser = Parser {
+        tokens: tokens,
+        pos: 0,
+        errors: []
+    }
+
+    // Parse the file
+    let file = parser.parse_file()
+
+    // Return errors if any occurred
+    if parser.errors.length() > 0 {
+        return Err(parser.errors)
+    }
+
+    return Ok(file)
+}
+
+exegesis {
+    Convenience function to parse and return errors as strings.
+}
+
+pub fun parse_with_diagnostics(source: String) -> Tuple<Option<DolFile>, List<String>> {
+    match parse(source) {
+        Ok(file) {
+            return (Some(file), [])
+        }
+        Err(errors) {
+            let messages = []
+            for err in errors {
+                messages.push(err.to_string())
+            }
+            return (None, messages)
+        }
+    }
+}
+
+exegesis {
+    Parses a single expression from source (useful for REPL).
+}
+
+pub fun parse_expression_string(source: String) -> Result<Expr, ParseError> {
+    let tokens = lex(source)
+
+    let parser = Parser {
+        tokens: tokens,
+        pos: 0,
+        errors: []
+    }
+
+    return parser.parse_expression()
+}

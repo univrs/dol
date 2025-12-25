@@ -1,0 +1,190 @@
+module dol.token @ 0.4.0
+
+exegesis {
+    Token definitions for the DOL lexer.
+    Each token represents a lexical unit in DOL source code.
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOKEN TYPE
+// ═══════════════════════════════════════════════════════════════
+
+pub gene TokenKind {
+    type: enum {
+        // Keywords
+        Module, Use, Pub, Gene, Trait, System,
+        Constraint, Evolves, Exegesis, Fun, Return,
+        If, Else, Match, For, While, Loop, In,
+        Break, Continue, Has, Is, Type, Law,
+        Where, Requires, Provides, Sex, Var,
+
+        // Literals
+        IntLiteral,
+        FloatLiteral,
+        StringLiteral,
+        BoolTrue,
+        BoolFalse,
+
+        // Identifiers
+        Ident,
+
+        // Arithmetic Operators
+        Plus, Minus, Star, Slash, Percent, StarStar,
+
+        // Comparison Operators
+        Eq, Ne, Lt, Le, Gt, Ge,
+
+        // Logical Operators
+        And, Or, Not,
+
+        // Composition Operators
+        Pipe,      // |>
+        Compose,   // >>
+        BackPipe,  // <|
+        Apply,     // @
+        Bind,      // :=
+
+        // Meta Operators
+        Quote,     // '
+        Bang,      // !
+        Hash,      // #
+        Question,  // ?
+        Backtick,  // `
+        Tilde,     // ~
+
+        // Idiom Brackets
+        IdiomOpen,  // [|
+        IdiomClose, // |]
+
+        // Delimiters
+        LBrace, RBrace,
+        LParen, RParen,
+        LBracket, RBracket,
+        Comma, Colon, Semicolon, Dot,
+        Arrow,     // ->
+        FatArrow,  // =>
+        Underscore,
+
+        // Special
+        Newline,
+        Eof,
+        Error
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SPAN (Source Location)
+// ═══════════════════════════════════════════════════════════════
+
+pub gene Span {
+    has start: UInt64
+    has end: UInt64
+    has line: UInt32
+    has column: UInt32
+
+    exegesis {
+        Tracks source location for error reporting.
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOKEN (with value and span)
+// ═══════════════════════════════════════════════════════════════
+
+pub gene Token {
+    has kind: TokenKind
+    has span: Span
+    has text: String
+
+    fun is_keyword() -> Bool {
+        match this.kind {
+            Module { return true }
+            Use { return true }
+            Pub { return true }
+            Gene { return true }
+            Trait { return true }
+            System { return true }
+            Constraint { return true }
+            Evolves { return true }
+            Fun { return true }
+            Return { return true }
+            If { return true }
+            Else { return true }
+            Match { return true }
+            For { return true }
+            While { return true }
+            Loop { return true }
+            Break { return true }
+            Continue { return true }
+            Has { return true }
+            Is { return true }
+            Type { return true }
+            Law { return true }
+            Where { return true }
+            Sex { return true }
+            Var { return true }
+            _ { return false }
+        }
+    }
+
+    fun is_operator() -> Bool {
+        match this.kind {
+            Plus { return true }
+            Minus { return true }
+            Star { return true }
+            Slash { return true }
+            Percent { return true }
+            Pipe { return true }
+            Compose { return true }
+            Quote { return true }
+            Bang { return true }
+            Question { return true }
+            _ { return false }
+        }
+    }
+
+    exegesis {
+        A token with its source text and location.
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// KEYWORD LOOKUP
+// ═══════════════════════════════════════════════════════════════
+
+pub fun keyword_lookup(text: String) -> Option<TokenKind> {
+    match text {
+        "module" { return Some(TokenKind.Module) }
+        "use" { return Some(TokenKind.Use) }
+        "pub" { return Some(TokenKind.Pub) }
+        "gene" { return Some(TokenKind.Gene) }
+        "trait" { return Some(TokenKind.Trait) }
+        "system" { return Some(TokenKind.System) }
+        "constraint" { return Some(TokenKind.Constraint) }
+        "evolves" { return Some(TokenKind.Evolves) }
+        "exegesis" { return Some(TokenKind.Exegesis) }
+        "fun" { return Some(TokenKind.Fun) }
+        "return" { return Some(TokenKind.Return) }
+        "if" { return Some(TokenKind.If) }
+        "else" { return Some(TokenKind.Else) }
+        "match" { return Some(TokenKind.Match) }
+        "for" { return Some(TokenKind.For) }
+        "while" { return Some(TokenKind.While) }
+        "loop" { return Some(TokenKind.Loop) }
+        "in" { return Some(TokenKind.In) }
+        "break" { return Some(TokenKind.Break) }
+        "continue" { return Some(TokenKind.Continue) }
+        "has" { return Some(TokenKind.Has) }
+        "is" { return Some(TokenKind.Is) }
+        "type" { return Some(TokenKind.Type) }
+        "law" { return Some(TokenKind.Law) }
+        "where" { return Some(TokenKind.Where) }
+        "requires" { return Some(TokenKind.Requires) }
+        "provides" { return Some(TokenKind.Provides) }
+        "sex" { return Some(TokenKind.Sex) }
+        "var" { return Some(TokenKind.Var) }
+        "true" { return Some(TokenKind.BoolTrue) }
+        "false" { return Some(TokenKind.BoolFalse) }
+        _ { return None }
+    }
+}

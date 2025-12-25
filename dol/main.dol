@@ -1,0 +1,430 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL Compiler - Main Entry Point
+// ═══════════════════════════════════════════════════════════════
+
+module dol.main @ 0.4.0
+
+use dol.lexer.{ lex }
+use dol.parser.{ parse, ParseError }
+use dol.typechecker.{ typecheck }
+use dol.codegen.{ codegen, RustCodegen }
+use dol.ast.{ Module }
+use dol.types.{ TypeEnv, TypeError }
+
+exegesis {
+    The DOL compiler CLI entry point.
+
+    This module implements the command-line interface for the DOL compiler,
+    providing three primary commands:
+
+    - compile: Full compilation pipeline (lex -> parse -> typecheck -> codegen)
+    - check: Validation only (lex -> parse -> typecheck)
+    - parse: Parsing only (lex -> parse)
+
+    # Usage
+
+    ```shell
+    dol compile input.dol -o output.rs
+    dol check input.dol
+    dol parse input.dol
+    ```
+
+    # Exit Codes
+
+    - 0: Success
+    - 1: Invalid arguments or usage error
+    - 2: File I/O error
+    - 3: Parse error
+    - 4: Type error
+    - 5: Code generation error
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FFI STUBS (Platform-specific implementations)
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    External function to read a file's contents.
+    Returns None if the file cannot be read.
+}
+
+sex extern fun read_file(path: String) -> Option<String>
+
+exegesis {
+    External function to write content to a file.
+    Returns true on success, false on failure.
+}
+
+sex extern fun write_file(path: String, content: String) -> Bool
+
+exegesis {
+    External function to print a line to stdout.
+}
+
+sex extern fun println(message: String)
+
+exegesis {
+    External function to print to stderr.
+}
+
+sex extern fun eprintln(message: String)
+
+exegesis {
+    External function to exit with a status code.
+}
+
+sex extern fun exit(code: Int32) -> !
+
+// ═══════════════════════════════════════════════════════════════
+// RESULT TYPE FOR COMPILER OPERATIONS
+// ═══════════════════════════════════════════════════════════════
+
+gene CompileResult<T> {
+    type: enum {
+        Ok(T),
+        FileError(String),
+        ParseError(ParseError),
+        TypeError(TypeError),
+        CodegenError(String)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN ENTRY POINT
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Main entry point for the DOL compiler.
+
+    Parses command-line arguments and dispatches to the appropriate
+    command handler. All commands follow Unix conventions for exit codes.
+}
+
+sex fun main(args: List<String>) -> Int32 {
+    // Check for minimum arguments
+    if args.length() < 2 {
+        print_usage()
+        return 1
+    }
+
+    let command = args.get(1)
+
+    match command {
+        "compile" {
+            return handle_compile(args)
+        }
+        "check" {
+            return handle_check(args)
+        }
+        "parse" {
+            return handle_parse(args)
+        }
+        "help" | "--help" | "-h" {
+            print_usage()
+            return 0
+        }
+        "version" | "--version" | "-v" {
+            println("dol 0.4.0")
+            return 0
+        }
+        _ {
+            eprintln("Error: Unknown command '" + command + "'")
+            print_usage()
+            return 1
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMMAND HANDLERS
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Handle the 'compile' command.
+
+    Usage: dol compile <input> -o <output>
+
+    Runs the full compilation pipeline and writes generated Rust code
+    to the specified output file.
+}
+
+fun handle_compile(args: List<String>) -> Int32 {
+    // Parse compile arguments
+    if args.length() < 5 {
+        eprintln("Error: compile requires <input> -o <output>")
+        eprintln("Usage: dol compile <input.dol> -o <output.rs>")
+        return 1
+    }
+
+    let input_path = args.get(2)
+    let flag = args.get(3)
+    let output_path = args.get(4)
+
+    if flag != "-o" {
+        eprintln("Error: Expected '-o' flag, got '" + flag + "'")
+        return 1
+    }
+
+    // Run compilation
+    match compile_file(input_path, output_path) {
+        CompileResult.Ok(_) {
+            println("[OK] Compiled " + input_path + " -> " + output_path)
+            return 0
+        }
+        CompileResult.FileError(msg) {
+            eprintln("[ERROR] File error: " + msg)
+            return 2
+        }
+        CompileResult.ParseError(err) {
+            eprintln("[ERROR] Parse error at line " + err.line.to_string() + ":")
+            eprintln("  " + err.message)
+            return 3
+        }
+        CompileResult.TypeError(err) {
+            eprintln("[ERROR] Type error: " + err.message)
+            return 4
+        }
+        CompileResult.CodegenError(msg) {
+            eprintln("[ERROR] Code generation error: " + msg)
+            return 5
+        }
+    }
+}
+
+exegesis {
+    Handle the 'check' command.
+
+    Usage: dol check <input>
+
+    Runs lexing, parsing, and type checking without code generation.
+    Useful for CI validation and IDE integration.
+}
+
+fun handle_check(args: List<String>) -> Int32 {
+    if args.length() < 3 {
+        eprintln("Error: check requires <input>")
+        eprintln("Usage: dol check <input.dol>")
+        return 1
+    }
+
+    let input_path = args.get(2)
+
+    match check_file(input_path) {
+        CompileResult.Ok(_) {
+            println("[OK] " + input_path + " is valid")
+            return 0
+        }
+        CompileResult.FileError(msg) {
+            eprintln("[ERROR] File error: " + msg)
+            return 2
+        }
+        CompileResult.ParseError(err) {
+            eprintln("[ERROR] Parse error at line " + err.line.to_string() + ":")
+            eprintln("  " + err.message)
+            return 3
+        }
+        CompileResult.TypeError(err) {
+            eprintln("[ERROR] Type error: " + err.message)
+            return 4
+        }
+        CompileResult.CodegenError(msg) {
+            // Should not occur in check, but handle defensively
+            eprintln("[ERROR] Unexpected error: " + msg)
+            return 5
+        }
+    }
+}
+
+exegesis {
+    Handle the 'parse' command.
+
+    Usage: dol parse <input>
+
+    Runs lexing and parsing only, outputting the AST.
+    Useful for debugging and tooling development.
+}
+
+fun handle_parse(args: List<String>) -> Int32 {
+    if args.length() < 3 {
+        eprintln("Error: parse requires <input>")
+        eprintln("Usage: dol parse <input.dol>")
+        return 1
+    }
+
+    let input_path = args.get(2)
+
+    match parse_file_cmd(input_path) {
+        CompileResult.Ok(ast) {
+            println("[OK] " + input_path + " parsed successfully")
+            println("")
+            println("Module: " + ast.name)
+            println("Version: " + ast.version)
+            println("Declarations: " + ast.declarations.length().to_string())
+            return 0
+        }
+        CompileResult.FileError(msg) {
+            eprintln("[ERROR] File error: " + msg)
+            return 2
+        }
+        CompileResult.ParseError(err) {
+            eprintln("[ERROR] Parse error at line " + err.line.to_string() + ":")
+            eprintln("  " + err.message)
+            return 3
+        }
+        CompileResult.TypeError(_) {
+            // Should not occur in parse, but handle defensively
+            eprintln("[ERROR] Unexpected type error during parse")
+            return 4
+        }
+        CompileResult.CodegenError(msg) {
+            eprintln("[ERROR] Unexpected error: " + msg)
+            return 5
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORE COMPILATION FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Full compilation pipeline.
+
+    1. Read source file
+    2. Lex into tokens
+    3. Parse into AST
+    4. Type check
+    5. Generate Rust code
+    6. Write output file
+}
+
+fun compile_file(input_path: String, output_path: String) -> CompileResult<Unit> {
+    // Read input file
+    let source = match read_file(input_path) {
+        Some(content) { content }
+        None { return CompileResult.FileError("Could not read file: " + input_path) }
+    }
+
+    // Lex
+    let tokens = lex(source)
+
+    // Parse
+    let ast = match parse(tokens) {
+        Ok(module) { module }
+        Err(err) { return CompileResult.ParseError(err) }
+    }
+
+    // Type check
+    let type_env = TypeEnv.new()
+    match typecheck(ast, type_env) {
+        Ok(typed_ast) {
+            // Generate code
+            let codegen = RustCodegen.new()
+            let rust_code = match codegen.generate(typed_ast) {
+                Ok(code) { code }
+                Err(msg) { return CompileResult.CodegenError(msg) }
+            }
+
+            // Write output
+            if write_file(output_path, rust_code) {
+                return CompileResult.Ok(())
+            } else {
+                return CompileResult.FileError("Could not write file: " + output_path)
+            }
+        }
+        Err(err) { return CompileResult.TypeError(err) }
+    }
+}
+
+exegesis {
+    Check a file for validity without code generation.
+
+    1. Read source file
+    2. Lex into tokens
+    3. Parse into AST
+    4. Type check
+}
+
+fun check_file(input_path: String) -> CompileResult<Unit> {
+    // Read input file
+    let source = match read_file(input_path) {
+        Some(content) { content }
+        None { return CompileResult.FileError("Could not read file: " + input_path) }
+    }
+
+    // Lex
+    let tokens = lex(source)
+
+    // Parse
+    let ast = match parse(tokens) {
+        Ok(module) { module }
+        Err(err) { return CompileResult.ParseError(err) }
+    }
+
+    // Type check
+    let type_env = TypeEnv.new()
+    match typecheck(ast, type_env) {
+        Ok(_) { return CompileResult.Ok(()) }
+        Err(err) { return CompileResult.TypeError(err) }
+    }
+}
+
+exegesis {
+    Parse a file and return the AST.
+
+    1. Read source file
+    2. Lex into tokens
+    3. Parse into AST
+}
+
+fun parse_file_cmd(input_path: String) -> CompileResult<Module> {
+    // Read input file
+    let source = match read_file(input_path) {
+        Some(content) { content }
+        None { return CompileResult.FileError("Could not read file: " + input_path) }
+    }
+
+    // Lex
+    let tokens = lex(source)
+
+    // Parse
+    match parse(tokens) {
+        Ok(module) { return CompileResult.Ok(module) }
+        Err(err) { return CompileResult.ParseError(err) }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// USAGE INFORMATION
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Print usage information to stdout.
+}
+
+fun print_usage() {
+    println("DOL Compiler 0.4.0")
+    println("")
+    println("USAGE:")
+    println("    dol <command> [options]")
+    println("")
+    println("COMMANDS:")
+    println("    compile <input> -o <output>  Compile DOL to Rust")
+    println("    check <input>                Validate DOL file")
+    println("    parse <input>                Parse and show AST info")
+    println("    help                         Show this message")
+    println("    version                      Show version")
+    println("")
+    println("EXAMPLES:")
+    println("    dol compile main.dol -o main.rs")
+    println("    dol check lib.dol")
+    println("    dol parse module.dol")
+    println("")
+    println("EXIT CODES:")
+    println("    0  Success")
+    println("    1  Invalid arguments")
+    println("    2  File I/O error")
+    println("    3  Parse error")
+    println("    4  Type error")
+    println("    5  Code generation error")
+}

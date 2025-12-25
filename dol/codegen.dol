@@ -1,0 +1,1656 @@
+module dol.codegen @ 0.4.0
+
+exegesis {
+    Rust code generator for the DOL self-hosting compiler.
+    Transforms DOL AST into valid Rust source code.
+
+    This module generates:
+    - Structs from gene declarations with derives
+    - Impl blocks for methods
+    - Enum definitions with variants
+    - Trait definitions with method signatures
+    - Function implementations
+    - Constraint validators
+
+    All generated code follows Rust conventions and includes
+    proper derive macros (#[derive(Debug, Clone, PartialEq)]).
+}
+
+use dol.ast.*
+use dol.types.Type
+
+// ============================================================================
+// CODE GENERATOR STATE
+// ============================================================================
+
+exegesis {
+    The RustCodegen gene maintains state during code generation.
+    It tracks the output buffer and current indentation level.
+}
+
+/// Rust code generator state
+pub gene RustCodegen {
+    has output: String = ""
+    has indent: Int32 = 0
+
+    // ========================================================================
+    // LOW-LEVEL EMIT HELPERS
+    // ========================================================================
+
+    exegesis {
+        Append raw string to the output buffer.
+    }
+
+    /// Emit raw string without indentation
+    fun emit(s: String) {
+        this.output = this.output + s
+    }
+
+    exegesis {
+        Emit a line with proper indentation and newline.
+    }
+
+    /// Emit string with indentation and newline
+    fun emit_line(s: String) {
+        let indent_str = ""
+        let i = 0
+        while i < this.indent {
+            indent_str = indent_str + "    "
+            i = i + 1
+        }
+        this.output = this.output + indent_str + s + "\n"
+    }
+
+    exegesis {
+        Emit an empty line for spacing.
+    }
+
+    /// Emit empty line
+    fun emit_newline() {
+        this.output = this.output + "\n"
+    }
+
+    exegesis {
+        Increase indentation level.
+    }
+
+    /// Increase indent
+    fun push_indent() {
+        this.indent = this.indent + 1
+    }
+
+    exegesis {
+        Decrease indentation level.
+    }
+
+    /// Decrease indent
+    fun pop_indent() {
+        if this.indent > 0 {
+            this.indent = this.indent - 1
+        }
+    }
+
+    // ========================================================================
+    // TOP-LEVEL CODE GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate Rust source code from a complete DOL file.
+        Returns the generated Rust code as a string.
+    }
+
+    /// Generate complete Rust file from DOL file
+    pub fun gen_file(file: DolFile) -> String {
+        this.output = ""
+        this.indent = 0
+
+        // File header comment
+        this.emit_line("// Generated from DOL source")
+        this.emit_line("// Do not edit manually")
+        this.emit_newline()
+
+        // Generate module header if present
+        match file.module {
+            Some(mod_decl) {
+                let mod_name = mod_decl.path.join("::")
+                this.emit_line("//! Module: " + mod_name)
+                if mod_decl.version != None {
+                    this.emit_line("//! Version: " + mod_decl.version.unwrap().to_string())
+                }
+                this.emit_newline()
+            }
+            None {}
+        }
+
+        // Standard imports
+        this.emit_line("use std::collections::HashMap;")
+        this.emit_newline()
+
+        // Generate use declarations
+        for use_decl in file.uses {
+            this.gen_use(use_decl)
+        }
+        if file.uses.length() > 0 {
+            this.emit_newline()
+        }
+
+        // Generate all declarations
+        for decl in file.declarations {
+            this.gen_decl(decl)
+            this.emit_newline()
+        }
+
+        return this.output
+    }
+
+    exegesis {
+        Generate a use/import statement.
+    }
+
+    /// Generate use declaration
+    fun gen_use(use_decl: UseDecl) {
+        let path = use_decl.path.join("::")
+        match use_decl.items {
+            UseItems.All {
+                this.emit_line("use " + path + "::*;")
+            }
+            UseItems.Single {
+                match use_decl.alias {
+                    Some(alias) {
+                        this.emit_line("use " + path + " as " + alias + ";")
+                    }
+                    None {
+                        this.emit_line("use " + path + ";")
+                    }
+                }
+            }
+            UseItems.Named(items) {
+                let item_strs = []
+                for item in items {
+                    match item.alias {
+                        Some(alias) {
+                            item_strs.push(item.name + " as " + alias)
+                        }
+                        None {
+                            item_strs.push(item.name)
+                        }
+                    }
+                }
+                this.emit_line("use " + path + "::{" + item_strs.join(", ") + "};")
+            }
+        }
+    }
+
+    // ========================================================================
+    // DECLARATION GENERATION
+    // ========================================================================
+
+    exegesis {
+        Dispatch to the appropriate generator based on declaration type.
+    }
+
+    /// Generate code for any declaration type
+    pub fun gen_decl(decl: Decl) {
+        match decl {
+            Decl.Gene(gene) {
+                this.gen_gene(gene)
+            }
+            Decl.Trait(trait_) {
+                this.gen_trait(trait_)
+            }
+            Decl.Constraint(constraint) {
+                this.gen_constraint_validator(constraint)
+            }
+            Decl.System(system) {
+                this.gen_system(system)
+            }
+            Decl.Evolution(evolution) {
+                // Evolutions generate migration code
+                this.gen_evolution(evolution)
+            }
+            Decl.Function(func) {
+                this.gen_function(func)
+            }
+            Decl.Enum(name, variants) {
+                this.gen_enum(name, variants)
+            }
+        }
+    }
+
+    // ========================================================================
+    // GENE GENERATION (STRUCTS + IMPL)
+    // ========================================================================
+
+    exegesis {
+        Generate a Rust struct and impl block from a DOL gene.
+        Includes derive macros and all field/method definitions.
+    }
+
+    /// Generate struct and impl block from gene
+    pub fun gen_gene(gene: GeneDecl) {
+        let name = this.pascal_case(gene.name)
+
+        // Doc comment from exegesis
+        if gene.exegesis != "" {
+            this.emit_line("/// " + gene.exegesis.replace("\n", "\n/// "))
+        }
+
+        // Derive macros
+        this.emit_line("#[derive(Debug, Clone, PartialEq)]")
+
+        // Visibility
+        let vis = this.gen_visibility(gene.visibility)
+
+        // Type parameters
+        let type_params_str = ""
+        if gene.type_params != None {
+            type_params_str = this.gen_type_params(gene.type_params.unwrap())
+        }
+
+        // Struct definition
+        this.emit_line(vis + "struct " + name + type_params_str + " {")
+        this.push_indent()
+
+        // Generate fields
+        for stmt in gene.statements {
+            match stmt {
+                Statement.HasField(field) {
+                    this.gen_field(field)
+                }
+                _ {}
+            }
+        }
+
+        this.pop_indent()
+        this.emit_line("}")
+        this.emit_newline()
+
+        // Generate impl block for methods
+        let has_methods = false
+        for stmt in gene.statements {
+            match stmt {
+                Statement.Function(func) {
+                    has_methods = true
+                }
+                _ {}
+            }
+        }
+
+        if has_methods {
+            this.emit_line("impl" + type_params_str + " " + name + type_params_str + " {")
+            this.push_indent()
+
+            for stmt in gene.statements {
+                match stmt {
+                    Statement.Function(func) {
+                        this.gen_method(func)
+                        this.emit_newline()
+                    }
+                    _ {}
+                }
+            }
+
+            this.pop_indent()
+            this.emit_line("}")
+        }
+    }
+
+    exegesis {
+        Generate a struct field from a HasField statement.
+    }
+
+    /// Generate struct field
+    fun gen_field(field: HasField) {
+        let field_name = this.snake_case(field.name)
+        let field_type = this.gen_type(field.type_)
+
+        // Field doc comment if there's a constraint
+        if field.constraint != None {
+            this.emit_line("/// Constraint: " + this.gen_expr(field.constraint.unwrap()))
+        }
+
+        this.emit_line("pub " + field_name + ": " + field_type + ",")
+    }
+
+    // ========================================================================
+    // ENUM GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate a Rust enum from DOL enum declaration.
+    }
+
+    /// Generate enum definition
+    pub fun gen_enum(name: String, variants: List<EnumVariant>) {
+        let enum_name = this.pascal_case(name)
+
+        this.emit_line("#[derive(Debug, Clone, PartialEq)]")
+        this.emit_line("pub enum " + enum_name + " {")
+        this.push_indent()
+
+        for variant in variants {
+            let variant_name = this.pascal_case(variant.name)
+            match variant.fields {
+                Some(fields) {
+                    if fields.length() == 0 {
+                        this.emit_line(variant_name + ",")
+                    } else {
+                        // Check if named fields (struct variant) or tuple variant
+                        let first_field = fields[0]
+                        if first_field.name != "" {
+                            // Struct variant
+                            this.emit_line(variant_name + " {")
+                            this.push_indent()
+                            for field in fields {
+                                let f_name = this.snake_case(field.name)
+                                let f_type = this.gen_type(field.type_)
+                                this.emit_line(f_name + ": " + f_type + ",")
+                            }
+                            this.pop_indent()
+                            this.emit_line("},")
+                        } else {
+                            // Tuple variant
+                            let types = []
+                            for field in fields {
+                                types.push(this.gen_type(field.type_))
+                            }
+                            this.emit_line(variant_name + "(" + types.join(", ") + "),")
+                        }
+                    }
+                }
+                None {
+                    this.emit_line(variant_name + ",")
+                }
+            }
+        }
+
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    // ========================================================================
+    // TRAIT GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate a Rust trait from DOL trait declaration.
+    }
+
+    /// Generate trait definition
+    pub fun gen_trait(trait_: TraitDecl) {
+        let name = this.pascal_case(trait_.name)
+
+        // Doc comment
+        if trait_.exegesis != "" {
+            this.emit_line("/// " + trait_.exegesis.replace("\n", "\n/// "))
+        }
+
+        let vis = this.gen_visibility(trait_.visibility)
+
+        // Type parameters
+        let type_params_str = ""
+        if trait_.type_params != None {
+            type_params_str = this.gen_type_params(trait_.type_params.unwrap())
+        }
+
+        // Supertrait bounds
+        let bounds = ""
+        if trait_.supertraits.length() > 0 {
+            let bound_strs = []
+            for supertrait in trait_.supertraits {
+                bound_strs.push(this.pascal_case(supertrait))
+            }
+            bounds = ": " + bound_strs.join(" + ")
+        }
+
+        this.emit_line(vis + "trait " + name + type_params_str + bounds + " {")
+        this.push_indent()
+
+        // Generate associated types
+        for assoc in trait_.associated_types {
+            this.emit_line("type " + this.pascal_case(assoc.name) + ";")
+        }
+        if trait_.associated_types.length() > 0 {
+            this.emit_newline()
+        }
+
+        // Generate method signatures
+        for stmt in trait_.statements {
+            match stmt {
+                Statement.Function(func) {
+                    this.gen_trait_method(func)
+                    this.emit_newline()
+                }
+                _ {}
+            }
+        }
+
+        // Generate laws as doc comments
+        for law in trait_.laws {
+            this.emit_line("// Law: " + law.name)
+            this.emit_line("// " + this.gen_expr(law.body))
+            this.emit_newline()
+        }
+
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    exegesis {
+        Generate a trait method signature (without body).
+    }
+
+    /// Generate trait method signature
+    fun gen_trait_method(func: FunctionDecl) {
+        let vis = this.gen_visibility(func.visibility)
+        let name = this.snake_case(func.name)
+        let params = this.gen_params(func.params)
+
+        let return_type = ""
+        match func.return_type {
+            Some(ty) {
+                return_type = " -> " + this.gen_type(ty)
+            }
+            None {}
+        }
+
+        // Check if has default implementation
+        if func.body.length() > 0 {
+            this.emit_line("fn " + name + "(" + params + ")" + return_type + " {")
+            this.push_indent()
+            this.gen_block(func.body)
+            this.pop_indent()
+            this.emit_line("}")
+        } else {
+            this.emit_line("fn " + name + "(" + params + ")" + return_type + ";")
+        }
+    }
+
+    // ========================================================================
+    // FUNCTION GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate a standalone Rust function from DOL function declaration.
+    }
+
+    /// Generate standalone function
+    pub fun gen_function(func: FunctionDecl) {
+        let vis = this.gen_visibility(func.visibility)
+        let name = this.snake_case(func.name)
+
+        // Type parameters
+        let type_params_str = ""
+        if func.type_params != None {
+            type_params_str = this.gen_type_params(func.type_params.unwrap())
+        }
+
+        let params = this.gen_params(func.params)
+
+        let return_type = ""
+        match func.return_type {
+            Some(ty) {
+                return_type = " -> " + this.gen_type(ty)
+            }
+            None {}
+        }
+
+        this.emit_line(vis + "fn " + name + type_params_str + "(" + params + ")" + return_type + " {")
+        this.push_indent()
+        this.gen_block(func.body)
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    exegesis {
+        Generate a method inside an impl block (adds &self or &mut self).
+    }
+
+    /// Generate method in impl block
+    pub fun gen_method(method: FunctionDecl) {
+        let vis = this.gen_visibility(method.visibility)
+        let name = this.snake_case(method.name)
+
+        // Type parameters
+        let type_params_str = ""
+        if method.type_params != None {
+            type_params_str = this.gen_type_params(method.type_params.unwrap())
+        }
+
+        // Add self parameter
+        let self_param = "&self"
+        match method.purity {
+            Purity.Sex {
+                self_param = "&mut self"
+            }
+            Purity.Pure {}
+        }
+
+        let params = this.gen_params(method.params)
+        if params != "" {
+            params = self_param + ", " + params
+        } else {
+            params = self_param
+        }
+
+        let return_type = ""
+        match method.return_type {
+            Some(ty) {
+                return_type = " -> " + this.gen_type(ty)
+            }
+            None {}
+        }
+
+        this.emit_line(vis + "fn " + name + type_params_str + "(" + params + ")" + return_type + " {")
+        this.push_indent()
+        this.gen_block(method.body)
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    // ========================================================================
+    // CONSTRAINT GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate a validator function from a DOL constraint.
+        Constraints become validation functions that return Result<(), Error>.
+    }
+
+    /// Generate constraint validator function
+    pub fun gen_constraint_validator(constraint: ConstraintDecl) {
+        let name = this.snake_case(constraint.name) + "_validator"
+
+        // Doc comment
+        if constraint.exegesis != "" {
+            this.emit_line("/// " + constraint.exegesis.replace("\n", "\n/// "))
+        }
+
+        this.emit_line("pub fn " + name + "() -> Result<(), &'static str> {")
+        this.push_indent()
+
+        // Generate validation checks for each statement
+        for stmt in constraint.statements {
+            match stmt {
+                Statement.Matches { subject, target, span } {
+                    this.emit_line("// Validate: " + subject + " matches " + target)
+                    this.emit_line("if " + this.snake_case(subject) + " != " + this.snake_case(target) + " {")
+                    this.push_indent()
+                    this.emit_line("return Err(\"" + subject + " does not match " + target + "\");")
+                    this.pop_indent()
+                    this.emit_line("}")
+                }
+                Statement.Never { subject, action, span } {
+                    this.emit_line("// Validate: " + subject + " never " + action)
+                    this.emit_line("if " + this.snake_case(subject) + "_" + this.snake_case(action) + " {")
+                    this.push_indent()
+                    this.emit_line("return Err(\"" + subject + " must never " + action + "\");")
+                    this.pop_indent()
+                    this.emit_line("}")
+                }
+                Statement.Requires { subject, requirement, span } {
+                    this.emit_line("// Validate: " + subject + " requires " + requirement)
+                    this.emit_line("if !" + this.snake_case(subject) + "_has_" + this.snake_case(requirement) + " {")
+                    this.push_indent()
+                    this.emit_line("return Err(\"" + subject + " requires " + requirement + "\");")
+                    this.pop_indent()
+                    this.emit_line("}")
+                }
+                _ {}
+            }
+        }
+
+        this.emit_line("Ok(())")
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    exegesis {
+        Generate a function that runs all constraint validators.
+    }
+
+    /// Generate function that validates all constraints
+    pub fun gen_validate_all(constraints: List<ConstraintDecl>) {
+        this.emit_line("/// Run all constraint validators")
+        this.emit_line("pub fn validate_all() -> Result<(), Vec<&'static str>> {")
+        this.push_indent()
+
+        this.emit_line("let mut errors = Vec::new();")
+        this.emit_newline()
+
+        for constraint in constraints {
+            let validator_name = this.snake_case(constraint.name) + "_validator"
+            this.emit_line("if let Err(e) = " + validator_name + "() {")
+            this.push_indent()
+            this.emit_line("errors.push(e);")
+            this.pop_indent()
+            this.emit_line("}")
+        }
+
+        this.emit_newline()
+        this.emit_line("if errors.is_empty() {")
+        this.push_indent()
+        this.emit_line("Ok(())")
+        this.pop_indent()
+        this.emit_line("} else {")
+        this.push_indent()
+        this.emit_line("Err(errors)")
+        this.pop_indent()
+        this.emit_line("}")
+
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    // ========================================================================
+    // SYSTEM GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate a Rust struct and impl for a DOL system.
+    }
+
+    /// Generate system struct and impl
+    fun gen_system(system: SystemDecl) {
+        let name = this.pascal_case(system.name)
+
+        // Doc comment
+        if system.exegesis != "" {
+            this.emit_line("/// " + system.exegesis.replace("\n", "\n/// "))
+            this.emit_line("/// Version: " + system.version)
+        }
+
+        this.emit_line("#[derive(Debug, Clone, PartialEq)]")
+        this.emit_line("pub struct " + name + " {")
+        this.push_indent()
+
+        // Generate state fields
+        for state in system.states {
+            let field_name = this.snake_case(state.name)
+            let field_type = this.gen_type(state.type_)
+            this.emit_line("pub " + field_name + ": " + field_type + ",")
+        }
+
+        this.pop_indent()
+        this.emit_line("}")
+        this.emit_newline()
+
+        // Generate impl block
+        this.emit_line("impl " + name + " {")
+        this.push_indent()
+
+        // Constructor
+        this.emit_line("pub fn new() -> Self {")
+        this.push_indent()
+        this.emit_line("Self {")
+        this.push_indent()
+        for state in system.states {
+            let field_name = this.snake_case(state.name)
+            match state.default {
+                Some(default_val) {
+                    this.emit_line(field_name + ": " + this.gen_expr(default_val) + ",")
+                }
+                None {
+                    this.emit_line(field_name + ": Default::default(),")
+                }
+            }
+        }
+        this.pop_indent()
+        this.emit_line("}")
+        this.pop_indent()
+        this.emit_line("}")
+
+        // Generate methods
+        for stmt in system.statements {
+            match stmt {
+                Statement.Function(func) {
+                    this.emit_newline()
+                    this.gen_method(func)
+                }
+                _ {}
+            }
+        }
+
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    // ========================================================================
+    // EVOLUTION GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate migration code from an evolution declaration.
+    }
+
+    /// Generate evolution/migration code
+    fun gen_evolution(evolution: EvolutionDecl) {
+        let name = this.pascal_case(evolution.name)
+        let from_version = evolution.parent_version.replace(".", "_")
+        let to_version = evolution.version.replace(".", "_")
+
+        this.emit_line("/// Migration from v" + evolution.parent_version + " to v" + evolution.version)
+        if evolution.rationale != None {
+            this.emit_line("/// Rationale: " + evolution.rationale.unwrap())
+        }
+
+        this.emit_line("pub fn migrate_" + this.snake_case(evolution.name) + "_v" + from_version + "_to_v" + to_version + "(old: &" + name + "V" + from_version + ") -> " + name + "V" + to_version + " {")
+        this.push_indent()
+        this.emit_line("// TODO: Implement migration logic")
+        this.emit_line("unimplemented!()")
+        this.pop_indent()
+        this.emit_line("}")
+    }
+
+    // ========================================================================
+    // TYPE GENERATION
+    // ========================================================================
+
+    exegesis {
+        Map DOL types to Rust types.
+        Handles primitives, generics, function types, and tuples.
+    }
+
+    /// Generate Rust type from DOL type expression
+    pub fun gen_type(ty: TypeExpr) -> String {
+        match ty {
+            TypeExpr.Named(name) {
+                return this.map_primitive_type(name)
+            }
+            TypeExpr.Generic { name, args } {
+                let mapped_name = this.map_generic_type(name)
+                let arg_strs = []
+                for arg in args {
+                    arg_strs.push(this.gen_type(arg))
+                }
+                return mapped_name + "<" + arg_strs.join(", ") + ">"
+            }
+            TypeExpr.Function { params, return_type } {
+                let param_strs = []
+                for param in params {
+                    param_strs.push(this.gen_type(param))
+                }
+                let ret = this.gen_type(return_type)
+                return "fn(" + param_strs.join(", ") + ") -> " + ret
+            }
+            TypeExpr.Tuple(types) {
+                if types.length() == 0 {
+                    return "()"
+                }
+                let type_strs = []
+                for t in types {
+                    type_strs.push(this.gen_type(t))
+                }
+                return "(" + type_strs.join(", ") + ")"
+            }
+        }
+    }
+
+    exegesis {
+        Map DOL primitive type names to Rust type names.
+    }
+
+    /// Map primitive type names
+    fun map_primitive_type(name: String) -> String {
+        match name {
+            "Int8" { return "i8" }
+            "Int16" { return "i16" }
+            "Int32" { return "i32" }
+            "Int64" { return "i64" }
+            "UInt8" { return "u8" }
+            "UInt16" { return "u16" }
+            "UInt32" { return "u32" }
+            "UInt64" { return "u64" }
+            "Float32" { return "f32" }
+            "Float64" { return "f64" }
+            "Bool" { return "bool" }
+            "String" { return "String" }
+            "Void" { return "()" }
+            "Char" { return "char" }
+            "Self" { return "Self" }
+            _ { return this.pascal_case(name) }
+        }
+    }
+
+    exegesis {
+        Map DOL generic type names to Rust type names.
+    }
+
+    /// Map generic container types
+    fun map_generic_type(name: String) -> String {
+        match name {
+            "List" { return "Vec" }
+            "Option" { return "Option" }
+            "Result" { return "Result" }
+            "Map" { return "std::collections::HashMap" }
+            "Set" { return "std::collections::HashSet" }
+            "Box" { return "Box" }
+            "Rc" { return "std::rc::Rc" }
+            "Arc" { return "std::sync::Arc" }
+            "RefCell" { return "std::cell::RefCell" }
+            "Mutex" { return "std::sync::Mutex" }
+            _ { return this.pascal_case(name) }
+        }
+    }
+
+    // ========================================================================
+    // TYPE PARAMETER GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate type parameters with bounds.
+    }
+
+    /// Generate type parameters
+    fun gen_type_params(type_params: TypeParams) -> String {
+        if type_params.params.length() == 0 {
+            return ""
+        }
+
+        let param_strs = []
+        for param in type_params.params {
+            let param_str = param.name
+            if param.bounds.length() > 0 {
+                let bound_strs = []
+                for bound in param.bounds {
+                    bound_strs.push(this.gen_type(bound))
+                }
+                param_str = param_str + ": " + bound_strs.join(" + ")
+            }
+            param_strs.push(param_str)
+        }
+
+        return "<" + param_strs.join(", ") + ">"
+    }
+
+    // ========================================================================
+    // PARAMETER GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate function parameter list.
+    }
+
+    /// Generate function parameters
+    pub fun gen_params(params: List<Param>) -> String {
+        let param_strs = []
+        for param in params {
+            let param_name = this.snake_case(param.name)
+            let param_type = this.gen_type(param.type_)
+            param_strs.push(param_name + ": " + param_type)
+        }
+        return param_strs.join(", ")
+    }
+
+    // ========================================================================
+    // BLOCK AND STATEMENT GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate a block of statements.
+    }
+
+    /// Generate statement block
+    pub fun gen_block(block: Block) {
+        for stmt in block.statements {
+            this.gen_stmt(stmt)
+        }
+
+        match block.final_expr {
+            Some(expr) {
+                this.emit_line(this.gen_expr(expr))
+            }
+            None {}
+        }
+    }
+
+    exegesis {
+        Generate a single statement.
+    }
+
+    /// Generate statement
+    pub fun gen_stmt(stmt: Stmt) {
+        match stmt {
+            Stmt.Let { name, type_ann, value } {
+                let var_name = this.snake_case(name)
+                let type_str = ""
+                match type_ann {
+                    Some(ty) {
+                        type_str = ": " + this.gen_type(ty)
+                    }
+                    None {}
+                }
+                this.emit_line("let " + var_name + type_str + " = " + this.gen_expr(value) + ";")
+            }
+            Stmt.Var { name, type_ann, value } {
+                let var_name = this.snake_case(name)
+                let type_str = ""
+                match type_ann {
+                    Some(ty) {
+                        type_str = ": " + this.gen_type(ty)
+                    }
+                    None {}
+                }
+                match value {
+                    Some(val) {
+                        this.emit_line("let mut " + var_name + type_str + " = " + this.gen_expr(val) + ";")
+                    }
+                    None {
+                        this.emit_line("let mut " + var_name + type_str + ";")
+                    }
+                }
+            }
+            Stmt.Assign { target, value } {
+                this.emit_line(this.gen_expr(target) + " = " + this.gen_expr(value) + ";")
+            }
+            Stmt.For { binding, iterable, body } {
+                this.emit_line("for " + this.snake_case(binding) + " in " + this.gen_expr(iterable) + " {")
+                this.push_indent()
+                for s in body {
+                    this.gen_stmt(s)
+                }
+                this.pop_indent()
+                this.emit_line("}")
+            }
+            Stmt.While { condition, body } {
+                this.emit_line("while " + this.gen_expr(condition) + " {")
+                this.push_indent()
+                for s in body {
+                    this.gen_stmt(s)
+                }
+                this.pop_indent()
+                this.emit_line("}")
+            }
+            Stmt.Loop { body } {
+                this.emit_line("loop {")
+                this.push_indent()
+                for s in body {
+                    this.gen_stmt(s)
+                }
+                this.pop_indent()
+                this.emit_line("}")
+            }
+            Stmt.If { condition, then_body, else_body } {
+                this.emit_line("if " + this.gen_expr(condition) + " {")
+                this.push_indent()
+                for s in then_body {
+                    this.gen_stmt(s)
+                }
+                this.pop_indent()
+                match else_body {
+                    Some(else_stmts) {
+                        this.emit_line("} else {")
+                        this.push_indent()
+                        for s in else_stmts {
+                            this.gen_stmt(s)
+                        }
+                        this.pop_indent()
+                        this.emit_line("}")
+                    }
+                    None {
+                        this.emit_line("}")
+                    }
+                }
+            }
+            Stmt.Break {
+                this.emit_line("break;")
+            }
+            Stmt.Continue {
+                this.emit_line("continue;")
+            }
+            Stmt.Return(value) {
+                match value {
+                    Some(val) {
+                        this.emit_line("return " + this.gen_expr(val) + ";")
+                    }
+                    None {
+                        this.emit_line("return;")
+                    }
+                }
+            }
+            Stmt.Expr(expr) {
+                this.emit_line(this.gen_expr(expr) + ";")
+            }
+            Stmt.Match { scrutinee, arms } {
+                this.emit_line("match " + this.gen_expr(scrutinee) + " {")
+                this.push_indent()
+                for arm in arms {
+                    this.gen_match_arm(arm)
+                }
+                this.pop_indent()
+                this.emit_line("}")
+            }
+        }
+    }
+
+    // ========================================================================
+    // EXPRESSION GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate Rust code for any DOL expression.
+        Handles all expression types including operators, calls, and lambdas.
+    }
+
+    /// Generate expression
+    pub fun gen_expr(expr: Expr) -> String {
+        match expr {
+            Expr.Literal(lit) {
+                return this.gen_literal(lit)
+            }
+            Expr.Identifier(name) {
+                return this.snake_case(name)
+            }
+            Expr.Binary { left, op, right } {
+                return this.gen_binary(left, op, right)
+            }
+            Expr.Unary { op, operand } {
+                return this.gen_unary(op, operand)
+            }
+            Expr.Call { callee, args } {
+                let callee_str = this.gen_expr(callee)
+                let arg_strs = []
+                for arg in args {
+                    arg_strs.push(this.gen_expr(arg))
+                }
+                return callee_str + "(" + arg_strs.join(", ") + ")"
+            }
+            Expr.Member { object, field } {
+                return this.gen_expr(object) + "." + this.snake_case(field)
+            }
+            Expr.Index { object, index } {
+                return this.gen_expr(object) + "[" + this.gen_expr(index) + "]"
+            }
+            Expr.Lambda { params, return_type, body } {
+                return this.gen_lambda(params, return_type, body)
+            }
+            Expr.If { condition, then_branch, else_branch } {
+                return this.gen_if_expr(condition, then_branch, else_branch)
+            }
+            Expr.Match { scrutinee, arms } {
+                return this.gen_match_expr(scrutinee, arms)
+            }
+            Expr.Block { statements, final_expr } {
+                return this.gen_block_expr(statements, final_expr)
+            }
+            Expr.Quote(inner) {
+                // Quote generates AST data structure
+                return "quote!(" + this.gen_expr(inner) + ")"
+            }
+            Expr.Unquote(inner) {
+                return "#" + this.gen_expr(inner)
+            }
+            Expr.QuasiQuote(inner) {
+                return "quasi_quote!(" + this.gen_expr(inner) + ")"
+            }
+            Expr.Eval(inner) {
+                return "eval(" + this.gen_expr(inner) + ")"
+            }
+            Expr.Reflect(type_expr) {
+                return "std::any::type_name::<" + this.gen_type(type_expr) + ">()"
+            }
+            Expr.IdiomBracket { func, args } {
+                // [| f a b |] desugars to f <$> a <*> b
+                return this.gen_idiom_bracket(func, args)
+            }
+            Expr.Forall(forall_expr) {
+                return this.gen_forall(forall_expr)
+            }
+            Expr.Exists(exists_expr) {
+                return this.gen_exists(exists_expr)
+            }
+            Expr.Implies { left, right, span } {
+                return "implies(" + this.gen_expr(left) + ", " + this.gen_expr(right) + ")"
+            }
+            Expr.SexBlock { statements, final_expr } {
+                return this.gen_sex_block(statements, final_expr)
+            }
+            Expr.Struct { name, fields } {
+                return this.gen_struct_literal(name, fields)
+            }
+            Expr.Array(elements) {
+                let elem_strs = []
+                for elem in elements {
+                    elem_strs.push(this.gen_expr(elem))
+                }
+                return "vec![" + elem_strs.join(", ") + "]"
+            }
+            Expr.Tuple(elements) {
+                let elem_strs = []
+                for elem in elements {
+                    elem_strs.push(this.gen_expr(elem))
+                }
+                return "(" + elem_strs.join(", ") + ")"
+            }
+            Expr.This {
+                return "self"
+            }
+            Expr.None {
+                return "None"
+            }
+            Expr.Some(inner) {
+                return "Some(" + this.gen_expr(inner) + ")"
+            }
+        }
+    }
+
+    exegesis {
+        Generate literal values.
+    }
+
+    /// Generate literal
+    fun gen_literal(lit: Literal) -> String {
+        match lit {
+            Literal.Int(value) {
+                return value.to_string()
+            }
+            Literal.Float(value) {
+                let s = value.to_string()
+                if !s.contains(".") {
+                    return s + ".0"
+                }
+                return s
+            }
+            Literal.String(value) {
+                return "\"" + this.escape_string(value) + "\""
+            }
+            Literal.Bool(value) {
+                if value {
+                    return "true"
+                } else {
+                    return "false"
+                }
+            }
+            Literal.Null {
+                return "None"
+            }
+            Literal.Char(value) {
+                return "'" + value + "'"
+            }
+        }
+    }
+
+    exegesis {
+        Generate binary operator expressions.
+        Special handling for pipe and compose operators.
+    }
+
+    /// Generate binary expression
+    fun gen_binary(left: Expr, op: BinaryOp, right: Expr) -> String {
+        let left_str = this.gen_expr(left)
+        let right_str = this.gen_expr(right)
+
+        match op {
+            BinaryOp.Add { return "(" + left_str + " + " + right_str + ")" }
+            BinaryOp.Sub { return "(" + left_str + " - " + right_str + ")" }
+            BinaryOp.Mul { return "(" + left_str + " * " + right_str + ")" }
+            BinaryOp.Div { return "(" + left_str + " / " + right_str + ")" }
+            BinaryOp.Mod { return "(" + left_str + " % " + right_str + ")" }
+            BinaryOp.Pow { return left_str + ".pow(" + right_str + ")" }
+            BinaryOp.Eq { return "(" + left_str + " == " + right_str + ")" }
+            BinaryOp.Ne { return "(" + left_str + " != " + right_str + ")" }
+            BinaryOp.Lt { return "(" + left_str + " < " + right_str + ")" }
+            BinaryOp.Le { return "(" + left_str + " <= " + right_str + ")" }
+            BinaryOp.Gt { return "(" + left_str + " > " + right_str + ")" }
+            BinaryOp.Ge { return "(" + left_str + " >= " + right_str + ")" }
+            BinaryOp.And { return "(" + left_str + " && " + right_str + ")" }
+            BinaryOp.Or { return "(" + left_str + " || " + right_str + ")" }
+            BinaryOp.Pipe {
+                // x |> f becomes f(x)
+                return right_str + "(" + left_str + ")"
+            }
+            BinaryOp.Compose {
+                // f >> g becomes |x| g(f(x))
+                return "|x| " + right_str + "(" + left_str + "(x))"
+            }
+            BinaryOp.Apply {
+                // f @ x becomes f(x)
+                return left_str + "(" + right_str + ")"
+            }
+            BinaryOp.Bind {
+                // x := expr becomes assignment (handled in statement)
+                return left_str + " = " + right_str
+            }
+            BinaryOp.Member {
+                return left_str + "." + right_str
+            }
+            BinaryOp.Map {
+                // f <$> x becomes x.map(f)
+                return right_str + ".map(" + left_str + ")"
+            }
+            BinaryOp.Ap {
+                // f <*> x becomes applicative apply
+                return left_str + ".apply(" + right_str + ")"
+            }
+            BinaryOp.Implies {
+                return "(!(" + left_str + ") || (" + right_str + "))"
+            }
+        }
+    }
+
+    exegesis {
+        Generate unary operator expressions.
+    }
+
+    /// Generate unary expression
+    fun gen_unary(op: UnaryOp, operand: Expr) -> String {
+        let operand_str = this.gen_expr(operand)
+
+        match op {
+            UnaryOp.Neg { return "(-" + operand_str + ")" }
+            UnaryOp.Not { return "(!" + operand_str + ")" }
+            UnaryOp.Quote { return "quote!(" + operand_str + ")" }
+            UnaryOp.Reflect { return "std::any::type_name_of_val(&" + operand_str + ")" }
+        }
+    }
+
+    exegesis {
+        Generate lambda/closure expressions.
+    }
+
+    /// Generate lambda expression
+    fun gen_lambda(params: List<LambdaParam>, return_type: Option<TypeExpr>, body: Expr) -> String {
+        let param_strs = []
+        for param in params {
+            match param.type_ {
+                Some(ty) {
+                    param_strs.push(this.snake_case(param.name) + ": " + this.gen_type(ty))
+                }
+                None {
+                    param_strs.push(this.snake_case(param.name))
+                }
+            }
+        }
+
+        let return_str = ""
+        match return_type {
+            Some(ty) {
+                return_str = " -> " + this.gen_type(ty)
+            }
+            None {}
+        }
+
+        return "|" + param_strs.join(", ") + "|" + return_str + " " + this.gen_expr(body)
+    }
+
+    exegesis {
+        Generate if expression (not statement).
+    }
+
+    /// Generate if expression
+    fun gen_if_expr(condition: Expr, then_branch: Expr, else_branch: Option<Expr>) -> String {
+        let cond_str = this.gen_expr(condition)
+        let then_str = this.gen_expr(then_branch)
+
+        match else_branch {
+            Some(else_expr) {
+                let else_str = this.gen_expr(else_expr)
+                return "if " + cond_str + " { " + then_str + " } else { " + else_str + " }"
+            }
+            None {
+                return "if " + cond_str + " { " + then_str + " }"
+            }
+        }
+    }
+
+    exegesis {
+        Generate match expression.
+    }
+
+    /// Generate match expression
+    fun gen_match_expr(scrutinee: Expr, arms: List<MatchArm>) -> String {
+        let scrutinee_str = this.gen_expr(scrutinee)
+        let result = "match " + scrutinee_str + " {\n"
+
+        for arm in arms {
+            let pattern_str = this.gen_pattern(arm.pattern)
+            let guard_str = ""
+            match arm.guard {
+                Some(guard) {
+                    guard_str = " if " + this.gen_expr(guard)
+                }
+                None {}
+            }
+            let body_str = this.gen_expr(arm.body)
+            result = result + "    " + pattern_str + guard_str + " => " + body_str + ",\n"
+        }
+
+        result = result + "}"
+        return result
+    }
+
+    exegesis {
+        Generate match arm for statement-level match.
+    }
+
+    /// Generate match arm
+    fun gen_match_arm(arm: MatchArm) {
+        let pattern_str = this.gen_pattern(arm.pattern)
+        let guard_str = ""
+        match arm.guard {
+            Some(guard) {
+                guard_str = " if " + this.gen_expr(guard)
+            }
+            None {}
+        }
+        let body_str = this.gen_expr(arm.body)
+        this.emit_line(pattern_str + guard_str + " => " + body_str + ",")
+    }
+
+    exegesis {
+        Generate pattern for match expressions.
+    }
+
+    /// Generate pattern
+    fun gen_pattern(pattern: Pattern) -> String {
+        match pattern {
+            Pattern.Wildcard {
+                return "_"
+            }
+            Pattern.Identifier(name) {
+                return this.snake_case(name)
+            }
+            Pattern.Literal(lit) {
+                return this.gen_literal(lit)
+            }
+            Pattern.Constructor { name, fields } {
+                let name_str = this.pascal_case(name)
+                if fields.length() == 0 {
+                    return name_str
+                }
+                let field_strs = []
+                for field in fields {
+                    field_strs.push(this.gen_pattern(field))
+                }
+                return name_str + "(" + field_strs.join(", ") + ")"
+            }
+            Pattern.Tuple(patterns) {
+                let pattern_strs = []
+                for p in patterns {
+                    pattern_strs.push(this.gen_pattern(p))
+                }
+                return "(" + pattern_strs.join(", ") + ")"
+            }
+            Pattern.Struct { name, fields } {
+                let name_str = this.pascal_case(name)
+                let field_strs = []
+                for field in fields {
+                    field_strs.push(field.name + ": " + this.gen_pattern(field.pattern))
+                }
+                return name_str + " { " + field_strs.join(", ") + " }"
+            }
+        }
+    }
+
+    exegesis {
+        Generate block expression.
+    }
+
+    /// Generate block expression
+    fun gen_block_expr(statements: List<Stmt>, final_expr: Option<Expr>) -> String {
+        let result = "{\n"
+
+        for stmt in statements {
+            // Generate statement inline (simplified)
+            result = result + "    " + this.gen_stmt_inline(stmt) + "\n"
+        }
+
+        match final_expr {
+            Some(expr) {
+                result = result + "    " + this.gen_expr(expr) + "\n"
+            }
+            None {}
+        }
+
+        result = result + "}"
+        return result
+    }
+
+    exegesis {
+        Generate statement as inline string (for block expressions).
+    }
+
+    /// Generate statement inline
+    fun gen_stmt_inline(stmt: Stmt) -> String {
+        match stmt {
+            Stmt.Let { name, type_ann, value } {
+                let var_name = this.snake_case(name)
+                let type_str = ""
+                match type_ann {
+                    Some(ty) {
+                        type_str = ": " + this.gen_type(ty)
+                    }
+                    None {}
+                }
+                return "let " + var_name + type_str + " = " + this.gen_expr(value) + ";"
+            }
+            Stmt.Return(value) {
+                match value {
+                    Some(val) {
+                        return "return " + this.gen_expr(val) + ";"
+                    }
+                    None {
+                        return "return;"
+                    }
+                }
+            }
+            Stmt.Expr(expr) {
+                return this.gen_expr(expr) + ";"
+            }
+            Stmt.Break {
+                return "break;"
+            }
+            Stmt.Continue {
+                return "continue;"
+            }
+            _ {
+                return "/* complex statement */"
+            }
+        }
+    }
+
+    exegesis {
+        Generate idiom bracket expression.
+    }
+
+    /// Generate idiom bracket [| f a b |] -> f <$> a <*> b
+    fun gen_idiom_bracket(func: Expr, args: List<Expr>) -> String {
+        if args.length() == 0 {
+            return this.gen_expr(func)
+        }
+
+        let result = this.gen_expr(args[0]) + ".map(" + this.gen_expr(func) + ")"
+
+        let i = 1
+        while i < args.length() {
+            result = result + ".apply(" + this.gen_expr(args[i]) + ")"
+            i = i + 1
+        }
+
+        return result
+    }
+
+    exegesis {
+        Generate forall quantifier expression.
+    }
+
+    /// Generate forall expression
+    fun gen_forall(forall_expr: ForallExpr) -> String {
+        let var_name = this.snake_case(forall_expr.var)
+        let type_str = this.gen_type(forall_expr.type_)
+        let body_str = this.gen_expr(forall_expr.body)
+        return "forall::<" + type_str + ">(|" + var_name + "| " + body_str + ")"
+    }
+
+    exegesis {
+        Generate exists quantifier expression.
+    }
+
+    /// Generate exists expression
+    fun gen_exists(exists_expr: ExistsExpr) -> String {
+        let var_name = this.snake_case(exists_expr.var)
+        let type_str = this.gen_type(exists_expr.type_)
+        let body_str = this.gen_expr(exists_expr.body)
+        return "exists::<" + type_str + ">(|" + var_name + "| " + body_str + ")"
+    }
+
+    exegesis {
+        Generate sex block (side-effecting block).
+    }
+
+    /// Generate sex block
+    fun gen_sex_block(statements: List<Stmt>, final_expr: Option<Expr>) -> String {
+        return this.gen_block_expr(statements, final_expr)
+    }
+
+    exegesis {
+        Generate struct literal expression.
+    }
+
+    /// Generate struct literal
+    fun gen_struct_literal(name: String, fields: List<FieldInit>) -> String {
+        let name_str = this.pascal_case(name)
+        let field_strs = []
+        for field in fields {
+            let field_name = this.snake_case(field.name)
+            let value_str = this.gen_expr(field.value)
+            if field.name == field.value.as_identifier() {
+                // Shorthand: field: field -> field
+                field_strs.push(field_name)
+            } else {
+                field_strs.push(field_name + ": " + value_str)
+            }
+        }
+        return name_str + " { " + field_strs.join(", ") + " }"
+    }
+
+    // ========================================================================
+    // VISIBILITY GENERATION
+    // ========================================================================
+
+    exegesis {
+        Generate visibility modifier.
+    }
+
+    /// Generate visibility
+    fun gen_visibility(vis: Visibility) -> String {
+        match vis {
+            Visibility.Private { return "" }
+            Visibility.Public { return "pub " }
+            Visibility.PubSpirit { return "pub(crate) " }
+            Visibility.PubParent { return "pub(super) " }
+        }
+    }
+
+    // ========================================================================
+    // UTILITY FUNCTIONS
+    // ========================================================================
+
+    exegesis {
+        Convert identifier to snake_case for Rust.
+    }
+
+    /// Convert to snake_case
+    fun snake_case(name: String) -> String {
+        // Replace dots with underscores
+        let result = name.replace(".", "_")
+
+        // Insert underscores before uppercase letters
+        let output = ""
+        let i = 0
+        while i < result.length() {
+            let c = result.char_at(i)
+            if c >= 'A' && c <= 'Z' {
+                if i > 0 {
+                    output = output + "_"
+                }
+                output = output + c.to_lowercase()
+            } else {
+                output = output + c
+            }
+            i = i + 1
+        }
+
+        return output
+    }
+
+    exegesis {
+        Convert identifier to PascalCase for Rust types.
+    }
+
+    /// Convert to PascalCase
+    fun pascal_case(name: String) -> String {
+        // Split on dots and underscores
+        let parts = name.replace(".", "_").split("_")
+        let result = ""
+
+        for part in parts {
+            if part.length() > 0 {
+                let first = part.char_at(0).to_uppercase()
+                let rest = part.substring(1, part.length())
+                result = result + first + rest
+            }
+        }
+
+        return result
+    }
+
+    exegesis {
+        Escape special characters in strings.
+    }
+
+    /// Escape string for Rust
+    fun escape_string(s: String) -> String {
+        let result = ""
+        let i = 0
+        while i < s.length() {
+            let c = s.char_at(i)
+            match c {
+                '\\' { result = result + "\\\\" }
+                '"' { result = result + "\\\"" }
+                '\n' { result = result + "\\n" }
+                '\r' { result = result + "\\r" }
+                '\t' { result = result + "\\t" }
+                _ { result = result + c }
+            }
+            i = i + 1
+        }
+        return result
+    }
+}
+
+// ============================================================================
+// PUBLIC API
+// ============================================================================
+
+exegesis {
+    Main entry point for code generation.
+    Takes a parsed DOL file and returns generated Rust source code.
+}
+
+/// Generate Rust code from a DOL file
+pub fun codegen(file: DolFile) -> String {
+    let generator = RustCodegen {}
+    return generator.gen_file(file)
+}
+
+exegesis {
+    Generate Rust code for a single declaration.
+}
+
+/// Generate Rust code for a single declaration
+pub fun codegen_decl(decl: Decl) -> String {
+    let generator = RustCodegen {}
+    generator.gen_decl(decl)
+    return generator.output
+}
+
+exegesis {
+    Generate Rust type string from DOL type expression.
+}
+
+/// Generate Rust type from DOL type
+pub fun codegen_type(ty: TypeExpr) -> String {
+    let generator = RustCodegen {}
+    return generator.gen_type(ty)
+}

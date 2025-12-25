@@ -1,0 +1,497 @@
+module dol.types @ 0.4.0
+
+exegesis {
+    Type system definitions for the DOL self-hosting compiler.
+
+    This module provides:
+    - Type: A comprehensive type representation including primitives,
+      compound types (functions, tuples), generics, and type inference
+    - TypeEnv: Scoped type environment for name-to-type bindings
+    - TypeError: Structured error reporting with source locations
+
+    The type system supports Hindley-Milner style inference with
+    unification variables (Var) and explicit type annotations.
+}
+
+use dol.token { Span }
+
+// ═══════════════════════════════════════════════════════════════
+// TYPE
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    The Type gene represents all type expressions in DOL.
+
+    Types are classified into several categories:
+
+    1. Primitives: Fixed-size numeric types (Int8..Int64, UInt8..UInt64,
+       Float32, Float64), Bool, String, and Void for unit type.
+
+    2. Compound: Function types with parameter list and return type,
+       and Tuple types for anonymous product types.
+
+    3. Generic: Parameterized types like List<T> or Map<K, V>.
+       The name field holds the base type, args holds type arguments.
+
+    4. Named: Reference to a user-defined type by name.
+
+    5. Inference: Var represents unification variables during type
+       inference, Unknown represents unresolved types, and Error
+       represents types that failed to resolve.
+}
+
+/// Complete type representation for DOL
+pub gene Type {
+    type: enum {
+        // ─────────────────────────────────────────────────────────
+        // Primitive Types
+        // ─────────────────────────────────────────────────────────
+
+        /// 8-bit signed integer (-128 to 127)
+        Int8,
+        /// 16-bit signed integer (-32768 to 32767)
+        Int16,
+        /// 32-bit signed integer (default integer type)
+        Int32,
+        /// 64-bit signed integer
+        Int64,
+
+        /// 8-bit unsigned integer (0 to 255)
+        UInt8,
+        /// 16-bit unsigned integer (0 to 65535)
+        UInt16,
+        /// 32-bit unsigned integer
+        UInt32,
+        /// 64-bit unsigned integer
+        UInt64,
+
+        /// 32-bit IEEE 754 floating point
+        Float32,
+        /// 64-bit IEEE 754 floating point (default float type)
+        Float64,
+
+        /// Boolean type (true or false)
+        Bool,
+        /// UTF-8 string type
+        String,
+        /// Unit type (no value)
+        Void,
+
+        // ─────────────────────────────────────────────────────────
+        // Compound Types
+        // ─────────────────────────────────────────────────────────
+
+        /// Function type: (params...) -> ret
+        Function {
+            params: List<Type>,
+            ret: Box<Type>
+        },
+
+        /// Tuple type: (T1, T2, ...)
+        Tuple {
+            elements: List<Type>
+        },
+
+        // ─────────────────────────────────────────────────────────
+        // Generic Types
+        // ─────────────────────────────────────────────────────────
+
+        /// Parameterized type: Name<Arg1, Arg2, ...>
+        Generic {
+            name: String,
+            args: List<Type>
+        },
+
+        // ─────────────────────────────────────────────────────────
+        // Named Types
+        // ─────────────────────────────────────────────────────────
+
+        /// Reference to a user-defined type
+        Named {
+            name: String
+        },
+
+        // ─────────────────────────────────────────────────────────
+        // Inference Types
+        // ─────────────────────────────────────────────────────────
+
+        /// Unification variable for type inference
+        Var {
+            id: UInt64
+        },
+
+        /// Unresolved type (placeholder during inference)
+        Unknown,
+
+        /// Type that failed to resolve (error recovery)
+        Error
+    }
+
+    exegesis {
+        Type variants cover the full spectrum of DOL types:
+        - Primitives for basic data
+        - Compound for complex structures
+        - Generic for parameterized polymorphism
+        - Named for user-defined types
+        - Inference for type reconstruction
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TYPE PREDICATES
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Utility functions for type classification and comparison.
+}
+
+/// Check if a type is a primitive type
+pub fun is_primitive(ty: Type) -> Bool {
+    match ty {
+        Int8 { return true }
+        Int16 { return true }
+        Int32 { return true }
+        Int64 { return true }
+        UInt8 { return true }
+        UInt16 { return true }
+        UInt32 { return true }
+        UInt64 { return true }
+        Float32 { return true }
+        Float64 { return true }
+        Bool { return true }
+        String { return true }
+        Void { return true }
+        _ { return false }
+    }
+}
+
+/// Check if a type is a numeric type
+pub fun is_numeric(ty: Type) -> Bool {
+    match ty {
+        Int8 { return true }
+        Int16 { return true }
+        Int32 { return true }
+        Int64 { return true }
+        UInt8 { return true }
+        UInt16 { return true }
+        UInt32 { return true }
+        UInt64 { return true }
+        Float32 { return true }
+        Float64 { return true }
+        _ { return false }
+    }
+}
+
+/// Check if a type is an integer type
+pub fun is_integer(ty: Type) -> Bool {
+    match ty {
+        Int8 { return true }
+        Int16 { return true }
+        Int32 { return true }
+        Int64 { return true }
+        UInt8 { return true }
+        UInt16 { return true }
+        UInt32 { return true }
+        UInt64 { return true }
+        _ { return false }
+    }
+}
+
+/// Check if a type is a floating point type
+pub fun is_float(ty: Type) -> Bool {
+    match ty {
+        Float32 { return true }
+        Float64 { return true }
+        _ { return false }
+    }
+}
+
+/// Check if a type contains unresolved inference variables
+pub fun has_inference_vars(ty: Type) -> Bool {
+    match ty {
+        Var { return true }
+        Unknown { return true }
+        Function { params, ret } {
+            for param in params {
+                if has_inference_vars(param) {
+                    return true
+                }
+            }
+            return has_inference_vars(*ret)
+        }
+        Tuple { elements } {
+            for elem in elements {
+                if has_inference_vars(elem) {
+                    return true
+                }
+            }
+            return false
+        }
+        Generic { name, args } {
+            for arg in args {
+                if has_inference_vars(arg) {
+                    return true
+                }
+            }
+            return false
+        }
+        _ { return false }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TYPE ENVIRONMENT
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    TypeEnv implements a scoped type environment using parent pointers.
+
+    Type environments form a tree structure where each scope has access
+    to bindings from its parent scopes. This enables lexical scoping
+    for type names and variable types.
+
+    Operations:
+    - child(): Create a new child scope
+    - bind(): Add a name-to-type binding in current scope
+    - lookup(): Find a type by name, searching up the scope chain
+}
+
+/// Scoped type environment for name resolution
+pub gene TypeEnv {
+    /// Map from names to their types in this scope
+    has bindings: Map<String, Type>
+
+    /// Parent scope (None for global scope)
+    has parent: Option<Box<TypeEnv>>
+
+    exegesis {
+        Type environment maintains bindings in a scoped hierarchy.
+        Lookups traverse the parent chain until a binding is found.
+    }
+
+    /// Create a child scope with this environment as parent
+    pub fun child() -> TypeEnv {
+        return TypeEnv {
+            bindings: Map::new(),
+            parent: Some(Box::new(this))
+        }
+    }
+
+    /// Bind a name to a type in the current scope
+    pub fun bind(name: String, ty: Type) {
+        this.bindings.insert(name, ty)
+    }
+
+    /// Look up a type by name, searching parent scopes
+    pub fun lookup(name: String) -> Option<Type> {
+        // Check current scope first
+        match this.bindings.get(name) {
+            Some(ty) { return Some(ty) }
+            None {
+                // Search parent scope if available
+                match this.parent {
+                    Some(parent_env) { return parent_env.lookup(name) }
+                    None { return None }
+                }
+            }
+        }
+    }
+
+    /// Check if a name is bound in the current scope only
+    pub fun is_bound_locally(name: String) -> Bool {
+        return this.bindings.contains_key(name)
+    }
+
+    /// Check if a name is bound anywhere in the scope chain
+    pub fun is_bound(name: String) -> Bool {
+        match this.lookup(name) {
+            Some(_) { return true }
+            None { return false }
+        }
+    }
+}
+
+/// Create a new empty type environment (global scope)
+pub fun new_env() -> TypeEnv {
+    return TypeEnv {
+        bindings: Map::new(),
+        parent: None
+    }
+}
+
+/// Create a type environment with primitive types pre-bound
+pub fun prelude_env() -> TypeEnv {
+    let env = new_env()
+
+    // Bind primitive type names
+    env.bind("Int8", Type.Int8)
+    env.bind("Int16", Type.Int16)
+    env.bind("Int32", Type.Int32)
+    env.bind("Int64", Type.Int64)
+    env.bind("UInt8", Type.UInt8)
+    env.bind("UInt16", Type.UInt16)
+    env.bind("UInt32", Type.UInt32)
+    env.bind("UInt64", Type.UInt64)
+    env.bind("Float32", Type.Float32)
+    env.bind("Float64", Type.Float64)
+    env.bind("Bool", Type.Bool)
+    env.bind("String", Type.String)
+    env.bind("Void", Type.Void)
+
+    // Common aliases
+    env.bind("Int", Type.Int32)
+    env.bind("UInt", Type.UInt32)
+    env.bind("Float", Type.Float64)
+
+    return env
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TYPE ERROR
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    TypeError provides structured error reporting for type-related issues.
+
+    Errors include:
+    - A human-readable message describing the problem
+    - A source span pinpointing the error location
+
+    This enables precise error messages like:
+      "Type mismatch: expected Int32, found String at line 42, column 5"
+}
+
+/// Type error with message and source location
+pub gene TypeError {
+    /// Human-readable error description
+    has message: String
+
+    /// Source location where the error occurred
+    has span: Span
+
+    exegesis {
+        TypeError carries both the error message and its source location
+        for precise error reporting during type checking.
+    }
+
+    /// Create a new type error
+    pub fun new(message: String, span: Span) -> TypeError {
+        return TypeError {
+            message: message,
+            span: span
+        }
+    }
+
+    /// Format the error for display
+    pub fun format() -> String {
+        return "TypeError at line " + this.span.line.to_string() +
+               ", column " + this.span.column.to_string() +
+               ": " + this.message
+    }
+}
+
+/// Create a type mismatch error
+pub fun mismatch_error(expected: Type, found: Type, span: Span) -> TypeError {
+    return TypeError {
+        message: "Type mismatch: expected " + type_to_string(expected) +
+                 ", found " + type_to_string(found),
+        span: span
+    }
+}
+
+/// Create an undefined type error
+pub fun undefined_error(name: String, span: Span) -> TypeError {
+    return TypeError {
+        message: "Undefined type: " + name,
+        span: span
+    }
+}
+
+/// Create an arity mismatch error
+pub fun arity_error(expected: UInt32, found: UInt32, span: Span) -> TypeError {
+    return TypeError {
+        message: "Wrong number of type arguments: expected " +
+                 expected.to_string() + ", found " + found.to_string(),
+        span: span
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TYPE DISPLAY
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Convert types to their string representation for error messages
+    and debugging output.
+}
+
+/// Convert a type to its string representation
+pub fun type_to_string(ty: Type) -> String {
+    match ty {
+        Int8 { return "Int8" }
+        Int16 { return "Int16" }
+        Int32 { return "Int32" }
+        Int64 { return "Int64" }
+        UInt8 { return "UInt8" }
+        UInt16 { return "UInt16" }
+        UInt32 { return "UInt32" }
+        UInt64 { return "UInt64" }
+        Float32 { return "Float32" }
+        Float64 { return "Float64" }
+        Bool { return "Bool" }
+        String { return "String" }
+        Void { return "Void" }
+
+        Function { params, ret } {
+            let s = "("
+            for i in 0..params.len() {
+                if i > 0 {
+                    s = s + ", "
+                }
+                s = s + type_to_string(params[i])
+            }
+            s = s + ") -> " + type_to_string(*ret)
+            return s
+        }
+
+        Tuple { elements } {
+            let s = "("
+            for i in 0..elements.len() {
+                if i > 0 {
+                    s = s + ", "
+                }
+                s = s + type_to_string(elements[i])
+            }
+            s = s + ")"
+            return s
+        }
+
+        Generic { name, args } {
+            let s = name + "<"
+            for i in 0..args.len() {
+                if i > 0 {
+                    s = s + ", "
+                }
+                s = s + type_to_string(args[i])
+            }
+            s = s + ">"
+            return s
+        }
+
+        Named { name } {
+            return name
+        }
+
+        Var { id } {
+            return "?T" + id.to_string()
+        }
+
+        Unknown {
+            return "?"
+        }
+
+        Error {
+            return "<error>"
+        }
+    }
+}

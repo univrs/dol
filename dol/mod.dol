@@ -1,0 +1,233 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL Self-Hosting Compiler - Module Index
+// ═══════════════════════════════════════════════════════════════
+
+module dol @ 0.4.0
+
+exegesis {
+    The DOL Self-Hosting Compiler Module.
+
+    This is the root module for the DOL compiler written in DOL itself.
+    It provides a complete compilation pipeline from DOL source code
+    to generated Rust code, enabling DOL to compile itself.
+
+    # Architecture
+
+    The compiler follows a traditional multi-pass architecture:
+
+    ```
+    Source Code (.dol)
+         |
+         v
+    ┌─────────┐
+    │  Lexer  │  dol.lexer - Tokenization
+    └────┬────┘
+         │ List<Token>
+         v
+    ┌─────────┐
+    │ Parser  │  dol.parser - Syntax Analysis
+    └────┬────┘
+         │ AST (Module)
+         v
+    ┌────────────┐
+    │ Typechecker│  dol.typechecker - Semantic Analysis
+    └─────┬──────┘
+         │ Typed AST
+         v
+    ┌─────────┐
+    │ Codegen │  dol.codegen - Code Generation
+    └────┬────┘
+         │
+         v
+    Generated Rust Code (.rs)
+    ```
+
+    # Modules
+
+    ## dol.token
+    Token definitions including TokenKind, Span, and Token types.
+    These represent lexical units in DOL source code.
+
+    ## dol.lexer
+    Tokenizer that converts source text into a stream of tokens.
+    Handles keywords, identifiers, literals, operators, and delimiters.
+
+    ## dol.ast
+    Abstract Syntax Tree definitions. Represents the structure of
+    DOL programs after parsing.
+
+    ## dol.parser
+    Recursive descent parser that builds an AST from tokens.
+    Provides detailed error messages with source locations.
+
+    ## dol.types
+    Type system definitions including Type, TypeEnv, and TypeError.
+    Supports generics, traits, and constraint checking.
+
+    ## dol.typechecker
+    Semantic analyzer that validates types and resolves symbols.
+    Produces a typed AST for code generation.
+
+    ## dol.codegen
+    Code generator that emits Rust source code from typed AST.
+    Handles mapping DOL constructs to idiomatic Rust.
+
+    # Usage
+
+    ## Library Usage
+
+    ```dol
+    use dol.{ lex, parse, typecheck, codegen, RustCodegen }
+
+    // Read source
+    let source = read_file("example.dol")
+
+    // Compile pipeline
+    let tokens = lex(source)
+    let ast = parse(tokens)?
+    let typed_ast = typecheck(ast)?
+
+    let codegen = RustCodegen.new()
+    let rust_code = codegen.generate(typed_ast)?
+
+    write_file("example.rs", rust_code)
+    ```
+
+    ## CLI Usage
+
+    ```shell
+    # Full compilation
+    dol compile input.dol -o output.rs
+
+    # Type checking only
+    dol check input.dol
+
+    # Parsing only
+    dol parse input.dol
+    ```
+
+    # Self-Hosting
+
+    This compiler is self-hosting, meaning it is written in DOL and
+    can compile itself. The bootstrap process is:
+
+    1. Initial Rust implementation compiles DOL source
+    2. DOL compiler compiles itself via Rust backend
+    3. Self-compiled DOL compiler compiles itself
+    4. Verify output matches step 2 (bootstrap complete)
+
+    # Design Principles
+
+    - **Ontology-First**: Types model what things ARE
+    - **Compositional**: Small, reusable components
+    - **Explicit Effects**: Side effects marked with 'sex'
+    - **Error Recovery**: Helpful error messages with suggestions
+    - **Extensible**: Plugin system for custom backends
+
+    # Version History
+
+    - 0.4.0: Self-hosting milestone with full compilation pipeline
+    - 0.3.0: Type system with generics and constraints
+    - 0.2.0: Parser and AST definitions
+    - 0.1.0: Initial lexer implementation
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOKEN MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export all token types
+pub use dol.token.{ TokenKind, Token, Span, keyword_lookup }
+
+// ═══════════════════════════════════════════════════════════════
+// LEXER MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export lexer function
+pub use dol.lexer.{ lex }
+
+// ═══════════════════════════════════════════════════════════════
+// AST MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export all AST types
+pub use dol.ast.{
+    Module,
+    Declaration,
+    GeneDecl,
+    TraitDecl,
+    SystemDecl,
+    ConstraintDecl,
+    EvolutionDecl,
+    FunDecl,
+    Statement,
+    HasStmt,
+    IsStmt,
+    RequiresStmt,
+    ProvidesStmt,
+    LawStmt,
+    Expr,
+    Pattern,
+    TypeExpr,
+    GenericParam,
+    WhereClause
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PARSER MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export parser function and error type
+pub use dol.parser.{ parse, ParseError }
+
+// ═══════════════════════════════════════════════════════════════
+// TYPES MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export type system types
+pub use dol.types.{
+    Type,
+    TypeEnv,
+    TypeError,
+    TypeVar,
+    Substitution,
+    Constraint
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TYPECHECKER MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export typechecker function
+pub use dol.typechecker.{ typecheck }
+
+// ═══════════════════════════════════════════════════════════════
+// CODEGEN MODULE
+// ═══════════════════════════════════════════════════════════════
+
+/// Re-export code generation types and functions
+pub use dol.codegen.{ codegen, RustCodegen, Backend }
+
+// ═══════════════════════════════════════════════════════════════
+// PRELUDE
+// ═══════════════════════════════════════════════════════════════
+
+exegesis {
+    Convenience re-exports for common usage patterns.
+
+    Import the prelude to get started quickly:
+
+    ```dol
+    use dol.prelude.*
+    ```
+}
+
+/// Prelude module for common imports
+pub mod prelude {
+    pub use dol.{ lex, parse, typecheck, codegen }
+    pub use dol.{ Token, TokenKind, Span }
+    pub use dol.{ Module, Declaration, Expr, TypeExpr }
+    pub use dol.{ Type, TypeEnv, TypeError }
+    pub use dol.{ ParseError }
+    pub use dol.{ RustCodegen }
+}

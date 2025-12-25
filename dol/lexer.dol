@@ -1,204 +1,809 @@
-module dol.lexer @ 0.2.0
+module dol.lexer @ 0.4.0
 
 exegesis {
   The DOL lexer tokenizes DOL source code into a stream of tokens.
-  This is the first step in DOL self-hosting: writing the compiler in DOL.
+  This is the foundation of the DOL self-hosting compiler.
+
+  The lexer handles:
+  - Keywords and identifiers
+  - Numeric literals (integers and floats)
+  - String literals with escape sequences
+  - All operators (single and multi-character)
+  - Line comments (-- style)
+  - Whitespace and newlines
 }
 
-/// Token types for the DOL language
-pub gene Token {
-  type: enum {
-    // Keywords
-    Module, Use, Pub, Gene, Trait, System,
-    Constraint, Evolves, Fun, Return,
-    If, Else, Match, For, While, Loop,
-    Break, Continue, Has, Is, Type,
-    Sex, Extern, Var, Let, Const,
-    Forall, Exists, Where, Law,
+use dol.token.{ Token, TokenKind, Span, keyword_lookup }
 
-    // Literals
-    IntLit, FloatLit, StringLit, BoolLit, NullLit,
-
-    // Operators
-    Plus, Minus, Star, Slash, Percent, Caret,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or, Not, Pipe, Compose,
-    Quote, Bang, Question, Hash,
-    Arrow, FatArrow, Bind, Map, Ap,
-
-    // Delimiters
-    LBrace, RBrace, LParen, RParen,
-    LBracket, RBracket, LIdiom, RIdiom,
-    Comma, Colon, Semicolon, Dot, At,
-
-    // Meta
-    Identifier, Eof, Error
-  }
-}
+-- =============================================================================
+-- Lexer State
+-- =============================================================================
 
 exegesis {
-  A span tracks the source location of a token.
+  The Lexer gene maintains the state needed during tokenization.
+  It tracks position in the source, current line/column for error
+  reporting, and accumulates the output token list.
 }
 
-/// Source location for error reporting
-pub gene Span {
-  has start: UInt64 = 0
-  has end: UInt64 = 0
-  has line: UInt32 = 1
-  has column: UInt32 = 1
-}
-
-exegesis {
-  A spanned token combines a token with its source location and text.
-}
-
-/// Token with source location and original text
-pub gene SpannedToken {
-  has token: Token
-  has span: Span
-  has text: String
-}
-
-exegesis {
-  The lexer state tracks position during tokenization.
-}
-
-/// Lexer state for tokenization
+/// Lexer state for tokenizing DOL source code
 pub gene Lexer {
+  /// The source code being tokenized
   has source: String
-  has position: UInt64 = 0
+
+  /// Current byte position in source
+  has pos: UInt64 = 0
+
+  /// Current line number (1-indexed)
   has line: UInt32 = 1
+
+  /// Current column number (1-indexed)
   has column: UInt32 = 1
+
+  /// Accumulated tokens
+  has tokens: List<Token> = []
 }
+
+-- =============================================================================
+-- Character Access Methods
+-- =============================================================================
 
 exegesis {
-  Tokenize DOL source code into a list of spanned tokens.
+  Get the character at the current position, if any.
 }
 
-/// Main lexer function
-pub fun lex(source: String) -> List<SpannedToken> {
-  let tokens = []
-  let lexer = Lexer { source: source }
-
-  while lexer.position < source.length() {
-    // Skip whitespace
-    skip_whitespace(lexer)
-
-    if lexer.position >= source.length() {
-      break
-    }
-
-    let token = scan_token(lexer)
-    tokens.push(token)
+/// Returns the current character or None if at end
+fun current(self: Lexer) -> Option<Char> {
+  if self.pos >= self.source.length() {
+    return None
   }
-
-  // Add EOF token
-  tokens.push(SpannedToken {
-    token: Token.Eof,
-    span: Span { start: source.length(), end: source.length(), line: lexer.line, column: lexer.column },
-    text: ""
-  })
-
-  return tokens
+  return Some(self.source.char_at(self.pos))
 }
 
 exegesis {
-  Skip whitespace characters.
+  Peek ahead by a given offset without consuming.
 }
 
-fun skip_whitespace(lexer: Lexer) {
-  while lexer.position < lexer.source.length() {
-    let c = lexer.source.char_at(lexer.position)
-    match c {
-      ' ' | '\t' | '\r' {
-        lexer.position = lexer.position + 1
-        lexer.column = lexer.column + 1
+/// Look ahead by offset characters
+fun peek(self: Lexer, offset: UInt64) -> Option<Char> {
+  let target = self.pos + offset
+  if target >= self.source.length() {
+    return None
+  }
+  return Some(self.source.char_at(target))
+}
+
+exegesis {
+  Advance the lexer by one character, updating position and column.
+  Handles newlines by incrementing line and resetting column.
+}
+
+/// Consume and return the current character
+fun advance(self: Lexer) -> Option<Char> {
+  match self.current() {
+    None => None
+    Some(c) => {
+      self.pos = self.pos + 1
+      if c == '\n' {
+        self.line = self.line + 1
+        self.column = 1
+      } else {
+        self.column = self.column + 1
       }
-      '\n' {
-        lexer.position = lexer.position + 1
-        lexer.line = lexer.line + 1
-        lexer.column = 1
-      }
-      _ { break }
+      Some(c)
     }
   }
 }
 
+-- =============================================================================
+-- Token Construction
+-- =============================================================================
+
 exegesis {
-  Scan a single token from the source.
+  Create a token with span information from start position to current.
 }
 
-fun scan_token(lexer: Lexer) -> SpannedToken {
-  let start = lexer.position
-  let start_line = lexer.line
-  let start_col = lexer.column
-  let c = lexer.source.char_at(lexer.position)
-
-  // Single character tokens
-  match c {
-    '{' { return make_token(lexer, Token.LBrace, start, start_line, start_col) }
-    '}' { return make_token(lexer, Token.RBrace, start, start_line, start_col) }
-    '(' { return make_token(lexer, Token.LParen, start, start_line, start_col) }
-    ')' { return make_token(lexer, Token.RParen, start, start_line, start_col) }
-    '[' { return make_token(lexer, Token.LBracket, start, start_line, start_col) }
-    ']' { return make_token(lexer, Token.RBracket, start, start_line, start_col) }
-    ',' { return make_token(lexer, Token.Comma, start, start_line, start_col) }
-    ':' { return make_token(lexer, Token.Colon, start, start_line, start_col) }
-    ';' { return make_token(lexer, Token.Semicolon, start, start_line, start_col) }
-    '.' { return make_token(lexer, Token.Dot, start, start_line, start_col) }
-    '@' { return make_token(lexer, Token.At, start, start_line, start_col) }
-    '+' { return make_token(lexer, Token.Plus, start, start_line, start_col) }
-    '-' { return scan_arrow_or_minus(lexer, start, start_line, start_col) }
-    '*' { return make_token(lexer, Token.Star, start, start_line, start_col) }
-    '/' { return make_token(lexer, Token.Slash, start, start_line, start_col) }
-    '%' { return make_token(lexer, Token.Percent, start, start_line, start_col) }
-    '^' { return make_token(lexer, Token.Caret, start, start_line, start_col) }
-    '!' { return make_token(lexer, Token.Bang, start, start_line, start_col) }
-    '?' { return make_token(lexer, Token.Question, start, start_line, start_col) }
-    '#' { return make_token(lexer, Token.Hash, start, start_line, start_col) }
-    '\'' { return make_token(lexer, Token.Quote, start, start_line, start_col) }
-    _ {
-      if is_digit(c) {
-        return scan_number(lexer, start, start_line, start_col)
-      }
-      if is_alpha(c) {
-        return scan_identifier_or_keyword(lexer, start, start_line, start_col)
-      }
-      if c == '"' {
-        return scan_string(lexer, start, start_line, start_col)
-      }
-      // Unknown character
-      return make_token(lexer, Token.Error, start, start_line, start_col)
+/// Create a token spanning from start to current position
+fun make_token(self: Lexer, kind: TokenKind, start: UInt64) -> Token {
+  let text = self.source.substring(start, self.pos)
+  Token {
+    kind: kind,
+    text: text,
+    span: Span {
+      start: start,
+      end: self.pos,
+      line: self.line,
+      column: self.column - (self.pos - start) as UInt32
     }
   }
 }
 
 exegesis {
-  Create a spanned token and advance the lexer.
+  Create a token and add it to the token list.
 }
 
-fun make_token(lexer: Lexer, token: Token, start: UInt64, line: UInt32, col: UInt32) -> SpannedToken {
-  lexer.position = lexer.position + 1
-  lexer.column = lexer.column + 1
-  return SpannedToken {
-    token: token,
-    span: Span { start: start, end: lexer.position, line: line, column: col },
-    text: lexer.source.substring(start, lexer.position)
+/// Create and emit a token
+fun emit(self: Lexer, kind: TokenKind, start: UInt64) {
+  let token = self.make_token(kind, start)
+  self.tokens.push(token)
+}
+
+-- =============================================================================
+-- Whitespace and Comments
+-- =============================================================================
+
+exegesis {
+  Skip whitespace characters (space, tab, carriage return, newline).
+}
+
+/// Skip whitespace characters
+fun skip_whitespace(self: Lexer) {
+  loop {
+    match self.current() {
+      None => break
+      Some(c) => {
+        match c {
+          ' ' | '\t' | '\r' | '\n' => {
+            self.advance()
+          }
+          _ => break
+        }
+      }
+    }
   }
 }
 
 exegesis {
-  Check if character is a digit.
+  Skip a line comment starting with --.
+  Comments extend to the end of the line.
+}
+
+/// Skip a line comment (-- to end of line)
+fun skip_line_comment(self: Lexer) {
+  -- Consume the -- prefix (already verified by caller)
+  self.advance()  -- first -
+  self.advance()  -- second -
+
+  -- Consume until newline or EOF
+  loop {
+    match self.current() {
+      None => break
+      Some('\n') => {
+        self.advance()
+        break
+      }
+      Some(_) => {
+        self.advance()
+      }
+    }
+  }
+}
+
+-- =============================================================================
+-- Identifier and Keyword Scanning
+-- =============================================================================
+
+exegesis {
+  Check if a character can start an identifier.
+}
+
+fun is_ident_start(c: Char) -> Bool {
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+}
+
+exegesis {
+  Check if a character can continue an identifier.
+}
+
+fun is_ident_continue(c: Char) -> Bool {
+  is_ident_start(c) || (c >= '0' && c <= '9')
+}
+
+exegesis {
+  Scan an identifier or keyword.
+  Identifiers start with a letter or underscore and continue with
+  letters, digits, or underscores. Keywords are checked via lookup.
+}
+
+/// Scan an identifier or keyword
+fun scan_identifier(self: Lexer) -> Token {
+  let start = self.pos
+
+  -- Consume identifier characters
+  loop {
+    match self.current() {
+      None => break
+      Some(c) => {
+        if is_ident_continue(c) {
+          self.advance()
+        } else {
+          break
+        }
+      }
+    }
+  }
+
+  let text = self.source.substring(start, self.pos)
+
+  -- Check if it's a keyword
+  let kind = keyword_lookup(text) ?? TokenKind.Identifier
+
+  self.make_token(kind, start)
+}
+
+-- =============================================================================
+-- Number Scanning
+-- =============================================================================
+
+exegesis {
+  Check if a character is a digit.
 }
 
 fun is_digit(c: Char) -> Bool {
-  return c >= '0' && c <= '9'
+  c >= '0' && c <= '9'
 }
 
 exegesis {
-  Check if character is alphabetic or underscore.
+  Scan a numeric literal (integer or float).
+  Supports:
+  - Integer literals: 42, 0, 1234
+  - Float literals: 3.14, 0.5, 123.456
+  - Underscores in numbers: 1_000_000
 }
 
-fun is_alpha(c: Char) -> Bool {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+/// Scan an integer or float literal
+fun scan_number(self: Lexer) -> Token {
+  let start = self.pos
+  let is_float = false
+
+  -- Consume integer part
+  loop {
+    match self.current() {
+      None => break
+      Some(c) => {
+        if is_digit(c) || c == '_' {
+          self.advance()
+        } else {
+          break
+        }
+      }
+    }
+  }
+
+  -- Check for decimal point
+  match self.current() {
+    Some('.') => {
+      -- Look ahead to ensure it's not a method call (e.g., 42.to_string)
+      match self.peek(1) {
+        Some(next) => {
+          if is_digit(next) {
+            is_float = true
+            self.advance()  -- consume '.'
+
+            -- Consume fractional part
+            loop {
+              match self.current() {
+                None => break
+                Some(c) => {
+                  if is_digit(c) || c == '_' {
+                    self.advance()
+                  } else {
+                    break
+                  }
+                }
+              }
+            }
+          }
+        }
+        None => {}
+      }
+    }
+    _ => {}
+  }
+
+  -- Check for exponent (e or E)
+  match self.current() {
+    Some('e') | Some('E') => {
+      is_float = true
+      self.advance()
+
+      -- Optional sign
+      match self.current() {
+        Some('+') | Some('-') => {
+          self.advance()
+        }
+        _ => {}
+      }
+
+      -- Exponent digits
+      loop {
+        match self.current() {
+          None => break
+          Some(c) => {
+            if is_digit(c) || c == '_' {
+              self.advance()
+            } else {
+              break
+            }
+          }
+        }
+      }
+    }
+    _ => {}
+  }
+
+  let kind = if is_float { TokenKind.FloatLit } else { TokenKind.IntLit }
+  self.make_token(kind, start)
+}
+
+-- =============================================================================
+-- String Scanning
+-- =============================================================================
+
+exegesis {
+  Scan a string literal enclosed in double quotes.
+  Supports escape sequences: \n, \t, \r, \\, \", \0
+}
+
+/// Scan a string literal
+fun scan_string(self: Lexer) -> Token {
+  let start = self.pos
+
+  -- Consume opening quote
+  self.advance()
+
+  loop {
+    match self.current() {
+      None => {
+        -- Unterminated string
+        break
+      }
+      Some('"') => {
+        -- Closing quote
+        self.advance()
+        break
+      }
+      Some('\\') => {
+        -- Escape sequence
+        self.advance()
+        match self.current() {
+          Some('n') | Some('t') | Some('r') | Some('\\') |
+          Some('"') | Some('0') => {
+            self.advance()
+          }
+          Some(_) => {
+            -- Invalid escape, continue anyway
+            self.advance()
+          }
+          None => break
+        }
+      }
+      Some('\n') => {
+        -- Newline in string (multi-line strings allowed)
+        self.advance()
+      }
+      Some(_) => {
+        self.advance()
+      }
+    }
+  }
+
+  self.make_token(TokenKind.StringLit, start)
+}
+
+-- =============================================================================
+-- Main Token Scanner
+-- =============================================================================
+
+exegesis {
+  Scan the next token from the source.
+  Handles all token types including multi-character operators.
+}
+
+/// Scan a single token
+fun scan_token(self: Lexer) -> Option<Token> {
+  -- Skip whitespace first
+  self.skip_whitespace()
+
+  match self.current() {
+    None => None
+    Some(c) => {
+      let start = self.pos
+
+      -- Check for line comments
+      if c == '-' {
+        match self.peek(1) {
+          Some('-') => {
+            self.skip_line_comment()
+            return self.scan_token()  -- Recurse to get actual token
+          }
+          _ => {}
+        }
+      }
+
+      -- Two-character operators (must check before single char)
+      match c {
+        '-' => {
+          match self.peek(1) {
+            Some('>') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Arrow, start))
+            }
+            _ => {}
+          }
+        }
+        '=' => {
+          match self.peek(1) {
+            Some('>') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.FatArrow, start))
+            }
+            Some('=') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Eq, start))
+            }
+            _ => {}
+          }
+        }
+        '|' => {
+          match self.peek(1) {
+            Some('>') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Pipe, start))
+            }
+            Some(']') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.RIdiom, start))
+            }
+            Some('|') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Or, start))
+            }
+            _ => {}
+          }
+        }
+        '>' => {
+          match self.peek(1) {
+            Some('>') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Compose, start))
+            }
+            Some('=') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Ge, start))
+            }
+            _ => {}
+          }
+        }
+        '<' => {
+          match self.peek(1) {
+            Some('|') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Map, start))
+            }
+            Some('=') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Le, start))
+            }
+            _ => {}
+          }
+        }
+        ':' => {
+          match self.peek(1) {
+            Some('=') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Bind, start))
+            }
+            _ => {}
+          }
+        }
+        '!' => {
+          match self.peek(1) {
+            Some('=') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.Ne, start))
+            }
+            _ => {}
+          }
+        }
+        '&' => {
+          match self.peek(1) {
+            Some('&') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.And, start))
+            }
+            _ => {}
+          }
+        }
+        '*' => {
+          match self.peek(1) {
+            Some('*') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.StarStar, start))
+            }
+            _ => {}
+          }
+        }
+        '[' => {
+          match self.peek(1) {
+            Some('|') => {
+              self.advance()
+              self.advance()
+              return Some(self.make_token(TokenKind.LIdiom, start))
+            }
+            _ => {}
+          }
+        }
+        _ => {}
+      }
+
+      -- Single-character tokens
+      match c {
+        '{' => {
+          self.advance()
+          Some(self.make_token(TokenKind.LBrace, start))
+        }
+        '}' => {
+          self.advance()
+          Some(self.make_token(TokenKind.RBrace, start))
+        }
+        '(' => {
+          self.advance()
+          Some(self.make_token(TokenKind.LParen, start))
+        }
+        ')' => {
+          self.advance()
+          Some(self.make_token(TokenKind.RParen, start))
+        }
+        '[' => {
+          self.advance()
+          Some(self.make_token(TokenKind.LBracket, start))
+        }
+        ']' => {
+          self.advance()
+          Some(self.make_token(TokenKind.RBracket, start))
+        }
+        ',' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Comma, start))
+        }
+        ':' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Colon, start))
+        }
+        ';' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Semicolon, start))
+        }
+        '.' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Dot, start))
+        }
+        '@' => {
+          self.advance()
+          Some(self.make_token(TokenKind.At, start))
+        }
+        '+' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Plus, start))
+        }
+        '-' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Minus, start))
+        }
+        '*' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Star, start))
+        }
+        '/' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Slash, start))
+        }
+        '%' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Percent, start))
+        }
+        '^' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Caret, start))
+        }
+        '=' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Assign, start))
+        }
+        '<' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Lt, start))
+        }
+        '>' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Gt, start))
+        }
+        '!' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Not, start))
+        }
+        '|' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Bar, start))
+        }
+        '&' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Ampersand, start))
+        }
+        '?' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Question, start))
+        }
+        '#' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Hash, start))
+        }
+        '\'' => {
+          self.advance()
+          Some(self.make_token(TokenKind.Quote, start))
+        }
+        '"' => {
+          Some(self.scan_string())
+        }
+        _ => {
+          -- Identifiers and keywords
+          if is_ident_start(c) {
+            Some(self.scan_identifier())
+          } else if is_digit(c) {
+            Some(self.scan_number())
+          } else {
+            -- Unknown character - emit error token and advance
+            self.advance()
+            Some(self.make_token(TokenKind.Error, start))
+          }
+        }
+      }
+    }
+  }
+}
+
+-- =============================================================================
+-- Public API
+-- =============================================================================
+
+exegesis {
+  Tokenize DOL source code into a list of tokens.
+  This is the main entry point for the lexer.
+}
+
+/// Tokenize source code into a list of tokens
+pub fun lex(source: String) -> List<Token> {
+  let lexer = Lexer { source: source }
+
+  loop {
+    match lexer.scan_token() {
+      None => break
+      Some(token) => {
+        lexer.tokens.push(token)
+      }
+    }
+  }
+
+  -- Add EOF token
+  let eof = Token {
+    kind: TokenKind.Eof,
+    text: "",
+    span: Span {
+      start: lexer.pos,
+      end: lexer.pos,
+      line: lexer.line,
+      column: lexer.column
+    }
+  }
+  lexer.tokens.push(eof)
+
+  lexer.tokens
+}
+
+-- =============================================================================
+-- Tests
+-- =============================================================================
+
+#[test]
+fun test_empty_source() {
+  let tokens = lex("")
+  assert tokens.length() == 1
+  assert tokens[0].kind == TokenKind.Eof
+}
+
+#[test]
+fun test_single_identifier() {
+  let tokens = lex("foo")
+  assert tokens.length() == 2
+  assert tokens[0].kind == TokenKind.Identifier
+  assert tokens[0].text == "foo"
+  assert tokens[1].kind == TokenKind.Eof
+}
+
+#[test]
+fun test_keywords() {
+  let tokens = lex("gene trait system fun")
+  assert tokens[0].kind == TokenKind.Gene
+  assert tokens[1].kind == TokenKind.Trait
+  assert tokens[2].kind == TokenKind.System
+  assert tokens[3].kind == TokenKind.Fun
+}
+
+#[test]
+fun test_numbers() {
+  let tokens = lex("42 3.14 1_000_000")
+  assert tokens[0].kind == TokenKind.IntLit
+  assert tokens[0].text == "42"
+  assert tokens[1].kind == TokenKind.FloatLit
+  assert tokens[1].text == "3.14"
+  assert tokens[2].kind == TokenKind.IntLit
+  assert tokens[2].text == "1_000_000"
+}
+
+#[test]
+fun test_string_literal() {
+  let tokens = lex("\"hello world\"")
+  assert tokens[0].kind == TokenKind.StringLit
+  assert tokens[0].text == "\"hello world\""
+}
+
+#[test]
+fun test_operators() {
+  let tokens = lex("-> => |> >> <| := == != <= >= && || **")
+  assert tokens[0].kind == TokenKind.Arrow
+  assert tokens[1].kind == TokenKind.FatArrow
+  assert tokens[2].kind == TokenKind.Pipe
+  assert tokens[3].kind == TokenKind.Compose
+  assert tokens[4].kind == TokenKind.Map
+  assert tokens[5].kind == TokenKind.Bind
+  assert tokens[6].kind == TokenKind.Eq
+  assert tokens[7].kind == TokenKind.Ne
+  assert tokens[8].kind == TokenKind.Le
+  assert tokens[9].kind == TokenKind.Ge
+  assert tokens[10].kind == TokenKind.And
+  assert tokens[11].kind == TokenKind.Or
+  assert tokens[12].kind == TokenKind.StarStar
+}
+
+#[test]
+fun test_idiom_brackets() {
+  let tokens = lex("[| |]")
+  assert tokens[0].kind == TokenKind.LIdiom
+  assert tokens[1].kind == TokenKind.RIdiom
+}
+
+#[test]
+fun test_line_comment() {
+  let tokens = lex("foo -- this is a comment\nbar")
+  assert tokens.length() == 3
+  assert tokens[0].kind == TokenKind.Identifier
+  assert tokens[0].text == "foo"
+  assert tokens[1].kind == TokenKind.Identifier
+  assert tokens[1].text == "bar"
+}
+
+#[test]
+fun test_complex_expression() {
+  let tokens = lex("x := y |> f >> g")
+  assert tokens[0].kind == TokenKind.Identifier
+  assert tokens[1].kind == TokenKind.Bind
+  assert tokens[2].kind == TokenKind.Identifier
+  assert tokens[3].kind == TokenKind.Pipe
+  assert tokens[4].kind == TokenKind.Identifier
+  assert tokens[5].kind == TokenKind.Compose
+  assert tokens[6].kind == TokenKind.Identifier
 }

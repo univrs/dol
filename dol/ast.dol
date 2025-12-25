@@ -1,0 +1,1028 @@
+module dol.ast @ 0.4.0
+
+use dol.token.Span
+
+exegesis {
+    Abstract Syntax Tree definitions for DOL.
+
+    These types represent the complete parsed structure of DOL source code.
+    All AST nodes include a `span` field for source location tracking,
+    enabling precise error reporting and IDE integration.
+
+    The AST hierarchy:
+    - DolFile: Top-level container for all declarations
+    - Decl: Enumeration of declaration types (Gene, Trait, System, etc.)
+    - TypeExpr: Type expressions (primitives, generics, functions, tuples)
+    - Expr: Expressions (literals, operators, calls, meta-programming)
+    - Stmt: Statements (let, assign, control flow)
+    - Block: Scoped sequence of statements with optional trailing expression
+}
+
+// =============================================================================
+// TOP-LEVEL FILE STRUCTURE
+// =============================================================================
+
+exegesis {
+    A DOL file consists of an ordered list of declarations.
+    Each file represents a single module.
+}
+
+/// Top-level AST node representing an entire DOL source file
+pub gene DolFile {
+    has declarations: List<Decl>
+    has span: Span
+}
+
+// =============================================================================
+// DECLARATIONS
+// =============================================================================
+
+exegesis {
+    Declarations are the top-level constructs in DOL.
+    Each declaration introduces a new named entity into the namespace.
+}
+
+/// Enumeration of all declaration types
+pub gene Decl {
+    type: enum {
+        /// Module declaration: `module foo.bar @ 1.0.0`
+        Module { name: String, version: Option<String> },
+
+        /// Use declaration: `use foo.bar.{ Baz, Qux }`
+        Use { path: List<String>, items: List<String> },
+
+        /// Gene declaration (struct-like with constraints)
+        Gene { decl: GeneDecl },
+
+        /// Trait declaration (interface with laws)
+        Trait { decl: TraitDecl },
+
+        /// System declaration (stateful component)
+        System { decl: SystemDecl },
+
+        /// Constraint declaration
+        Constraint { decl: ConstraintDecl },
+
+        /// Evolution declaration (schema migration)
+        Evolves { decl: EvolvesDecl },
+
+        /// Standalone function declaration
+        Function { decl: FunctionDecl }
+    }
+    has span: Span
+}
+
+// =============================================================================
+// GENE DECLARATION
+// =============================================================================
+
+exegesis {
+    A gene is DOL's primary data structure, similar to a struct but with
+    built-in support for constraints, methods, and optional enum types.
+}
+
+/// Gene declaration with fields, methods, constraints, and exegesis
+pub gene GeneDecl {
+    has name: String
+    has is_pub: Bool = false
+    has type_params: List<TypeParam> = []
+    has type_def: Option<TypeExpr>
+    has fields: List<Field>
+    has methods: List<FunctionDecl>
+    has constraints: List<ConstraintDecl>
+    has exegesis: Option<String>
+    has span: Span
+}
+
+exegesis {
+    A field is a named component of a gene with optional default value.
+}
+
+/// Field within a gene
+pub gene Field {
+    has name: String
+    has ty: TypeExpr
+    has default_value: Option<Expr>
+    has is_pub: Bool = false
+    has span: Span
+}
+
+exegesis {
+    A type parameter for generic types, optionally bounded.
+}
+
+/// Type parameter with optional bounds
+pub gene TypeParam {
+    has name: String
+    has bounds: List<String> = []
+    has span: Span
+}
+
+// =============================================================================
+// TRAIT DECLARATION
+// =============================================================================
+
+exegesis {
+    A trait defines a contract with required methods, provided methods,
+    and laws that implementations must satisfy.
+}
+
+/// Trait declaration with methods and laws
+pub gene TraitDecl {
+    has name: String
+    has is_pub: Bool = false
+    has type_params: List<TypeParam> = []
+    has super_traits: List<String> = []
+    has required_methods: List<MethodSig>
+    has provided_methods: List<FunctionDecl>
+    has laws: List<LawDecl>
+    has exegesis: Option<String>
+    has span: Span
+}
+
+exegesis {
+    A method signature declares a method without providing an implementation.
+}
+
+/// Method signature (declaration without body)
+pub gene MethodSig {
+    has name: String
+    has type_params: List<TypeParam> = []
+    has params: List<Param>
+    has return_type: TypeExpr
+    has span: Span
+}
+
+exegesis {
+    A law is a property that must hold for all valid implementations.
+}
+
+/// Law declaration expressing invariants
+pub gene LawDecl {
+    has name: String
+    has type_params: List<TypeParam> = []
+    has params: List<Param> = []
+    has body: Expr
+    has exegesis: Option<String>
+    has span: Span
+}
+
+// =============================================================================
+// SYSTEM DECLARATION
+// =============================================================================
+
+exegesis {
+    A system is a stateful component that encapsulates state transitions
+    and side effects, similar to actors or services.
+}
+
+/// System declaration with state and side-effectful functions
+pub gene SystemDecl {
+    has name: String
+    has is_pub: Bool = false
+    has type_params: List<TypeParam> = []
+    has uses: List<String>
+    has states: List<Field>
+    has functions: List<FunctionDecl>
+    has constraints: List<ConstraintDecl>
+    has exegesis: Option<String>
+    has span: Span
+}
+
+// =============================================================================
+// CONSTRAINT & EVOLVES DECLARATIONS
+// =============================================================================
+
+exegesis {
+    A constraint is a boolean predicate that must always hold.
+    Constraints enable runtime validation and compile-time verification.
+}
+
+/// Constraint declaration
+pub gene ConstraintDecl {
+    has name: String
+    has params: List<Param> = []
+    has body: Expr
+    has exegesis: Option<String>
+    has span: Span
+}
+
+exegesis {
+    Evolution declarations describe schema migrations between versions.
+}
+
+/// Evolution declaration for schema migrations
+pub gene EvolvesDecl {
+    has from_type: String
+    has from_version: String
+    has to_type: String
+    has to_version: String
+    has changes: List<Change>
+    has migrate: Option<Block>
+    has exegesis: Option<String>
+    has span: Span
+}
+
+exegesis {
+    A change describes a single modification in an evolution.
+}
+
+/// Change specification in evolution
+pub gene Change {
+    type: enum {
+        /// Field added
+        Added { name: String, ty: TypeExpr, default_value: Option<Expr> },
+        /// Field removed
+        Removed { name: String },
+        /// Field type changed
+        Changed { name: String, from: TypeExpr, to: TypeExpr },
+        /// Field renamed
+        Renamed { old_name: String, new_name: String }
+    }
+    has span: Span
+}
+
+// =============================================================================
+// FUNCTION DECLARATION
+// =============================================================================
+
+exegesis {
+    A function declaration includes pure functions and side-effectful functions.
+    Side effects are marked with `sex` (side effect execution).
+}
+
+/// Function declaration
+pub gene FunctionDecl {
+    has name: String
+    has is_pub: Bool = false
+    has is_sex: Bool = false
+    has is_extern: Bool = false
+    has type_params: List<TypeParam> = []
+    has params: List<Param>
+    has return_type: TypeExpr
+    has body: Option<Block>
+    has where_clause: List<WherePredicate> = []
+    has exegesis: Option<String>
+    has span: Span
+}
+
+exegesis {
+    A parameter is a named, typed input to a function.
+}
+
+/// Function parameter
+pub gene Param {
+    has name: String
+    has ty: TypeExpr
+    has default_value: Option<Expr>
+    has is_variadic: Bool = false
+    has span: Span
+}
+
+exegesis {
+    A where predicate constrains type parameters.
+}
+
+/// Where clause predicate
+pub gene WherePredicate {
+    has type_name: String
+    has bounds: List<String>
+    has span: Span
+}
+
+// =============================================================================
+// TYPE EXPRESSIONS
+// =============================================================================
+
+exegesis {
+    Type expressions represent types in DOL source code.
+    They range from primitive types to complex generic and function types.
+}
+
+/// Type expression enumeration
+pub gene TypeExpr {
+    type: enum {
+        // ═══════════════════════════════════════════════════════════════
+        // Primitive Types
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Signed integers
+        Int8, Int16, Int32, Int64,
+
+        /// Unsigned integers
+        UInt8, UInt16, UInt32, UInt64,
+
+        /// Floating point
+        Float32, Float64,
+
+        /// Boolean
+        Bool,
+
+        /// String (UTF-8)
+        String,
+
+        /// Character (Unicode scalar)
+        Char,
+
+        /// Unit/Void type
+        Void,
+
+        /// Self type (within method context)
+        SelfType,
+
+        /// Never type (for functions that never return)
+        Never,
+
+        // ═══════════════════════════════════════════════════════════════
+        // Compound Types
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Named type reference: `Foo`, `Bar.Baz`
+        Named { path: List<String> },
+
+        /// Generic type application: `List<T>`, `Map<K, V>`
+        Generic { name: String, args: List<TypeExpr> },
+
+        /// Function type: `(A, B) -> C`
+        Function { params: List<TypeExpr>, ret: Box<TypeExpr> },
+
+        /// Tuple type: `(A, B, C)`
+        Tuple { elements: List<TypeExpr> },
+
+        /// Array type: `[T; N]`
+        Array { element: Box<TypeExpr>, size: Option<UInt64> },
+
+        /// Optional type: `T?`
+        Optional { inner: Box<TypeExpr> },
+
+        /// Reference type: `&T`, `&mut T`
+        Reference { inner: Box<TypeExpr>, is_mut: Bool },
+
+        /// Pointer type: `*T`, `*mut T`
+        Pointer { inner: Box<TypeExpr>, is_mut: Bool },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Enum Type Definition
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Inline enum definition: `enum { Foo, Bar { x: Int } }`
+        Enum { variants: List<EnumVariant> },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Higher-Kinded Types
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Higher-kinded type: `F<_>`
+        HigherKinded { name: String, arity: UInt32 },
+
+        /// Type-level application
+        TypeApp { constructor: Box<TypeExpr>, arg: Box<TypeExpr> },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Inference & Error
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Inferred type (placeholder for type inference)
+        Infer,
+
+        /// Error type (used during error recovery)
+        Error
+    }
+    has span: Span
+}
+
+exegesis {
+    An enum variant is a single case in an enumeration.
+}
+
+/// Enum variant
+pub gene EnumVariant {
+    has name: String
+    has fields: List<Field> = []
+    has span: Span
+}
+
+// =============================================================================
+// EXPRESSIONS
+// =============================================================================
+
+exegesis {
+    Expressions are the computational core of DOL.
+    They produce values and can be composed in complex ways.
+}
+
+/// Expression enumeration
+pub gene Expr {
+    type: enum {
+        // ═══════════════════════════════════════════════════════════════
+        // Literals
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Integer literal: `42`, `-17`, `0xFF`
+        IntLit { value: Int64, suffix: Option<String> },
+
+        /// Unsigned integer literal
+        UIntLit { value: UInt64, suffix: Option<String> },
+
+        /// Float literal: `3.14`, `1e-6`
+        FloatLit { value: Float64, suffix: Option<String> },
+
+        /// String literal: `"hello"`
+        StringLit { value: String, is_raw: Bool },
+
+        /// Character literal: `'a'`
+        CharLit { value: Char },
+
+        /// Boolean literal: `true`, `false`
+        BoolLit { value: Bool },
+
+        /// Null/None literal
+        NullLit,
+
+        // ═══════════════════════════════════════════════════════════════
+        // Identifiers & Paths
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Simple identifier: `foo`
+        Ident { name: String },
+
+        /// Qualified path: `foo.bar.baz`
+        Path { segments: List<String> },
+
+        /// This reference (within method context)
+        This,
+
+        // ═══════════════════════════════════════════════════════════════
+        // Operators
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Binary operation: `a + b`, `x && y`
+        Binary { op: BinOp, left: Box<Expr>, right: Box<Expr> },
+
+        /// Unary operation: `-x`, `!y`, `*p`
+        Unary { op: UnaryOp, operand: Box<Expr> },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Function Calls & Access
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Function call: `foo(a, b)`
+        Call { callee: Box<Expr>, args: List<CallArg> },
+
+        /// Method call: `x.foo(a, b)`
+        MethodCall { receiver: Box<Expr>, method: String, type_args: List<TypeExpr>, args: List<CallArg> },
+
+        /// Field access: `x.foo`
+        FieldAccess { object: Box<Expr>, field: String },
+
+        /// Index access: `a[i]`
+        Index { object: Box<Expr>, index: Box<Expr> },
+
+        /// Range expression: `a..b`, `a..=b`, `..b`, `a..`
+        Range { start: Option<Box<Expr>>, end: Option<Box<Expr>>, inclusive: Bool },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Constructors
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Struct/gene construction: `Foo { x: 1, y: 2 }`
+        Struct { name: String, fields: List<FieldInit> },
+
+        /// Tuple construction: `(a, b, c)`
+        TupleLit { elements: List<Expr> },
+
+        /// Array literal: `[1, 2, 3]`
+        ArrayLit { elements: List<Expr> },
+
+        /// Array repeat: `[0; 100]`
+        ArrayRepeat { element: Box<Expr>, count: Box<Expr> },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Closures & Functions
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Lambda/closure: `|x, y| x + y`
+        Lambda { params: List<LambdaParam>, body: Box<Expr>, is_sex: Bool },
+
+        /// Block lambda: `|x| { let y = x * 2; y + 1 }`
+        BlockLambda { params: List<LambdaParam>, body: Block, is_sex: Bool },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Control Flow Expressions
+        // ═══════════════════════════════════════════════════════════════
+
+        /// If expression: `if cond { a } else { b }`
+        If { cond: Box<Expr>, then_block: Block, else_branch: Option<Box<ElseBranch>> },
+
+        /// Match expression: `match x { A => 1, B => 2 }`
+        Match { scrutinee: Box<Expr>, arms: List<MatchArm> },
+
+        /// Block expression: `{ stmt1; stmt2; expr }`
+        Block { block: Block },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Type Operations
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Type cast: `x as T`
+        Cast { expr: Box<Expr>, ty: TypeExpr },
+
+        /// Type ascription: `x: T`
+        Ascription { expr: Box<Expr>, ty: TypeExpr },
+
+        /// Sizeof: `sizeof<T>`
+        SizeOf { ty: TypeExpr },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Meta-Programming Operations
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Quote (AST capture): `'expr`
+        Quote { inner: Box<Expr> },
+
+        /// Eval (AST execution): `!expr`
+        Eval { inner: Box<Expr> },
+
+        /// Quasi-quote (templating): `` `expr ``
+        QuasiQuote { inner: Box<Expr> },
+
+        /// Unquote (splice): `~expr`
+        Unquote { inner: Box<Expr> },
+
+        /// Reflection (type info): `?T`
+        Reflect { ty: TypeExpr },
+
+        /// Idiom brackets (applicative): `[| f x y |]`
+        IdiomBracket { exprs: List<Expr> },
+
+        /// Macro invocation: `#macro_name!(args)`
+        MacroCall { name: String, bang: Bool, args: List<Expr> },
+
+        // ═══════════════════════════════════════════════════════════════
+        // Error Recovery
+        // ═══════════════════════════════════════════════════════════════
+
+        /// Error expression (used during parsing errors)
+        Error { message: String }
+    }
+    has span: Span
+}
+
+exegesis {
+    A call argument may be positional or named.
+}
+
+/// Function call argument
+pub gene CallArg {
+    has name: Option<String>
+    has value: Expr
+    has span: Span
+}
+
+exegesis {
+    A field initializer in struct construction.
+}
+
+/// Field initialization in struct literal
+pub gene FieldInit {
+    has name: String
+    has value: Expr
+    has span: Span
+}
+
+exegesis {
+    A lambda parameter may have optional type annotation.
+}
+
+/// Lambda parameter
+pub gene LambdaParam {
+    has name: String
+    has ty: Option<TypeExpr>
+    has span: Span
+}
+
+exegesis {
+    An else branch can be another if or a block.
+}
+
+/// Else branch in if expression
+pub gene ElseBranch {
+    type: enum {
+        /// Else if: `else if cond { ... }`
+        ElseIf { cond: Expr, then_block: Block, else_branch: Option<Box<ElseBranch>> },
+        /// Final else: `else { ... }`
+        Else { block: Block }
+    }
+    has span: Span
+}
+
+// =============================================================================
+// OPERATORS
+// =============================================================================
+
+exegesis {
+    Binary operators for two-operand expressions.
+}
+
+/// Binary operator enumeration
+pub gene BinOp {
+    type: enum {
+        // Arithmetic
+        Add,        // +
+        Sub,        // -
+        Mul,        // *
+        Div,        // /
+        Mod,        // %
+        Pow,        // **
+
+        // Comparison
+        Eq,         // ==
+        Ne,         // !=
+        Lt,         // <
+        Le,         // <=
+        Gt,         // >
+        Ge,         // >=
+
+        // Logical
+        And,        // &&
+        Or,         // ||
+
+        // Bitwise
+        BitAnd,     // &
+        BitOr,      // |
+        BitXor,     // ^
+        Shl,        // <<
+        Shr,        // >>
+
+        // Composition (functional)
+        Pipe,       // |>  (forward pipe)
+        Compose,    // >>  (forward compose)
+        BackPipe,   // <|  (backward pipe)
+        BackCompose,// <<  (backward compose)
+        Apply,      // @   (apply)
+        Bind,       // :=  (bind)
+        Map,        // <$> (functor map)
+        Ap,         // <*> (applicative apply)
+        FlatMap,    // >>= (monadic bind)
+
+        // Other
+        Concat,     // ++
+        Implies,    // =>
+        Assign      // =
+    }
+}
+
+exegesis {
+    Unary operators for single-operand expressions.
+}
+
+/// Unary operator enumeration
+pub gene UnaryOp {
+    type: enum {
+        Neg,        // -x  (numeric negation)
+        Not,        // !x  (logical/bitwise not)
+        Deref,      // *x  (dereference)
+        Ref,        // &x  (reference)
+        RefMut,     // &mut x
+        Quote,      // 'x  (quote)
+        Eval,       // !x  (eval in meta context)
+        Reflect,    // ?T  (reflection)
+        Try,        // x?  (try operator)
+        Await       // x.await
+    }
+}
+
+// =============================================================================
+// PATTERN MATCHING
+// =============================================================================
+
+exegesis {
+    Match arms connect patterns to expressions.
+}
+
+/// Match arm: `pattern [if guard] => body`
+pub gene MatchArm {
+    has pattern: Pattern
+    has guard: Option<Expr>
+    has body: Expr
+    has span: Span
+}
+
+exegesis {
+    Patterns destructure values and bind variables.
+}
+
+/// Pattern enumeration
+pub gene Pattern {
+    type: enum {
+        /// Wildcard pattern: `_`
+        Wildcard,
+
+        /// Identifier pattern (binding): `x`, `mut x`
+        Ident { name: String, is_mut: Bool, binding: BindingMode },
+
+        /// Literal pattern: `42`, `"hello"`, `true`
+        Literal { value: Expr },
+
+        /// Tuple pattern: `(a, b, c)`
+        Tuple { elements: List<Pattern> },
+
+        /// Array pattern: `[a, b, c]`, `[head, ..tail]`
+        Array { elements: List<Pattern>, rest: Option<String> },
+
+        /// Struct pattern: `Foo { x, y: z }`
+        Struct { name: String, fields: List<FieldPattern>, rest: Bool },
+
+        /// Enum variant pattern: `Some(x)`, `None`
+        Variant { path: List<String>, fields: List<Pattern> },
+
+        /// Or pattern: `A | B | C`
+        Or { patterns: List<Pattern> },
+
+        /// Range pattern: `0..10`, `'a'..='z'`
+        Range { start: Option<Expr>, end: Option<Expr>, inclusive: Bool },
+
+        /// Reference pattern: `&x`, `&mut x`
+        Ref { pattern: Box<Pattern>, is_mut: Bool },
+
+        /// At pattern: `x @ Some(_)`
+        At { name: String, pattern: Box<Pattern> },
+
+        /// Parenthesized pattern: `(pattern)`
+        Paren { inner: Box<Pattern> }
+    }
+    has span: Span
+}
+
+exegesis {
+    A field pattern in struct destructuring.
+}
+
+/// Field pattern in struct matching
+pub gene FieldPattern {
+    has name: String
+    has pattern: Option<Pattern>
+    has span: Span
+}
+
+exegesis {
+    Binding mode controls how pattern variables are bound.
+}
+
+/// Binding mode for pattern variables
+pub gene BindingMode {
+    type: enum {
+        ByValue,
+        ByRef,
+        ByRefMut
+    }
+}
+
+// =============================================================================
+// STATEMENTS
+// =============================================================================
+
+exegesis {
+    Statements are executed for their effects.
+    Unlike expressions, statements do not produce values.
+}
+
+/// Statement enumeration
+pub gene Stmt {
+    type: enum {
+        /// Let binding: `let x = expr`, `let x: T = expr`
+        Let { pattern: Pattern, ty: Option<TypeExpr>, value: Option<Expr> },
+
+        /// Variable declaration: `var x = expr`
+        Var { name: String, ty: Option<TypeExpr>, value: Option<Expr> },
+
+        /// Const declaration: `const X = expr`
+        Const { name: String, ty: Option<TypeExpr>, value: Expr },
+
+        /// Assignment: `x = expr`, `a[i] = expr`
+        Assign { target: Expr, op: Option<BinOp>, value: Expr },
+
+        /// Expression statement: `expr;`
+        Expr { expr: Expr },
+
+        /// Return statement: `return expr`, `return`
+        Return { value: Option<Expr> },
+
+        /// Break statement: `break`, `break value`
+        Break { label: Option<String>, value: Option<Expr> },
+
+        /// Continue statement: `continue`, `continue 'label`
+        Continue { label: Option<String> },
+
+        /// For loop: `for x in iter { body }`
+        For { pattern: Pattern, iter: Expr, body: Block },
+
+        /// While loop: `while cond { body }`
+        While { cond: Expr, body: Block },
+
+        /// Infinite loop: `loop { body }`
+        Loop { label: Option<String>, body: Block },
+
+        /// Labeled block: `'label: { ... }`
+        Labeled { label: String, block: Block },
+
+        /// Item statement (local declaration)
+        Item { decl: Box<Decl> },
+
+        /// Empty statement: `;`
+        Empty
+    }
+    has span: Span
+}
+
+// =============================================================================
+// BLOCKS
+// =============================================================================
+
+exegesis {
+    A block is a sequence of statements with an optional trailing expression.
+    The trailing expression (without semicolon) becomes the block's value.
+}
+
+/// Block with statements and optional final expression
+pub gene Block {
+    has stmts: List<Stmt>
+    has expr: Option<Expr>
+    has span: Span
+}
+
+// =============================================================================
+// VISIBILITY
+// =============================================================================
+
+exegesis {
+    Visibility controls access to declarations.
+}
+
+/// Visibility specifier
+pub gene Visibility {
+    type: enum {
+        /// Private (default)
+        Private,
+        /// Public: `pub`
+        Public,
+        /// Crate-public: `pub(crate)`
+        Crate,
+        /// Module-public: `pub(super)`, `pub(in path)`
+        Restricted { path: List<String> }
+    }
+    has span: Span
+}
+
+// =============================================================================
+// ATTRIBUTES
+// =============================================================================
+
+exegesis {
+    Attributes provide metadata for declarations.
+}
+
+/// Attribute on a declaration
+pub gene Attribute {
+    has name: String
+    has args: List<AttrArg>
+    has span: Span
+}
+
+exegesis {
+    An attribute argument can be a simple value or key-value pair.
+}
+
+/// Attribute argument
+pub gene AttrArg {
+    type: enum {
+        /// Simple value: `#[attr(value)]`
+        Value { value: Expr },
+        /// Key-value: `#[attr(key = value)]`
+        KeyValue { key: String, value: Expr },
+        /// Nested attribute: `#[attr(nested(...))]`
+        Nested { attr: Attribute }
+    }
+    has span: Span
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+exegesis {
+    Helper functions for working with AST nodes.
+}
+
+/// Create a simple identifier expression
+pub fun ident(name: String, span: Span) -> Expr {
+    return Expr {
+        type: Expr.Ident { name: name },
+        span: span
+    }
+}
+
+/// Create an integer literal expression
+pub fun int_lit(value: Int64, span: Span) -> Expr {
+    return Expr {
+        type: Expr.IntLit { value: value, suffix: None },
+        span: span
+    }
+}
+
+/// Create a string literal expression
+pub fun string_lit(value: String, span: Span) -> Expr {
+    return Expr {
+        type: Expr.StringLit { value: value, is_raw: false },
+        span: span
+    }
+}
+
+/// Create a boolean literal expression
+pub fun bool_lit(value: Bool, span: Span) -> Expr {
+    return Expr {
+        type: Expr.BoolLit { value: value },
+        span: span
+    }
+}
+
+/// Create a binary operation expression
+pub fun binary(op: BinOp, left: Expr, right: Expr, span: Span) -> Expr {
+    return Expr {
+        type: Expr.Binary {
+            op: op,
+            left: Box.new(left),
+            right: Box.new(right)
+        },
+        span: span
+    }
+}
+
+/// Create a function call expression
+pub fun call(callee: Expr, args: List<Expr>, span: Span) -> Expr {
+    let call_args = args.map(|arg| CallArg { name: None, value: arg, span: arg.span })
+    return Expr {
+        type: Expr.Call {
+            callee: Box.new(callee),
+            args: call_args
+        },
+        span: span
+    }
+}
+
+/// Create an empty block
+pub fun empty_block(span: Span) -> Block {
+    return Block {
+        stmts: [],
+        expr: None,
+        span: span
+    }
+}
+
+/// Create a block with a single expression
+pub fun expr_block(expr: Expr, span: Span) -> Block {
+    return Block {
+        stmts: [],
+        expr: Some(expr),
+        span: span
+    }
+}
+
+/// Check if a type expression is a primitive type
+pub fun is_primitive(ty: TypeExpr) -> Bool {
+    match ty.type {
+        Int8 { return true }
+        Int16 { return true }
+        Int32 { return true }
+        Int64 { return true }
+        UInt8 { return true }
+        UInt16 { return true }
+        UInt32 { return true }
+        UInt64 { return true }
+        Float32 { return true }
+        Float64 { return true }
+        Bool { return true }
+        String { return true }
+        Char { return true }
+        Void { return true }
+        _ { return false }
+    }
+}
+
+/// Get the name of a type expression (if it has one)
+pub fun type_name(ty: TypeExpr) -> Option<String> {
+    match ty.type {
+        Named { path } {
+            if path.length() > 0 {
+                return Some(path[path.length() - 1])
+            }
+            return None
+        }
+        Generic { name, args: _ } {
+            return Some(name)
+        }
+        _ {
+            return None
+        }
+    }
+}
