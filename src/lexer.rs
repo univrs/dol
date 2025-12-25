@@ -328,6 +328,8 @@ pub enum TokenKind {
     Le,
     /// Member access `.`
     Dot,
+    /// Range operator `..`
+    DotDot,
     /// Path separator `::`
     PathSep,
     /// Plus-equals `+=`
