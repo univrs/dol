@@ -201,6 +201,20 @@ pub struct UseItem {
     pub alias: Option<String>,
 }
 
+/// A complete DOL file with optional module declaration, imports, and declarations.
+///
+/// This represents the full contents of a .dol file.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct DolFile {
+    /// Optional module declaration at the start of the file
+    pub module: Option<ModuleDecl>,
+    /// Use/import declarations
+    pub uses: Vec<UseDecl>,
+    /// All declarations in the file
+    pub declarations: Vec<Declaration>,
+}
+
 /// Purity marker for functions and operations.
 ///
 /// Distinguishes pure (side-effect free) from impure (side-effecting) code.

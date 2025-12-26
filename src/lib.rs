@@ -95,7 +95,7 @@ pub mod wasm;
 pub mod test_parser;
 
 // Re-exports for convenience
-pub use ast::{Constraint, Declaration, Evolution, Gene, Span, Statement, System, Trait};
+pub use ast::{Constraint, Declaration, DolFile, Evolution, Gene, Span, Statement, System, Trait};
 pub use error::{LexError, ParseError, ValidationError};
 pub use eval::{EvalError, Interpreter, Value};
 pub use lexer::{Lexer, Token, TokenKind};
@@ -208,6 +208,23 @@ pub fn parse_file(source: &str) -> Result<Declaration, ParseError> {
 pub fn parse_file_all(source: &str) -> Result<Vec<Declaration>, ParseError> {
     let mut parser = Parser::new(source);
     parser.parse_all()
+}
+
+/// Parse a complete DOL file with module and use declarations.
+///
+/// Returns a `DolFile` containing the module declaration (if any),
+/// use declarations, and all top-level declarations.
+///
+/// # Arguments
+///
+/// * `source` - The DOL source text to parse
+///
+/// # Returns
+///
+/// A `DolFile` on success, or a `ParseError` if parsing fails.
+pub fn parse_dol_file(source: &str) -> Result<ast::DolFile, ParseError> {
+    let mut parser = Parser::new(source);
+    parser.parse_file()
 }
 
 /// Parse and validate a DOL source string.

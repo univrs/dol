@@ -109,6 +109,48 @@ impl<'a> Parser<'a> {
         Ok(declarations)
     }
 
+    /// Parses a complete DOL file including module and use declarations.
+    ///
+    /// Returns a `DolFile` containing the module declaration (if any),
+    /// use declarations, and all top-level declarations.
+    pub fn parse_file(&mut self) -> Result<DolFile, ParseError> {
+        // Parse optional module declaration
+        let module = if self.current.kind == TokenKind::Module {
+            Some(self.parse_module_decl()?)
+        } else {
+            None
+        };
+
+        // Parse use declarations
+        let mut uses = Vec::new();
+        loop {
+            // Handle pub use
+            if self.current.kind == TokenKind::Pub && self.peek().kind == TokenKind::Use {
+                self.advance(); // consume pub
+                let use_decl = self.parse_use_decl()?;
+                // Mark as public (you may need to add a visibility field to UseDecl)
+                uses.push(use_decl);
+            } else if self.current.kind == TokenKind::Use {
+                uses.push(self.parse_use_decl()?);
+            } else {
+                break;
+            }
+        }
+
+        // Parse all declarations
+        let mut declarations = Vec::new();
+        while self.current.kind != TokenKind::Eof {
+            let decl = self.parse_declaration()?;
+            declarations.push(decl);
+        }
+
+        Ok(DolFile {
+            module,
+            uses,
+            declarations,
+        })
+    }
+
     /// Skips module declaration and use statements at the start of a file.
     fn skip_module_and_uses(&mut self) -> Result<(), ParseError> {
         // Skip module declaration
@@ -453,18 +495,21 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a module declaration: module path.to.module @ version
-    #[allow(dead_code)]
     fn parse_module_decl(&mut self) -> Result<ModuleDecl, ParseError> {
         let start_span = self.current.span;
         self.expect(TokenKind::Module)?;
 
         // Parse module path (e.g., "univrs.container.lifecycle")
+        // The lexer may produce a single qualified identifier "dol.ast" or separate tokens
         let mut path = Vec::new();
-        path.push(self.expect_identifier()?);
+        let ident = self.expect_identifier()?;
+        // Split qualified identifiers into path components
+        path.extend(ident.split('.').map(|s| s.to_string()));
 
         while self.current.kind == TokenKind::Dot {
             self.advance();
-            path.push(self.expect_identifier()?);
+            let ident = self.expect_identifier()?;
+            path.extend(ident.split('.').map(|s| s.to_string()));
         }
 
         // Parse optional version
@@ -509,14 +554,16 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a use declaration: use path::to::module::{items}
-    #[allow(dead_code)]
     fn parse_use_decl(&mut self) -> Result<UseDecl, ParseError> {
         let start_span = self.current.span;
         self.expect(TokenKind::Use)?;
 
         // Parse path with :: or . separators (both supported for DOL compatibility)
+        // The lexer may produce qualified identifiers like "dol.token" as single tokens
         let mut path = Vec::new();
-        path.push(self.expect_identifier()?);
+        let ident = self.expect_identifier()?;
+        // Split qualified identifiers into path components
+        path.extend(ident.split('.').map(|s| s.to_string()));
 
         while self.current.kind == TokenKind::PathSep || self.current.kind == TokenKind::Dot {
             self.advance();
@@ -526,7 +573,8 @@ impl<'a> Parser<'a> {
             if self.current.kind == TokenKind::Star {
                 break; // Glob import
             }
-            path.push(self.expect_identifier()?);
+            let ident = self.expect_identifier()?;
+            path.extend(ident.split('.').map(|s| s.to_string()));
         }
 
         // Parse items

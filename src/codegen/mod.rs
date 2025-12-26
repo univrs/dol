@@ -30,10 +30,12 @@
 //! println!("{}", rust_code);
 //! ```
 
+mod crate_gen;
 mod jsonschema;
 mod rust;
 mod typescript;
 
+pub use crate_gen::{CrateCodegen, CrateConfig, ModuleInfo};
 pub use jsonschema::JsonSchemaCodegen;
 pub use rust::RustCodegen;
 pub use typescript::TypeScriptCodegen;

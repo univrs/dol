@@ -47,6 +47,11 @@ name = "dol-mcp"
 path = "src/bin/dol-mcp.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "dol-build-crate"
+path = "src/bin/dol-build-crate.rs"
+required-features = ["cli"]
+
 [features]
 default = []
 cli = ["dep:clap", "dep:anyhow", "dep:colored", "serde"]
