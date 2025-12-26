@@ -186,6 +186,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Skips a type expression (handles simple types and complex ones like `enum { ... }`).
+    #[allow(dead_code)]
     fn skip_type_expr(&mut self) -> Result<(), ParseError> {
         // Handle enum keyword with brace block
         if self.current.kind == TokenKind::Identifier && self.current.lexeme == "enum" {
@@ -1752,7 +1753,7 @@ impl<'a> Parser<'a> {
                 // Only treat as struct literal if:
                 // 1. The field starts with uppercase (type name convention)
                 // 2. The content looks like struct fields (identifier: value or empty)
-                let is_type_name = field.chars().next().map_or(false, |c| c.is_uppercase());
+                let is_type_name = field.chars().next().is_some_and(|c| c.is_uppercase());
                 // Check if this is a struct literal: Type.Variant { ... }
                 // A struct literal has fields in the form `identifier: value`
                 // Use two-token lookahead to check for `{ identifier :` pattern
@@ -1873,7 +1874,7 @@ impl<'a> Parser<'a> {
                 // 1. The name starts with uppercase (type name convention)
                 // 2. The content looks like struct fields (identifier: value or empty)
                 if let Expr::Identifier(name) = &lhs {
-                    let is_type_name = name.chars().next().map_or(false, |c| c.is_uppercase());
+                    let is_type_name = name.chars().next().is_some_and(|c| c.is_uppercase());
                     if !is_type_name {
                         break;
                     }

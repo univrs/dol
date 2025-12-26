@@ -627,6 +627,7 @@ impl RustCodegen {
 
     /// Extract fields from statements (for structs).
     /// Returns (field_name, rust_type, optional_default, optional_constraint)
+    #[allow(dead_code)]
     fn extract_fields(
         &self,
         statements: &[Statement],
@@ -655,6 +656,7 @@ impl RustCodegen {
 
     /// Extract fields from statements, generating separate enum declarations for inline enums.
     /// Returns (list of generated enum code, list of fields with resolved types)
+    #[allow(clippy::type_complexity)]
     fn extract_fields_with_inline_enums(
         &self,
         statements: &[Statement],
@@ -1708,11 +1710,16 @@ impl RustCodegen {
 
     /// Check if an expression involves string values (for detecting string concatenation).
     fn is_string_expr(&self, expr: &Expr) -> bool {
+        Self::is_string_expr_static(expr)
+    }
+
+    /// Static version for recursive calls without &self.
+    fn is_string_expr_static(expr: &Expr) -> bool {
         match expr {
             Expr::Literal(Literal::String(_)) => true,
             Expr::Binary { left, op, right } => {
                 if matches!(op, crate::ast::BinaryOp::Add) {
-                    self.is_string_expr(left) || self.is_string_expr(right)
+                    Self::is_string_expr_static(left) || Self::is_string_expr_static(right)
                 } else {
                     false
                 }
@@ -1747,7 +1754,11 @@ impl RustCodegen {
     /// Recursively collect parts of a string concatenation.
     fn collect_string_parts(&self, expr: &Expr, parts: &mut Vec<String>) {
         match expr {
-            Expr::Binary { left, op, right } if matches!(op, crate::ast::BinaryOp::Add) => {
+            Expr::Binary {
+                left,
+                op: crate::ast::BinaryOp::Add,
+                right,
+            } => {
                 self.collect_string_parts(left, parts);
                 self.collect_string_parts(right, parts);
             }
@@ -1782,6 +1793,7 @@ impl RustCodegen {
     /// // Pattern::Constructor { name: "Some", fields: [Pattern::Identifier("x")] } => "Some(x)"
     /// // Pattern::Tuple([Pattern::Identifier("x"), Pattern::Identifier("y")]) => "(x, y)"
     /// ```
+    #[allow(dead_code)]
     fn gen_pattern(&self, pattern: &crate::ast::Pattern) -> String {
         // Delegate to the hint-aware version with no hint
         self.gen_pattern_with_hint(pattern, None)
@@ -2420,10 +2432,7 @@ impl RustCodegen {
 
     /// Check if a pattern is a string literal
     fn is_string_literal_pattern(&self, pattern: &crate::ast::Pattern) -> bool {
-        match pattern {
-            crate::ast::Pattern::Literal(Literal::String(_)) => true,
-            _ => false,
-        }
+        matches!(pattern, crate::ast::Pattern::Literal(Literal::String(_)))
     }
 
     /// Try to infer the enum type from a scrutinee expression.
@@ -2735,15 +2744,8 @@ impl RustCodegen {
                                     }
                                 }
                                 let pattern = self.gen_pattern_with_hint(p, None);
-                                // If pattern is just a binding name, use shorthand syntax
-                                // If pattern is a wildcard or complex, use full syntax
-                                if pattern == "_" {
-                                    format!("{}: _", field_name)
-                                } else if pattern.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                                    format!("{}: {}", field_name, pattern)
-                                } else {
-                                    format!("{}: {}", field_name, pattern)
-                                }
+                                // Use field: pattern syntax for all cases
+                                format!("{}: {}", field_name, pattern)
                             })
                             .collect();
                         // Add `..` to ignore extra fields like `span`
@@ -2860,10 +2862,10 @@ impl RustCodegen {
         }
 
         // Pattern variants
-        if qualified.starts_with("Pattern::") || enum_type_hint == Some("Pattern") {
-            if variant_name == "Wildcard" {
-                return true;
-            }
+        if (qualified.starts_with("Pattern::") || enum_type_hint == Some("Pattern"))
+            && variant_name == "Wildcard"
+        {
+            return true;
         }
 
         // Visibility variants
@@ -2902,7 +2904,7 @@ impl RustCodegen {
         }
 
         // Known TypeExprType variants (from inline enum in ast.dol)
-        let type_expr_type_variants = [
+        let _type_expr_type_variants = [
             "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float32",
             "Float64", "Bool", "String", "Char", "Void", "Named", "Generic", "Function", "Tuple",
             "Option", "Result", "List", "Map", "Set", "Box", "Array", "Infer", "Never",
@@ -3378,6 +3380,7 @@ impl RustCodegen {
 
     /// Check if a gene has an inline enum 'type' field (the DOL idiom for enums)
     /// Returns Some((variants, extra_fields)) if this gene should be generated as a flat enum
+    #[allow(clippy::type_complexity)]
     fn is_enum_gene(gene: &Gene) -> Option<(&Vec<EnumVariant>, Vec<(&str, String)>)> {
         let fields: Vec<_> = gene
             .statements
@@ -3859,7 +3862,7 @@ mod tests {
         assert_eq!(gen.gen_literal(&Literal::Bool(true)), "true");
         assert_eq!(
             gen.gen_literal(&Literal::String("hello".to_string())),
-            "\"hello\""
+            "\"hello\".to_string()"
         );
         assert_eq!(gen.gen_literal(&Literal::Null), "None");
     }
@@ -4133,7 +4136,10 @@ mod tests {
             }),
             args: vec![Expr::Literal(Literal::String("test".to_string()))],
         };
-        assert_eq!(gen.gen_expr(&expr), "obj.field.method(\"test\")");
+        assert_eq!(
+            gen.gen_expr(&expr),
+            "obj.field.method(\"test\".to_string())"
+        );
     }
 
     #[test]
@@ -4192,7 +4198,7 @@ mod tests {
         };
         assert_eq!(
             gen.gen_expr(&method_call),
-            "collection.map(|x| { (x * 2_i64) })"
+            "collection.into_iter().map(|x| { (x * 2_i64) }).collect::<Vec<_>>()"
         );
     }
 

@@ -31,8 +31,10 @@ pub gene Trait {
     }
 
     return Trait {
-      ...this,
-      value: inherited + mutation
+      name: this.name,
+      value: inherited + mutation,
+      heritability: this.heritability,
+      mutation_rate: this.mutation_rate
     }
   }
 

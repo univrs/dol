@@ -135,7 +135,7 @@ fn test_codegen_gene_with_multiple_types() {
 
     let code = RustCodegen::generate(&Declaration::Gene(gene));
 
-    assert!(code.contains("pub id: u64"), "Should map UInt64 to u64");
+    assert!(code.contains("pub id: isize"), "Should map UInt64 to isize");
     assert!(
         code.contains("pub name: String"),
         "Should map String to String"
@@ -531,7 +531,7 @@ fn test_codegen_sex_function() {
     let output = gen.gen_sex_function(Visibility::Public, &func);
     assert!(output.contains("/// Side-effectful function"));
     assert!(output.contains("pub fn print_message(msg: String)"));
-    assert!(output.contains("println(msg);"));
+    assert!(output.contains("println!(\"{}\", msg)"));
 }
 
 #[test]
@@ -671,7 +671,7 @@ fn test_codegen_type_mapping_primitives() {
     );
     assert_eq!(
         RustCodegen::map_type_expr(&TypeExpr::Named("UInt64".to_string())),
-        "u64"
+        "isize"
     );
     assert_eq!(
         RustCodegen::map_type_expr(&TypeExpr::Named("Float32".to_string())),

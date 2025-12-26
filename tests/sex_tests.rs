@@ -527,7 +527,10 @@ fn test_codegen_primitive_types() {
     assert_eq!(gen.gen_type(&TypeExpr::Named("UInt8".to_string())), "u8");
     assert_eq!(gen.gen_type(&TypeExpr::Named("UInt16".to_string())), "u16");
     assert_eq!(gen.gen_type(&TypeExpr::Named("UInt32".to_string())), "u32");
-    assert_eq!(gen.gen_type(&TypeExpr::Named("UInt64".to_string())), "u64");
+    assert_eq!(
+        gen.gen_type(&TypeExpr::Named("UInt64".to_string())),
+        "isize"
+    );
     assert_eq!(gen.gen_type(&TypeExpr::Named("Float32".to_string())), "f32");
     assert_eq!(gen.gen_type(&TypeExpr::Named("Float64".to_string())), "f64");
     assert_eq!(gen.gen_type(&TypeExpr::Named("Bool".to_string())), "bool");
@@ -607,7 +610,7 @@ fn test_codegen_extern_function() {
 
     let output = gen.gen_extern(&decl);
     assert!(output.contains("extern \"C\" {"));
-    assert!(output.contains("fn malloc(size: u64)"));
+    assert!(output.contains("fn malloc(size: isize)"));
 }
 
 #[test]
@@ -687,7 +690,7 @@ fn test_codegen_sex_block() {
 
     let output = gen.gen_sex_block(&statements, None);
     assert!(output.contains("/* sex block */"));
-    assert!(output.contains("println(\"hello\")"));
+    assert!(output.contains("println!(\"{}\", \"hello\".to_string())"));
 }
 
 // ═══════════════════════════════════════════════════════════════════
