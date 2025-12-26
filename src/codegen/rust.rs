@@ -1145,6 +1145,20 @@ impl RustCodegen {
                         }
                     }
                     result
+                } else if name.contains("::") {
+                    // Handle path expressions like Map::new, List::new
+                    let parts: Vec<&str> = name.split("::").collect();
+                    let first_part = match parts[0] {
+                        "Map" => "HashMap",
+                        "List" => "Vec",
+                        other => other,
+                    };
+                    let rest: Vec<&str> = parts[1..].to_vec();
+                    if rest.is_empty() {
+                        first_part.to_string()
+                    } else {
+                        format!("{}::{}", first_part, rest.join("::"))
+                    }
                 } else if name == "this" {
                     "self".to_string()
                 } else {
@@ -1263,33 +1277,53 @@ impl RustCodegen {
             }
             Expr::Call { callee, args } => {
                 let mut callee_str = self.gen_expr(callee);
-                let args_str: Vec<String> = args.iter().map(|a| self.gen_expr(a)).collect();
+
+                // Check if this is a .join() call - separator should be &str, not String
+                let is_join_call = callee_str.ends_with(".join");
+                let args_str: Vec<String> = args
+                    .iter()
+                    .map(|a| {
+                        if is_join_call {
+                            // For .join() separator, use &str (no .to_string())
+                            self.gen_expr_as_str(a)
+                        } else {
+                            self.gen_expr(a)
+                        }
+                    })
+                    .collect();
 
                 // Check if this is a method call that needs .iter() in Rust
                 // DOL allows .map(), .filter(), .for_each() directly on collections
                 // but Rust requires .iter().map(), .into_iter().map(), etc.
-                let iterator_methods = [
-                    ".map(",
-                    ".filter(",
-                    ".for_each(",
-                    ".find(",
-                    ".any(",
-                    ".all(",
-                    ".fold(",
-                    ".reduce(",
-                ];
-                for method in iterator_methods {
-                    if callee_str.ends_with(method.trim_end_matches('(')) {
+                // Also track methods that produce iterators and need .collect()
+                let iterator_producing_methods = [".map", ".filter", ".filter_map"];
+                let iterator_consuming_methods =
+                    [".for_each", ".find", ".any", ".all", ".fold", ".reduce"];
+                let mut needs_collect = false;
+                for method in iterator_producing_methods {
+                    if callee_str.ends_with(method) {
                         // Insert .into_iter() before the method call
-                        let method_name = method.trim_start_matches('.').trim_end_matches('(');
+                        let method_name = method.trim_start_matches('.');
                         let insert_pos = callee_str.len() - method_name.len() - 1; // -1 for the dot
                         callee_str.insert_str(insert_pos, ".into_iter()");
+                        needs_collect = true;
                         break;
+                    }
+                }
+                if !needs_collect {
+                    for method in iterator_consuming_methods {
+                        if callee_str.ends_with(method) {
+                            // Insert .into_iter() before the method call
+                            let method_name = method.trim_start_matches('.');
+                            let insert_pos = callee_str.len() - method_name.len() - 1;
+                            callee_str.insert_str(insert_pos, ".into_iter()");
+                            break;
+                        }
                     }
                 }
 
                 // Some DOL functions map to Rust macros
-                match callee_str.as_str() {
+                let base_result = match callee_str.as_str() {
                     "println" => format!("println!(\"{{}}\", {})", args_str.join(", ")),
                     "eprintln" => format!("eprintln!(\"{{}}\", {})", args_str.join(", ")),
                     "print" => format!("print!(\"{{}}\", {})", args_str.join(", ")),
@@ -1302,14 +1336,53 @@ impl RustCodegen {
                         // If so, convert Type(args) to Type::new(args)
                         // Exception: Don't convert enum variants (Some, Ok, Err, None)
                         // or paths that already contain ::
+                        // Also exception: Flat enum genes (Expr, Stmt, Decl, etc.) don't have ::new
                         let first_char = callee_str.chars().next();
                         let is_enum_variant = matches!(
                             callee_str.as_str(),
                             "Some" | "None" | "Ok" | "Err" | "Left" | "Right"
                         );
-                        if first_char.is_some_and(|c| c.is_uppercase())
+                        // Flat enum genes - these are generated as enums without ::new constructor
+                        // For flat enum genes, the pattern Expr(variant, span) should become
+                        // variant with span integrated
+                        let is_flat_enum_gene = matches!(
+                            callee_str.as_str(),
+                            "Expr" | "Stmt" | "Decl" | "TypeExpr" | "Pattern" | "TokenKind"
+                        );
+                        if is_flat_enum_gene && args_str.len() == 2 {
+                            // Pattern: Expr(Expr::Variant { fields }, span)
+                            // Transform to: Expr::Variant { fields, span }
+                            let variant_arg = &args_str[0];
+                            let span_arg = &args_str[1];
+                            // Check if first arg is a variant constructor
+                            if variant_arg.starts_with(&format!("{}::", callee_str)) {
+                                // Extract the variant construction and add span
+                                if variant_arg.ends_with('}') {
+                                    // Struct variant like Expr::Ident { name }
+                                    // Insert span before the closing brace
+                                    let without_brace =
+                                        variant_arg.trim_end_matches('}').trim_end();
+                                    format!("{}, span: {} }}", without_brace, span_arg)
+                                } else if variant_arg.ends_with(')') {
+                                    // Tuple variant - convert to struct with span
+                                    // This is more complex, for now keep as is with a comment
+                                    format!(
+                                        "/* TODO: tuple variant with span */ {}({})",
+                                        callee_str,
+                                        args_str.join(", ")
+                                    )
+                                } else {
+                                    // Simple variant like Expr::Ident
+                                    format!("{} {{ span: {} }}", variant_arg, span_arg)
+                                }
+                            } else {
+                                // First arg is not a variant, fall back to function call
+                                format!("{}({})", callee_str, args_str.join(", "))
+                            }
+                        } else if first_char.is_some_and(|c| c.is_uppercase())
                             && !callee_str.contains("::")
                             && !is_enum_variant
+                            && !is_flat_enum_gene
                         {
                             format!("{}::new({})", callee_str, args_str.join(", "))
                         } else if self.is_array_indexing(callee, args) {
@@ -1324,9 +1397,9 @@ impl RustCodegen {
                                 let enum_name = parts[0];
                                 let variant_name = parts[1];
                                 if let Some(fields) =
-                                    self.get_variant_fields(enum_name, variant_name)
+                                    self.get_struct_literal_fields(enum_name, variant_name)
                                 {
-                                    // Generate struct literal syntax with field names
+                                    // Generate struct literal syntax with actual DOL field names
                                     if fields.len() == args_str.len() {
                                         let field_inits: Vec<String> = fields
                                             .iter()
@@ -1348,6 +1421,12 @@ impl RustCodegen {
                             format!("{}({})", callee_str, args_str.join(", "))
                         }
                     }
+                };
+                // Add .collect() for iterator methods that return iterators
+                if needs_collect {
+                    format!("{}.collect::<Vec<_>>()", base_result)
+                } else {
+                    base_result
                 }
             }
             Expr::Member { object, field } => {
@@ -1571,6 +1650,61 @@ impl RustCodegen {
         }
     }
 
+    /// Generate Rust code for a literal in a pattern context.
+    /// Unlike gen_literal, this doesn't add .to_string() to string literals
+    /// because Rust patterns require static string literals.
+    fn gen_literal_pattern(&self, lit: &Literal) -> String {
+        self.gen_literal_as_str(lit)
+    }
+
+    /// Generate Rust code for a literal as &str (no .to_string() for strings).
+    /// Used in pattern contexts and as arguments to methods like .join().
+    fn gen_literal_as_str(&self, lit: &Literal) -> String {
+        match lit {
+            Literal::Int(n) => format!("{}_i64", n),
+            Literal::Float(f) => {
+                if f.fract() == 0.0 {
+                    format!("{:.1}_f64", f)
+                } else {
+                    format!("{}_f64", f)
+                }
+            }
+            Literal::Bool(b) => b.to_string(),
+            // &str, not String
+            Literal::String(s) => format!("\"{}\"", s.escape_default()),
+            Literal::Char(c) => format!("'{}'", c.escape_default()),
+            Literal::Null => "None".to_string(),
+        }
+    }
+
+    /// Generate Rust code for an expression in a context where &str is expected.
+    /// For literals, this avoids adding .to_string().
+    fn gen_expr_as_str(&self, expr: &Expr) -> String {
+        match expr {
+            Expr::Literal(lit) => self.gen_literal_as_str(lit),
+            _ => self.gen_expr(expr),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn gen_literal_pattern_old(&self, lit: &Literal) -> String {
+        match lit {
+            Literal::Int(n) => format!("{}_i64", n),
+            Literal::Float(f) => {
+                if f.fract() == 0.0 {
+                    format!("{:.1}_f64", f)
+                } else {
+                    format!("{}_f64", f)
+                }
+            }
+            Literal::Bool(b) => b.to_string(),
+            // Patterns require &str, not String
+            Literal::String(s) => format!("\"{}\"", s.escape_default()),
+            Literal::Char(c) => format!("'{}'", c.escape_default()),
+            Literal::Null => "None".to_string(),
+        }
+    }
+
     /// Check if an expression involves string values (for detecting string concatenation).
     fn is_string_expr(&self, expr: &Expr) -> bool {
         match expr {
@@ -1725,53 +1859,66 @@ impl RustCodegen {
         None
     }
 
-    /// Get the field names for a flat enum variant.
-    /// Returns Some(fields) if the variant is a struct variant with known fields.
-    /// With flat enums, use gene names directly (e.g., "Expr" not "ExprType").
+    /// Get the field names for a flat enum variant as used in DOL pattern matching.
+    /// Returns Some(fields) if the variant has known pattern fields.
+    ///
+    /// IMPORTANT: This returns the fields that DOL patterns actually use, not all fields.
+    /// DOL patterns only bind "important" fields and `span`, skipping optional fields
+    /// like `suffix`, `is_raw`, etc. The field names here must match what DOL source
+    /// code uses in pattern matching.
     fn get_variant_fields(
         &self,
         enum_name: &str,
         variant_name: &str,
     ) -> Option<&'static [&'static str]> {
         match (enum_name, variant_name) {
-            // Expr variants (flat enum from gene with inline enum 'type' field)
-            ("Expr", "Ident") => Some(&["name"]),
-            ("Expr", "IntLit") => Some(&["value", "suffix"]),
-            ("Expr", "UIntLit") => Some(&["value", "suffix"]),
-            ("Expr", "FloatLit") => Some(&["value", "suffix"]),
-            ("Expr", "StringLit") => Some(&["value", "is_raw"]),
-            ("Expr", "CharLit") => Some(&["value"]),
-            ("Expr", "BoolLit") => Some(&["value"]),
-            ("Expr", "Path") => Some(&["segments"]),
-            ("Expr", "Binary") => Some(&["op", "left", "right"]),
-            ("Expr", "Unary") => Some(&["op", "operand"]),
-            ("Expr", "Call") => Some(&["callee", "args"]),
-            ("Expr", "MethodCall") => Some(&["receiver", "method", "type_args", "args"]),
-            ("Expr", "FieldAccess") => Some(&["object", "field"]),
-            ("Expr", "Index") => Some(&["object", "index"]),
-            ("Expr", "If") => Some(&["cond", "then_block", "else_branch"]),
-            ("Expr", "Match") => Some(&["scrutinee", "arms"]),
-            ("Expr", "Block") => Some(&["block"]),
-            ("Expr", "Lambda") => Some(&["params", "body"]),
-            ("Expr", "Struct") => Some(&["name", "fields"]),
-            ("Expr", "Array") | ("Expr", "List") => Some(&["elements"]),
-            ("Expr", "Tuple") => Some(&["elements"]),
-            ("Expr", "Range") => Some(&["start", "end", "inclusive"]),
-            ("Expr", "Return") => Some(&["value"]),
-            ("Expr", "Break") => Some(&["value"]),
-            ("Expr", "Throw") => Some(&["value"]),
-            ("Expr", "Try") => Some(&["expr"]),
-            ("Expr", "Await") => Some(&["expr"]),
-            // Stmt variants (flat enum)
-            ("Stmt", "Let") => Some(&["pattern", "ty", "value"]),
-            ("Stmt", "Var") => Some(&["name", "ty", "value"]),
-            ("Stmt", "Const") => Some(&["name", "ty", "value"]),
-            ("Stmt", "Assign") => Some(&["target", "op", "value"]),
-            ("Stmt", "Expr") => Some(&["expr"]),
-            ("Stmt", "Return") => Some(&["value"]),
-            ("Stmt", "If") => Some(&["cond", "then_block", "else_block"]),
-            ("Stmt", "While") => Some(&["cond", "body"]),
-            ("Stmt", "For") => Some(&["pattern", "iter", "body"]),
+            // Expr variants - only include fields that DOL patterns actually use
+            // Most patterns use the main value field(s) + span
+            ("Expr", "Ident") => Some(&["name", "span"]),
+            ("Expr", "IntLit") => Some(&["value", "span"]), // DOL skips suffix
+            ("Expr", "UIntLit") => Some(&["value", "span"]), // DOL skips suffix
+            ("Expr", "FloatLit") => Some(&["value", "span"]), // DOL skips suffix
+            ("Expr", "StringLit") => Some(&["value", "span"]), // DOL skips is_raw
+            ("Expr", "CharLit") => Some(&["value", "span"]),
+            ("Expr", "BoolLit") => Some(&["value", "span"]),
+            ("Expr", "Path") => Some(&["segments", "span"]),
+            ("Expr", "Binary") => Some(&["op", "left", "right", "span"]),
+            ("Expr", "Unary") => Some(&["op", "operand", "span"]),
+            ("Expr", "Call") => Some(&["callee", "args", "span"]),
+            ("Expr", "MethodCall") => Some(&["receiver", "method", "args", "span"]), // skips type_args
+            ("Expr", "FieldAccess") => Some(&["object", "field", "span"]),
+            ("Expr", "Index") => Some(&["object", "index", "span"]),
+            ("Expr", "If") => Some(&["cond", "then_block", "else_branch", "span"]),
+            ("Expr", "Match") => Some(&["scrutinee", "arms", "span"]),
+            ("Expr", "Block") => Some(&["block", "span"]),
+            ("Expr", "Lambda") => Some(&["params", "body", "span"]),
+            ("Expr", "Struct") => Some(&["name", "fields", "span"]),
+            ("Expr", "Array") | ("Expr", "List") => Some(&["elements", "span"]),
+            ("Expr", "Tuple") => Some(&["elements", "span"]),
+            ("Expr", "TupleLit") => Some(&["elements", "span"]),
+            ("Expr", "Range") => Some(&["start", "end", "span"]), // skips inclusive
+            ("Expr", "Return") => Some(&["value", "span"]),
+            ("Expr", "Break") => Some(&["value", "span"]),
+            ("Expr", "Throw") => Some(&["value", "span"]),
+            ("Expr", "Try") => Some(&["expr", "span"]),
+            ("Expr", "Await") => Some(&["expr", "span"]),
+            ("Expr", "Quote") => Some(&["inner", "span"]),
+            ("Expr", "Eval") => Some(&["inner", "span"]),
+            ("Expr", "QuasiQuote") => Some(&["inner", "span"]),
+            ("Expr", "Unquote") => Some(&["inner", "span"]),
+            ("Expr", "Reflect") => Some(&["ty", "span"]),
+            ("Expr", "IdiomBracket") => Some(&["exprs", "span"]),
+            ("Expr", "This") => Some(&[]), // unit variant
+            // Stmt variants (flat enum) - include span in pattern fields
+            ("Stmt", "Let") => Some(&["pattern", "ty", "value", "span"]),
+            ("Stmt", "Var") => Some(&["name", "ty", "value", "span"]),
+            ("Stmt", "Const") => Some(&["name", "ty", "value", "span"]),
+            ("Stmt", "Assign") => Some(&["target", "value", "span"]), // skips op
+            ("Stmt", "Expr") => Some(&["expr", "span"]),
+            ("Stmt", "Return") => Some(&["value", "span"]),
+            ("Stmt", "If") => Some(&["cond", "then_block", "else_block", "span"]),
+            ("Stmt", "While") => Some(&["cond", "body", "span"]),
+            ("Stmt", "For") => Some(&["pattern", "iter", "body", "span"]),
             ("Stmt", "Match") => Some(&["scrutinee", "arms"]),
             ("Stmt", "Block") => Some(&["block"]),
             ("Stmt", "Loop") => Some(&["label", "body"]),
@@ -1798,6 +1945,8 @@ impl RustCodegen {
             ("TypeExpr", "Pointer") => Some(&["inner", "is_mut"]),
             // Pattern variants (flat enum)
             ("Pattern", "Binding") => Some(&["name", "is_mut", "binding"]),
+            ("Pattern", "Ident") => Some(&["name", "is_mut", "binding"]),
+            ("Pattern", "Wildcard") => Some(&[]), // unit variant
             ("Pattern", "Literal") => Some(&["value"]),
             ("Pattern", "Tuple") => Some(&["elements"]),
             ("Pattern", "Struct") => Some(&["name", "fields", "rest"]),
@@ -1806,6 +1955,113 @@ impl RustCodegen {
             ("Pattern", "Guard") => Some(&["pattern", "guard"]),
             ("Pattern", "Path") => Some(&["segments"]),
             ("Pattern", "Range") => Some(&["start", "end", "inclusive"]),
+            // Type variants (from types.dol) - for pattern matching
+            ("Type", "Function") => Some(&["params", "ret"]),
+            ("Type", "Tuple") => Some(&["elements"]),
+            ("Type", "Generic") => Some(&["name", "args"]),
+            ("Type", "Named") => Some(&["name"]),
+            ("Type", "Var") => Some(&["id"]),
+            _ => None,
+        }
+    }
+
+    /// Get the field names for struct literal construction (actual DOL variant fields).
+    /// Unlike `get_variant_fields` which is for pattern matching, this returns the
+    /// actual field names that DOL struct literals use, including optional fields.
+    fn get_struct_literal_fields(
+        &self,
+        enum_name: &str,
+        variant_name: &str,
+    ) -> Option<&'static [&'static str]> {
+        match (enum_name, variant_name) {
+            // Expr variants - actual DOL AST fields (not pattern-simplified)
+            ("Expr", "Ident") => Some(&["name"]),
+            ("Expr", "IntLit") => Some(&["value", "suffix"]),
+            ("Expr", "UIntLit") => Some(&["value", "suffix"]),
+            ("Expr", "FloatLit") => Some(&["value", "suffix"]),
+            ("Expr", "StringLit") => Some(&["value", "is_raw"]),
+            ("Expr", "CharLit") => Some(&["value"]),
+            ("Expr", "BoolLit") => Some(&["value"]),
+            ("Expr", "Path") => Some(&["segments"]),
+            ("Expr", "Binary") => Some(&["op", "left", "right"]),
+            ("Expr", "Unary") => Some(&["op", "operand"]),
+            ("Expr", "Call") => Some(&["callee", "args"]),
+            ("Expr", "MethodCall") => Some(&["receiver", "method", "type_args", "args"]),
+            ("Expr", "FieldAccess") => Some(&["object", "field"]),
+            ("Expr", "Index") => Some(&["object", "index"]),
+            ("Expr", "If") => Some(&["cond", "then_block", "else_branch"]),
+            ("Expr", "Match") => Some(&["scrutinee", "arms"]),
+            ("Expr", "Block") => Some(&["block"]),
+            ("Expr", "Lambda") => Some(&["params", "body"]),
+            ("Expr", "Struct") => Some(&["name", "fields"]),
+            ("Expr", "Array") | ("Expr", "List") => Some(&["elements"]),
+            ("Expr", "Tuple") => Some(&["elements"]),
+            ("Expr", "TupleLit") => Some(&["elements"]),
+            ("Expr", "Range") => Some(&["start", "end", "inclusive"]),
+            ("Expr", "Return") => Some(&["value"]),
+            ("Expr", "Break") => Some(&["value"]),
+            ("Expr", "Throw") => Some(&["value"]),
+            ("Expr", "Try") => Some(&["expr"]),
+            ("Expr", "Await") => Some(&["expr"]),
+            ("Expr", "Quote") => Some(&["inner"]),
+            ("Expr", "Eval") => Some(&["inner"]),
+            ("Expr", "QuasiQuote") => Some(&["inner"]),
+            ("Expr", "Unquote") => Some(&["inner"]),
+            ("Expr", "Reflect") => Some(&["ty"]),
+            ("Expr", "IdiomBracket") => Some(&["exprs"]),
+            // Stmt variants - actual fields
+            ("Stmt", "Let") => Some(&["pattern", "ty", "value"]),
+            ("Stmt", "Var") => Some(&["name", "ty", "value"]),
+            ("Stmt", "Const") => Some(&["name", "ty", "value"]),
+            ("Stmt", "Assign") => Some(&["target", "op", "value"]),
+            ("Stmt", "Expr") => Some(&["expr"]),
+            ("Stmt", "Return") => Some(&["value"]),
+            ("Stmt", "If") => Some(&["cond", "then_block", "else_block"]),
+            ("Stmt", "While") => Some(&["cond", "body"]),
+            ("Stmt", "For") => Some(&["pattern", "iter", "body"]),
+            ("Stmt", "Match") => Some(&["scrutinee", "arms"]),
+            ("Stmt", "Block") => Some(&["block"]),
+            ("Stmt", "Loop") => Some(&["label", "body"]),
+            ("Stmt", "Break") => Some(&["label", "value"]),
+            ("Stmt", "Continue") => Some(&["label"]),
+            ("Stmt", "Item") => Some(&["decl"]),
+            // Decl variants - actual fields
+            ("Decl", "Gene") => Some(&["decl"]),
+            ("Decl", "Trait") => Some(&["decl"]),
+            ("Decl", "Function") => Some(&["decl"]),
+            ("Decl", "Use") => Some(&["path", "items"]),
+            ("Decl", "Module") => Some(&["name", "version"]),
+            ("Decl", "System") => Some(&["decl"]),
+            ("Decl", "Constraint") => Some(&["decl"]),
+            ("Decl", "Evolves") => Some(&["decl"]),
+            // TypeExpr variants - actual fields
+            ("TypeExpr", "Named") => Some(&["path"]),
+            ("TypeExpr", "Generic") => Some(&["name", "args"]),
+            ("TypeExpr", "Optional") => Some(&["inner"]),
+            ("TypeExpr", "Array") => Some(&["element", "size"]),
+            ("TypeExpr", "Tuple") => Some(&["elements"]),
+            ("TypeExpr", "Function") => Some(&["params", "ret"]),
+            ("TypeExpr", "Reference") => Some(&["inner", "is_mut"]),
+            ("TypeExpr", "Pointer") => Some(&["inner", "is_mut"]),
+            ("TypeExpr", "Enum") => Some(&["variants"]),
+            ("TypeExpr", "Infer") => Some(&[]),
+            // Pattern variants - actual fields
+            ("Pattern", "Binding") => Some(&["name", "is_mut", "binding"]),
+            ("Pattern", "Wildcard") => Some(&["span"]),
+            ("Pattern", "Literal") => Some(&["value"]),
+            ("Pattern", "Tuple") => Some(&["name", "elements"]),
+            ("Pattern", "Struct") => Some(&["name", "fields", "rest"]),
+            ("Pattern", "Enum") => Some(&["path", "variant", "fields"]),
+            ("Pattern", "Or") => Some(&["patterns"]),
+            ("Pattern", "Guard") => Some(&["pattern", "guard"]),
+            ("Pattern", "Path") => Some(&["segments"]),
+            ("Pattern", "Range") => Some(&["start", "end", "inclusive"]),
+            // Type variants (from types.dol) - for struct literal construction
+            ("Type", "Function") => Some(&["params", "ret"]),
+            ("Type", "Tuple") => Some(&["elements"]),
+            ("Type", "Generic") => Some(&["name", "args"]),
+            ("Type", "Named") => Some(&["name"]),
+            ("Type", "Var") => Some(&["id"]),
             _ => None,
         }
     }
@@ -1879,10 +2135,41 @@ impl RustCodegen {
     /// }
     /// ```
     fn gen_match(&self, scrutinee: &Expr, arms: &[crate::ast::MatchArm]) -> String {
-        let scrutinee_code = self.gen_expr(scrutinee);
-
         // Try to infer the enum type from the scrutinee for pattern qualification
         let enum_type_hint = self.infer_enum_type_from_scrutinee(scrutinee);
+
+        // For flat enum genes, strip the .type/.kind field access from scrutinee
+        // e.g., `match ty.type { ... }` becomes `match ty { ... }` for flat enums
+        let scrutinee_code = if let Expr::Member { object, field } = scrutinee {
+            let field_name = field.trim_start_matches("r#");
+            let object_expr: &Expr = object;
+            if (field_name == "type" || field_name == "kind")
+                && self.is_flat_enum_scrutinee(object_expr)
+            {
+                // Just use the object, not the field access
+                self.gen_expr(object_expr)
+            } else {
+                self.gen_expr(scrutinee)
+            }
+        } else if let Expr::Identifier(name) = scrutinee {
+            // DOL parser may parse "ty.type" as a single identifier with a dot
+            // Check if it ends with .type or .kind and strip for flat enums
+            if let Some((var_name, field_name)) = name.rsplit_once('.') {
+                let field_name = field_name.trim_start_matches("r#");
+                if (field_name == "type" || field_name == "kind")
+                    && self.is_flat_enum_var_name(var_name)
+                {
+                    // Just use the variable name, not the .type field access
+                    var_name.to_string()
+                } else {
+                    self.gen_expr(scrutinee)
+                }
+            } else {
+                self.gen_expr(scrutinee)
+            }
+        } else {
+            self.gen_expr(scrutinee)
+        };
 
         let arms_code: Vec<String> = arms
             .iter()
@@ -1915,7 +2202,21 @@ impl RustCodegen {
                 if field_name == "type" || field_name == "kind" {
                     // Try to infer parent type from the object expression
                     if let Some(parent_type) = self.infer_parent_type(object) {
-                        // The inline enum name is ParentFieldName
+                        // For flat enum genes, the gene name IS the enum name
+                        // (no separate *Type enum is generated)
+                        let flat_enum_genes = [
+                            "Expr",
+                            "Stmt",
+                            "Decl",
+                            "TypeExpr",
+                            "Pattern",
+                            "TokenKind",
+                            "Type",
+                        ];
+                        if flat_enum_genes.contains(&parent_type.as_str()) {
+                            return Some(parent_type);
+                        }
+                        // For non-flat enums, the inline enum name is ParentFieldName
                         return Some(format!("{}{}", parent_type, to_pascal_case(field_name)));
                     }
                 }
@@ -1932,6 +2233,20 @@ impl RustCodegen {
                             // Infer from the variable name pattern
                             let var_name = parts[parts.len() - 2];
                             if let Some(parent_type) = self.var_name_to_type(var_name) {
+                                // For flat enum genes, the gene name IS the enum name
+                                let flat_enum_genes = [
+                                    "Expr",
+                                    "Stmt",
+                                    "Decl",
+                                    "TypeExpr",
+                                    "Pattern",
+                                    "TokenKind",
+                                    "Type",
+                                ];
+                                if flat_enum_genes.contains(&parent_type.as_str()) {
+                                    return Some(parent_type);
+                                }
+                                // For non-flat enums, the inline enum name is ParentFieldName
                                 return Some(format!(
                                     "{}{}",
                                     parent_type,
@@ -1965,6 +2280,40 @@ impl RustCodegen {
         }
     }
 
+    /// Check if an expression represents a flat enum type (for stripping .type/.kind access).
+    fn is_flat_enum_scrutinee(&self, expr: &Expr) -> bool {
+        if let Some(parent_type) = self.infer_parent_type(expr) {
+            let flat_enum_genes = [
+                "Expr",
+                "Stmt",
+                "Decl",
+                "TypeExpr",
+                "Pattern",
+                "TokenKind",
+                "Type",
+            ];
+            return flat_enum_genes.contains(&parent_type.as_str());
+        }
+        false
+    }
+
+    /// Check if a variable name refers to a flat enum type.
+    fn is_flat_enum_var_name(&self, var_name: &str) -> bool {
+        if let Some(parent_type) = self.var_name_to_type(var_name) {
+            let flat_enum_genes = [
+                "Expr",
+                "Stmt",
+                "Decl",
+                "TypeExpr",
+                "Pattern",
+                "TokenKind",
+                "Type",
+            ];
+            return flat_enum_genes.contains(&parent_type.as_str());
+        }
+        false
+    }
+
     /// Map common variable names to their type names.
     fn var_name_to_type(&self, name: &str) -> Option<String> {
         match name {
@@ -1990,56 +2339,120 @@ impl RustCodegen {
             crate::ast::Pattern::Wildcard => "_".to_string(),
             crate::ast::Pattern::Identifier(name) => {
                 // Convert DOL's Type.Variant to Rust's Type::Variant for qualified patterns
-                if name.contains('.') {
-                    name.replace('.', "::")
+                let (qualified, variant_only) = if name.contains('.') {
+                    let parts: Vec<&str> = name.split('.').collect();
+                    let variant = parts.last().unwrap_or(&name.as_str()).to_string();
+                    (name.replace('.', "::"), variant)
                 } else if self.should_qualify_pattern(name, enum_type_hint) {
                     // Qualify unqualified enum variant patterns
                     if let Some(hint) = enum_type_hint {
-                        format!("{}::{}", hint, name)
+                        (format!("{}::{}", hint, name), name.clone())
                     } else {
                         // Try to infer from known variant names
-                        self.qualify_known_variant(name)
+                        let q = self.qualify_known_variant(name);
+                        (q, name.clone())
                     }
                 } else {
-                    name.clone()
+                    (name.clone(), name.clone())
+                };
+                // Check if this is a struct variant that needs { .. }
+                // All flat enum variants in DOL become struct variants with span field
+                let needs_struct_match =
+                    self.is_struct_variant_pattern(&qualified, &variant_only, enum_type_hint);
+                if needs_struct_match {
+                    format!("{} {{ .. }}", qualified)
+                } else {
+                    qualified
                 }
             }
-            crate::ast::Pattern::Literal(lit) => self.gen_literal(lit),
+            crate::ast::Pattern::Literal(lit) => self.gen_literal_pattern(lit),
             crate::ast::Pattern::Constructor { name, fields } => {
-                let fields_str: Vec<String> = fields
-                    .iter()
-                    .map(|p| self.gen_pattern_with_hint(p, None))
-                    .collect();
                 // Convert DOL's Type.Variant to Rust's Type::Variant
-                // Also apply inline enum transformation (e.g., Decl.Gene -> DeclType::Gene)
-                let rust_name = if name.contains('.') {
+                // With flat enums, use gene name directly (e.g., Decl.Gene -> Decl::Gene)
+                let (enum_name, variant_name) = if name.contains('.') {
                     let parts: Vec<&str> = name.split('.').collect();
                     if parts.len() == 2 {
-                        let type_name = parts[0];
-                        let variant = parts[1];
-                        // Check if this is a gene with inline enum
-                        if let Some(inline_enum) = self.get_inline_enum_type(type_name) {
-                            format!("{}::{}", inline_enum, variant)
-                        } else {
-                            name.replace('.', "::")
-                        }
+                        (parts[0].to_string(), parts[1].to_string())
                     } else {
-                        name.replace('.', "::")
+                        (String::new(), name.replace('.', "::"))
                     }
                 } else if self.should_qualify_pattern(name, enum_type_hint) {
                     if let Some(hint) = enum_type_hint {
-                        format!("{}::{}", hint, name)
+                        (hint.to_string(), name.clone())
                     } else {
-                        self.qualify_known_variant(name)
+                        let qualified = self.qualify_known_variant(name);
+                        if qualified.contains("::") {
+                            let parts: Vec<&str> = qualified.split("::").collect();
+                            (parts[0].to_string(), parts[1].to_string())
+                        } else {
+                            (String::new(), qualified)
+                        }
                     }
                 } else {
-                    name.clone()
+                    (String::new(), name.clone())
                 };
-                if fields.is_empty() {
-                    rust_name
+
+                // Build the full qualified name
+                let rust_name = if enum_name.is_empty() {
+                    variant_name.clone()
                 } else {
-                    // Generate tuple-style pattern (may need manual adjustment for struct variants)
-                    format!("{}({})", rust_name, fields_str.join(", "))
+                    format!("{}::{}", enum_name, variant_name)
+                };
+
+                if fields.is_empty() {
+                    // Check if this is a struct variant that needs { .. } to match
+                    if let Some(field_names) = self.get_variant_fields(&enum_name, &variant_name) {
+                        if field_names.is_empty() {
+                            // Unit-like variant in Rust
+                            rust_name
+                        } else {
+                            // Struct variant with fields - need { .. } to match
+                            format!("{} {{ .. }}", rust_name)
+                        }
+                    } else {
+                        // Check if it's a known struct variant
+                        let enum_hint = if enum_name.is_empty() {
+                            None
+                        } else {
+                            Some(enum_name.as_str())
+                        };
+                        if self.is_struct_variant_pattern(&rust_name, &variant_name, enum_hint) {
+                            format!("{} {{ .. }}", rust_name)
+                        } else {
+                            rust_name
+                        }
+                    }
+                } else {
+                    // Check if this variant has known struct fields
+                    // With flat enums, variants have named fields instead of tuple positions
+                    if let Some(field_names) = self.get_variant_fields(&enum_name, &variant_name) {
+                        // Generate struct pattern with named fields
+                        let field_bindings: Vec<String> = fields
+                            .iter()
+                            .zip(field_names.iter())
+                            .map(|(p, field_name)| {
+                                let pattern = self.gen_pattern_with_hint(p, None);
+                                // If pattern is just a binding name, use shorthand syntax
+                                // If pattern is a wildcard or complex, use full syntax
+                                if pattern == "_" {
+                                    format!("{}: _", field_name)
+                                } else if pattern.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                                    format!("{}: {}", field_name, pattern)
+                                } else {
+                                    format!("{}: {}", field_name, pattern)
+                                }
+                            })
+                            .collect();
+                        // Add `..` to ignore extra fields like `span`
+                        format!("{} {{ {}, .. }}", rust_name, field_bindings.join(", "))
+                    } else {
+                        // Fall back to tuple-style pattern for unknown variants
+                        let fields_str: Vec<String> = fields
+                            .iter()
+                            .map(|p| self.gen_pattern_with_hint(p, None))
+                            .collect();
+                        format!("{}({})", rust_name, fields_str.join(", "))
+                    }
                 }
             }
             crate::ast::Pattern::Tuple(patterns) => {
@@ -2065,6 +2478,69 @@ impl RustCodegen {
         name.chars()
             .next()
             .is_some_and(|c| c.is_uppercase() && c.is_ascii())
+    }
+
+    /// Check if a pattern needs { .. } to match a struct variant.
+    fn is_struct_variant_pattern(
+        &self,
+        qualified: &str,
+        variant_name: &str,
+        enum_type_hint: Option<&str>,
+    ) -> bool {
+        // TypeExpr primitive types (all have span field)
+        let typeexpr_primitives = [
+            "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float32",
+            "Float64", "Bool", "String", "Char", "Void", "Never", "Infer",
+        ];
+        if typeexpr_primitives.contains(&variant_name)
+            && (enum_type_hint == Some("TypeExpr") || qualified.starts_with("TypeExpr::"))
+        {
+            return true;
+        }
+
+        // Stmt variants that have fields
+        if qualified.starts_with("Stmt::") || enum_type_hint == Some("Stmt") {
+            let stmt_struct_variants = ["Break", "Continue", "Loop", "Empty"];
+            if stmt_struct_variants.contains(&variant_name) {
+                return true;
+            }
+        }
+
+        // Expr variants that have span field
+        if qualified.starts_with("Expr::") || enum_type_hint == Some("Expr") {
+            if variant_name == "This" {
+                return true;
+            }
+        }
+
+        // Pattern variants
+        if qualified.starts_with("Pattern::") || enum_type_hint == Some("Pattern") {
+            if variant_name == "Wildcard" {
+                return true;
+            }
+        }
+
+        // Visibility variants
+        if qualified.starts_with("Visibility::") || enum_type_hint == Some("Visibility") {
+            let visibility_variants = ["Private", "Public", "Protected", "Internal"];
+            if visibility_variants.contains(&variant_name) {
+                return true;
+            }
+        }
+
+        // Type variants that have fields
+        if qualified.starts_with("Type::") || enum_type_hint == Some("Type") {
+            let type_struct_variants = [
+                "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
+                "Float32", "Float64", "Bool", "String", "Char", "Unit", "Void", "Never", "Unknown",
+                "Error", "Var",
+            ];
+            if type_struct_variants.contains(&variant_name) {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Try to qualify a known enum variant name based on common patterns.
