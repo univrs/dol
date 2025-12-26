@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2024-12-26 - "Bootstrap"
+
+### Added
+- **bootstrap.dol** - Wrapper types for DOL parser compatibility (LetStmt, VarStmt, BinaryExpr, CallExpr, etc.)
+- Tuple variant with span construction in codegen
+- Named wildcard pattern support (`args: _` syntax)
+- Missing TokenKind variants (Law, Sex, Quote, Var)
+
+### Fixed
+- Recursive type handling with `Box<Block>` indirection
+- String scrutinee matching with `.as_str()` conversion
+- Type mismatches (CallArg vs Arg, proper clone for ownership)
+- Pattern qualification for ambiguous variant names
+
+### Changed
+- Removed `Eq` from default derives (f64 doesn't implement Eq)
+
+### Milestone
+- **DOL self-hosting bootstrap generates valid Rust** - Generated code from ast.dol, token.dol, and bootstrap.dol compiles successfully (2544 lines, 0 errors)
+
 ## [0.2.1] - 2024-12-25 - "Community"
 
 ### Added
