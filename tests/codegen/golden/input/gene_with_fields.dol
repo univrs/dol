@@ -1,0 +1,5 @@
+gene Container {
+    has id: UInt64
+    has name: String
+    has running: Bool
+}

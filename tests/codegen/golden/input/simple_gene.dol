@@ -1,0 +1,3 @@
+gene Counter {
+    type: Int64
+}
