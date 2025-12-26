@@ -215,11 +215,7 @@ impl CrateCodegen {
                 }
             }
         }
-        // std.X -> std::X
-        else if path.starts_with("std::") {
-            format!("use {};", path)
-        }
-        // Other external crates
+        // External crates (std::, etc.)
         else {
             format!("use {};", path)
         }
