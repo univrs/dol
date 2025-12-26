@@ -587,6 +587,13 @@ impl TypeMapper for JsonSchemaCodegen {
                 )
             }
             TypeExpr::Never => r#"{ "not": {} }"#.to_string(),
+            TypeExpr::Enum { variants } => {
+                let enum_values: Vec<_> = variants
+                    .iter()
+                    .map(|v| format!(r#""{}""#, v.name))
+                    .collect();
+                format!(r#"{{ "enum": [{}] }}"#, enum_values.join(", "))
+            }
         }
     }
 }

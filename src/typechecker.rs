@@ -190,6 +190,16 @@ impl Type {
             },
             TypeExpr::Tuple(types) => Type::Tuple(types.iter().map(Type::from_type_expr).collect()),
             TypeExpr::Never => Type::Never,
+            TypeExpr::Enum { variants } => Type::Generic {
+                name: "Enum".to_string(),
+                args: variants
+                    .iter()
+                    .map(|v| Type::Generic {
+                        name: v.name.clone(),
+                        args: vec![],
+                    })
+                    .collect(),
+            },
         }
     }
 }

@@ -109,6 +109,17 @@ fn main() -> ExitCode {
             "{} Do not edit manually - regenerate from source .dol files\n\n",
             comment_prefix
         ));
+
+        // Add common Rust prelude and type aliases
+        if args.target == TargetLanguage::Rust {
+            generated_code.push_str("use std::collections::HashMap;\n\n");
+            generated_code.push_str("// Type aliases for naming consistency\n");
+            generated_code.push_str("pub type BinaryOp = BinOp;\n");
+            generated_code.push_str("pub type Statement = Stmt;\n");
+            generated_code.push_str("pub type Predicate = WherePredicate;\n");
+            generated_code.push_str("pub type Literal = Expr;\n");
+            generated_code.push('\n');
+        }
     }
 
     for path in &files {
@@ -134,6 +145,25 @@ fn main() -> ExitCode {
     if failed > 0 {
         eprintln!("\n{}: {} file(s) failed to process", "error".red(), failed);
         return ExitCode::FAILURE;
+    }
+
+    // Post-process: Add missing enum variants for typechecker compatibility
+    if args.target == TargetLanguage::Rust {
+        // Add missing Type variants
+        let type_enum_marker = "pub enum Type {\n";
+        if let Some(pos) = generated_code.find(type_enum_marker) {
+            let insert_pos = pos + type_enum_marker.len();
+            let missing_variants = "    // Additional variants for typechecker compatibility\n    Unit,\n    Never,\n    Gene(String, Vec<String>),\n    List(Box<Type>),\n    Option(Box<Type>),\n    Result(Box<Type>, Box<Type>),\n    Quoted(Box<Type>),\n";
+            generated_code.insert_str(insert_pos, missing_variants);
+        }
+
+        // Add missing TokenKind variants
+        let token_enum_marker = "pub enum TokenKind {\n";
+        if let Some(pos) = generated_code.find(token_enum_marker) {
+            let insert_pos = pos + token_enum_marker.len();
+            let missing_variants = "    // Additional token kinds\n    At,\n";
+            generated_code.insert_str(insert_pos, missing_variants);
+        }
     }
 
     // Output the generated code

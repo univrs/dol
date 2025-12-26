@@ -137,9 +137,16 @@ const RUST_KEYWORDS: &[&str] = &[
     "unsized", "virtual", "yield",
 ];
 
+/// Keywords that cannot be escaped with r# and need to be renamed.
+const RUST_RESERVED_NO_ESCAPE: &[&str] = &["self", "Self", "super", "crate"];
+
 /// Escape a Rust keyword with r# prefix if necessary.
+/// Some keywords like `self` cannot be escaped and are renamed instead.
 pub fn escape_rust_keyword(s: &str) -> String {
-    if RUST_KEYWORDS.contains(&s) {
+    if RUST_RESERVED_NO_ESCAPE.contains(&s) {
+        // These keywords cannot use r# escaping, so we rename them
+        format!("{}_", s)
+    } else if RUST_KEYWORDS.contains(&s) {
         format!("r#{}", s)
     } else {
         s.to_string()

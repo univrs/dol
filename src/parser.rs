@@ -920,21 +920,36 @@ impl<'a> Parser<'a> {
         if self.current.kind == TokenKind::Has {
             self.advance();
             let name = self.expect_identifier_or_keyword()?;
-            // Skip type annotation: Type
+            // Check for typed field: has name: Type
             if self.current.kind == TokenKind::Colon {
                 self.advance();
-                self.parse_type()?;
+                let type_ = self.parse_type()?;
+                // Parse optional default value: = expr
+                let default = if self.current.kind == TokenKind::Equal {
+                    self.advance();
+                    Some(self.parse_expr(0)?)
+                } else {
+                    None
+                };
+                return Ok(Statement::HasField(Box::new(HasField {
+                    name,
+                    type_,
+                    default,
+                    constraint: None,
+                    span: start_span.merge(&self.previous.span),
+                })));
+            } else {
+                // Skip untyped default value: = expr
+                if self.current.kind == TokenKind::Equal {
+                    self.advance();
+                    self.parse_expr(0)?;
+                }
+                return Ok(Statement::Has {
+                    subject: "self".to_string(),
+                    property: name,
+                    span: start_span.merge(&self.previous.span),
+                });
             }
-            // Skip default value: = expr
-            if self.current.kind == TokenKind::Equal {
-                self.advance();
-                self.parse_expr(0)?;
-            }
-            return Ok(Statement::Has {
-                subject: "self".to_string(),
-                property: name,
-                span: start_span.merge(&self.previous.span),
-            });
         }
 
         // Handle DOL 2.0 inline 'constraint' blocks inside declarations
@@ -1058,11 +1073,31 @@ impl<'a> Parser<'a> {
             TokenKind::Has => {
                 self.advance();
                 let property = self.expect_identifier_or_keyword()?;
-                Ok(Statement::Has {
-                    subject,
-                    property,
-                    span: start_span.merge(&self.previous.span),
-                })
+                // Check for typed field: has name: Type
+                if self.current.kind == TokenKind::Colon {
+                    self.advance(); // consume ':'
+                    let type_ = self.parse_type()?;
+                    // Parse optional default value: = expr
+                    let default = if self.current.kind == TokenKind::Equal {
+                        self.advance();
+                        Some(self.parse_expr(0)?)
+                    } else {
+                        None
+                    };
+                    Ok(Statement::HasField(Box::new(HasField {
+                        name: property,
+                        type_,
+                        default,
+                        constraint: None,
+                        span: start_span.merge(&self.previous.span),
+                    })))
+                } else {
+                    Ok(Statement::Has {
+                        subject,
+                        property,
+                        span: start_span.merge(&self.previous.span),
+                    })
+                }
             }
             TokenKind::Is => {
                 self.advance();
@@ -1122,18 +1157,22 @@ impl<'a> Parser<'a> {
             // DOL 2.0: name: Type field syntax (without 'has' keyword)
             TokenKind::Colon => {
                 self.advance(); // consume ':'
-                                // Skip type expression (handles complex types like enum { ... })
-                self.skip_type_expr()?;
-                // Skip default value if present
-                if self.current.kind == TokenKind::Equal {
+                                // Parse the type expression
+                let type_ = self.parse_type()?;
+                // Parse optional default value
+                let default = if self.current.kind == TokenKind::Equal {
                     self.advance();
-                    self.parse_expr(0)?;
-                }
-                Ok(Statement::Has {
-                    subject: "self".to_string(),
-                    property: subject,
+                    Some(self.parse_expr(0)?)
+                } else {
+                    None
+                };
+                Ok(Statement::HasField(Box::new(HasField {
+                    name: subject,
+                    type_,
+                    default,
+                    constraint: None,
                     span: start_span.merge(&self.previous.span),
-                })
+                })))
             }
             // Handle phrases that continue with more identifiers
             TokenKind::Identifier => {
@@ -2905,8 +2944,81 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier => {
                 let name = self.expect_identifier()?;
 
+                // Check for inline enum type: enum { A, B, C } or enum { A { x: Int }, B }
+                if name == "enum" && self.current.kind == TokenKind::LeftBrace {
+                    self.advance(); // consume '{'
+                    let mut variants = Vec::new();
+                    while self.current.kind != TokenKind::RightBrace
+                        && self.current.kind != TokenKind::Eof
+                    {
+                        if self.current.kind == TokenKind::RightBrace {
+                            break;
+                        }
+                        // Parse variant name (allow keywords as variant names)
+                        let variant_name = self.expect_identifier_or_keyword()?;
+                        let mut fields = Vec::new();
+                        let mut tuple_types = Vec::new();
+                        let mut discriminant = None;
+
+                        // Check for tuple variant: Variant(T, U)
+                        if self.current.kind == TokenKind::LeftParen {
+                            self.advance(); // consume '('
+                            while self.current.kind != TokenKind::RightParen
+                                && self.current.kind != TokenKind::Eof
+                            {
+                                tuple_types.push(self.parse_type()?);
+                                if self.current.kind == TokenKind::Comma {
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
+                            }
+                            self.expect(TokenKind::RightParen)?;
+                        }
+                        // Check for struct fields: Variant { field: Type, ... }
+                        else if self.current.kind == TokenKind::LeftBrace {
+                            self.advance(); // consume '{'
+                            while self.current.kind != TokenKind::RightBrace
+                                && self.current.kind != TokenKind::Eof
+                            {
+                                let field_name = self.expect_identifier_or_keyword()?;
+                                self.expect(TokenKind::Colon)?;
+                                let field_type = self.parse_type()?;
+                                fields.push((field_name, field_type));
+                                if self.current.kind == TokenKind::Comma {
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
+                            }
+                            self.expect(TokenKind::RightBrace)?;
+                        }
+
+                        // Check for discriminant value: Variant = 0
+                        if self.current.kind == TokenKind::Equal {
+                            self.advance(); // consume '='
+                                            // Numeric values are tokenized as Identifier
+                            if let Ok(val) = self.current.lexeme.parse::<i64>() {
+                                discriminant = Some(val);
+                            }
+                            self.advance();
+                        }
+
+                        variants.push(EnumVariant {
+                            name: variant_name,
+                            fields,
+                            tuple_types,
+                            discriminant,
+                        });
+                        // Skip comma if present
+                        if self.current.kind == TokenKind::Comma {
+                            self.advance();
+                        }
+                    }
+                    self.expect(TokenKind::RightBrace)?;
+                    TypeExpr::Enum { variants }
                 // Check for generic type
-                if self.current.kind == TokenKind::Lt {
+                } else if self.current.kind == TokenKind::Lt {
                     self.advance();
                     let mut args = Vec::new();
                     // Also check for Compose (>>) which can occur in nested generics
@@ -3407,6 +3519,8 @@ impl<'a> Parser<'a> {
             | TokenKind::Where
             | TokenKind::True
             | TokenKind::False
+            // Evolution/migration keywords that can be field names
+            | TokenKind::From
             // Type keywords
             | TokenKind::Int8
             | TokenKind::Int16

@@ -667,6 +667,7 @@ fn test_codegen_sex_function() {
         }],
         return_type: Some(TypeExpr::Named("Void".to_string())),
         body: vec![],
+        exegesis: String::new(),
         span: Span::default(),
     };
 

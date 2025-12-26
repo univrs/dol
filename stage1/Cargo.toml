@@ -1,0 +1,15 @@
+[package]
+name = "dol-stage1"
+version = "0.4.0"
+edition = "2021"
+description = "DOL compiler stage 1 - generated from DOL v0.4.0 sources"
+
+[[bin]]
+name = "dol-stage1"
+path = "src/bin/main.rs"
+
+[lib]
+name = "dol_stage1"
+path = "src/lib.rs"
+
+[dependencies]

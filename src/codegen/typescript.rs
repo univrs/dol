@@ -516,6 +516,14 @@ impl TypeMapper for TypeScriptCodegen {
                 format!("[{}]", mapped.join(", "))
             }
             TypeExpr::Never => "never".to_string(),
+            TypeExpr::Enum { variants } => {
+                // TypeScript union type of string literals
+                variants
+                    .iter()
+                    .map(|v| format!("\"{}\"", v.name))
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            }
         }
     }
 }

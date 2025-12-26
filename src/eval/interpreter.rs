@@ -506,6 +506,14 @@ impl Interpreter {
                     .collect(),
             ),
             TypeExpr::Never => ("Never".to_string(), "never".to_string(), vec![]),
+            TypeExpr::Enum { variants } => (
+                "Enum".to_string(),
+                "enum".to_string(),
+                variants
+                    .iter()
+                    .map(|v| (v.name.clone(), "variant".to_string()))
+                    .collect(),
+            ),
         };
 
         Ok(Value::TypeInfo { name, kind, fields })

@@ -825,6 +825,25 @@ pub enum TypeExpr {
     Tuple(Vec<TypeExpr>),
     /// Never type (e.g., `!`) - indicates a function never returns
     Never,
+    /// Inline enum type (e.g., `enum { A, B, C }` or `enum { A { x: Int }, B }`)
+    Enum {
+        /// Enum variants with optional fields
+        variants: Vec<EnumVariant>,
+    },
+}
+
+/// An enum variant with optional associated fields.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct EnumVariant {
+    /// Variant name
+    pub name: String,
+    /// Optional fields (for struct-like variants like `Variant { x: Int, y: Int }`)
+    pub fields: Vec<(String, TypeExpr)>,
+    /// Optional tuple types (for tuple variants like `Ok(T)`)
+    pub tuple_types: Vec<TypeExpr>,
+    /// Optional discriminant value (for variants like `None = 0`)
+    pub discriminant: Option<i64>,
 }
 
 /// Type parameter: `<T>`, `<T: Trait>`, `<T: Trait + Other>`.

@@ -524,6 +524,7 @@ fn test_codegen_sex_function() {
             callee: Box::new(Expr::Identifier("println".to_string())),
             args: vec![Expr::Identifier("msg".to_string())],
         })],
+        exegesis: String::new(),
         span: Span::default(),
     };
 
@@ -552,6 +553,7 @@ fn test_codegen_sex_function_with_return() {
             op: BinaryOp::Add,
             right: Box::new(Expr::Literal(Literal::Int(1))),
         }))],
+        exegesis: String::new(),
         span: Span::default(),
     };
 
