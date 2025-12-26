@@ -812,8 +812,9 @@ impl RustCodegen {
     }
 
     /// Generate derive clause.
+    /// Note: We don't include Eq because some types contain f64 which doesn't implement Eq.
     fn derive_clause(&self) -> String {
-        let mut derives = vec!["Debug", "Clone", "PartialEq", "Eq"];
+        let mut derives = vec!["Debug", "Clone", "PartialEq"];
 
         if !self.options.derive_macros.is_empty() {
             derives.extend(self.options.derive_macros.iter().map(|s| s.as_str()));
@@ -1364,12 +1365,12 @@ impl RustCodegen {
                                         variant_arg.trim_end_matches('}').trim_end();
                                     format!("{}, span: {} }}", without_brace, span_arg)
                                 } else if variant_arg.ends_with(')') {
-                                    // Tuple variant - convert to struct with span
-                                    // This is more complex, for now keep as is with a comment
-                                    format!(
-                                        "/* TODO: tuple variant with span */ {}({})",
-                                        callee_str,
-                                        args_str.join(", ")
+                                    // Tuple variant like Expr::Binary(op, left, right)
+                                    // Convert to Expr::Binary(BinaryExpr { op, left, right, span })
+                                    self.convert_tuple_variant_with_span(
+                                        &callee_str,
+                                        variant_arg,
+                                        span_arg,
                                     )
                                 } else {
                                     // Simple variant like Expr::Ident
@@ -1965,6 +1966,207 @@ impl RustCodegen {
         }
     }
 
+    /// Get the wrapper type name for tuple variants.
+    /// Returns Some(wrapper_type_name) if the variant is a tuple variant with a wrapper struct.
+    /// Returns None if the variant is a struct variant or unit variant.
+    fn get_tuple_variant_wrapper(
+        &self,
+        enum_name: &str,
+        variant_name: &str,
+    ) -> Option<&'static str> {
+        match (enum_name, variant_name) {
+            // Stmt tuple variants with wrapper types
+            ("Stmt", "Let") => Some("LetStmt"),
+            ("Stmt", "Var") => Some("VarStmt"),
+            ("Stmt", "Const") => Some("ConstStmt"),
+            ("Stmt", "Assign") => Some("AssignStmt"),
+            ("Stmt", "Expr") => Some("ExprStmt"),
+            ("Stmt", "Return") => Some("ReturnStmt"),
+            ("Stmt", "Break") => Some("BreakStmt"),
+            ("Stmt", "Continue") => Some("ContinueStmt"),
+            ("Stmt", "For") => Some("ForStmt"),
+            ("Stmt", "While") => Some("WhileStmt"),
+            ("Stmt", "Loop") => Some("LoopStmt"),
+            ("Stmt", "Match") => Some("MatchStmt"),
+            // Expr tuple variants with wrapper types
+            ("Expr", "This") => Some("ThisExpr"),
+            ("Expr", "Binary") => Some("BinaryExpr"),
+            ("Expr", "Unary") => Some("UnaryExpr"),
+            ("Expr", "Call") => Some("CallExpr"),
+            ("Expr", "MethodCall") => Some("MethodCallExpr"),
+            ("Expr", "FieldAccess") => Some("FieldExpr"),
+            ("Expr", "Index") => Some("IndexExpr"),
+            ("Expr", "Struct") => Some("StructExpr"),
+            ("Expr", "ArrayLit") => Some("ArrayExpr"),
+            ("Expr", "Lambda") => Some("LambdaExpr"),
+            ("Expr", "If") => Some("IfExpr"),
+            ("Expr", "Match") => Some("MatchExpr"),
+            ("Expr", "Quote") => Some("QuoteExpr"),
+            _ => None,
+        }
+    }
+
+    /// Convert a tuple variant call with span to proper Rust construction.
+    /// E.g., `Expr::Binary(op, left, right)` + `span` -> `Expr::Binary(BinaryExpr { op, left, right, span })`
+    fn convert_tuple_variant_with_span(
+        &self,
+        enum_name: &str,
+        variant_call: &str,
+        span_arg: &str,
+    ) -> String {
+        // Parse variant_call like "Expr::Binary(op, Box::new(left), Box::new(right))"
+        // Extract variant name and arguments
+        if let Some(paren_pos) = variant_call.find('(') {
+            let prefix = &variant_call[..paren_pos]; // "Expr::Binary"
+            let args_part = &variant_call[paren_pos..]; // "(op, Box::new(left), Box::new(right))"
+
+            // Extract variant name from prefix
+            if let Some(variant_name) = prefix.rsplit("::").next() {
+                // Get wrapper type name
+                if let Some(wrapper_type) = self.get_tuple_variant_wrapper(enum_name, variant_name)
+                {
+                    // Get field names for the wrapper type
+                    if let Some(fields) = self.get_wrapper_type_fields(wrapper_type) {
+                        // Extract content between matching parens
+                        let args_inner = self.extract_between_matching_parens(args_part);
+                        let arg_values = self.split_args_respecting_parens(&args_inner);
+
+                        // Build struct literal with fields
+                        let mut field_assignments: Vec<String> = fields
+                            .iter()
+                            .zip(arg_values.iter())
+                            .map(|(field, value)| format!("{}: {}", field, value.trim()))
+                            .collect();
+
+                        // Add span field
+                        field_assignments.push(format!("span: {}", span_arg));
+
+                        return format!(
+                            "{}::{}({} {{ {} }})",
+                            enum_name,
+                            variant_name,
+                            wrapper_type,
+                            field_assignments.join(", ")
+                        );
+                    }
+                }
+            }
+        }
+        // Fallback: return as-is with comment
+        format!("/* tuple variant fallback */ {}", variant_call)
+    }
+
+    /// Extract content between the first matching pair of parentheses
+    fn extract_between_matching_parens(&self, s: &str) -> String {
+        let mut depth = 0;
+        let mut start = None;
+        let mut end = None;
+
+        for (i, c) in s.char_indices() {
+            match c {
+                '(' => {
+                    if depth == 0 {
+                        start = Some(i + 1);
+                    }
+                    depth += 1;
+                }
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        match (start, end) {
+            (Some(start_idx), Some(end_idx)) => s[start_idx..end_idx].to_string(),
+            _ => s.to_string(),
+        }
+    }
+
+    /// Get field names for wrapper types
+    /// Order matches the order used in DOL source constructor calls
+    fn get_wrapper_type_fields(&self, wrapper_type: &str) -> Option<&'static [&'static str]> {
+        match wrapper_type {
+            "BinaryExpr" => Some(&["op", "left", "right"]),
+            "UnaryExpr" => Some(&["op", "operand"]),
+            "CallExpr" => Some(&["callee", "args"]),
+            "MethodCallExpr" => Some(&["receiver", "method", "args"]),
+            "FieldExpr" => Some(&["object", "field"]),
+            "IndexExpr" => Some(&["object", "index"]),
+            "StructExpr" => Some(&["name", "fields"]),
+            "ArrayExpr" => Some(&["elements"]),
+            "LambdaExpr" => Some(&["params", "body", "return_type"]),
+            "IfExpr" => Some(&["cond", "then_block", "else_branch"]),
+            "MatchExpr" => Some(&["scrutinee", "arms"]),
+            "QuoteExpr" => Some(&["inner"]),
+            "ThisExpr" => Some(&[]),
+            "LetStmt" => Some(&["pattern", "ty", "value", "is_mut"]),
+            "VarStmt" => Some(&["name", "ty", "value", "is_mut"]),
+            "ConstStmt" => Some(&["name", "ty", "value"]),
+            "AssignStmt" => Some(&["target", "value"]),
+            "ExprStmt" => Some(&["expr"]),
+            "ReturnStmt" => Some(&["value"]),
+            "BreakStmt" => Some(&["label", "value"]),
+            "ContinueStmt" => Some(&["label"]),
+            "ForStmt" => Some(&["pattern", "iter", "body"]),
+            "WhileStmt" => Some(&["cond", "body"]),
+            "LoopStmt" => Some(&["label", "body"]),
+            "MatchStmt" => Some(&["scrutinee", "arms"]),
+            _ => None,
+        }
+    }
+
+    /// Split comma-separated arguments while respecting nested parentheses and braces
+    fn split_args_respecting_parens(&self, args: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut current = String::new();
+        let mut paren_depth = 0;
+        let mut brace_depth = 0;
+        let mut bracket_depth = 0;
+
+        for c in args.chars() {
+            match c {
+                '(' => {
+                    paren_depth += 1;
+                    current.push(c);
+                }
+                ')' => {
+                    paren_depth -= 1;
+                    current.push(c);
+                }
+                '{' => {
+                    brace_depth += 1;
+                    current.push(c);
+                }
+                '}' => {
+                    brace_depth -= 1;
+                    current.push(c);
+                }
+                '[' => {
+                    bracket_depth += 1;
+                    current.push(c);
+                }
+                ']' => {
+                    bracket_depth -= 1;
+                    current.push(c);
+                }
+                ',' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => {
+                    result.push(current.clone());
+                    current.clear();
+                }
+                _ => current.push(c),
+            }
+        }
+        if !current.is_empty() {
+            result.push(current);
+        }
+        result
+    }
+
     /// Get the field names for struct literal construction (actual DOL variant fields).
     /// Unlike `get_variant_fields` which is for pattern matching, this returns the
     /// actual field names that DOL struct literals use, including optional fields.
@@ -1983,48 +2185,12 @@ impl RustCodegen {
             ("Expr", "CharLit") => Some(&["value"]),
             ("Expr", "BoolLit") => Some(&["value"]),
             ("Expr", "Path") => Some(&["segments"]),
-            ("Expr", "Binary") => Some(&["op", "left", "right"]),
-            ("Expr", "Unary") => Some(&["op", "operand"]),
-            ("Expr", "Call") => Some(&["callee", "args"]),
-            ("Expr", "MethodCall") => Some(&["receiver", "method", "type_args", "args"]),
-            ("Expr", "FieldAccess") => Some(&["object", "field"]),
-            ("Expr", "Index") => Some(&["object", "index"]),
-            ("Expr", "If") => Some(&["cond", "then_block", "else_branch"]),
-            ("Expr", "Match") => Some(&["scrutinee", "arms"]),
-            ("Expr", "Block") => Some(&["block"]),
-            ("Expr", "Lambda") => Some(&["params", "body"]),
-            ("Expr", "Struct") => Some(&["name", "fields"]),
-            ("Expr", "Array") | ("Expr", "List") => Some(&["elements"]),
-            ("Expr", "Tuple") => Some(&["elements"]),
-            ("Expr", "TupleLit") => Some(&["elements"]),
-            ("Expr", "Range") => Some(&["start", "end", "inclusive"]),
-            ("Expr", "Return") => Some(&["value"]),
-            ("Expr", "Break") => Some(&["value"]),
-            ("Expr", "Throw") => Some(&["value"]),
-            ("Expr", "Try") => Some(&["expr"]),
-            ("Expr", "Await") => Some(&["expr"]),
-            ("Expr", "Quote") => Some(&["inner"]),
-            ("Expr", "Eval") => Some(&["inner"]),
-            ("Expr", "QuasiQuote") => Some(&["inner"]),
-            ("Expr", "Unquote") => Some(&["inner"]),
-            ("Expr", "Reflect") => Some(&["ty"]),
-            ("Expr", "IdiomBracket") => Some(&["exprs"]),
-            // Stmt variants - actual fields
-            ("Stmt", "Let") => Some(&["pattern", "ty", "value"]),
-            ("Stmt", "Var") => Some(&["name", "ty", "value"]),
-            ("Stmt", "Const") => Some(&["name", "ty", "value"]),
-            ("Stmt", "Assign") => Some(&["target", "op", "value"]),
-            ("Stmt", "Expr") => Some(&["expr"]),
-            ("Stmt", "Return") => Some(&["value"]),
-            ("Stmt", "If") => Some(&["cond", "then_block", "else_block"]),
-            ("Stmt", "While") => Some(&["cond", "body"]),
-            ("Stmt", "For") => Some(&["pattern", "iter", "body"]),
-            ("Stmt", "Match") => Some(&["scrutinee", "arms"]),
-            ("Stmt", "Block") => Some(&["block"]),
-            ("Stmt", "Loop") => Some(&["label", "body"]),
-            ("Stmt", "Break") => Some(&["label", "value"]),
-            ("Stmt", "Continue") => Some(&["label"]),
-            ("Stmt", "Item") => Some(&["decl"]),
+            // Expr variants - these use wrapper types in DOL parser
+            // Skip struct literal conversion; let them fall through to tuple syntax
+            // which will be handled by tuple-to-struct conversion later
+            // ("Expr", "*") entries removed to allow tuple syntax
+            // Stmt variants - also use wrapper types in DOL parser
+            // ("Stmt", "*") entries removed to allow tuple syntax
             // Decl variants - actual fields
             ("Decl", "Gene") => Some(&["decl"]),
             ("Decl", "Trait") => Some(&["decl"]),
@@ -2062,6 +2228,51 @@ impl RustCodegen {
             ("Type", "Generic") => Some(&["name", "args"]),
             ("Type", "Named") => Some(&["name"]),
             ("Type", "Var") => Some(&["id"]),
+            // Bootstrap types - GeneMember variants
+            ("GeneMember", "Field") => Some(&["decl"]),
+            ("GeneMember", "Method") => Some(&["decl"]),
+            ("GeneMember", "TypeAlias") => Some(&["decl"]),
+            // Bootstrap types - TraitMember variants
+            ("TraitMember", "Required") => Some(&["decl"]),
+            ("TraitMember", "Provided") => Some(&["decl"]),
+            ("TraitMember", "Associated") => Some(&["decl"]),
+            // Bootstrap types - SystemStmt variants
+            ("SystemStmt", "Requires") => Some(&["stmt"]),
+            ("SystemStmt", "Uses") => Some(&["name"]),
+            ("SystemStmt", "Manages") => Some(&["name"]),
+            // Bootstrap types - MigrationKind variants
+            ("MigrationKind", "Added") => Some(&[]),
+            ("MigrationKind", "Removed") => Some(&[]),
+            ("MigrationKind", "Renamed") => Some(&["new_name"]),
+            ("MigrationKind", "Changed") => Some(&["description"]),
+            // Bootstrap types - ArmBody variants
+            ("ArmBody", "Block") => Some(&["block"]),
+            ("ArmBody", "Expr") => Some(&["expr"]),
+            // Bootstrap types - LiteralPattern variants
+            ("LiteralPattern", "Int") => Some(&["value"]),
+            ("LiteralPattern", "Float") => Some(&["value"]),
+            ("LiteralPattern", "String") => Some(&["value"]),
+            ("LiteralPattern", "Bool") => Some(&["value"]),
+            // Bootstrap types - LambdaBody variants
+            ("LambdaBody", "Block") => Some(&["block"]),
+            ("LambdaBody", "Expr") => Some(&["expr"]),
+            // Bootstrap types - ExprType variants (no fields for unit variants)
+            ("ExprType", "Binary") => Some(&[]),
+            ("ExprType", "Unary") => Some(&[]),
+            ("ExprType", "Quote") => Some(&[]),
+            ("ExprType", "Idiom") => Some(&[]),
+            ("ExprType", "Array") => Some(&[]),
+            ("ExprType", "This") => Some(&[]),
+            ("ExprType", "Ident") => Some(&[]),
+            ("ExprType", "Call") => Some(&[]),
+            ("ExprType", "MethodCall") => Some(&[]),
+            ("ExprType", "Field") => Some(&[]),
+            ("ExprType", "Index") => Some(&[]),
+            ("ExprType", "Struct") => Some(&[]),
+            ("ExprType", "Lambda") => Some(&[]),
+            ("ExprType", "If") => Some(&[]),
+            ("ExprType", "Match") => Some(&[]),
+            ("ExprType", "Literal") => Some(&[]),
             _ => None,
         }
     }
@@ -2138,6 +2349,9 @@ impl RustCodegen {
         // Try to infer the enum type from the scrutinee for pattern qualification
         let enum_type_hint = self.infer_enum_type_from_scrutinee(scrutinee);
 
+        // Check if any arm has a string literal pattern - if so, we need .as_str()
+        let has_string_patterns = self.has_string_literal_patterns(arms);
+
         // For flat enum genes, strip the .type/.kind field access from scrutinee
         // e.g., `match ty.type { ... }` becomes `match ty { ... }` for flat enums
         let scrutinee_code = if let Expr::Member { object, field } = scrutinee {
@@ -2184,11 +2398,32 @@ impl RustCodegen {
                 format!("{}{} => {}", pattern, guard, body)
             })
             .collect();
+        // Add .as_str() for String scrutinees when matching against string patterns
+        let final_scrutinee = if has_string_patterns {
+            format!("{}.as_str()", scrutinee_code)
+        } else {
+            scrutinee_code
+        };
+
         format!(
             "match {} {{\n    {}\n}}",
-            scrutinee_code,
+            final_scrutinee,
             arms_code.join(",\n    ")
         )
+    }
+
+    /// Check if any match arm has a string literal pattern
+    fn has_string_literal_patterns(&self, arms: &[crate::ast::MatchArm]) -> bool {
+        arms.iter()
+            .any(|arm| self.is_string_literal_pattern(&arm.pattern))
+    }
+
+    /// Check if a pattern is a string literal
+    fn is_string_literal_pattern(&self, pattern: &crate::ast::Pattern) -> bool {
+        match pattern {
+            crate::ast::Pattern::Literal(Literal::String(_)) => true,
+            _ => false,
+        }
     }
 
     /// Try to infer the enum type from a scrutinee expression.
@@ -2400,8 +2635,15 @@ impl RustCodegen {
                 };
 
                 if fields.is_empty() {
-                    // Check if this is a struct variant that needs { .. } to match
-                    if let Some(field_names) = self.get_variant_fields(&enum_name, &variant_name) {
+                    // Check if this is a tuple variant with a wrapper type
+                    if let Some(wrapper_type) =
+                        self.get_tuple_variant_wrapper(&enum_name, &variant_name)
+                    {
+                        // Tuple variant with no field bindings - use wildcard
+                        format!("{}({} {{ .. }})", rust_name, wrapper_type)
+                    } else if let Some(field_names) =
+                        self.get_variant_fields(&enum_name, &variant_name)
+                    {
                         if field_names.is_empty() {
                             // Unit-like variant in Rust
                             rust_name
@@ -2423,14 +2665,75 @@ impl RustCodegen {
                         }
                     }
                 } else {
-                    // Check if this variant has known struct fields
-                    // With flat enums, variants have named fields instead of tuple positions
-                    if let Some(field_names) = self.get_variant_fields(&enum_name, &variant_name) {
-                        // Generate struct pattern with named fields
+                    // Check if this is a tuple variant with a wrapper type
+                    if let Some(wrapper_type) =
+                        self.get_tuple_variant_wrapper(&enum_name, &variant_name)
+                    {
+                        // Generate tuple variant pattern: Enum::Variant(WrapperType { fields, .. })
+                        if let Some(field_names) =
+                            self.get_variant_fields(&enum_name, &variant_name)
+                        {
+                            let field_bindings: Vec<String> = fields
+                                .iter()
+                                .zip(field_names.iter())
+                                .map(|(p, field_name)| {
+                                    // Handle DOL's "field: _" pattern which parses as Constructor { name: "field", fields: [Wildcard] }
+                                    if let crate::ast::Pattern::Constructor {
+                                        name: pat_name,
+                                        fields: inner_fields,
+                                    } = p
+                                    {
+                                        if inner_fields.len() == 1
+                                            && matches!(
+                                                inner_fields[0],
+                                                crate::ast::Pattern::Wildcard
+                                            )
+                                            && pat_name == *field_name
+                                        {
+                                            // This is "field: _" - just bind the field to wildcard
+                                            return format!("{}: _", field_name);
+                                        }
+                                    }
+                                    let pattern = self.gen_pattern_with_hint(p, None);
+                                    if pattern == "_" {
+                                        format!("{}: _", field_name)
+                                    } else {
+                                        format!("{}: {}", field_name, pattern)
+                                    }
+                                })
+                                .collect();
+                            format!(
+                                "{}({} {{ {}, .. }})",
+                                rust_name,
+                                wrapper_type,
+                                field_bindings.join(", ")
+                            )
+                        } else {
+                            // No known fields, just use wildcard inner pattern
+                            format!("{}({})", rust_name, wrapper_type)
+                        }
+                    } else if let Some(field_names) =
+                        self.get_variant_fields(&enum_name, &variant_name)
+                    {
+                        // Struct variant with known fields
                         let field_bindings: Vec<String> = fields
                             .iter()
                             .zip(field_names.iter())
                             .map(|(p, field_name)| {
+                                // Handle DOL's "field: _" pattern which parses as Constructor { name: "field", fields: [Wildcard] }
+                                if let crate::ast::Pattern::Constructor {
+                                    name: pat_name,
+                                    fields: inner_fields,
+                                } = p
+                                {
+                                    if inner_fields.len() == 1
+                                        && matches!(inner_fields[0], crate::ast::Pattern::Wildcard)
+                                        && pat_name == *field_name
+                                    {
+                                        // This is "field: _" - just bind the field to wildcard
+                                        return format!("{}: _", field_name);
+                                    }
+                                }
                                 let pattern = self.gen_pattern_with_hint(p, None);
                                 // If pattern is just a binding name, use shorthand syntax
                                 // If pattern is a wildcard or complex, use full syntax
@@ -2487,6 +2790,21 @@ impl RustCodegen {
         variant_name: &str,
         enum_type_hint: Option<&str>,
     ) -> bool {
+        // First check if this is a tuple variant - those don't need { .. }
+        let enum_name = if let Some(hint) = enum_type_hint {
+            hint.to_string()
+        } else if qualified.contains("::") {
+            qualified.split("::").next().unwrap_or("").to_string()
+        } else {
+            String::new()
+        };
+        if self
+            .get_tuple_variant_wrapper(&enum_name, variant_name)
+            .is_some()
+        {
+            return false;
+        }
+
         // TypeExpr primitive types (all have span field)
         let typeexpr_primitives = [
             "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float32",
@@ -2498,17 +2816,45 @@ impl RustCodegen {
             return true;
         }
 
-        // Stmt variants that have fields
+        // Stmt remaining struct variants (Labeled, Item, Empty - not the tuple variants)
         if qualified.starts_with("Stmt::") || enum_type_hint == Some("Stmt") {
-            let stmt_struct_variants = ["Break", "Continue", "Loop", "Empty"];
+            let stmt_struct_variants = ["Labeled", "Item", "Empty"];
             if stmt_struct_variants.contains(&variant_name) {
                 return true;
             }
         }
 
-        // Expr variants that have span field
+        // Expr remaining struct variants (literals, paths, etc. - not the tuple variants)
+        // Tuple variants are already handled above, so check for struct-only variants
         if qualified.starts_with("Expr::") || enum_type_hint == Some("Expr") {
-            if variant_name == "This" {
+            // Most literal variants and some other variants are still struct variants
+            let expr_struct_variants = [
+                "IntLit",
+                "UIntLit",
+                "FloatLit",
+                "StringLit",
+                "CharLit",
+                "BoolLit",
+                "NullLit",
+                "Ident",
+                "Path",
+                "Range",
+                "TupleLit",
+                "ArrayRepeat",
+                "BlockLambda",
+                "Block",
+                "Cast",
+                "Ascription",
+                "SizeOf",
+                "Eval",
+                "QuasiQuote",
+                "Unquote",
+                "Reflect",
+                "IdiomBracket",
+                "MacroCall",
+                "Error",
+            ];
+            if expr_struct_variants.contains(&variant_name) {
                 return true;
             }
         }
@@ -2545,11 +2891,11 @@ impl RustCodegen {
 
     /// Try to qualify a known enum variant name based on common patterns.
     fn qualify_known_variant(&self, name: &str) -> String {
-        // Known Type variants
+        // Known Type variants (exclude Var which is also in TokenKind)
         let type_variants = [
             "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float32",
             "Float64", "Bool", "String", "Void", "Char", "Unit", "Never", "Unknown", "Error",
-            "Function", "Tuple", "Generic", "Named", "Var",
+            "Function", "Tuple", "Generic", "Named",
         ];
         if type_variants.contains(&name) {
             return format!("Type::{}", name);
@@ -2610,6 +2956,7 @@ impl RustCodegen {
             "At",
             "Question",
             "Bang",
+            "Quote",
             "Hash",
             "Dollar",
             "Ampersand",
@@ -2668,6 +3015,8 @@ impl RustCodegen {
             "Is",
             "Has",
             "Where",
+            "Law",
+            "Sex",
             "Extern",
             "Impl",
             "Struct",
@@ -3087,9 +3436,18 @@ impl RustCodegen {
 
         for variant in variants {
             let rust_variant = to_pascal_case(&variant.name);
-            let has_fields = !variant.fields.is_empty() || !extra_fields.is_empty();
+            let has_struct_fields = !variant.fields.is_empty() || !extra_fields.is_empty();
+            let has_tuple_types = !variant.tuple_types.is_empty();
 
-            if !has_fields {
+            if has_tuple_types {
+                // Tuple variant like Let(LetStmt) or Binary(BinaryExpr)
+                let types: Vec<String> = variant
+                    .tuple_types
+                    .iter()
+                    .map(Self::map_type_expr)
+                    .collect();
+                output.push_str(&format!("    {rust_variant}({}),\n", types.join(", ")));
+            } else if !has_struct_fields {
                 // Simple variant without fields
                 output.push_str(&format!("    {rust_variant},\n"));
             } else {

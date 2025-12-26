@@ -22,11 +22,18 @@ pub gene TokenKind {
         IntLiteral,
         FloatLiteral,
         StringLiteral,
+        CharLiteral,
         BoolTrue,
         BoolFalse,
+        // Aliases for shorter names used in lexer
+        IntLit,
+        FloatLit,
+        StringLit,
+        CharLit,
 
         // Identifiers
         Ident,
+        Identifier,
 
         // Arithmetic Operators
         Plus, Minus, Star, Slash, Percent, StarStar,

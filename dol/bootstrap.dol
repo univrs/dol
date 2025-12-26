@@ -1,0 +1,418 @@
+module dol.bootstrap @ 0.1.0
+exegesis {
+    Bootstrap types for DOL self-hosting compiler.
+    These types are used in parser/typechecker but not defined as genes.
+}
+
+// Module declaration wrapper
+pub gene ModuleDecl {
+    name: String
+    version: Option<String>
+    span: Span
+}
+
+// Use statement wrapper
+pub gene UseStmt {
+    path: String
+    items: List<String>
+    span: Span
+}
+
+// Gene member enum
+pub gene GeneMember {
+    type: enum {
+        Field { decl: FieldDecl }
+        Method { decl: MethodDecl }
+        TypeAlias { decl: TypeAlias }
+    }
+}
+
+// Field declaration wrapper
+pub gene FieldDecl {
+    name: String
+    ty: TypeExpr
+    default: Option<Expr>
+    is_pub: Bool
+    span: Span
+}
+
+// Trait member enum
+pub gene TraitMember {
+    type: enum {
+        Required { decl: MethodDecl }
+        Provided { decl: MethodDecl }
+        Associated { decl: TypeAlias }
+    }
+}
+
+// Method declaration wrapper
+pub gene MethodDecl {
+    name: String
+    params: List<Param>
+    return_type: Option<TypeExpr>
+    body: Option<Block>
+    is_pub: Bool
+    is_sex: Bool
+    span: Span
+}
+
+// Type alias
+pub gene TypeAlias {
+    name: String
+    ty: TypeExpr
+    span: Span
+}
+
+// Associated type
+pub gene AssociatedType {
+    name: String
+    bounds: List<TypeExpr>
+    span: Span
+}
+
+// Variable declaration statement wrapper
+pub gene VarDecl {
+    name: String
+    ty: Option<TypeExpr>
+    value: Option<Expr>
+    is_pub: Bool
+    is_sex: Bool
+    span: Span
+}
+
+// Extern declaration wrapper
+pub gene ExternDecl {
+    name: String
+    ty: TypeExpr
+    is_pub: Bool
+    span: Span
+}
+
+// Version constraint
+pub gene VersionConstraint {
+    op: String
+    version: String
+}
+
+// Requires statement
+pub gene RequiresStmt {
+    module_name: String
+    version: Option<VersionConstraint>
+    span: Span
+}
+
+// System statement enum
+pub gene SystemStmt {
+    type: enum {
+        Requires { stmt: RequiresStmt }
+        Uses { name: String }
+        Manages { name: String }
+    }
+}
+
+// Migration kind enum
+pub gene MigrationKind {
+    type: enum {
+        Added
+        Removed
+        Renamed { new_name: String }
+        Changed { description: String }
+    }
+}
+
+// Migration statement
+pub gene MigrationStmt {
+    field_name: String
+    kind: MigrationKind
+    span: Span
+}
+
+// Exegesis block
+pub gene ExegesisBlock {
+    content: String
+    span: Span
+}
+
+// Where clause
+pub gene WhereClause {
+    predicates: List<WherePredicate>
+    span: Span
+}
+
+// Statement wrappers for parser results
+pub gene LetStmt {
+    pattern: String
+    ty: Option<TypeExpr>
+    value: Expr
+    is_mut: Bool
+    span: Span
+}
+
+pub gene VarStmt {
+    name: String
+    ty: Option<TypeExpr>
+    value: Option<Expr>
+    is_mut: Bool
+    span: Span
+}
+
+pub gene ConstStmt {
+    name: String
+    ty: Option<TypeExpr>
+    value: Expr
+    span: Span
+}
+
+pub gene ReturnStmt {
+    value: Option<Expr>
+    span: Span
+}
+
+pub gene IfStmt {
+    condition: Expr
+    then_block: Block
+    else_branch: Option<ElseBranch>
+    span: Span
+}
+
+pub gene MatchStmt {
+    scrutinee: Expr
+    arms: List<MatchArm>
+    span: Span
+}
+
+pub gene ArmBody {
+    type: enum {
+        Block { block: Box<Block> }
+        Expr { expr: Expr }
+    }
+}
+
+pub gene LiteralPattern {
+    type: enum {
+        Int { value: Int64 }
+        Float { value: Float64 }
+        String { value: String }
+        Bool { value: Bool }
+    }
+}
+
+pub gene ForStmt {
+    pattern: String
+    iter: Expr
+    body: Block
+    span: Span
+}
+
+pub gene WhileStmt {
+    cond: Expr
+    body: Block
+    span: Span
+}
+
+pub gene LoopStmt {
+    label: Option<String>
+    body: Block
+    span: Span
+}
+
+pub gene BreakStmt {
+    label: Option<String>
+    value: Option<Expr>
+    span: Span
+}
+
+pub gene ContinueStmt {
+    label: Option<String>
+    span: Span
+}
+
+pub gene SexBlock {
+    body: Block
+    span: Span
+}
+
+// Additional statement types
+pub gene AssignStmt {
+    target: Expr
+    value: Expr
+    span: Span
+}
+
+pub gene ExprStmt {
+    expr: Expr
+    span: Span
+}
+
+// Expression wrappers for parser results
+pub gene BinaryExpr {
+    left: Box<Expr>
+    op: BinOp
+    right: Box<Expr>
+    span: Span
+}
+
+pub gene UnaryExpr {
+    op: UnaryOp
+    operand: Box<Expr>
+    span: Span
+}
+
+pub gene QuoteExpr {
+    inner: Box<Expr>
+    span: Span
+}
+
+pub gene IdiomExpr {
+    operand: Box<Expr>
+    idiom: String
+    span: Span
+}
+
+pub gene ArrayExpr {
+    elements: List<Expr>
+    span: Span
+}
+
+pub gene ThisExpr {
+    span: Span
+}
+
+pub gene IdentExpr {
+    name: String
+    span: Span
+}
+
+pub gene CallExpr {
+    callee: Box<Expr>
+    args: List<CallArg>
+    span: Span
+}
+
+pub gene MethodCallExpr {
+    receiver: Box<Expr>
+    method: String
+    args: List<CallArg>
+    span: Span
+}
+
+pub gene FieldExpr {
+    object: Box<Expr>
+    field: String
+    span: Span
+}
+
+pub gene IndexExpr {
+    object: Box<Expr>
+    index: Box<Expr>
+    span: Span
+}
+
+pub gene StructExpr {
+    name: String
+    fields: List<StructField>
+    span: Span
+}
+
+pub gene Arg {
+    name: Option<String>
+    value: Expr
+    span: Span
+}
+
+pub gene StructField {
+    name: String
+    value: Expr
+    span: Span
+}
+
+pub gene LambdaBody {
+    type: enum {
+        Block { block: Box<Block> }
+        Expr { expr: Box<Expr> }
+    }
+}
+
+pub gene LambdaExpr {
+    params: List<LambdaParam>
+    body: Box<LambdaBody>
+    return_type: Option<TypeExpr>
+    span: Span
+}
+
+pub gene IfExpr {
+    cond: Box<Expr>
+    then_block: Box<Expr>
+    else_branch: Option<Box<Expr>>
+    span: Span
+}
+
+pub gene MatchExpr {
+    scrutinee: Box<Expr>
+    arms: List<MatchArm>
+    span: Span
+}
+
+// Expression type discriminator
+pub gene ExprType {
+    type: enum {
+        Binary
+        Unary
+        Quote
+        Idiom
+        Array
+        This
+        Ident
+        Call
+        MethodCall
+        Field
+        Index
+        Struct
+        Lambda
+        If
+        Match
+        Literal
+    }
+}
+
+// Wrapper-based Stmt enum for parser compatibility
+// This shadows the ast.dol Stmt to allow Stmt::Let(LetStmt::new(...)) pattern
+pub gene StmtWrapper {
+    type: enum {
+        Let { stmt: LetStmt }
+        Var { stmt: VarStmt }
+        Assign { stmt: AssignStmt }
+        Expr { stmt: ExprStmt }
+        Return { stmt: ReturnStmt }
+        If { stmt: IfStmt }
+        While { stmt: WhileStmt }
+        For { stmt: ForStmt }
+        Loop { stmt: LoopStmt }
+        Break { stmt: BreakStmt }
+        Continue { stmt: ContinueStmt }
+        Match { stmt: MatchStmt }
+        Block { block: Box<Block> }
+        Sex { stmt: SexBlock }
+    }
+}
+
+// Wrapper-based Expr enum for parser compatibility
+pub gene ExprWrapper {
+    type: enum {
+        Binary { expr: BinaryExpr }
+        Unary { expr: UnaryExpr }
+        Quote { expr: QuoteExpr }
+        Idiom { expr: IdiomExpr }
+        Array { expr: ArrayExpr }
+        This { expr: ThisExpr }
+        Ident { expr: IdentExpr }
+        Call { expr: CallExpr }
+        MethodCall { expr: MethodCallExpr }
+        Field { expr: FieldExpr }
+        Index { expr: IndexExpr }
+        Struct { expr: StructExpr }
+        Lambda { expr: LambdaExpr }
+        If { expr: IfExpr }
+        Match { expr: MatchExpr }
+    }
+}

@@ -450,33 +450,33 @@ pub gene Expr {
         Path { segments: List<String> },
 
         /// This reference (within method context)
-        This,
+        This(ThisExpr),
 
         // ═══════════════════════════════════════════════════════════════
         // Operators
         // ═══════════════════════════════════════════════════════════════
 
         /// Binary operation: `a + b`, `x && y`
-        Binary { op: BinOp, left: Box<Expr>, right: Box<Expr> },
+        Binary(BinaryExpr),
 
         /// Unary operation: `-x`, `!y`, `*p`
-        Unary { op: UnaryOp, operand: Box<Expr> },
+        Unary(UnaryExpr),
 
         // ═══════════════════════════════════════════════════════════════
         // Function Calls & Access
         // ═══════════════════════════════════════════════════════════════
 
         /// Function call: `foo(a, b)`
-        Call { callee: Box<Expr>, args: List<CallArg> },
+        Call(CallExpr),
 
         /// Method call: `x.foo(a, b)`
-        MethodCall { receiver: Box<Expr>, method: String, type_args: List<TypeExpr>, args: List<CallArg> },
+        MethodCall(MethodCallExpr),
 
         /// Field access: `x.foo`
-        FieldAccess { object: Box<Expr>, field: String },
+        FieldAccess(FieldExpr),
 
         /// Index access: `a[i]`
-        Index { object: Box<Expr>, index: Box<Expr> },
+        Index(IndexExpr),
 
         /// Range expression: `a..b`, `a..=b`, `..b`, `a..`
         Range { start: Option<Box<Expr>>, end: Option<Box<Expr>>, inclusive: Bool },
@@ -486,13 +486,13 @@ pub gene Expr {
         // ═══════════════════════════════════════════════════════════════
 
         /// Struct/gene construction: `Foo { x: 1, y: 2 }`
-        Struct { name: String, fields: List<FieldInit> },
+        Struct(StructExpr),
 
         /// Tuple construction: `(a, b, c)`
         TupleLit { elements: List<Expr> },
 
         /// Array literal: `[1, 2, 3]`
-        ArrayLit { elements: List<Expr> },
+        ArrayLit(ArrayExpr),
 
         /// Array repeat: `[0; 100]`
         ArrayRepeat { element: Box<Expr>, count: Box<Expr> },
@@ -502,23 +502,23 @@ pub gene Expr {
         // ═══════════════════════════════════════════════════════════════
 
         /// Lambda/closure: `|x, y| x + y`
-        Lambda { params: List<LambdaParam>, body: Box<Expr>, is_sex: Bool },
+        Lambda(LambdaExpr),
 
         /// Block lambda: `|x| { let y = x * 2; y + 1 }`
-        BlockLambda { params: List<LambdaParam>, body: Block, is_sex: Bool },
+        BlockLambda { params: List<LambdaParam>, body: Box<Block>, is_sex: Bool },
 
         // ═══════════════════════════════════════════════════════════════
         // Control Flow Expressions
         // ═══════════════════════════════════════════════════════════════
 
         /// If expression: `if cond { a } else { b }`
-        If { cond: Box<Expr>, then_block: Block, else_branch: Option<Box<ElseBranch>> },
+        If(IfExpr),
 
         /// Match expression: `match x { A => 1, B => 2 }`
-        Match { scrutinee: Box<Expr>, arms: List<MatchArm> },
+        Match(MatchExpr),
 
         /// Block expression: `{ stmt1; stmt2; expr }`
-        Block { block: Block },
+        Block { block: Box<Block> },
 
         // ═══════════════════════════════════════════════════════════════
         // Type Operations
@@ -538,7 +538,7 @@ pub gene Expr {
         // ═══════════════════════════════════════════════════════════════
 
         /// Quote (AST capture): `'expr`
-        Quote { inner: Box<Expr> },
+        Quote(QuoteExpr),
 
         /// Eval (AST execution): `!expr`
         Eval { inner: Box<Expr> },
@@ -787,47 +787,50 @@ exegesis {
     Unlike expressions, statements do not produce values.
 }
 
-/// Statement enumeration
+/// Statement enumeration - uses wrapper types for parser compatibility
 pub gene Stmt {
     type: enum {
         /// Let binding: `let x = expr`, `let x: T = expr`
-        Let { pattern: Pattern, ty: Option<TypeExpr>, value: Option<Expr> },
+        Let(LetStmt),
 
         /// Variable declaration: `var x = expr`
-        Var { name: String, ty: Option<TypeExpr>, value: Option<Expr> },
+        Var(VarStmt),
 
         /// Const declaration: `const X = expr`
-        Const { name: String, ty: Option<TypeExpr>, value: Expr },
+        Const(ConstStmt),
 
         /// Assignment: `x = expr`, `a[i] = expr`
-        Assign { target: Expr, op: Option<BinOp>, value: Expr },
+        Assign(AssignStmt),
 
         /// Expression statement: `expr;`
-        Expr { expr: Expr },
+        Expr(ExprStmt),
 
         /// Return statement: `return expr`, `return`
-        Return { value: Option<Expr> },
+        Return(ReturnStmt),
 
         /// Break statement: `break`, `break value`
-        Break { label: Option<String>, value: Option<Expr> },
+        Break(BreakStmt),
 
         /// Continue statement: `continue`, `continue 'label`
-        Continue { label: Option<String> },
+        Continue(ContinueStmt),
 
         /// For loop: `for x in iter { body }`
-        For { pattern: Pattern, iter: Expr, body: Block },
+        For(ForStmt),
 
         /// While loop: `while cond { body }`
-        While { cond: Expr, body: Block },
+        While(WhileStmt),
 
         /// Infinite loop: `loop { body }`
-        Loop { label: Option<String>, body: Block },
+        Loop(LoopStmt),
 
         /// Labeled block: `'label: { ... }`
         Labeled { label: String, block: Block },
 
         /// Item statement (local declaration)
         Item { decl: Box<Decl> },
+
+        /// Match statement
+        Match(MatchStmt),
 
         /// Empty statement: `;`
         Empty
@@ -960,7 +963,8 @@ pub fun binary(op: BinOp, left: Expr, right: Expr, span: Span) -> Expr {
 
 /// Create a function call expression
 pub fun call(callee: Expr, args: List<Expr>, span: Span) -> Expr {
-    let call_args = args.map(|arg| CallArg { name: None, value: arg, span: arg.span })
+    // Use the function's span for all args since Expr doesn't have a direct span accessor
+    let call_args = args.map(|arg| CallArg { name: None, value: arg, span: span.clone() })
     return Expr {
         type: Expr.Call {
             callee: Box.new(callee),
@@ -1014,7 +1018,7 @@ pub fun type_name(ty: TypeExpr) -> Option<String> {
     match ty.type {
         Named { path } {
             if path.length() > 0 {
-                return Some(path[path.length() - 1])
+                return Some(path[path.length() - 1].clone())
             }
             return None
         }
