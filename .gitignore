@@ -37,10 +37,13 @@ target/
 Cargo.lock
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 # Bootstrap generated directories
 stage2/
 stage3/
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 .idea/
