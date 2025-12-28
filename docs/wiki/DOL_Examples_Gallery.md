@@ -2,565 +2,552 @@
 
 > **Real-World Examples of Ontology-First Development**
 
-This gallery showcases comprehensive DOL examples from simple types to complex simulations.
+All examples in this gallery are verified from the DOL compiler test suite.
 
 ---
 
 ## Quick Examples
 
-### Simple Type Definition
+### Hello World Gene
+**Source**: `examples/genes/hello.world.dol`
 
 ```dol
-mod examples.point @ 0.1.0
-
-/// A 2D point
-pub type Point2D {
-    x: Float64
-    y: Float64
-}
-
-/// Calculate distance between points
-fun distance(val a: Point2D, val b: Point2D) -> Float64 {
-    val dx = b.x - a.x
-    val dy = b.y - a.y
-    (dx * dx + dy * dy).sqrt()
-}
-```
-
-### Container Definition
-
-```dol
-mod container.runtime @ 0.3.0
-
-/// Container status enum
-pub type ContainerStatus {
-    kind: enum {
-        Created,
-        Running,
-        Paused,
-        Stopped,
-        Failed { reason: String }
-    }
-}
-
-/// A runtime container instance
-pub type Container {
-    id: UInt64
-    name: String
-    image: String
-    status: ContainerStatus
-    created_at: Timestamp
-    labels: Map<String, String>
-}
-
-/// Container lifecycle trait
-trait ContainerLifecycle {
-    start: fun() -> Result<Void, Error>
-    stop: fun() -> Result<Void, Error>
-    pause: fun() -> Result<Void, Error>
-    resume: fun() -> Result<Void, Error>
-}
-```
-
----
-
-## Domain Examples
-
-### E-Commerce: User and Orders
-
-```dol
-mod ecommerce.orders @ 0.1.0
-
-pub type UserId = UInt64
-
-pub type User {
-    id: UserId
-    email: String
-    name: String
-    created_at: Timestamp
-}
-
-pub type OrderStatus {
-    kind: enum {
-        Pending,
-        Confirmed,
-        Shipped { tracking: String },
-        Delivered,
-        Cancelled { reason: String }
-    }
-}
-
-pub type OrderItem {
-    product_id: UInt64
-    quantity: UInt32
-    unit_price: Decimal
-}
-
-pub type Order {
-    id: UInt64
-    user_id: UserId
-    items: List<OrderItem>
-    status: OrderStatus
-    total: Decimal
-    created_at: Timestamp
-}
-
-/// Calculate order total
-fun calculate_total(val items: List<OrderItem>) -> Decimal {
-    items.fold(Decimal.zero(), |acc, item| {
-        acc + (item.unit_price * item.quantity)
-    })
-}
-
-/// Order validation constraint
-constraint ValidOrder {
-    forall order in orders {
-        order.items.length > 0
-        order.total == calculate_total(order.items)
-    }
-}
-```
-
-### Cryptographic Identity
-
-```dol
-mod identity.cryptographic @ 0.1.0
-
-/// Cryptographic key types
-pub type KeyType {
-    kind: enum {
-        Ed25519,
-        Secp256k1,
-        RSA { bits: UInt16 }
-    }
-}
-
-/// A public key
-pub type PublicKey {
-    key_type: KeyType
-    bytes: Bytes
-}
-
-/// A cryptographic identity
-pub type Identity {
-    id: UInt64
-    public_key: PublicKey
-    created_at: Timestamp
-    revoked: Bool
-}
-
-/// Signature verification trait
-trait Verifiable {
-    /// Verify a signature
-    verify: fun(message: Bytes, signature: Bytes) -> Bool
-
-    /// Get the public key
-    public_key: fun() -> PublicKey
-}
-
-/// Identity constraints
-constraint IdentityValid {
-    forall identity in identities {
-        not identity.public_key.bytes.is_empty
-        identity.created_at <= Timestamp.now()
-    }
-}
-```
-
----
-
-## Advanced Example: Mycelium Network Simulation
-
-This is a comprehensive example modeling fungal network behavior. Located in `examples/stdlib/biology/mycelium.dol`:
-
-```dol
-mod biology.mycelium @ 0.1.0
-
-// ============================================================================
-// CORE TYPES
-// ============================================================================
-
-/// 3D position in the simulation space
-pub type Vec3 {
-    x: Float64
-    y: Float64
-    z: Float64
-}
-
-/// A node in the mycelium network
-pub type MyceliumNode {
-    id: UInt64
-    position: Vec3
-    connections: List<NodeConnection>
-    nutrients: Float64
-    age: Duration
-    health: Float64
-}
-
-/// Connection between mycelium nodes
-pub type NodeConnection {
-    target_id: UInt64
-    strength: Float64
-    flow_rate: Float64
-    bidirectional: Bool
-}
-
-/// The complete mycelium network
-pub type MyceliumNetwork {
-    nodes: Map<UInt64, MyceliumNode>
-    total_nutrients: Float64
-    age: Duration
-    growth_rate: Float64
-}
-
-// ============================================================================
-// BEHAVIORS
-// ============================================================================
-
-/// Network growth behavior
-trait NetworkGrowth {
-    /// Attempt to grow a new node
-    grow_node: fun(
-        val parent: UInt64,
-        val direction: Vec3
-    ) -> Option<UInt64>
-
-    /// Extend existing connection
-    extend_connection: fun(
-        val from: UInt64,
-        val to: UInt64,
-        val strength: Float64
-    ) -> Bool
-
-    /// Prune weak connections
-    prune: fun(val threshold: Float64) -> UInt32
-}
-
-/// Nutrient distribution behavior
-trait NutrientFlow {
-    /// Distribute nutrients from source
-    distribute: fun(
-        val source: UInt64,
-        val amount: Float64
-    ) -> Map<UInt64, Float64>
-
-    /// Calculate flow between nodes
-    calculate_flow: fun(
-        val from: UInt64,
-        val to: UInt64
-    ) -> Float64
-
-    /// Find nutrient-rich path
-    find_nutrient_path: fun(
-        val from: UInt64,
-        val to: UInt64
-    ) -> Option<List<UInt64>>
-}
-
-/// Network intelligence
-trait NetworkIntelligence {
-    /// Find shortest path
-    shortest_path: fun(
-        val from: UInt64,
-        val to: UInt64
-    ) -> Option<List<UInt64>>
-
-    /// Detect network partitions
-    find_partitions: fun() -> List<List<UInt64>>
-
-    /// Calculate network centrality
-    centrality: fun(val node: UInt64) -> Float64
-}
-
-// ============================================================================
-// CONSTRAINTS
-// ============================================================================
-
-/// Physical constraints on the network
-constraint PhysicalLimits {
-    forall node in network.nodes {
-        // Nutrients cannot be negative
-        node.nutrients >= 0.0
-
-        // Health must be in valid range
-        node.health >= 0.0
-        node.health <= 1.0
-
-        // Connection strength bounded
-        forall conn in node.connections {
-            conn.strength >= 0.0
-            conn.strength <= 1.0
-        }
-    }
-}
-
-/// Network topology constraints
-constraint TopologyRules {
-    forall node in network.nodes {
-        // Each node must have at least one connection
-        // (except during initial growth)
-        node.age > Duration.seconds(10) implies
-            node.connections.length > 0
-
-        // Maximum connection limit (biological constraint)
-        node.connections.length <= 8
-    }
-}
-
-/// Conservation of nutrients
-constraint NutrientConservation {
-    // Total nutrients in system is conserved
-    // (minus decay and consumption)
-    val total_before = network.total_nutrients
-    val total_after = sum(network.nodes, |n| n.nutrients)
-    val decay = calculate_decay(network)
-
-    abs(total_before - total_after - decay) < 0.001
-}
-
-// ============================================================================
-// SIMULATION
-// ============================================================================
-
-/// Simulation state
-pub type SimulationState {
-    network: MyceliumNetwork
-    time: Duration
-    step: UInt64
-    rng: RandomState
-}
-
-/// Simulation configuration
-pub type SimConfig {
-    growth_probability: Float64
-    prune_threshold: Float64
-    nutrient_decay_rate: Float64
-    time_step: Duration
-    max_nodes: UInt32
-}
-
-/// Run one simulation step
-fun simulate_step(
-    var state: SimulationState,
-    val config: SimConfig
-) -> SimulationState {
-    // 1. Age all nodes
-    forall node in state.network.nodes {
-        node.age = node.age + config.time_step
-    }
-
-    // 2. Distribute nutrients
-    distribute_nutrients(state.network, config.nutrient_decay_rate)
-
-    // 3. Attempt growth
-    if state.rng.next_float() < config.growth_probability {
-        attempt_growth(state.network, config.max_nodes)
-    }
-
-    // 4. Prune weak connections
-    prune_connections(state.network, config.prune_threshold)
-
-    // 5. Update simulation state
-    state.time = state.time + config.time_step
-    state.step = state.step + 1
-
-    state
-}
-
-/// Run simulation for specified duration
-fun simulate(
-    val initial: MyceliumNetwork,
-    val config: SimConfig,
-    val duration: Duration
-) -> List<SimulationState> {
-    var state = SimulationState {
-        network: initial,
-        time: Duration.zero(),
-        step: 0,
-        rng: RandomState.new()
-    }
-
-    var history = []
-
-    while state.time < duration {
-        history.push(state.clone())
-        state = simulate_step(state, config)
-    }
-
-    history
-}
-
-// ============================================================================
-// ANALYSIS
-// ============================================================================
-
-/// Network statistics
-pub type NetworkStats {
-    node_count: UInt32
-    edge_count: UInt32
-    average_degree: Float64
-    clustering_coefficient: Float64
-    diameter: UInt32
-    total_nutrients: Float64
-}
-
-/// Calculate network statistics
-fun analyze(val network: MyceliumNetwork) -> NetworkStats {
-    val nodes = network.nodes.values()
-    val edges = nodes.flat_map(|n| n.connections)
-
-    NetworkStats {
-        node_count: nodes.length,
-        edge_count: edges.length / 2,  // undirected
-        average_degree: edges.length / nodes.length,
-        clustering_coefficient: calculate_clustering(network),
-        diameter: calculate_diameter(network),
-        total_nutrients: nodes.fold(0.0, |acc, n| acc + n.nutrients)
-    }
-}
-```
-
----
-
-## Type Evolution Example
-
-```dol
-mod versioning.example @ 0.2.0
-
-/// Version 1 of User type
-pub type UserV1 {
-    id: UInt64
-    name: String
-    email: String
-}
-
-/// Version 2 with additional fields
-pub type UserV2 {
-    id: UInt64
-    name: String
-    email: String
-    avatar_url: Option<String>
-    created_at: Timestamp
-    settings: UserSettings
-}
-
-/// Evolution declaration
-evolves UserV1 > UserV2 @ 2.0.0 {
-    + avatar_url: Option<String> = None
-    + created_at: Timestamp = Timestamp.now()
-    + settings: UserSettings = UserSettings.default()
-    // "Adding user customization features"
-}
-
-/// Automatic migration function
-fun migrate_user(val v1: UserV1) -> UserV2 {
-    UserV2 {
-        id: v1.id,
-        name: v1.name,
-        email: v1.email,
-        avatar_url: None,
-        created_at: Timestamp.now(),
-        settings: UserSettings.default()
-    }
-}
-```
-
----
-
-## Trait Hierarchies
-
-```dol
-mod stdlib.collections @ 0.1.0
-
-/// Base collection trait
-trait Collection<T> {
-    length: fun() -> UInt64
-    is_empty: fun() -> Bool = { self.length() == 0 }
-}
-
-/// Iterable collections
-trait Iterable<T> extends Collection<T> {
-    iter: fun() -> Iterator<T>
-
-    forall: fun(f: fun(T) -> Void) -> Void = {
-        var it = self.iter()
-        while let Some(item) = it.next() {
-            f(item)
-        }
-    }
-}
-
-/// Indexed access
-trait Indexed<T> extends Collection<T> {
-    get: fun(index: UInt64) -> Option<T>
-    get_unchecked: fun(index: UInt64) -> T
-
-    first: fun() -> Option<T> = { self.get(0) }
-    last: fun() -> Option<T> = {
-        if self.is_empty() { None }
-        else { self.get(self.length() - 1) }
-    }
-}
-
-/// Mutable collections
-trait MutableCollection<T> extends Collection<T> {
-    push: fun(item: T) -> Void
-    pop: fun() -> Option<T>
-    clear: fun() -> Void
-}
-
-/// Searchable collections
-trait Searchable<T> extends Iterable<T> {
-    find: fun(predicate: fun(T) -> Bool) -> Option<T>
-    contains: fun(item: T) -> Bool
-    position: fun(item: T) -> Option<UInt64>
-}
-```
-
----
-
-## System Definition
-
-```dol
-mod infrastructure.microservices @ 0.1.0
-
-/// Define a microservices system
-system OrderProcessing {
-    components {
-        api_gateway: ApiGateway
-        order_service: OrderService
-        inventory_service: InventoryService
-        payment_service: PaymentService
-        notification_service: NotificationService
-    }
-
-    connections {
-        api_gateway -> order_service: HTTP
-        order_service -> inventory_service: gRPC
-        order_service -> payment_service: gRPC
-        order_service -> notification_service: AMQP
-    }
-
-    constraints {
-        // All services must be healthy
-        forall service in components {
-            service.health_check() == Healthy
-        }
-
-        // Payment must respond within 5 seconds
-        payment_service.latency_p99 < Duration.seconds(5)
-
-        // Inventory updates must be consistent
-        inventory_service.consistency == Strong
-    }
+gene hello.world {
+  message has content
+  message has sender
+  message has timestamp
 }
 
 exegesis {
-    Order processing system with event-driven architecture.
-    The API gateway routes requests to the order service,
-    which coordinates with inventory, payment, and notifications.
+  The hello.world gene is the simplest possible DOL example. It defines
+  a message entity with three essential properties: content (what the
+  message says), sender (who sent it), and timestamp (when it was sent).
 }
 ```
+
+### Counter State Gene
+**Source**: `examples/genes/counter.dol`
+
+```dol
+gene counter.state {
+  counter has value
+  counter has minimum
+  counter has maximum
+  counter derives from initialization
+}
+
+exegesis {
+  The counter.state gene models a bounded counter. A counter has a current
+  value, and bounds (minimum and maximum). The counter derives from an
+  initialization value when created.
+}
+```
+
+---
+
+## Functions
+
+### Simple Function
+**Source**: `tests/codegen/golden/input/function.dol`
+
+```dol
+fun add(a: Int64, b: Int64) -> Int64 {
+    return a + b
+}
+```
+
+### Gene with Methods
+**Source**: `tests/corpus/traits/trait_relationships.dol`
+
+```dol
+module tests.trait_relationships @ 1.0.0
+
+pub gene SimpleValue {
+    has value: String
+    has count: Int64 = 0
+
+    fun get_value() -> String {
+        return this.value
+    }
+}
+
+pub gene StringWrapper {
+    has value: String
+
+    fun to_string() -> String {
+        return this.value
+    }
+}
+```
+
+### Pipe Operators
+**Source**: `tests/codegen/golden/input/pipe_operators.dol`
+
+```dol
+fun process(x: Int64) -> Int64 {
+    return x |> double |> increment
+}
+```
+
+---
+
+## Generic Types
+**Source**: `tests/corpus/genes/nested_generics.dol`
+
+```dol
+module tests.nested_generics @ 1.0.0
+
+// Simple generic
+pub gene Container<T> {
+    has item: T
+}
+
+// Nested generic
+pub gene Nested<T> {
+    has items: List<T>
+    has mapping: Map<String, T>
+    has optional: Option<T>
+    has result: Result<T, String>
+}
+
+// Deeply nested
+pub gene DeepNest<T> {
+    has deep: Map<String, List<Option<T>>>
+    has matrix: List<List<T>>
+    has complex: Result<Map<String, List<T>>, String>
+}
+
+// Multiple type params
+pub gene Multi<K, V> {
+    has key: K
+    has value: V
+    has pairs: List<Tuple<K, V>>
+}
+
+// Bounded generics
+pub gene Bounded<T: Comparable> {
+    has items: List<T>
+
+    fun max() -> Option<T> {
+        if this.items.is_empty() {
+            return None
+        }
+        return Some(this.items.reduce(|a, b| if a > b { a } else { b }))
+    }
+}
+
+// Generic with default
+pub gene WithDefault<T = Int64> {
+    has value: T
+}
+
+exegesis {
+    Tests for nested and complex generic type parameters.
+}
+```
+
+---
+
+## Control Flow
+
+### If Expressions
+**Source**: `tests/dol2_tests.rs`
+
+```dol
+if x { result }
+```
+
+```dol
+if condition { positive } else { negative }
+```
+
+```dol
+if x { a } else if y { b } else if z { c } else { d }
+```
+
+### For Loops
+**Source**: `tests/parser_tests.rs`
+
+```dol
+for outer in outers {
+    for inner in inners {
+        break;
+    }
+}
+```
+
+### For Loop with Range
+**Source**: `tests/corpus/sex/nested_sex.dol`
+
+```dol
+for i in 0..n {
+    sex {
+        COUNTER += 1
+        LOG.push("iteration " + i.to_string())
+    }
+}
+```
+
+### Pattern Matching
+**Source**: `tests/dol2_tests.rs`
+
+```dol
+match value {
+    Some(x) => x,
+    None => default,
+    _ => fallback
+}
+```
+
+```dol
+match x {
+    value if condition => positive,
+    _ => zero
+}
+```
+
+```dol
+match pair {
+    (Some(x), Some(y)) => result,
+    _ => default
+}
+```
+
+---
+
+## Traits
+
+### Metal DOL Trait
+**Source**: `examples/traits/greetable.dol`
+
+```dol
+trait entity.greetable {
+  uses entity.identity
+  greetable can greet
+  greetable can receive.greeting
+  greeting is polite
+}
+
+exegesis {
+  The entity.greetable trait defines behavior for entities that can
+  participate in greetings.
+}
+```
+
+### DOL 2.0 Trait with Laws
+**Source**: `tests/corpus/genes/complex_constraints.dol`
+
+```dol
+pub trait Ordered {
+    is compare(other: Self) -> Int64
+
+    law reflexive {
+        forall x: Self. x.compare(x) == 0
+    }
+
+    law antisymmetric {
+        forall x: Self. forall y: Self.
+            x.compare(y) <= 0 && y.compare(x) <= 0 implies
+                x.compare(y) == 0
+    }
+
+    law transitive {
+        forall x: Self. forall y: Self. forall z: Self.
+            x.compare(y) <= 0 && y.compare(z) <= 0 implies
+                x.compare(z) <= 0
+    }
+}
+```
+
+---
+
+## Constraints
+
+### Metal DOL Constraint
+**Source**: `examples/constraints/counter_bounds.dol`
+
+```dol
+constraint counter.bounds_valid {
+  value never overflows
+  value never underflows
+  bounds never inverted
+}
+
+exegesis {
+  The counter.bounds_valid constraint ensures the counter state is
+  always valid.
+}
+```
+
+### DOL 2.0 Constraints with Quantifiers
+**Source**: `tests/corpus/genes/complex_constraints.dol`
+
+```dol
+pub gene OrderedList {
+    has items: List<Int64>
+
+    // Simple constraint
+    constraint non_empty {
+        this.items.length() > 0
+    }
+
+    // Forall constraint
+    constraint sorted {
+        forall i: UInt64.
+            i < this.items.length() - 1 implies
+                this.items[i] <= this.items[i + 1]
+    }
+
+    // Exists constraint
+    constraint has_positive {
+        exists x: Int64. x in this.items && x > 0
+    }
+}
+```
+
+---
+
+## SEX (Side Effect System)
+**Source**: `tests/corpus/sex/nested_sex.dol`
+
+### Global Mutable State
+
+```dol
+// Global mutable state
+sex var COUNTER: Int64 = 0
+sex var LOG: List<String> = []
+sex var CACHE: Map<String, Int64> = Map.new()
+```
+
+### SEX Functions
+
+```dol
+// Simple sex function
+sex fun increment() -> Int64 {
+    COUNTER += 1
+    return COUNTER
+}
+
+// Sex function with sex block
+sex fun logged_increment(label: String) -> Int64 {
+    sex {
+        LOG.push(label + ": incrementing")
+    }
+
+    result = COUNTER + 1
+    COUNTER = result
+
+    sex {
+        LOG.push(label + ": now " + result.to_string())
+    }
+
+    return result
+}
+
+// Pure function with sex block
+fun compute_with_logging(x: Int64) -> Int64 {
+    result = x * 2 + 1
+
+    sex {
+        LOG.push("computed: " + result.to_string())
+    }
+
+    return result
+}
+```
+
+### Conditional Effects
+
+```dol
+sex fun conditional_effects(cond: Bool) -> Int64 {
+    if cond {
+        sex {
+            COUNTER += 10
+        }
+    } else {
+        sex {
+            COUNTER -= 10
+        }
+    }
+    return COUNTER
+}
+```
+
+---
+
+## Systems
+**Source**: `examples/systems/greeting.service.dol`
+
+```dol
+system greeting.service @0.1.0 {
+  requires entity.greetable >= 0.0.1
+  requires greeting.protocol >= 0.0.1
+
+  uses hello.world
+  service has greeting.templates
+  service has response.timeout
+}
+
+exegesis {
+  The greeting.service system composes genes, traits, and constraints
+  into a complete, versioned component.
+}
+```
+
+### Bounded Counter System
+**Source**: `examples/systems/bounded.counter.dol`
+
+```dol
+system bounded.counter @0.1.0 {
+  requires counter.state >= 0.0.1
+  requires counter.countable >= 0.0.1
+  requires counter.bounds_valid >= 0.0.1
+
+  counter has persistence.strategy
+  counter has overflow.policy
+}
+
+exegesis {
+  The bounded.counter system composes genes, traits, and constraints
+  into a complete, versioned component.
+}
+```
+
+---
+
+## Evolution and Versioning
+**Source**: `tests/corpus/genes/evolution_chain.dol`
+
+```dol
+module tests.evolution_chain @ 1.0.0
+
+// Base type
+pub gene EntityV1 {
+    has id: UInt32
+    has name: String
+}
+
+// First evolution - add fields
+evolves EntityV1 > EntityV2 @ 2.0.0 {
+    added created_at: Int64 = 0
+    added updated_at: Int64 = 0
+
+    migrate from EntityV1 {
+        return EntityV2 {
+            ...old,
+            created_at: 0,
+            updated_at: 0
+        }
+    }
+}
+
+// Second evolution - change types
+evolves EntityV2 > EntityV3 @ 3.0.0 {
+    changed id: UInt32 -> UInt64
+    added metadata: Map<String, String>
+    removed updated_at
+
+    migrate from EntityV2 {
+        return EntityV3 {
+            id: old.id as UInt64,
+            name: old.name,
+            created_at: old.created_at,
+            metadata: Map.new()
+        }
+    }
+}
+
+// Third evolution - rename fields
+evolves EntityV3 > EntityV4 @ 4.0.0 {
+    renamed name -> display_name
+    added tags: List<String> = []
+
+    migrate from EntityV3 {
+        return EntityV4 {
+            id: old.id,
+            display_name: old.name,
+            created_at: old.created_at,
+            metadata: old.metadata,
+            tags: []
+        }
+    }
+}
+```
+
+---
+
+## Lambda Expressions
+**Source**: `tests/dol2_tests.rs`
+
+### Basic Lambdas
+
+```dol
+map(|x| x, list)
+```
+
+```dol
+|x: Int32, y: Int32, z: Int32| -> Int32 { x }
+```
+
+### Curried Lambda
+
+```dol
+|x| |y| x
+```
+
+### Lambda in Pipeline
+
+```dol
+data |> (|x| x) |> result
+```
+
+### Lambda with Reduce
+**Source**: `tests/corpus/genes/nested_generics.dol`
+
+```dol
+this.items.reduce(|a, b| if a > b { a } else { b })
+```
+
+---
+
+## Pipes and Function Composition
+**Source**: `tests/dol2_tests.rs`
+
+### Forward Pipe
+
+```dol
+data |> validate |> transform |> store
+```
+
+### Function Composition
+
+```dol
+trim >> lowercase >> validate >> normalize
+```
+
+### Mixed Pipe and Composition
+
+```dol
+data |> (trim >> validate) |> process
+```
+
+---
+
+## Example Index by Concept
+
+| Concept | Example Count | Sources |
+|---------|---------------|---------|
+| Gene Declaration | 8 | examples/genes/, tests/corpus/ |
+| Functions | 10 | tests/codegen/, tests/corpus/ |
+| Control Flow | 8 | tests/dol2_tests.rs, tests/parser_tests.rs |
+| Types & Generics | 6 | tests/corpus/genes/nested_generics.dol |
+| Pattern Matching | 5 | tests/dol2_tests.rs |
+| Traits | 5 | examples/traits/, tests/corpus/ |
+| Constraints | 4 | examples/constraints/, tests/corpus/ |
+| Systems | 2 | examples/systems/ |
+| Evolution | 3 | tests/corpus/genes/evolution_chain.dol |
+| Lambdas | 5 | tests/dol2_tests.rs |
+| SEX (Side Effects) | 6 | tests/corpus/sex/nested_sex.dol |
 
 ---
 
@@ -575,11 +562,6 @@ dol compile examples/container.dol --output generated/
 
 # Run tests
 dol test examples/
-
-# Interactive exploration
-dol repl
-> :load examples/biology/mycelium.dol
-> analyze(sample_network)
 ```
 
 ---
@@ -592,9 +574,12 @@ Find more examples in the repository:
 - `examples/traits/` - Trait definitions
 - `examples/constraints/` - Constraint examples
 - `examples/systems/` - System definitions
-- `examples/evolutions/` - Type evolution examples
-- `examples/stdlib/` - Standard library examples
+- `tests/corpus/` - Comprehensive test corpus
 - `dol/` - Self-hosted compiler (DOL in DOL!)
+
+**Official Resources:**
+- [GitHub](https://github.com/univrs/dol/releases/tag/v0.3.0)
+- [Crates.io](https://crates.io/crates/dol/0.3.0)
 
 ---
 

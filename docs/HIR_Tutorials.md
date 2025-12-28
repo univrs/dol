@@ -448,78 +448,175 @@ dol migrate --from 0.2 --to 0.3 path/to/file.dol
 
 ## Examples
 
-### Complete Gene with HIR
+These examples are verified from the DOL compiler test suite.
+
+### Basic Gene Declaration
+**Source**: `examples/genes/hello.world.dol`
 
 ```dol
-mod biology.mycelium @ 0.1.0
-
-/// Fungal network node representing a mycelium junction
-pub type MyceliumNode {
-    id: UInt64
-    position: Vec3
-    connections: List<NodeConnection>
-    nutrients: Float64
-    age: Duration
+gene hello.world {
+  message has content
+  message has sender
+  message has timestamp
 }
 
-/// Connection between mycelium nodes
-pub type NodeConnection {
-    target: UInt64
-    strength: Float64
-    flow_rate: Float64
+exegesis {
+  The hello.world gene is the simplest possible DOL example.
 }
+```
 
-/// Network operations trait
-trait NetworkOps {
-    /// Find path between nodes
-    find_path: fun(from: UInt64, to: UInt64) -> Option<List<UInt64>>
+### Gene with Typed Properties
+**Source**: `tests/corpus/traits/trait_relationships.dol`
 
-    /// Distribute nutrients across network
-    distribute: fun(amount: Float64) -> Void
+```dol
+module tests.trait_relationships @ 1.0.0
 
-    /// Prune weak connections
-    prune: fun(threshold: Float64) -> UInt32
-}
+pub gene SimpleValue {
+    has value: String
+    has count: Int64 = 0
 
-/// Simulation constraints
-constraint NetworkHealth {
-    forall node in nodes {
-        not node.nutrients.is_negative
-        node.connections.length > 0
+    fun get_value() -> String {
+        return this.value
     }
 }
 ```
 
-### Trait with Default Implementations
+### Generic Types
+**Source**: `tests/corpus/genes/nested_generics.dol`
 
 ```dol
-trait Lifecycle {
-    /// Start the entity
-    start: fun() -> Result<Void, Error>
+module tests.nested_generics @ 1.0.0
 
-    /// Stop the entity
-    stop: fun() -> Result<Void, Error>
+// Simple generic
+pub gene Container<T> {
+    has item: T
+}
 
-    /// Check if running
-    is_running: fun() -> Bool = { false }  // default impl
+// Nested generic with constraints
+pub gene Bounded<T: Comparable> {
+    has items: List<T>
 
-    /// Restart (default uses start/stop)
-    restart: fun() -> Result<Void, Error> = {
-        self.stop()?
-        self.start()
+    fun max() -> Option<T> {
+        if this.items.is_empty() {
+            return None
+        }
+        return Some(this.items.reduce(|a, b| if a > b { a } else { b }))
     }
 }
 ```
 
-### Evolution Declaration
+### Traits with Laws
+**Source**: `tests/corpus/genes/complex_constraints.dol`
 
 ```dol
-evolves ContainerV1 > ContainerV2 @ 2.0.0 {
-    + created_at: Timestamp = Timestamp.now()  // Added
-    + labels: Map<String, String> = {}         // Added
-    ~ legacy_id                                 // Deprecated
-    - temp_storage                              // Removed
-    // "Adding timestamp and labels support"
+pub trait Ordered {
+    is compare(other: Self) -> Int64
+
+    law reflexive {
+        forall x: Self. x.compare(x) == 0
+    }
+
+    law antisymmetric {
+        forall x: Self. forall y: Self.
+            x.compare(y) <= 0 && y.compare(x) <= 0 implies
+                x.compare(y) == 0
+    }
+}
+```
+
+### SEX Functions (Side Effects)
+**Source**: `tests/corpus/sex/nested_sex.dol`
+
+```dol
+// Global mutable state
+sex var COUNTER: Int64 = 0
+sex var LOG: List<String> = []
+
+// SEX function with side effects
+sex fun increment() -> Int64 {
+    COUNTER += 1
+    return COUNTER
+}
+
+// Pure function with contained sex block
+fun compute_with_logging(x: Int64) -> Int64 {
+    result = x * 2 + 1
+
+    sex {
+        LOG.push("computed: " + result.to_string())
+    }
+
+    return result
+}
+```
+
+### Evolution Chain
+**Source**: `tests/corpus/genes/evolution_chain.dol`
+
+```dol
+// Base type
+pub gene EntityV1 {
+    has id: UInt32
+    has name: String
+}
+
+// First evolution - add fields
+evolves EntityV1 > EntityV2 @ 2.0.0 {
+    added created_at: Int64 = 0
+    added updated_at: Int64 = 0
+
+    migrate from EntityV1 {
+        return EntityV2 {
+            ...old,
+            created_at: 0,
+            updated_at: 0
+        }
+    }
+}
+```
+
+### Constraints with Quantifiers
+**Source**: `tests/corpus/genes/complex_constraints.dol`
+
+```dol
+pub gene OrderedList {
+    has items: List<Int64>
+
+    // Simple constraint
+    constraint non_empty {
+        this.items.length() > 0
+    }
+
+    // Forall constraint
+    constraint sorted {
+        forall i: UInt64.
+            i < this.items.length() - 1 implies
+                this.items[i] <= this.items[i + 1]
+    }
+
+    // Exists constraint
+    constraint has_positive {
+        exists x: Int64. x in this.items && x > 0
+    }
+}
+```
+
+### System Declaration
+**Source**: `examples/systems/greeting.service.dol`
+
+```dol
+system greeting.service @0.1.0 {
+  requires entity.greetable >= 0.0.1
+  requires greeting.protocol >= 0.0.1
+
+  uses hello.world
+  service has greeting.templates
+  service has response.timeout
+}
+
+exegesis {
+  The greeting.service system composes genes, traits, and constraints
+  into a complete, versioned component.
 }
 ```
 
