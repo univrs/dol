@@ -411,6 +411,299 @@ exegesis {
     They produce values and can be composed in complex ways.
 }
 
+/// Adding Missing Types
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPRESSION HELPER TYPES
+// These are referenced by Expr enum variants but need explicit definitions
+// ═══════════════════════════════════════════════════════════════════
+
+/// This expression - self-reference in method context
+pub gene ThisExpr {
+    has span: Span
+
+    exegesis {
+        Represents the 'this' keyword within a method body,
+        referring to the current instance.
+    }
+}
+
+/// Binary expression - two operands with an operator
+pub gene BinaryExpr {
+    has op: BinOp
+    has left: Box<Expr>
+    has right: Box<Expr>
+    has span: Span
+
+    exegesis {
+        Binary operations like addition, comparison, logical and/or.
+        The operator determines how left and right operands combine.
+    }
+}
+
+/// Unary expression - single operand with prefix/postfix operator
+pub gene UnaryExpr {
+    has op: UnaryOp
+    has operand: Box<Expr>
+    has span: Span
+
+    exegesis {
+        Unary operations like negation, logical not, dereference.
+    }
+}
+
+/// Function call expression
+pub gene CallExpr {
+    has callee: Box<Expr>
+    has args: List<CallArg>
+    has span: Span
+
+    exegesis {
+        Function or method call with arguments.
+        Callee is the function being called.
+    }
+}
+
+/// Method call expression - receiver.method(args)
+pub gene MethodCallExpr {
+    has receiver: Box<Expr>
+    has method: String
+    has args: List<CallArg>
+    has span: Span
+
+    exegesis {
+        Method invocation on a receiver object.
+    }
+}
+
+/// Field access expression - expr.field
+pub gene FieldExpr {
+    has object: Box<Expr>
+    has field: String
+    has span: Span
+
+    exegesis {
+        Accessing a field on a struct or object.
+    }
+}
+
+/// Index expression - expr[index]
+pub gene IndexExpr {
+    has object: Box<Expr>
+    has index: Box<Expr>
+    has span: Span
+
+    exegesis {
+        Array or collection indexing.
+    }
+}
+
+/// Struct literal expression - TypeName { field: value, ... }
+pub gene StructExpr {
+    has name: String
+    has fields: List<FieldInit>
+    has span: Span
+
+    exegesis {
+        Struct instantiation with field initializers.
+    }
+}
+
+/// Array literal expression - [a, b, c]
+pub gene ArrayExpr {
+    has elements: List<Expr>
+    has span: Span
+
+    exegesis {
+        Array literal with inline elements.
+    }
+}
+
+/// Lambda/closure expression - |params| body or |params| { block }
+pub gene LambdaExpr {
+    has params: List<LambdaParam>
+    has body: Box<Expr>
+    has return_type: Option<TypeExpr>
+    has span: Span
+
+    exegesis {
+        Anonymous function with captured environment.
+    }
+}
+
+/// If expression - if cond { then } else { else }
+pub gene IfExpr {
+    has condition: Box<Expr>
+    has then_branch: Box<Block>
+    has else_branch: Option<Box<Expr>>
+    has span: Span
+
+    exegesis {
+        Conditional expression that evaluates to a value.
+    }
+}
+
+/// Match expression - match expr { arms }
+pub gene MatchExpr {
+    has scrutinee: Box<Expr>
+    has arms: List<MatchArm>
+    has span: Span
+
+    exegesis {
+        Pattern matching expression.
+    }
+}
+
+/// Quote expression - 'expr for AST capture
+pub gene QuoteExpr {
+    has expr: Box<Expr>
+    has span: Span
+
+    exegesis {
+        Quoted expression for metaprogramming.
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STATEMENT HELPER TYPES
+// These are referenced by Stmt enum variants but need explicit definitions
+// ═══════════════════════════════════════════════════════════════════
+
+/// Let binding statement - let name: Type = value
+pub gene LetStmt {
+    has name: String
+    has ty: Option<TypeExpr>
+    has value: Option<Expr>
+    has span: Span
+
+    exegesis {
+        Immutable variable binding.
+    }
+}
+
+/// Var statement - var name: Type = value
+pub gene VarStmt {
+    has name: String
+    has ty: Option<TypeExpr>
+    has value: Option<Expr>
+    has span: Span
+
+    exegesis {
+        Mutable variable binding.
+    }
+}
+
+/// Const statement - const NAME: Type = value
+pub gene ConstStmt {
+    has name: String
+    has ty: Option<TypeExpr>
+    has value: Expr
+    has span: Span
+
+    exegesis {
+        Compile-time constant definition.
+    }
+}
+
+/// Assignment statement - target = value
+pub gene AssignStmt {
+    has target: Expr
+    has value: Expr
+    has span: Span
+
+    exegesis {
+        Assignment to a mutable location.
+    }
+}
+
+/// Expression statement - expr;
+pub gene ExprStmt {
+    has expr: Expr
+    has span: Span
+
+    exegesis {
+        Expression evaluated for side effects.
+    }
+}
+
+/// Return statement - return expr
+pub gene ReturnStmt {
+    has value: Option<Expr>
+    has span: Span
+
+    exegesis {
+        Early return from function.
+    }
+}
+
+/// Break statement - break or break value
+pub gene BreakStmt {
+    has value: Option<Expr>
+    has label: Option<String>
+    has span: Span
+
+    exegesis {
+        Exit from loop, optionally with value.
+    }
+}
+
+/// Continue statement - continue or continue 'label
+pub gene ContinueStmt {
+    has label: Option<String>
+    has span: Span
+
+    exegesis {
+        Skip to next loop iteration.
+    }
+}
+
+/// For statement - for item in iter { body }
+pub gene ForStmt {
+    has binding: String
+    has iter: Expr
+    has body: Block
+    has span: Span
+
+    exegesis {
+        Iteration over a collection.
+    }
+}
+
+/// While statement - while cond { body }
+pub gene WhileStmt {
+    has condition: Expr
+    has body: Block
+    has span: Span
+
+    exegesis {
+        Conditional loop.
+    }
+}
+
+/// Loop statement - loop { body }
+pub gene LoopStmt {
+    has body: Block
+    has label: Option<String>
+    has span: Span
+
+    exegesis {
+        Infinite loop (exit with break).
+    }
+}
+
+/// Match statement (non-expression form)
+pub gene MatchStmt {
+    has scrutinee: Expr
+    has arms: List<MatchArm>
+    has span: Span
+
+    exegesis {
+        Pattern matching as a statement.
+    }
+}
+/// END OF Missing
+
+
 /// Expression enumeration
 pub gene Expr {
     type: enum {
