@@ -1,0 +1,32 @@
+echo "Number of errors:"
+cargo check 2>&1 | grep "^error\[" | wc -l 
+
+echo "Head ${1} lines" 
+echo " " 
+cargo check 2>&1 | grep "^error\[" | head -${1}
+
+echo "Cargo Tail check -5 "
+cargo test --lib 2>&1 | tail -5 
+
+echo "wc -l docs/hir/HIR-SPECIFICATION.md "
+echo " " 
+wc -l docs/hir/HIR-SPECIFICATION.md 
+
+echo "wc -l doc/hir/validate.rs"
+echo " " 
+wc -l src/hir/validate.rs
+
+#echo "head -80 docs/hir/HIR-SPECIFICATION.md"
+#head -80 docs/hir/HIR-SPECIFICATION.md 
+
+echo "Test Compiler on its own DOL Specs:"
+# Test the compiler on its own DOL specs
+cargo run --bin dol-check --features cli -- dol/ 2>&1 | tail -20
+
+echo "Check how many DOL files we have: "
+# Check how many DOL files we have
+find dol -name "*.dol" | wc -l
+
+echo "List the Dols: "
+# List them
+find dol -name "*.dol"

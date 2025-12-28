@@ -1,0 +1,20 @@
+echo "Number of errors:"
+cargo check 2>&1 | grep "^error\[" | wc -l 
+
+echo "Head ${1} lines" 
+echo " " 
+cargo check 2>&1 | grep "^error\[" | head -${1}
+
+echo "Cargo Tail check -5 "
+cargo test --lib 2>&1 | tail -5 
+
+echo "wc -l docs/hir/HIR-SPECIFICATION.md "
+echo " " 
+wc -l docs/hir/HIR-SPECIFICATION.md 
+
+echo "wc -l doc/hir/validate.rs"
+echo " " 
+wc -l src/hir/validate.rs
+
+echo "head -80 docs/hir/HIR-SPECIFICATION.md"
+head -80 docs/hir/HIR-SPECIFICATION.md

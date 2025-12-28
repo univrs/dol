@@ -1,0 +1,399 @@
+name: dol-hir-development
+version: "0.3.2"
+description: |
+  DOL HIR (High-level Intermediate Representation) Development
+  
+  Part of the VUDO ecosystem roadmap:
+  Year 1 Q3 - HIR + MLIR + MCP Server
+  
+  Goal: Canonical intermediate form enabling multi-target compilation
+  and self-hosting bootstrap.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VISION ALIGNMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+vision:
+  purpose: |
+    HIR bridges DOL's ontological expressiveness with efficient compilation.
+    It's not just a compiler IR - it's the foundation for:
+    - VUDO VM execution (Spirits as WASM)
+    - Multi-target emission (Rust, WASM, TypeScript)
+    - Self-hosting (DOL compiles DOL)
+    - Claude-flow swarm development (canonical forms for AI)
+    
+  principles:
+    - Ontology First: Systems describe what they ARE before what they DO
+    - Human-Centric: AI amplifies creativity, doesn't replace it
+    - Regenerative: Attribution chains, not extraction
+    - Distributed: Mycelial networks, not centralized platforms
+    
+  success_criteria: |
+    HIR is complete when:
+    1. All DOL surface syntax desugars to HIR canonical forms
+    2. HIR compiles to WASM via MLIR
+    3. Bootstrap compiler uses HIR (DOL → HIR → Rust → DOL)
+    4. MCP server exposes HIR tools for Claude-flow
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TASKS
+# ═══════════════════════════════════════════════════════════════════════════════
+tasks:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 1: HIR TYPE DESIGN
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: hir-types
+    name: "Define HIR Canonical Types"
+    priority: P0
+    status: in_progress
+    description: |
+      Design the 22 canonical HIR node types that all DOL surface syntax
+      desugars into. This is the foundation for everything else.
+      
+    deliverables:
+      - src/hir/types.rs: HIR type definitions
+      - dol/hir.dol: HIR types in DOL (for self-hosting)
+      - docs/hir-spec.md: Specification document
+      
+    canonical_forms:
+      # Types
+      - HirType: "Unified type representation"
+      - HirStruct: "gene/type → struct"
+      - HirEnum: "enum variants"
+      - HirTrait: "trait contracts"
+      
+      # Bindings
+      - HirBinding: "let/var/const → val"
+      - HirParam: "function parameters"
+      
+      # Expressions
+      - HirLiteral: "constants"
+      - HirIdent: "identifiers"
+      - HirBinary: "binary operations"
+      - HirUnary: "unary operations"
+      - HirCall: "function calls"
+      - HirField: "field access"
+      - HirIndex: "index access"
+      - HirLambda: "closures"
+      - HirIf: "conditionals"
+      - HirMatch: "pattern matching"
+      - HirBlock: "statement sequences"
+      
+      # Statements
+      - HirAssign: "assignment"
+      - HirReturn: "return"
+      - HirLoop: "for/while/loop → loop"
+      - HirBreak: "break"
+      - HirContinue: "continue"
+      
+    acceptance:
+      - All 22 types defined in Rust
+      - All 22 types defined in DOL
+      - Tests for each type
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 2: DESUGARING RULES
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: desugaring
+    name: "Implement AST → HIR Desugaring"
+    priority: P0
+    status: pending
+    depends_on: [hir-types]
+    description: |
+      Transform DOL surface AST into HIR canonical forms.
+      Each DOL construct maps to one or more HIR nodes.
+      
+    rules:
+      # Declarations
+      - from: "gene Name { fields }"
+        to: "HirStruct { name, fields }"
+        
+      - from: "trait Name { methods }"
+        to: "HirTrait { name, methods }"
+        
+      - from: "fun name(params) -> T { body }"
+        to: "HirBinding { name, HirLambda { params, body } }"
+        
+      - from: "let/var/const x = v"
+        to: "HirBinding { name: x, value: v, mutable: ... }"
+        
+      # Control flow
+      - from: "for x in iter { body }"
+        to: "HirLoop { init: iter.next(), cond: Some(_), body }"
+        
+      - from: "while cond { body }"
+        to: "HirLoop { cond, body }"
+        
+      # Operators
+      - from: "a |> f"
+        to: "HirCall { callee: f, args: [a] }"
+        
+      - from: "f >> g"
+        to: "HirLambda { x -> HirCall { g, [HirCall { f, [x] }] } }"
+        
+    deliverables:
+      - src/hir/desugar.rs: Desugaring implementation
+      - tests/hir_desugar_tests.rs: Comprehensive tests
+      
+    acceptance:
+      - All DOL surface syntax covered
+      - Round-trip property: desugar(parse(source)) → valid HIR
+      - No semantic information lost
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 3: HIR VALIDATION
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: hir-validation
+    name: "HIR Type Checking and Validation"
+    priority: P1
+    status: pending
+    depends_on: [desugaring]
+    description: |
+      Validate HIR before lowering to MLIR. Catch errors early
+      with clear diagnostics.
+      
+    checks:
+      - type_consistency: "All expressions have consistent types"
+      - scope_resolution: "All identifiers resolve"
+      - trait_satisfaction: "Trait bounds satisfied"
+      - constraint_validity: "Constraints are well-formed"
+      
+    deliverables:
+      - src/hir/validate.rs: Validation passes
+      - src/hir/diagnostics.rs: Error messages
+      
+    acceptance:
+      - All existing tests pass through HIR
+      - Clear error messages for invalid HIR
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 4: MLIR LOWERING
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: mlir-lowering
+    name: "HIR → MLIR Dialect"
+    priority: P1
+    status: pending
+    depends_on: [hir-validation]
+    description: |
+      Lower validated HIR to MLIR using a custom DOL dialect.
+      This enables WASM emission via MLIR's WASM backend.
+      
+    mlir_ops:
+      - dol.type: "Type definition"
+      - dol.func: "Function"
+      - dol.call: "Function call"
+      - dol.if: "Conditional"
+      - dol.loop: "Loop"
+      - dol.return: "Return"
+      - dol.constraint: "Runtime constraint check"
+      
+    deliverables:
+      - src/mlir/dialect.rs: DOL MLIR dialect
+      - src/mlir/lower.rs: HIR → MLIR lowering
+      
+    acceptance:
+      - HIR lowers to valid MLIR
+      - MLIR validates without errors
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 5: WASM EMISSION
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: wasm-emit
+    name: "MLIR → WASM Compilation"
+    priority: P2
+    status: pending
+    depends_on: [mlir-lowering]
+    description: |
+      Compile MLIR to WebAssembly binary.
+      This is the target for VUDO VM execution.
+      
+    deliverables:
+      - src/emit/wasm.rs: WASM emission
+      - tests/wasm_tests.rs: Execution tests
+      
+    acceptance:
+      - Simple DOL programs compile to working WASM
+      - WASM executes correctly in wasmtime
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 6: MCP SERVER
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: mcp-server
+    name: "DOL MCP Server for Claude-flow"
+    priority: P1
+    status: pending
+    depends_on: [hir-validation]
+    description: |
+      MCP server exposing DOL compilation tools for AI-assisted development.
+      The "Medium" that channels Claude's intent into DOL compilation.
+      
+    tools:
+      - dol/parse: "Parse DOL source → AST"
+      - dol/desugar: "AST → HIR"
+      - dol/validate: "Validate HIR"
+      - dol/emit/rust: "HIR → Rust"
+      - dol/emit/wasm: "HIR → WASM"
+      - dol/format: "Format DOL source"
+      - dol/docs: "Generate documentation"
+      
+    deliverables:
+      - src/mcp/server.rs: MCP server implementation
+      - src/mcp/tools.rs: Tool definitions
+      
+    acceptance:
+      - Claude can call all tools via MCP
+      - Tools return structured responses
+      - Error handling is robust
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 7: SELF-HOSTING BOOTSTRAP
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: self-host
+    name: "DOL Compiler in DOL"
+    priority: P2
+    status: pending
+    depends_on: [mcp-server, wasm-emit]
+    description: |
+      Write the DOL compiler in DOL itself.
+      This is the Year 1 exit criterion.
+      
+    components:
+      - dol/lexer.dol: ✅ Complete
+      - dol/token.dol: ✅ Complete
+      - dol/ast.dol: ✅ Complete
+      - dol/types.dol: ✅ Complete
+      - dol/parser.dol: TODO
+      - dol/hir.dol: TODO
+      - dol/emit.dol: TODO
+      - dol/compiler.dol: TODO
+      
+    deliverables:
+      - Complete dol/ directory with compiler
+      - Bootstrap verification script
+      
+    acceptance:
+      - DOL compiler compiles itself to WASM
+      - Output is identical across bootstrap stages
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FLYWHEEL INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+flywheel:
+  metrics:
+    - id: hir_coverage
+      name: "HIR Coverage"
+      description: "% of DOL constructs with HIR lowering"
+      target: 100%
+      
+    - id: desugar_tests
+      name: "Desugaring Tests"
+      description: "Number of desugaring test cases"
+      target: 200+
+      
+    - id: mlir_ops
+      name: "MLIR Operations"
+      description: "MLIR operations defined in DOL dialect"
+      target: 40+
+      
+    - id: wasm_programs
+      name: "WASM Programs"
+      description: "DOL programs that compile to working WASM"
+      target: 50+
+      
+    - id: self_host_pct
+      name: "Self-Hosting %"
+      description: "% of compiler written in DOL"
+      target: 100%
+      
+  ci_stages:
+    - parse: "Validate DOL syntax"
+    - desugar: "DOL → HIR"
+    - validate: "Type check HIR"
+    - emit: "Generate targets"
+    - test: "Run test suite"
+    - metrics: "Track progress"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLAUDE-FLOW SWARM
+# ═══════════════════════════════════════════════════════════════════════════════
+swarm:
+  coordinator: human
+  agents:
+    - role: architect
+      responsibilities:
+        - HIR type design
+        - MLIR dialect design
+        - Overall system architecture
+        
+    - role: implementer
+      responsibilities:
+        - Rust code implementation
+        - DOL source implementation
+        - Test writing
+        
+    - role: reviewer
+      responsibilities:
+        - Code review
+        - Test validation
+        - Documentation review
+        
+  workflow:
+    1. Human defines requirements
+    2. Architect Claude designs solution
+    3. Implementer Claude writes code
+    4. Reviewer Claude validates
+    5. Flywheel CI runs automatically
+    6. Human approves merge
+    7. Metrics tracked
+    8. Next iteration
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TIMELINE
+# ═══════════════════════════════════════════════════════════════════════════════
+timeline:
+  - week: "Dec 28 - Jan 3"
+    focus: "HIR Types + Desugaring Design"
+    tasks: [hir-types]
+    
+  - week: "Jan 4 - Jan 10"
+    focus: "Desugaring Implementation"
+    tasks: [desugaring]
+    
+  - week: "Jan 11 - Jan 17"
+    focus: "HIR Validation"
+    tasks: [hir-validation]
+    
+  - week: "Jan 18 - Jan 24"
+    focus: "MLIR Lowering"
+    tasks: [mlir-lowering]
+    
+  - week: "Jan 25 - Jan 31"
+    focus: "MCP Server"
+    tasks: [mcp-server]
+    
+  - week: "Feb 1 - Feb 14"
+    focus: "WASM Emission"
+    tasks: [wasm-emit]
+    
+  - week: "Feb 15 - Feb 28"
+    focus: "Self-Hosting"
+    tasks: [self-host]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXIT CRITERIA
+# ═══════════════════════════════════════════════════════════════════════════════
+exit_criteria:
+  year1_q3:
+    - HIR types complete
+    - Desugaring 100% coverage
+    - MCP server operational
+    - Claude-flow integration working
+    
+  year1_q4:
+    - WASM emission working
+    - Self-hosting complete
+    - Bootstrap verified
+    
+  year1_exit:
+    - "dol compile dol/compiler.dol -o compiler.wasm"
+    - "./compiler.wasm dol/compiler.dol -o compiler2.wasm"
+    - "diff compiler.wasm compiler2.wasm → identical"

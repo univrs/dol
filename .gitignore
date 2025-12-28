@@ -1,6 +1,7 @@
 archive/
 archives/
 archive_docs/
+claude-flow/
 
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
@@ -36,19 +37,11 @@ target/
 /target/
 Cargo.lock
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
+
 # Bootstrap generated directories
 stage2/
 stage3/
 
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 .idea/
 .vscode/
 *.swp

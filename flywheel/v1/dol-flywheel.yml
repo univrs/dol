@@ -1,0 +1,378 @@
+name: DOL Flywheel
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run nightly to catch regressions
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: 'Force full rebuild'
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 1: VALIDATE DOL SOURCE
+  # ═══════════════════════════════════════════════════════════════════════════
+  parse:
+    name: 🔍 Parse DOL
+    runs-on: ubuntu-latest
+    outputs:
+      dol_files: ${{ steps.count.outputs.files }}
+      dol_lines: ${{ steps.count.outputs.lines }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build dol-check
+        run: cargo build --release --features cli --bin dol-check
+        
+      - name: Parse all DOL files
+        run: |
+          echo "## DOL Parse Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Parse each file and collect results
+          PASSED=0
+          FAILED=0
+          for f in dol/*.dol; do
+            if cargo run --release --features cli --bin dol-check -- "$f" 2>/dev/null; then
+              echo "✅ $f" >> $GITHUB_STEP_SUMMARY
+              ((PASSED++))
+            else
+              echo "❌ $f" >> $GITHUB_STEP_SUMMARY
+              ((FAILED++))
+            fi
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Results:** $PASSED passed, $FAILED failed" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$FAILED" -gt 0 ]; then
+            exit 1
+          fi
+          
+      - name: Count DOL metrics
+        id: count
+        run: |
+          FILES=$(find dol -name "*.dol" | wc -l)
+          LINES=$(wc -l dol/*.dol 2>/dev/null | tail -1 | awk '{print $1}')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "lines=$LINES" >> $GITHUB_OUTPUT
+          echo "📊 DOL: $FILES files, $LINES lines" >> $GITHUB_STEP_SUMMARY
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 2: GENERATE RUST FROM DOL
+  # ═══════════════════════════════════════════════════════════════════════════
+  generate:
+    name: ⚙️ Generate Rust
+    runs-on: ubuntu-latest
+    needs: parse
+    outputs:
+      raw_errors: ${{ steps.raw.outputs.errors }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build dol-codegen
+        run: cargo build --release --features cli --bin dol-codegen
+        
+      - name: Generate bootstrap Rust
+        run: |
+          mkdir -p target/bootstrap/src
+          
+          echo "## Code Generation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for module in types token ast lexer; do
+            echo "Generating ${module}.rs..."
+            cargo run --release --features cli --bin dol-codegen -- \
+              --target rust "dol/${module}.dol" 2>/dev/null \
+              > "target/bootstrap/src/${module}.rs"
+            
+            LINES=$(wc -l < "target/bootstrap/src/${module}.rs")
+            echo "- ${module}.rs: $LINES lines" >> $GITHUB_STEP_SUMMARY
+          done
+          
+      - name: Check raw error count (before fixes)
+        id: raw
+        run: |
+          cd target/bootstrap
+          ERRORS=$(cargo check 2>&1 | grep "^error\[" | wc -l || echo "0")
+          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Raw errors (before fixes):** $ERRORS" >> $GITHUB_STEP_SUMMARY
+          
+      - name: Upload generated code
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-rust
+          path: target/bootstrap/src/
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 3: APPLY FIXES AND COMPILE
+  # ═══════════════════════════════════════════════════════════════════════════
+  bootstrap:
+    name: 🔧 Bootstrap
+    runs-on: ubuntu-latest
+    needs: generate
+    outputs:
+      fixed_errors: ${{ steps.fixed.outputs.errors }}
+      build_success: ${{ steps.build.outputs.success }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Download generated code
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-rust
+          path: target/bootstrap/src/
+          
+      - name: Create bootstrap Cargo.toml
+        run: |
+          mkdir -p target/bootstrap
+          cat > target/bootstrap/Cargo.toml << 'EOF'
+          [package]
+          name = "dol-bootstrap"
+          version = "0.3.1"
+          edition = "2021"
+          
+          [lib]
+          path = "src/lib.rs"
+          
+          [dependencies]
+          EOF
+          
+          cat > target/bootstrap/src/lib.rs << 'EOF'
+          pub mod types;
+          pub mod token;
+          pub mod ast;
+          pub mod lexer;
+          EOF
+          
+      - name: Apply bootstrap fixes
+        run: |
+          chmod +x scripts/bootstrap-fix.sh
+          ./scripts/bootstrap-fix.sh 2>&1 | tee fix-output.txt
+          
+      - name: Check fixed error count
+        id: fixed
+        run: |
+          cd target/bootstrap
+          ERRORS=$(cargo check 2>&1 | grep "^error\[" | wc -l || echo "0")
+          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+          
+          echo "## Bootstrap Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Errors after fixes:** $ERRORS" >> $GITHUB_STEP_SUMMARY
+          
+      - name: Build bootstrap
+        id: build
+        run: |
+          cd target/bootstrap
+          if cargo build --release 2>&1; then
+            echo "success=true" >> $GITHUB_OUTPUT
+            echo "✅ **Build:** SUCCESS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "❌ **Build:** FAILED" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+      - name: Upload bootstrap library
+        uses: actions/upload-artifact@v4
+        with:
+          name: dol-bootstrap
+          path: target/bootstrap/target/release/libdol_bootstrap.rlib
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 4: RUN TESTS
+  # ═══════════════════════════════════════════════════════════════════════════
+  test:
+    name: 🧪 Test
+    runs-on: ubuntu-latest
+    needs: bootstrap
+    outputs:
+      test_count: ${{ steps.tests.outputs.count }}
+      test_passed: ${{ steps.tests.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Run compiler tests
+        id: tests
+        run: |
+          OUTPUT=$(cargo test --lib 2>&1)
+          echo "$OUTPUT"
+          
+          # Extract test counts
+          PASSED=$(echo "$OUTPUT" | grep -oP '\d+ passed' | grep -oP '\d+' || echo "0")
+          FAILED=$(echo "$OUTPUT" | grep -oP '\d+ failed' | grep -oP '\d+' || echo "0")
+          TOTAL=$((PASSED + FAILED))
+          
+          echo "count=$TOTAL" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Passed:** $PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed:** $FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total:** $TOTAL" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$FAILED" -gt 0 ]; then
+            exit 1
+          fi
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 5: TRACK METRICS (FLYWHEEL FEEDBACK)
+  # ═══════════════════════════════════════════════════════════════════════════
+  metrics:
+    name: 📊 Metrics
+    runs-on: ubuntu-latest
+    needs: [parse, generate, bootstrap, test]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate flywheel report
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          
+          # 🔄 DOL Flywheel Report
+          
+          ## Pipeline Status
+          
+          | Stage | Status |
+          |-------|--------|
+          | Parse DOL | ${{ needs.parse.result == 'success' && '✅' || '❌' }} |
+          | Generate Rust | ${{ needs.generate.result == 'success' && '✅' || '❌' }} |
+          | Bootstrap | ${{ needs.bootstrap.result == 'success' && '✅' || '❌' }} |
+          | Tests | ${{ needs.test.result == 'success' && '✅' || '❌' }} |
+          
+          ## Metrics
+          
+          | Metric | Value |
+          |--------|-------|
+          | DOL Files | ${{ needs.parse.outputs.dol_files }} |
+          | DOL Lines | ${{ needs.parse.outputs.dol_lines }} |
+          | Raw Errors | ${{ needs.generate.outputs.raw_errors }} |
+          | Fixed Errors | ${{ needs.bootstrap.outputs.fixed_errors }} |
+          | Tests Passed | ${{ needs.test.outputs.test_passed }}/${{ needs.test.outputs.test_count }} |
+          
+          ## Flywheel Progress
+          
+          \`\`\`
+          Error Reduction: ${{ needs.generate.outputs.raw_errors }} → ${{ needs.bootstrap.outputs.fixed_errors }}
+          Fix Script Needed: ${{ needs.bootstrap.outputs.fixed_errors == '0' && needs.generate.outputs.raw_errors != '0' && 'YES' || 'NO' }}
+          Self-Hosting: Phase 1 Complete ✓
+          \`\`\`
+          
+          ---
+          *Commit: ${{ github.sha }}*
+          *Branch: ${{ github.ref_name }}*
+          EOF
+          
+      - name: Record metrics to file
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p .metrics
+          cat >> .metrics/flywheel.csv << EOF
+          ${{ github.sha }},${{ github.run_number }},$(date -Iseconds),${{ needs.parse.outputs.dol_files }},${{ needs.parse.outputs.dol_lines }},${{ needs.generate.outputs.raw_errors }},${{ needs.bootstrap.outputs.fixed_errors }},${{ needs.test.outputs.test_passed }},${{ needs.test.outputs.test_count }}
+          EOF
+          
+      - name: Check for regressions
+        run: |
+          RAW=${{ needs.generate.outputs.raw_errors }}
+          FIXED=${{ needs.bootstrap.outputs.fixed_errors }}
+          TESTS=${{ needs.test.outputs.test_passed }}
+          
+          # Alert if errors increased or tests decreased
+          if [ "$FIXED" -gt 0 ]; then
+            echo "⚠️ Bootstrap has $FIXED errors after fixes"
+          fi
+          
+          if [ "$TESTS" -lt 300 ]; then
+            echo "⚠️ Test count dropped below 300"
+          fi
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # RELEASE (on tags)
+  # ═══════════════════════════════════════════════════════════════════════════
+  release:
+    name: 📦 Release
+    runs-on: ubuntu-latest
+    needs: [bootstrap, test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download bootstrap
+        uses: actions/download-artifact@v4
+        with:
+          name: dol-bootstrap
+          path: release/
+          
+      - name: Create release notes
+        run: |
+          cat > release/RELEASE.md << EOF
+          # DOL ${{ github.ref_name }}
+          
+          ## Bootstrap Status
+          - Raw errors: ${{ needs.generate.outputs.raw_errors }}
+          - Fixed errors: ${{ needs.bootstrap.outputs.fixed_errors }}
+          - Tests: ${{ needs.test.outputs.test_passed }} passing
+          
+          ## Artifacts
+          - \`libdol_bootstrap.rlib\` - Bootstrap library
+          EOF
+          
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          body_path: release/RELEASE.md
