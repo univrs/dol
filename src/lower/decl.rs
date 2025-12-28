@@ -79,6 +79,21 @@ impl LoweringContext {
     pub fn lower_function_decl(&mut self, func: &ast::FunctionDecl) -> HirFunctionDecl {
         let name = self.intern(&func.name);
 
+        // Lower type parameters
+        let type_params: Vec<HirTypeParam> = func
+            .type_params
+            .as_ref()
+            .map(|tp| {
+                tp.params
+                    .iter()
+                    .map(|p| HirTypeParam {
+                        name: self.intern(&p.name),
+                        bounds: p.bounds.iter().map(|b| self.lower_type_expr(b)).collect(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // Lower parameters
         let params: Vec<HirParam> = func
             .params
@@ -96,13 +111,25 @@ impl LoweringContext {
             .map(|t| self.lower_type_expr(t))
             .unwrap_or(HirType::Tuple(vec![])); // Unit type
 
+        // Lower function body
+        let body = if func.body.is_empty() {
+            None
+        } else {
+            // Convert statements to HIR statements
+            let stmts: Vec<HirStmt> = func.body.iter().map(|s| self.lower_block_stmt(s)).collect();
+
+            // The last statement might be the return value if it's an expression
+            // For now, wrap all statements in a block
+            Some(HirExpr::Block(Box::new(HirBlockExpr { stmts, expr: None })))
+        };
+
         HirFunctionDecl {
             id: self.fresh_id(),
             name,
-            type_params: vec![],
+            type_params,
             params,
             return_type,
-            body: None, // Placeholder - full body lowering not implemented
+            body,
         }
     }
 

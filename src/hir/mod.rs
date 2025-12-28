@@ -23,8 +23,10 @@ pub mod print;
 pub mod span;
 pub mod symbol;
 pub mod types;
+pub mod validate;
 pub mod visit;
 
 pub use span::{HirId, SpanMap};
 pub use symbol::{Symbol, SymbolTable};
 pub use types::*;
+pub use validate::{validate_module, ValidationContext, ValidationError};
