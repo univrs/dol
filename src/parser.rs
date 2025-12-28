@@ -972,10 +972,7 @@ impl<'a> Parser<'a> {
 
         // Stop at RightBrace or Eof
         // DOL 2.0/v0.4.0: exegesis blocks can appear throughout gene body, handled in parse_statement
-        while self.current.kind != TokenKind::RightBrace
-            && self.current.kind != TokenKind::Exegesis
-            && self.current.kind != TokenKind::Eof
-        {
+        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
             statements.push(self.parse_statement()?);
         }
 
