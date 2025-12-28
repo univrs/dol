@@ -74,8 +74,16 @@ pub gene TokenKind {
 
         // Special
         Newline,
-        Eof,
-        Error
+       // Additional operators
+        Ampersand, // &
+        Assign,    // = (single equals)
+        Bar,       // | (single pipe)
+        Caret,     // ^
+        LIdiom,    // [| alias
+        RIdiom,    // |] alias
+        Map,       // map operator
+        Eof,       // end of file
+        Error,     // lexer error
     }
 }
 
