@@ -316,7 +316,7 @@ exegesis { Calculator with methods. }
         result.err()
     );
 
-    let (hir, ctx) = result.unwrap();
+    let (_hir, ctx) = result.unwrap();
     assert!(
         !ctx.has_errors(),
         "Lowering produced errors: {:?}",

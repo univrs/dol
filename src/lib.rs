@@ -60,6 +60,8 @@
 //! - [`mcp`]: Model Context Protocol server (requires `serde` feature)
 //! - [`mlir`]: MLIR code generation backend (requires `mlir` feature)
 //! - [`wasm`]: WebAssembly compilation and runtime (requires `wasm` feature)
+//! - [`network`]: Hyphal-inspired network topology and resource discovery
+//! - [`swarm`]: Agent swarm coordination using hyphal patterns
 
 #![doc(html_root_url = "https://docs.rs/metadol/0.0.1")]
 #![warn(missing_docs)]
@@ -80,6 +82,10 @@ pub mod sex;
 pub mod transform;
 pub mod typechecker;
 pub mod validator;
+
+// Hyphal network modules
+pub mod network;
+pub mod swarm;
 
 // MCP server (requires serde feature)
 #[cfg(feature = "serde")]
@@ -135,6 +141,15 @@ pub use sex::{
     file_sex_context, is_sex_file, EffectTracker, FileContext, LintResult, SexContext,
     SexLintError, SexLintWarning, SexLinter,
 };
+
+// Network module re-exports
+pub use network::{
+    Edge, GrowthParams, GrowthSimulator, NodeId, ResourceExplorer, ResourceGradient, ResourceType,
+    Topology, TopologyMetrics,
+};
+
+// Swarm module re-exports
+pub use swarm::{AgentRole, HyphalAgent, HyphalSwarm, SwarmMessage, SwarmMetrics};
 
 // MLIR backend re-exports (requires mlir feature)
 #[cfg(feature = "mlir")]
