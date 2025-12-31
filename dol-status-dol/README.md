@@ -1,4 +1,5 @@
- Created Scripts in ./script-dol/
+ ### Created Scripts in ./script-dol/
+```text 
 
   | Script                     | Description            | Output                              |
   |----------------------------|------------------------|-------------------------------------|
@@ -24,16 +25,16 @@
   ├── out_feature_traits.md       (5KB)
   ├── out_feature_validate.md     (3KB)
   └── out_feature_wasm.md         (5KB)
+```
+  ## Usage
 
-  Usage
+  ### Run all demos
+  > ./script-dol/run_all_demos.sh
 
-  # Run all demos
-  ./script-dol/run_all_demos.sh
+  ### Run individual demo
+  > ./script-dol/dol_feature_wasm.sh
 
-  # Run individual demo
-  ./script-dol/dol_feature_wasm.sh
-
-  # View combined report
-  cat status-do/out_feature_all.md
+  ### View combined report
+  > cat status-do/out_feature_all.md
 
   Key finding confirmed: WASM compilation works for simple functions (42-byte add.wasm validated by wasmtime), while Genes/Traits/Systems parse and validate but don't yet compile to WASM.
