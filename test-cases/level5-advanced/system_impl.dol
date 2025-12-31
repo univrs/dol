@@ -1,0 +1,12 @@
+system greeting.service @ 0.1.0 {
+    requires entity.greetable >= 0.0.1
+
+    all greetings is logged
+    all responses is polite
+}
+
+exegesis {
+    The greeting.service system provides greeting functionality.
+    It requires the greetable trait and ensures all greetings
+    are logged and responses are polite.
+}

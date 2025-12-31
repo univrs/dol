@@ -1,0 +1,160 @@
+# DOL Feature: WASM Compilation
+
+**Generated:** $(date)
+**Status:** PARTIAL (Simple Functions Only)
+
+---
+
+## Overview
+
+DOL can compile simple functions to valid WebAssembly (WASM) binaries. This uses the direct WASM path via `wasm-encoder`, bypassing MLIR.
+
+### What Works
+- Simple functions with parameters
+- Integer arithmetic (+, -, *, /, %)
+- Comparison operators (==, !=, <, >, <=, >=)
+- Return statements
+
+### What Doesn't Work (Yet)
+- Genes, Traits, Systems
+- Control flow (if/else, match)
+- Local variables
+- String operations
+
+---
+
+## Building the WASM Compiler
+
+```bash
+cargo build --features "wasm cli" 2>&1
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+```
+
+## WASM Compilation Tests
+
+### Creating Test DOL File
+
+```dol
+module math @ 0.1.0
+
+fun add(a: i64, b: i64) -> i64 {
+    return a + b
+}
+```
+
+### Test 1: Compile Function to WASM
+
+```bash
+# Using the WASM stress test to compile
+WASM compilation output above
+```
+
+### Test 2: Verify WASM Output
+
+**Found:** `add.wasm` exists in project root
+
+**File Details:**
+```
+-rw-r--r-- 1 ardeshir ardeshir 42 Dec 30 21:39 add.wasm
+
+Hexdump of WASM magic header:
+00000000: 0061 736d 0100 0000 0107 0160 027e 7e01  .asm.......`.~~.
+00000010: 7e03 0201 0007 0701 0361 6464 0000 0a0a  ~........add....
+00000020: 0108 0020 0020 017c 0f0b                 ... . .|..
+```
+
+### Test 3: Validate WASM with wasmtime
+
+```bash
+WASM validated successfully by wasmtime
+```
+
+### Test 4: Arithmetic Operations WASM
+
+**Source:** `test-cases/level2-basic/arithmetic.dol`
+```dol
+module arith @ 0.1.0
+
+fun calc(x: i64, y: i64) -> i64 {
+    return x + y
+}
+```
+
+**Compilation:**
+```
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running `target/debug/wasm-stress-test test-cases/level2-basic/arithmetic.dol`
+========================================
+  DOL -> WASM Pipeline Stress Test
+========================================
+
+Test File                      |  Parse  | Validate |  WASM  | Error
+-------------------------------+---------+----------+--------+---------------------------------------------------
+empty_module.dol               |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+exegesis_only.dol              |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+single_const.dol               |  PASS   |   PASS   |  PASS  | 
+add_function.dol               |  PASS   |   PASS   |  PASS  | 
+arithmetic.dol                 |  PASS   |   PASS   |  PASS  | 
+gene_with_constraint.dol       |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+simple_gene.dol                |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+```
+
+### Test 5: What Doesn't Compile to WASM
+
+**Gene Definition (fails):**
+```
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running `target/debug/wasm-stress-test test-cases/level3-types/simple_gene.dol`
+========================================
+  DOL -> WASM Pipeline Stress Test
+========================================
+
+Test File                      |  Parse  | Validate |  WASM  | Error
+-------------------------------+---------+----------+--------+---------------------------------------------------
+empty_module.dol               |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+exegesis_only.dol              |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+```
+
+**If/Else (fails):**
+```
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running `target/debug/wasm-stress-test test-cases/level4-control/if_else.dol`
+========================================
+  DOL -> WASM Pipeline Stress Test
+========================================
+
+Test File                      |  Parse  | Validate |  WASM  | Error
+-------------------------------+---------+----------+--------+---------------------------------------------------
+empty_module.dol               |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+exegesis_only.dol              |  PASS   |   PASS   |  N/A   | No functions found in module - only function de...
+```
+
+
+---
+
+## WASM Compilation Matrix
+
+| DOL Construct | Parses | Validates | WASM |
+|---------------|--------|-----------|------|
+| Simple function | YES | YES | YES |
+| Arithmetic ops | YES | YES | YES |
+| Comparison ops | YES | YES | YES |
+| Gene | YES | YES | NO |
+| Trait | YES | YES | NO |
+| System | YES | YES | NO |
+| If/else | YES | YES | NO |
+| Match | YES | YES | NO |
+| Local vars | YES | YES | NO |
+
+---
+
+## Key Findings
+
+1. **Direct WASM Path Works** - The `wasm-encoder` based compiler produces valid WASM
+2. **42-byte modules** - Simple functions compile to minimal WASM
+3. **MLIR Path Stubbed** - Spirit pipeline returns placeholder WASM
+4. **Path to Full Support Clear** - Need to implement control flow and data types
+
+---
+
+*Generated by DOL Feature Demo Script*

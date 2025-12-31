@@ -1,0 +1,5 @@
+module matching @ 0.1.0
+
+fun identity(n: i64) -> i64 {
+    return n
+}

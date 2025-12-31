@@ -1,0 +1,2 @@
+module docs @ 0.1.0
+exegesis { This is documentation }

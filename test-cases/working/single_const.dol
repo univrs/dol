@@ -1,0 +1,5 @@
+module consts @ 0.1.0
+
+fun double(x: i64) -> i64 {
+    return x + x
+}

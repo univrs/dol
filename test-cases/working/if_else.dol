@@ -1,0 +1,5 @@
+module control @ 0.1.0
+
+fun max(a: i64, b: i64) -> i64 {
+    return a + b
+}

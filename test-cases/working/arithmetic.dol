@@ -1,0 +1,5 @@
+module arith @ 0.1.0
+
+fun calc(x: i64, y: i64) -> i64 {
+    return x + y
+}

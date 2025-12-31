@@ -1,0 +1,3 @@
+module empty @ 0.1.0
+
+exegesis { Empty module for testing }

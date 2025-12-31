@@ -1,0 +1,9 @@
+module constrained @ 0.1.0
+
+gene Credits {
+    has amount: UInt64
+
+    constraint non_negative {
+        this.amount >= 0
+    }
+}
