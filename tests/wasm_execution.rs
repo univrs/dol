@@ -631,6 +631,139 @@ exegesis { Computes factorial of n-1 using for loop. }
     assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
 }
 
+// ============================================
+// 8. Gene Inheritance Tests
+// ============================================
+
+#[test]
+fn test_compile_gene_inheritance_layout() {
+    use metadol::Parser;
+
+    // Parse a file with parent and child genes
+    let source = r#"
+module inheritance_test @ 0.1.0
+
+gene Animal {
+    has age: i64
+
+    fun get_age() -> i64 {
+        return age
+    }
+}
+
+gene Dog extends Animal {
+    has breed_id: i64
+
+    fun bark_count() -> i64 {
+        return age * 2
+    }
+}
+"#;
+
+    let mut parser = Parser::new(source);
+    let dol_file = parser.parse_file().expect("Failed to parse");
+
+    // Compile the file - should handle inheritance ordering
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile_file(&dol_file)
+        .expect("Compilation failed");
+
+    // Verify WASM is valid
+    assert!(wasm_bytes.len() > 8, "WASM should have content");
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Should have WASM magic");
+
+    // Load and verify the module
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+
+    // Test parent method - pass 0 as self pointer (memory starts at 0, initialized to 0)
+    // age (at offset 0) will be 0, so get_age() returns 0
+    let result = wasm_module
+        .call("Animal.get_age", &[0i32.into()])
+        .expect("Call Animal.get_age failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+#[test]
+fn test_compile_gene_inheritance_child_access_parent_field() {
+    use metadol::Parser;
+
+    let source = r#"
+module inheritance_test @ 0.1.0
+
+gene Animal {
+    has age: i64
+}
+
+gene Dog extends Animal {
+    has breed_id: i64
+
+    fun bark_count() -> i64 {
+        return age * 2
+    }
+}
+"#;
+
+    let mut parser = Parser::new(source);
+    let dol_file = parser.parse_file().expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile_file(&dol_file)
+        .expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+
+    // Dog layout: age at offset 0 (inherited), breed_id at offset 8
+    // Memory starts at 0, so age = 0
+    // bark_count() returns age * 2 = 0 * 2 = 0
+    let result = wasm_module
+        .call("Dog.bark_count", &[0i32.into()])
+        .expect("Call Dog.bark_count failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+#[test]
+fn test_compile_gene_inheritance_reverse_order() {
+    use metadol::Parser;
+
+    // Child is declared BEFORE parent - should still work due to topological sort
+    let source = r#"
+module inheritance_test @ 0.1.0
+
+gene Dog extends Animal {
+    has breed_id: i64
+
+    fun get_breed() -> i64 {
+        return breed_id
+    }
+}
+
+gene Animal {
+    has age: i64
+
+    fun get_age() -> i64 {
+        return age
+    }
+}
+"#;
+
+    let mut parser = Parser::new(source);
+    let dol_file = parser.parse_file().expect("Failed to parse");
+
+    // This should still compile - the compiler should sort genes by dependency
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile_file(&dol_file)
+        .expect("Compilation failed with reverse order");
+
+    // Verify module is loadable
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let _wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+}
+
 #[test]
 #[ignore] // Remove this when performance testing is needed
 fn test_wasm_compilation_performance() {

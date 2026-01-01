@@ -596,6 +596,13 @@ fn type_to_wasm_info(
 /// Processes the gene's field declarations and computes offsets,
 /// following C-like struct layout rules with proper alignment and padding.
 ///
+/// # Inheritance
+///
+/// If the gene extends another gene, the parent's fields are included first
+/// (at the same offsets as in the parent), followed by the child's own fields.
+/// This ensures that a child gene pointer can be safely cast to a parent
+/// gene pointer.
+///
 /// # Arguments
 ///
 /// * `gene` - The gene AST node to compute layout for
@@ -610,6 +617,7 @@ fn type_to_wasm_info(
 /// Returns an error if:
 /// - A field references an unknown type
 /// - A type cannot be represented in WASM memory
+/// - The gene extends a parent that is not in the registry
 ///
 /// # Example
 ///
@@ -635,7 +643,26 @@ pub fn compute_gene_layout(
     let mut current_offset = 0u32;
     let mut max_alignment = 1u32;
 
-    // Process each statement in the gene
+    // If this gene extends another, start with parent's fields
+    if let Some(parent_name) = &gene.extends {
+        let parent_layout = registry.get(parent_name).ok_or_else(|| {
+            WasmError::new(format!(
+                "Gene '{}' extends unknown parent '{}'",
+                gene.name, parent_name
+            ))
+        })?;
+
+        // Copy all parent fields (preserving their offsets)
+        for parent_field in &parent_layout.fields {
+            fields.push(parent_field.clone());
+        }
+
+        // Continue from where parent left off
+        current_offset = parent_layout.total_size;
+        max_alignment = parent_layout.alignment;
+    }
+
+    // Process each statement in the gene (child's own fields)
     for stmt in &gene.statements {
         // Only process HasField statements (typed fields)
         if let Statement::HasField(field_box) = stmt {
@@ -996,5 +1023,67 @@ mod tests {
         assert_eq!(reference.size, 4);
         assert_eq!(reference.wasm_type, WasmFieldType::Ptr);
         assert!(reference.is_reference);
+    }
+
+    #[test]
+    fn test_gene_inheritance_layout() {
+        // gene Animal { has age: Int64 }
+        let animal_gene = make_gene("Animal", vec![make_field("age", "Int64")]);
+
+        let mut registry = GeneLayoutRegistry::new();
+        let animal_layout = compute_gene_layout(&animal_gene, &registry).unwrap();
+
+        assert_eq!(animal_layout.name, "Animal");
+        assert_eq!(animal_layout.total_size, 8);
+        assert_eq!(animal_layout.fields.len(), 1);
+        assert_eq!(animal_layout.fields[0].name, "age");
+        assert_eq!(animal_layout.fields[0].offset, 0);
+
+        registry.register(animal_layout);
+
+        // gene Dog extends Animal { has breed_id: Int64 }
+        let dog_gene = Gene {
+            name: "Dog".to_string(),
+            extends: Some("Animal".to_string()),
+            statements: vec![make_field("breed_id", "Int64")],
+            exegesis: "Test gene".to_string(),
+            span: Span::default(),
+        };
+
+        let dog_layout = compute_gene_layout(&dog_gene, &registry).unwrap();
+
+        assert_eq!(dog_layout.name, "Dog");
+        assert_eq!(dog_layout.total_size, 16); // 8 (age) + 8 (breed_id)
+        assert_eq!(dog_layout.alignment, 8);
+        assert_eq!(dog_layout.fields.len(), 2);
+
+        // First field is inherited from Animal
+        assert_eq!(dog_layout.fields[0].name, "age");
+        assert_eq!(dog_layout.fields[0].offset, 0);
+
+        // Second field is Dog's own
+        assert_eq!(dog_layout.fields[1].name, "breed_id");
+        assert_eq!(dog_layout.fields[1].offset, 8);
+    }
+
+    #[test]
+    fn test_gene_inheritance_unknown_parent() {
+        // gene Dog extends Animal { has breed_id: Int64 }
+        // But Animal is not in the registry
+        let dog_gene = Gene {
+            name: "Dog".to_string(),
+            extends: Some("Animal".to_string()),
+            statements: vec![make_field("breed_id", "Int64")],
+            exegesis: "Test gene".to_string(),
+            span: Span::default(),
+        };
+
+        let registry = GeneLayoutRegistry::new();
+        let result = compute_gene_layout(&dog_gene, &registry);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("extends unknown parent"));
+        assert!(err.message.contains("Animal"));
     }
 }

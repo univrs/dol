@@ -609,6 +609,250 @@ impl WasmCompiler {
         Ok(wasm_module.finish())
     }
 
+    /// Compile a complete DOL file containing multiple declarations.
+    ///
+    /// This method handles files with multiple gene declarations, properly
+    /// ordering them so that parent genes are registered before children
+    /// (required for inheritance).
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - The parsed DOL file containing declarations
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<u8>` containing the WASM bytecode on success, or a `WasmError`
+    /// if compilation fails.
+    pub fn compile_file(&mut self, file: &crate::ast::DolFile) -> Result<Vec<u8>, WasmError> {
+        use wasm_encoder::{
+            CodeSection, ExportKind, ExportSection, Function, FunctionSection, Module, TypeSection,
+            ValType,
+        };
+
+        // Register gene layouts in dependency order (parents before children)
+        self.register_gene_layouts_ordered(&file.declarations)?;
+
+        // Extract all functions from all declarations
+        let mut functions: Vec<ExtractedFunction> = Vec::new();
+        for decl in &file.declarations {
+            let extracted = self.extract_functions(decl)?;
+            functions.extend(extracted);
+        }
+
+        if functions.is_empty() {
+            return Err(WasmError::new(
+                "No functions found in file - only function declarations are currently supported for WASM compilation",
+            ));
+        }
+
+        // Check if we need memory allocation (when gene layouts are registered)
+        let needs_memory = !self.gene_layouts.is_empty();
+
+        // Build WASM module
+        let mut wasm_module = Module::new();
+
+        // Type section: function signatures
+        let mut types = TypeSection::new();
+        let mut type_indices = Vec::new();
+
+        // If we need memory, add the alloc function type first
+        if needs_memory {
+            let (alloc_params, alloc_results) = BumpAllocator::alloc_type_signature();
+            types.function(alloc_params, alloc_results);
+            type_indices.push(0);
+        }
+
+        // Add user function types (offset by 1 if we have alloc)
+        let type_offset = if needs_memory { 1u32 } else { 0u32 };
+        for extracted in &functions {
+            let mut params: Vec<ValType> = Vec::new();
+
+            // For gene methods, add implicit 'self' parameter (i32 pointer)
+            if extracted.gene_context.is_some() {
+                params.push(ValType::I32);
+            }
+
+            // Add declared parameters
+            for p in &extracted.func.params {
+                params.push(self.dol_type_to_wasm(&p.type_ann)?);
+            }
+
+            let results = if let Some(ref ret_type) = extracted.func.return_type {
+                vec![self.dol_type_to_wasm(ret_type)?]
+            } else {
+                vec![]
+            };
+
+            types.function(params, results);
+            let user_func_idx = type_indices.len() - if needs_memory { 1 } else { 0 };
+            type_indices.push(type_offset + user_func_idx as u32);
+        }
+
+        wasm_module.section(&types);
+
+        // Function section: function indices
+        let mut funcs = FunctionSection::new();
+        if needs_memory {
+            funcs.function(0);
+        }
+        for (i, _func) in functions.iter().enumerate() {
+            funcs.function(type_offset + i as u32);
+        }
+        wasm_module.section(&funcs);
+
+        // Memory section (if needed)
+        if needs_memory {
+            BumpAllocator::emit_memory_section(&mut wasm_module, 1);
+            BumpAllocator::emit_globals(&mut wasm_module, 1024);
+        }
+
+        // Export section: export all user functions
+        let mut exports = ExportSection::new();
+        let func_idx_offset = if needs_memory { 1u32 } else { 0u32 };
+        for (idx, extracted) in functions.iter().enumerate() {
+            exports.export(
+                &extracted.exported_name,
+                ExportKind::Func,
+                func_idx_offset + idx as u32,
+            );
+        }
+        if needs_memory {
+            exports.export("memory", ExportKind::Memory, 0);
+        }
+        wasm_module.section(&exports);
+
+        // Code section: function bodies
+        let mut code = CodeSection::new();
+
+        // Add alloc function if memory is needed
+        if needs_memory {
+            let alloc_func = BumpAllocator::build_alloc_function();
+            code.function(&alloc_func);
+        }
+
+        // Register all function names for call resolution
+        let func_name_map: std::collections::HashMap<String, u32> = functions
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.exported_name.clone(), func_idx_offset + i as u32))
+            .collect();
+
+        // Add user function code
+        for (idx, extracted) in functions.iter().enumerate() {
+            let mut locals_table = LocalsTable::new_with_gene_context(
+                &extracted.func.params,
+                extracted.gene_context.as_ref(),
+            );
+
+            // Register all function indices for call resolution
+            for (name, wasm_idx) in &func_name_map {
+                locals_table
+                    .dol_types
+                    .insert(format!("__func_{}", name), format!("wasm_idx:{}", wasm_idx));
+            }
+
+            // Collect locals from function body
+            self.collect_locals(&extracted.func.body, &mut locals_table)?;
+
+            // Match expressions need a temp local
+            locals_table.declare("__match_temp", ValType::I64);
+
+            // Build the locals vector
+            let locals = locals_table.get_locals();
+
+            let mut function = Function::new(locals);
+            let _ = idx;
+            self.emit_function_body(&mut function, extracted.func, &locals_table)?;
+            code.function(&function);
+        }
+        wasm_module.section(&code);
+
+        Ok(wasm_module.finish())
+    }
+
+    /// Register gene layouts in dependency order (parents before children).
+    ///
+    /// This performs a topological sort of genes based on their extends relationships,
+    /// ensuring that parent genes are registered before their children.
+    fn register_gene_layouts_ordered(
+        &mut self,
+        declarations: &[crate::ast::Declaration],
+    ) -> Result<(), WasmError> {
+        use crate::ast::Declaration;
+        use crate::wasm::layout::compute_gene_layout;
+
+        // Collect all genes with their dependencies
+        let mut genes: Vec<&crate::ast::Gene> = Vec::new();
+        for decl in declarations {
+            if let Declaration::Gene(gene) = decl {
+                genes.push(gene);
+            }
+        }
+
+        // Simple topological sort: keep processing until all genes are registered
+        // This handles the case where parent genes come after children in the source
+        let mut remaining: Vec<&crate::ast::Gene> = genes;
+        let mut max_iterations = remaining.len() + 1;
+
+        while !remaining.is_empty() && max_iterations > 0 {
+            max_iterations -= 1;
+            let mut still_remaining = Vec::new();
+
+            for gene in remaining {
+                // Skip if already registered
+                if self.gene_layouts.contains(&gene.name) {
+                    continue;
+                }
+
+                // Check if this gene has any fields
+                let has_fields = gene
+                    .statements
+                    .iter()
+                    .any(|stmt| matches!(stmt, crate::ast::Statement::HasField(_)));
+
+                if !has_fields {
+                    // No fields, skip layout registration
+                    continue;
+                }
+
+                // Check if parent is registered (if any)
+                if let Some(parent_name) = &gene.extends {
+                    if !self.gene_layouts.contains(parent_name) {
+                        // Parent not yet registered, try again later
+                        still_remaining.push(gene);
+                        continue;
+                    }
+                }
+
+                // Compute and register layout
+                match compute_gene_layout(gene, &self.gene_layouts) {
+                    Ok(layout) => {
+                        self.gene_layouts.register(layout);
+                    }
+                    Err(e) => {
+                        return Err(WasmError::new(format!(
+                            "Failed to compute layout for gene '{}': {}",
+                            gene.name, e.message
+                        )));
+                    }
+                }
+            }
+
+            remaining = still_remaining;
+        }
+
+        // Check if there are any remaining genes (circular dependency)
+        if !remaining.is_empty() {
+            let names: Vec<&str> = remaining.iter().map(|g| g.name.as_str()).collect();
+            return Err(WasmError::new(format!(
+                "Circular or unresolved gene dependencies: {:?}",
+                names
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Extract function declarations from a DOL module.
     ///
     /// Supports top-level function declarations and gene methods.
@@ -626,17 +870,24 @@ impl WasmCompiler {
             }]),
             Declaration::Gene(gene) => {
                 // Collect field names from gene for implicit self access
-                let field_names: Vec<String> = gene
-                    .statements
-                    .iter()
-                    .filter_map(|stmt| {
-                        if let Statement::HasField(field) = stmt {
-                            Some(field.name.clone())
-                        } else {
-                            None
+                // Start with parent fields if this gene extends another
+                let mut field_names: Vec<String> = Vec::new();
+
+                if let Some(parent_name) = &gene.extends {
+                    // Get parent layout to get inherited field names
+                    if let Some(parent_layout) = self.gene_layouts.get(parent_name) {
+                        for parent_field in &parent_layout.fields {
+                            field_names.push(parent_field.name.clone());
                         }
-                    })
-                    .collect();
+                    }
+                }
+
+                // Add this gene's own fields
+                for stmt in &gene.statements {
+                    if let Statement::HasField(field) = stmt {
+                        field_names.push(field.name.clone());
+                    }
+                }
 
                 // Only set gene_context if the gene has fields (requires implicit self)
                 let gene_context = if field_names.is_empty() {
