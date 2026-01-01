@@ -465,6 +465,172 @@ fn test_wasm_runtime_many_modules() {
     }
 }
 
+// ============================================
+// 8. Loop and Variable Reassignment Tests
+// ============================================
+
+#[test]
+fn test_compile_and_execute_while_loop_sum() {
+    // Test while loop with variable reassignment: sum of 0+1+2+3+4 = 10
+    let source = r#"
+fun test_while_sum(n: i64) -> i64 {
+    let total: i64 = 0
+    let i: i64 = 0
+    while i < n {
+        total = total + i
+        i = i + 1
+    }
+    return total
+}
+exegesis { Sums integers from 0 to n-1 using a while loop. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // test_while_sum(5) should return 0+1+2+3+4 = 10
+    let result = wasm_module
+        .call("test_while_sum", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(10));
+
+    // test_while_sum(1) should return 0
+    let result = wasm_module
+        .call("test_while_sum", &[1i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+
+    // test_while_sum(0) should return 0 (never enters loop)
+    let result = wasm_module
+        .call("test_while_sum", &[0i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+#[test]
+fn test_compile_and_execute_for_loop_sum() {
+    // Test for loop: sum of 0..n
+    let source = r#"
+fun test_for_sum(n: i64) -> i64 {
+    let total: i64 = 0
+    for i in 0..n {
+        total = total + i
+    }
+    return total
+}
+exegesis { Sums integers from 0 to n-1 using a for loop. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // test_for_sum(5) should return 0+1+2+3+4 = 10
+    let result = wasm_module
+        .call("test_for_sum", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(10));
+}
+
+#[test]
+fn test_compile_and_execute_loop_with_break() {
+    // Test infinite loop with break
+    let source = r#"
+fun test_loop_break(target: i64) -> i64 {
+    let counter: i64 = 0
+    loop {
+        counter = counter + 1
+        if counter >= target {
+            break
+        }
+    }
+    return counter
+}
+exegesis { Counts up until reaching target using loop with break. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // test_loop_break(5) should return 5
+    let result = wasm_module
+        .call("test_loop_break", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(5));
+}
+
+#[test]
+fn test_compile_and_execute_variable_reassignment() {
+    // Test basic variable reassignment
+    let source = r#"
+fun test_reassign(x: i64) -> i64 {
+    let a: i64 = x
+    a = a + 10
+    a = a * 2
+    return a
+}
+exegesis { Tests variable reassignment. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // test_reassign(5) should return (5 + 10) * 2 = 30
+    let result = wasm_module
+        .call("test_reassign", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(30));
+}
+
+#[test]
+fn test_compile_and_execute_factorial() {
+    // Test for loop computing factorial
+    let source = r#"
+fun factorial(n: i64) -> i64 {
+    let result: i64 = 1
+    for i in 1..n {
+        result = result * i
+    }
+    return result
+}
+exegesis { Computes factorial of n-1 using for loop. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // factorial(5) = 1*2*3*4 = 24 (range is exclusive: 1..5 means 1,2,3,4)
+    let result = wasm_module
+        .call("factorial", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(24));
+
+    // factorial(1) = 1 (empty range)
+    let result = wasm_module
+        .call("factorial", &[1i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+}
+
 #[test]
 #[ignore] // Remove this when performance testing is needed
 fn test_wasm_compilation_performance() {

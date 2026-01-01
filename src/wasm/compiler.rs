@@ -74,6 +74,41 @@ pub struct WasmCompiler {
     gene_layouts: GeneLayoutRegistry,
 }
 
+/// Context for tracking loop control flow depths.
+///
+/// WASM uses relative block depths for `br` (break) instructions. When control
+/// flow is nested inside if/match/block expressions, the depths need to be adjusted.
+#[cfg(feature = "wasm")]
+#[derive(Debug, Clone, Copy, Default)]
+struct LoopContext {
+    /// Depth to break target (outer block surrounding loop)
+    /// None if not inside a loop
+    break_depth: Option<u32>,
+    /// Depth to continue target (loop header)
+    /// None if not inside a loop
+    continue_depth: Option<u32>,
+}
+
+#[cfg(feature = "wasm")]
+impl LoopContext {
+    /// Create a new context for entering a loop.
+    /// break_depth=1 (outer block), continue_depth=0 (loop header)
+    fn enter_loop() -> Self {
+        Self {
+            break_depth: Some(1),
+            continue_depth: Some(0),
+        }
+    }
+
+    /// Increment depths for entering a block (if, match, etc.)
+    fn enter_block(&self) -> Self {
+        Self {
+            break_depth: self.break_depth.map(|d| d + 1),
+            continue_depth: self.continue_depth.map(|d| d + 1),
+        }
+    }
+}
+
 /// Table for tracking local variables within a function.
 ///
 /// This tracks both function parameters (which are the first locals in WASM)
@@ -823,6 +858,9 @@ impl WasmCompiler {
         let stmt_count = func_decl.body.len();
 
         // Emit each statement in the function body
+        // Start with empty loop context (no break/continue targets)
+        let loop_ctx = LoopContext::default();
+
         for (i, stmt) in func_decl.body.iter().enumerate() {
             let is_last = i == stmt_count - 1;
 
@@ -830,22 +868,22 @@ impl WasmCompiler {
             if is_last && has_return_type {
                 if let Stmt::Expr(expr) = stmt {
                     // Emit the expression without dropping - its value becomes the return
-                    self.emit_expression(function, expr, locals)?;
+                    self.emit_expression(function, expr, locals, loop_ctx)?;
                     // No Drop - the value on stack is the return value
                 } else if let Stmt::Return(Some(expr)) = stmt {
                     // Explicit return - emit expression and return
-                    self.emit_expression(function, expr, locals)?;
+                    self.emit_expression(function, expr, locals, loop_ctx)?;
                     function.instruction(&Instruction::Return);
                 } else if let Stmt::Return(None) = stmt {
                     // Explicit void return
                     function.instruction(&Instruction::Return);
                 } else {
                     // Other statement types - emit normally
-                    self.emit_statement(function, stmt, locals)?;
+                    self.emit_statement(function, stmt, locals, loop_ctx)?;
                 }
             } else {
                 // Not the last statement - emit normally
-                self.emit_statement(function, stmt, locals)?;
+                self.emit_statement(function, stmt, locals, loop_ctx)?;
             }
         }
 
@@ -861,6 +899,7 @@ impl WasmCompiler {
         function: &mut wasm_encoder::Function,
         stmt: &crate::ast::Stmt,
         locals: &LocalsTable,
+        loop_ctx: LoopContext,
     ) -> Result<(), WasmError> {
         use crate::ast::{Expr, Stmt};
         use wasm_encoder::Instruction;
@@ -868,12 +907,12 @@ impl WasmCompiler {
         match stmt {
             Stmt::Return(expr_opt) => {
                 if let Some(expr) = expr_opt {
-                    self.emit_expression(function, expr, locals)?;
+                    self.emit_expression(function, expr, locals, loop_ctx)?;
                 }
                 function.instruction(&Instruction::Return);
             }
             Stmt::Expr(expr) => {
-                self.emit_expression(function, expr, locals)?;
+                self.emit_expression(function, expr, locals, loop_ctx)?;
                 // Drop the result if it's an expression statement that produces a value
                 // Note: Some expressions like if-without-else produce no value
                 if self.expression_produces_value(expr) {
@@ -882,7 +921,7 @@ impl WasmCompiler {
             }
             Stmt::Let { name, value, .. } => {
                 // Emit the value expression
-                self.emit_expression(function, value, locals)?;
+                self.emit_expression(function, value, locals, loop_ctx)?;
 
                 // Look up the local index (should exist from collect_locals pass)
                 let local_idx = locals.lookup(name).ok_or_else(|| {
@@ -900,7 +939,7 @@ impl WasmCompiler {
                 match target {
                     Expr::Identifier(name) => {
                         // Emit the value expression
-                        self.emit_expression(function, value, locals)?;
+                        self.emit_expression(function, value, locals, loop_ctx)?;
 
                         // Look up the local index
                         let local_idx = locals.lookup(name).ok_or_else(|| {
@@ -930,16 +969,19 @@ impl WasmCompiler {
                 // Inner loop for continue target (depth 0 from inside loop)
                 function.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
 
-                // Evaluate condition
-                self.emit_expression(function, condition, locals)?;
+                // Create loop context for body statements
+                let body_ctx = LoopContext::enter_loop();
+
+                // Evaluate condition (in parent context, before loop constructs)
+                self.emit_expression(function, condition, locals, loop_ctx)?;
 
                 // Branch out of outer block if condition is false (i32.eqz inverts boolean)
                 function.instruction(&Instruction::I32Eqz);
                 function.instruction(&Instruction::BrIf(1)); // Break to outer block
 
-                // Loop body
+                // Loop body with loop context
                 for stmt in body {
-                    self.emit_statement(function, stmt, locals)?;
+                    self.emit_statement(function, stmt, locals, body_ctx)?;
                 }
 
                 // Continue - branch back to loop start (depth 0)
@@ -977,12 +1019,12 @@ impl WasmCompiler {
                         ))
                     })?;
 
-                    // Initialize loop variable with start value
-                    self.emit_expression(function, left, locals)?;
+                    // Initialize loop variable with start value (in parent context)
+                    self.emit_expression(function, left, locals, loop_ctx)?;
                     function.instruction(&Instruction::LocalSet(loop_var));
 
-                    // Store end value
-                    self.emit_expression(function, right, locals)?;
+                    // Store end value (in parent context)
+                    self.emit_expression(function, right, locals, loop_ctx)?;
                     function.instruction(&Instruction::LocalSet(end_var));
 
                     // Outer block for break
@@ -991,6 +1033,9 @@ impl WasmCompiler {
                     // Loop
                     function.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
 
+                    // Create loop context for body statements
+                    let body_ctx = LoopContext::enter_loop();
+
                     // Check condition: loop_var < end_var
                     function.instruction(&Instruction::LocalGet(loop_var));
                     function.instruction(&Instruction::LocalGet(end_var));
@@ -998,9 +1043,9 @@ impl WasmCompiler {
                     function.instruction(&Instruction::I32Eqz);
                     function.instruction(&Instruction::BrIf(1)); // Break if not less
 
-                    // Body
+                    // Body with loop context
                     for stmt in body {
-                        self.emit_statement(function, stmt, locals)?;
+                        self.emit_statement(function, stmt, locals, body_ctx)?;
                     }
 
                     // Increment loop variable
@@ -1027,9 +1072,12 @@ impl WasmCompiler {
                 // Inner loop for continue target
                 function.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
 
-                // Loop body
+                // Create loop context for body statements
+                let body_ctx = LoopContext::enter_loop();
+
+                // Loop body with loop context
                 for stmt in body {
-                    self.emit_statement(function, stmt, locals)?;
+                    self.emit_statement(function, stmt, locals, body_ctx)?;
                 }
 
                 // Continue - infinite loop back to start
@@ -1039,16 +1087,18 @@ impl WasmCompiler {
                 function.instruction(&Instruction::End); // End block
             }
             Stmt::Break => {
-                // Break to outer block (depth 1 from inside the loop)
-                // Note: This assumes we're directly inside a loop. For nested
-                // control flow, we would need block depth tracking.
-                function.instruction(&Instruction::Br(1));
+                // Break to outer block using tracked depth
+                let depth = loop_ctx
+                    .break_depth
+                    .ok_or_else(|| WasmError::new("break statement outside of loop"))?;
+                function.instruction(&Instruction::Br(depth));
             }
             Stmt::Continue => {
-                // Continue to loop start (depth 0 from inside the loop)
-                // Note: This assumes we're directly inside a loop. For nested
-                // control flow, we would need block depth tracking.
-                function.instruction(&Instruction::Br(0));
+                // Continue to loop start using tracked depth
+                let depth = loop_ctx
+                    .continue_depth
+                    .ok_or_else(|| WasmError::new("continue statement outside of loop"))?;
+                function.instruction(&Instruction::Br(depth));
             }
         }
 
@@ -1061,6 +1111,7 @@ impl WasmCompiler {
         function: &mut wasm_encoder::Function,
         expr: &crate::ast::Expr,
         locals: &LocalsTable,
+        loop_ctx: LoopContext,
     ) -> Result<(), WasmError> {
         use crate::ast::{Expr, Literal};
         use wasm_encoder::Instruction;
@@ -1252,9 +1303,9 @@ impl WasmCompiler {
             }
             Expr::Binary { left, op, right } => {
                 // Emit left operand
-                self.emit_expression(function, left, locals)?;
+                self.emit_expression(function, left, locals, loop_ctx)?;
                 // Emit right operand
-                self.emit_expression(function, right, locals)?;
+                self.emit_expression(function, right, locals, loop_ctx)?;
                 // Emit operation
                 self.emit_binary_op(function, *op)?;
             }
@@ -1263,7 +1314,7 @@ impl WasmCompiler {
                 if let Expr::Identifier(func_name) = callee.as_ref() {
                     // Emit arguments
                     for arg in args {
-                        self.emit_expression(function, arg, locals)?;
+                        self.emit_expression(function, arg, locals, loop_ctx)?;
                     }
                     // Look up function index
                     let func_idx = locals.lookup_function(func_name).ok_or_else(|| {
@@ -1282,7 +1333,7 @@ impl WasmCompiler {
                 else_branch,
             } => {
                 // Emit condition (should produce i32 boolean value)
-                self.emit_expression(function, condition, locals)?;
+                self.emit_expression(function, condition, locals, loop_ctx)?;
 
                 // Determine result type based on whether we have an else branch
                 let block_type = if else_branch.is_some() {
@@ -1295,13 +1346,16 @@ impl WasmCompiler {
 
                 function.instruction(&Instruction::If(block_type));
 
-                // Emit then branch
-                self.emit_expression(function, then_branch, locals)?;
+                // If block adds a level of nesting, so increment depths for break/continue
+                let if_ctx = loop_ctx.enter_block();
+
+                // Emit then branch with updated context
+                self.emit_expression(function, then_branch, locals, if_ctx)?;
 
                 // Emit else branch if present
                 if let Some(else_expr) = else_branch {
                     function.instruction(&Instruction::Else);
-                    self.emit_expression(function, else_expr, locals)?;
+                    self.emit_expression(function, else_expr, locals, if_ctx)?;
                 }
 
                 function.instruction(&Instruction::End);
@@ -1310,14 +1364,16 @@ impl WasmCompiler {
                 statements,
                 final_expr,
             } => {
-                // Emit all statements in the block
+                // Block expressions might contain statements with break/continue
+                // Note: A pure block expression doesn't add WASM block structure,
+                // so we don't increment the loop context here
                 for stmt in statements {
-                    self.emit_statement(function, stmt, locals)?;
+                    self.emit_statement(function, stmt, locals, loop_ctx)?;
                 }
 
                 // Emit final expression if present (this becomes the block's value)
                 if let Some(expr) = final_expr {
-                    self.emit_expression(function, expr, locals)?;
+                    self.emit_expression(function, expr, locals, loop_ctx)?;
                 }
             }
             Expr::Match { scrutinee, arms } => {
@@ -1335,7 +1391,7 @@ impl WasmCompiler {
                     .position(|arm| matches!(&arm.pattern, Pattern::Wildcard));
 
                 // Emit the scrutinee value
-                self.emit_expression(function, scrutinee, locals)?;
+                self.emit_expression(function, scrutinee, locals, loop_ctx)?;
 
                 // Store in a temporary local for multiple pattern checks
                 let temp_local = locals.lookup("__match_temp").ok_or_else(|| {
@@ -1348,7 +1404,15 @@ impl WasmCompiler {
 
                 // Generate nested if-else for each arm
                 // Start from the first arm (excluding wildcard if it exists)
-                self.emit_match_arms(function, arms, 0, temp_local, wildcard_idx, locals)?;
+                self.emit_match_arms(
+                    function,
+                    arms,
+                    0,
+                    temp_local,
+                    wildcard_idx,
+                    locals,
+                    loop_ctx,
+                )?;
             }
             Expr::Lambda { .. } => {
                 return Err(WasmError::new(
@@ -1366,7 +1430,7 @@ impl WasmCompiler {
                 };
 
                 // Emit object expression (should produce a pointer)
-                self.emit_expression(function, object, locals)?;
+                self.emit_expression(function, object, locals, loop_ctx)?;
 
                 // Look up the gene layout and field
                 if let Some(type_name) = gene_type {
@@ -1439,12 +1503,12 @@ impl WasmCompiler {
                     UnaryOp::Neg => {
                         // For negation: 0 - value (i64)
                         function.instruction(&Instruction::I64Const(0));
-                        self.emit_expression(function, operand, locals)?;
+                        self.emit_expression(function, operand, locals, loop_ctx)?;
                         function.instruction(&Instruction::I64Sub);
                     }
                     UnaryOp::Not => {
                         // For boolean not: eqz (value == 0)
-                        self.emit_expression(function, operand, locals)?;
+                        self.emit_expression(function, operand, locals, loop_ctx)?;
                         function.instruction(&Instruction::I64Eqz);
                     }
                     _ => {
@@ -1524,7 +1588,7 @@ impl WasmCompiler {
                             // Get pointer
                             function.instruction(&Instruction::LocalGet(ptr_local));
                             // Emit value
-                            self.emit_expression(function, field_value, locals)?;
+                            self.emit_expression(function, field_value, locals, loop_ctx)?;
                             // Store at offset
                             use crate::wasm::layout::WasmFieldType;
                             match field_layout.wasm_type {
@@ -1594,6 +1658,7 @@ impl WasmCompiler {
     /// - Literal patterns: compare scrutinee with literal
     /// - Wildcard pattern: unconditional else case
     /// - Other patterns: currently unsupported
+    #[allow(clippy::too_many_arguments)]
     fn emit_match_arms(
         &self,
         function: &mut wasm_encoder::Function,
@@ -1602,6 +1667,7 @@ impl WasmCompiler {
         temp_local: u32,
         wildcard_idx: Option<usize>,
         locals: &LocalsTable,
+        loop_ctx: LoopContext,
     ) -> Result<(), WasmError> {
         use crate::ast::{Literal, Pattern};
         use wasm_encoder::Instruction;
@@ -1626,10 +1692,11 @@ impl WasmCompiler {
                     temp_local,
                     wildcard_idx,
                     locals,
+                    loop_ctx,
                 );
             } else {
                 // This is the last arm and it's wildcard - emit its body directly
-                self.emit_expression(function, &arm.body, locals)?;
+                self.emit_expression(function, &arm.body, locals, loop_ctx)?;
                 return Ok(());
             }
         }
@@ -1663,8 +1730,11 @@ impl WasmCompiler {
                     wasm_encoder::ValType::I64,
                 )));
 
+                // Match arms' if blocks add nesting level
+                let if_ctx = loop_ctx.enter_block();
+
                 // Emit the body for this arm
-                self.emit_expression(function, &arm.body, locals)?;
+                self.emit_expression(function, &arm.body, locals, if_ctx)?;
 
                 function.instruction(&Instruction::Else);
 
@@ -1680,10 +1750,11 @@ impl WasmCompiler {
                         temp_local,
                         wildcard_idx,
                         locals,
+                        if_ctx,
                     )?;
                 } else if let Some(wild_idx) = wildcard_idx {
                     // Emit wildcard body
-                    self.emit_expression(function, &arms[wild_idx].body, locals)?;
+                    self.emit_expression(function, &arms[wild_idx].body, locals, if_ctx)?;
                 } else {
                     // No wildcard - this is non-exhaustive
                     // Emit unreachable or a default value
@@ -1695,7 +1766,7 @@ impl WasmCompiler {
             Pattern::Identifier(_) => {
                 // Identifier pattern binds the value - for now, treat like wildcard
                 // In a full implementation, we'd bind to a local variable
-                self.emit_expression(function, &arm.body, locals)?;
+                self.emit_expression(function, &arm.body, locals, loop_ctx)?;
             }
             _ => {
                 return Err(WasmError::new(format!(
