@@ -11,7 +11,7 @@ The DOL WASM backend compiles DOL (Design Ontology Language) source code to WebA
 3. **Future features** (complex patterns, optimizations)
 
 **Last Updated:** 2026-01-01
-**Test Status:** 28 WASM execution tests passing
+**Test Status:** 31 WASM execution tests passing
 
 ## Test Infrastructure
 
@@ -114,13 +114,13 @@ test-cases/
 | Gene methods (simple) | level3-types/gene_methods_test.dol | PASS |
 | Gene field access | level3-types/gene_methods_test.dol | PASS |
 | Implicit self parameter | level3-types/gene_methods_test.dol | PASS |
+| Gene inheritance | tests/wasm_execution.rs | PASS |
 | Pattern matching (basic) | - | PASS |
 
 ### Under Development (Level 3-5)
 
 | Feature | Test File | Status | Priority |
 |---------|-----------|--------|----------|
-| Gene inheritance | level3-types/gene_methods_test.dol | TODO | MEDIUM |
 | Complex gene layouts | level3-types/gene_methods_test.dol | TODO | MEDIUM |
 | Match expressions (complex) | level4-control/match_expr.dol | TODO | LOW |
 | Trait definitions | level5-advanced/trait_impl_test.dol | TODO | LOW |
@@ -197,7 +197,7 @@ test-cases/
 - For loops desugared to while loops
 - **Block depth tracking via `LoopContext`**: Tracks relative break/continue depths when nested inside if/match blocks
 
-### 4. Genes (Partial) ⚠️ IN PROGRESS
+### 4. Genes ✅ MOSTLY COMPLETE
 
 **File:** `test-cases/level3-types/gene_methods_test.dol`
 
@@ -208,14 +208,19 @@ test-cases/
 | Calculator gene | Multiple methods | PASS |
 | Rectangle gene | Area/perimeter | PASS |
 | Vector2D gene | Float fields | PASS |
-| Dog extends Animal | Inheritance | TODO |
+| Dog extends Animal | Inheritance | PASS |
+| test_compile_gene_inheritance_layout | Parent/child compilation | PASS |
+| test_compile_gene_inheritance_child_access_parent_field | Inherited field access | PASS |
+| test_compile_gene_inheritance_reverse_order | Topological ordering | PASS |
 
-**WASM Implementation (Partial):**
+**WASM Implementation (Completed):**
 - [x] Memory layout for gene fields via `GeneLayout`
 - [x] Method compilation as functions with `gene_` prefix
 - [x] Field access via memory instructions (i64.load/i64.store)
 - [x] Implicit self parameter via `GeneContext`
-- [ ] Inheritance via field embedding (not yet implemented)
+- [x] Inheritance via field embedding in `compute_gene_layout`
+- [x] Topological ordering via `register_gene_layouts_ordered`
+- [x] Parent field access in child methods via extended `GeneContext`
 
 ### 5. Traits (LOW PRIORITY)
 
@@ -278,13 +283,13 @@ The following issues have been fixed:
 3. ~~Control flow stubs~~ - If/else, while, for, break/continue all implemented
 4. ~~Break inside if blocks~~ - Fixed with `LoopContext` block depth tracking
 5. ~~Gene methods not extracted~~ - Gene method extraction now works with implicit self
+6. ~~Gene inheritance not implemented~~ - Fixed with field embedding in `compute_gene_layout` + topological ordering
 
 ### Remaining Limitations
 
-1. **Gene Inheritance**: Field inheritance not yet implemented
-2. **Complex Gene Layouts**: Nested genes not fully supported
-3. **Traits**: Trait method dispatch not implemented
-4. **Systems**: System declarations parsed but not compiled to WASM
+1. **Complex Gene Layouts**: Nested genes not fully supported
+2. **Traits**: Trait method dispatch not implemented
+3. **Systems**: System declarations parsed but not compiled to WASM
 
 ## Success Criteria
 
@@ -299,12 +304,12 @@ The following issues have been fixed:
 - [x] Break/continue work correctly
 - [x] Nested control flow works (with block depth tracking)
 
-### Phase 3: Genes (Partial)
+### Phase 3: Genes ✅ MOSTLY COMPLETE
 - [x] Simple gene with fields compiles
 - [x] Gene methods are callable
 - [x] Field access works
 - [x] Implicit self parameter works
-- [ ] Gene inheritance
+- [x] Gene inheritance (field embedding + topological ordering)
 - [ ] Complex nested genes
 
 ### Phase 4: Integration (In Progress)
