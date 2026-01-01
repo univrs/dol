@@ -107,7 +107,7 @@ fn test_file(path: &Path) -> TestResult {
     // WASM Compilation
     #[cfg(feature = "wasm")]
     let wasm_result = {
-        let compiler = WasmCompiler::new();
+        let mut compiler = WasmCompiler::new();
         let mut wasm_success = false;
         let mut wasm_error = String::from("No functions");
 

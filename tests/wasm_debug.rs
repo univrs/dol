@@ -22,7 +22,7 @@ exegesis { Returns the maximum of two integers. }
     println!("Parsed AST:\n{:#?}", module);
 
     // Compile to WASM
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     println!("\nWASM size: {} bytes", wasm_bytes.len());
@@ -60,7 +60,7 @@ exegesis { Classifies an integer. }
     println!("Match AST:\n{:#?}", module);
 
     // Compile to WASM
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     println!("\nMatch WASM size: {} bytes", wasm_bytes.len());
@@ -142,7 +142,7 @@ exegesis { Doubles a number. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     println!("Function call WASM size: {} bytes", wasm_bytes.len());

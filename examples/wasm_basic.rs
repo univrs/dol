@@ -45,7 +45,7 @@ fn main() {
     let decl = Declaration::Function(Box::new(func));
 
     // Compile to WASM
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     match compiler.compile(&decl) {
         Ok(wasm_bytes) => {
             println!("✓ Successfully compiled to WASM!");

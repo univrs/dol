@@ -370,7 +370,7 @@ exegesis { A counter. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let result = compiler.compile(&module);
 
     // Currently returns error when compiling genes (not functions) - this is expected
@@ -398,7 +398,7 @@ exegesis { Adds two integers. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new()
+    let mut compiler = WasmCompiler::new()
         .with_optimization(true)
         .with_debug_info(false);
 
@@ -731,7 +731,7 @@ exegesis { A simple counter implementation. }
     #[cfg(feature = "wasm")]
     {
         use metadol::wasm::WasmCompiler;
-        let compiler = WasmCompiler::new();
+        let mut compiler = WasmCompiler::new();
         let _wasm_result = compiler.compile(&ast);
         // Currently returns NotImplemented - this is expected
     }

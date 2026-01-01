@@ -197,7 +197,7 @@ exegesis { A counter. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let result = compiler.compile(&module);
 
     // Should return error when compiling genes (only functions are supported)
@@ -222,7 +222,7 @@ exegesis { Adds two integers. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new().with_optimization(true);
+    let mut compiler = WasmCompiler::new().with_optimization(true);
     let result = compiler.compile(&module);
 
     // Compilation should succeed now that Int32 is supported
@@ -288,7 +288,7 @@ exegesis { Adds two integers. }
     let module = parse_file(source).expect("Failed to parse");
 
     // Compile to WASM
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     // Load into runtime
@@ -305,7 +305,6 @@ exegesis { Adds two integers. }
 }
 
 #[test]
-#[ignore] // Requires implicit 'self' parameter and gene field access (Phase 4)
 fn test_compile_and_execute_gene_method_with_field_access() {
     let source = r#"
 gene Counter {
@@ -320,19 +319,23 @@ exegesis { A counter with increment method. }
     let module = parse_file(source).expect("Failed to parse");
 
     // Compile to WASM
-    let compiler = WasmCompiler::new().with_optimization(true);
+    let mut compiler = WasmCompiler::new().with_optimization(true);
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     // Load into runtime
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
     let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
-    // Create counter instance and call increment
+    // The method now takes an implicit 'self' parameter (i32 pointer to Counter instance)
+    // For this test, we pass 0 as the self pointer (memory address of a Counter)
+    // The value at that address will be read (likely 0 from uninitialized memory)
+    // So value + 1 should return 1
     let result = wasm_module
-        .call("Counter.increment", &[])
+        .call("Counter.increment", &[0i32.into()])
         .expect("Call failed");
 
-    assert!(result.first().and_then(|v| v.i64()).is_some());
+    // The result should be value (0) + 1 = 1
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
 }
 
 #[test]
@@ -353,7 +356,7 @@ exegesis { Simple math operations. }
     let module = parse_file(source).expect("Failed to parse");
 
     // Compile to WASM
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     // Load into runtime
@@ -386,7 +389,7 @@ exegesis { Returns the maximum of two integers. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
@@ -419,7 +422,7 @@ exegesis { Classifies an integer. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new();
+    let mut compiler = WasmCompiler::new();
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
@@ -485,7 +488,7 @@ exegesis { A large gene for performance testing. }
 "#;
     let module = parse_file(source).expect("Failed to parse");
 
-    let compiler = WasmCompiler::new().with_optimization(true);
+    let mut compiler = WasmCompiler::new().with_optimization(true);
 
     let start = Instant::now();
     let _result = compiler.compile(&module);

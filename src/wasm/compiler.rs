@@ -98,18 +98,67 @@ impl LocalsTable {
     /// Create a new LocalsTable from function parameters.
     ///
     /// Parameters are assigned indices 0..n-1 and registered in the name map.
+    #[allow(dead_code)]
     fn new(params: &[crate::ast::FunctionParam]) -> Self {
+        Self::new_with_gene_context(params, None)
+    }
+
+    /// Create a new LocalsTable with optional gene context.
+    ///
+    /// If gene_context is provided, adds an implicit 'self' parameter at index 0,
+    /// and tracks field names for implicit field access resolution.
+    fn new_with_gene_context(
+        params: &[crate::ast::FunctionParam],
+        gene_context: Option<&GeneContext>,
+    ) -> Self {
+        let has_self = gene_context.is_some();
+        let self_offset = if has_self { 1u32 } else { 0u32 };
+
         let mut table = Self {
-            param_count: params.len() as u32,
+            param_count: params.len() as u32 + self_offset,
             name_to_index: HashMap::new(),
             local_types: Vec::new(),
             dol_types: HashMap::new(),
             func_indices: HashMap::new(),
         };
-        for (i, param) in params.iter().enumerate() {
-            table.name_to_index.insert(param.name.clone(), i as u32);
+
+        // Add implicit 'self' parameter at index 0 for gene methods
+        if has_self {
+            table.name_to_index.insert("self".to_string(), 0);
         }
+
+        // Add declared parameters (offset by 1 if we have self)
+        for (i, param) in params.iter().enumerate() {
+            table
+                .name_to_index
+                .insert(param.name.clone(), i as u32 + self_offset);
+        }
+
+        // Track gene field names for implicit field access
+        if let Some(ctx) = gene_context {
+            for field_name in &ctx.field_names {
+                // Store field names with a special prefix to identify them
+                table.dol_types.insert(
+                    format!("__gene_field_{}", field_name),
+                    ctx.gene_name.clone(),
+                );
+            }
+        }
+
         table
+    }
+
+    /// Check if an identifier is a gene field (for implicit self access).
+    fn is_gene_field(&self, name: &str) -> bool {
+        self.dol_types
+            .contains_key(&format!("__gene_field_{}", name))
+    }
+
+    /// Get the gene name for field access.
+    fn get_gene_name_for_field(&self, name: &str) -> Option<&str> {
+        self.dol_types
+            .get(&format!("__gene_field_{}", name))
+            .map(|s| s.as_str())
     }
 
     /// Register a function's WASM index.
@@ -135,6 +184,7 @@ impl LocalsTable {
     /// Declare a new local variable with DOL type information.
     ///
     /// Returns the index assigned to this local.
+    #[allow(dead_code)]
     fn declare_with_type(
         &mut self,
         name: &str,
@@ -189,6 +239,18 @@ struct ExtractedFunction<'a> {
     func: &'a crate::ast::FunctionDecl,
     /// The name to export as (may include gene prefix)
     exported_name: String,
+    /// Gene context for methods (provides field information for implicit self)
+    gene_context: Option<GeneContext>,
+}
+
+/// Context for a gene method, providing field information for implicit self access.
+#[cfg(feature = "wasm")]
+#[derive(Debug, Clone)]
+struct GeneContext {
+    /// The gene name
+    gene_name: String,
+    /// Field names defined in this gene (for identifier resolution)
+    field_names: Vec<String>,
 }
 
 #[cfg(feature = "wasm")]
@@ -251,6 +313,32 @@ impl WasmCompiler {
     /// Check if any gene layouts have been registered.
     pub fn has_gene_layouts(&self) -> bool {
         !self.gene_layouts.is_empty()
+    }
+
+    /// Auto-register gene layouts from a module declaration.
+    ///
+    /// This scans the module for gene declarations with fields and
+    /// automatically computes and registers their layouts.
+    fn auto_register_gene_layouts(&mut self, module: &Declaration) {
+        use crate::wasm::layout::compute_gene_layout;
+
+        if let Declaration::Gene(gene) = module {
+            // Check if this gene has any fields
+            let has_fields = gene
+                .statements
+                .iter()
+                .any(|stmt| matches!(stmt, crate::ast::Statement::HasField(_)));
+
+            if has_fields {
+                // Don't re-register if already registered
+                if !self.gene_layouts.contains(&gene.name) {
+                    // Compute the layout using the registry (for nested types)
+                    if let Ok(layout) = compute_gene_layout(gene, &self.gene_layouts) {
+                        self.gene_layouts.register(layout);
+                    }
+                }
+            }
+        }
     }
 
     /// Enable or disable optimizations.
@@ -338,11 +426,14 @@ impl WasmCompiler {
     /// let compiler = WasmCompiler::new();
     /// let wasm_bytes = compiler.compile(&module)?;
     /// ```
-    pub fn compile(&self, module: &Declaration) -> Result<Vec<u8>, WasmError> {
+    pub fn compile(&mut self, module: &Declaration) -> Result<Vec<u8>, WasmError> {
         use wasm_encoder::{
             CodeSection, ExportKind, ExportSection, Function, FunctionSection, Module, TypeSection,
             ValType,
         };
+
+        // Auto-register gene layouts for genes with fields
+        self.auto_register_gene_layouts(module);
 
         // Extract function declarations from the module
         let functions = self.extract_functions(module)?;
@@ -373,12 +464,17 @@ impl WasmCompiler {
         // Add user function types (offset by 1 if we have alloc)
         let type_offset = if needs_memory { 1u32 } else { 0u32 };
         for extracted in &functions {
-            let params: Vec<ValType> = extracted
-                .func
-                .params
-                .iter()
-                .map(|p| self.dol_type_to_wasm(&p.type_ann))
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut params: Vec<ValType> = Vec::new();
+
+            // For gene methods, add implicit 'self' parameter (i32 pointer)
+            if extracted.gene_context.is_some() {
+                params.push(ValType::I32);
+            }
+
+            // Add declared parameters
+            for p in &extracted.func.params {
+                params.push(self.dol_type_to_wasm(&p.type_ann)?);
+            }
 
             let results = if let Some(ref ret_type) = extracted.func.return_type {
                 vec![self.dol_type_to_wasm(ret_type)?]
@@ -437,8 +533,11 @@ impl WasmCompiler {
         // Add user function code
         let alloc_func_idx = if needs_memory { Some(0u32) } else { None };
         for (idx, extracted) in functions.iter().enumerate() {
-            // Create a LocalsTable for this function
-            let mut locals_table = LocalsTable::new(&extracted.func.params);
+            // Create a LocalsTable for this function (with gene context for methods)
+            let mut locals_table = LocalsTable::new_with_gene_context(
+                &extracted.func.params,
+                extracted.gene_context.as_ref(),
+            );
 
             // Register all function indices for call resolution
             for (func_idx, other_extracted) in functions.iter().enumerate() {
@@ -488,8 +587,32 @@ impl WasmCompiler {
             Declaration::Function(func) => Ok(vec![ExtractedFunction {
                 func: func.as_ref(),
                 exported_name: func.name.clone(),
+                gene_context: None,
             }]),
             Declaration::Gene(gene) => {
+                // Collect field names from gene for implicit self access
+                let field_names: Vec<String> = gene
+                    .statements
+                    .iter()
+                    .filter_map(|stmt| {
+                        if let Statement::HasField(field) = stmt {
+                            Some(field.name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                // Only set gene_context if the gene has fields (requires implicit self)
+                let gene_context = if field_names.is_empty() {
+                    None
+                } else {
+                    Some(GeneContext {
+                        gene_name: gene.name.clone(),
+                        field_names,
+                    })
+                };
+
                 // Extract methods from gene
                 let mut funcs = Vec::new();
                 for stmt in &gene.statements {
@@ -497,6 +620,7 @@ impl WasmCompiler {
                         funcs.push(ExtractedFunction {
                             func: func.as_ref(),
                             exported_name: format!("{}.{}", gene.name, func.name),
+                            gene_context: gene_context.clone(),
                         });
                     }
                 }
@@ -617,6 +741,7 @@ impl WasmCompiler {
     }
 
     /// Scan an expression tree for match expressions and declare necessary locals.
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_locals_from_expr(
         &self,
         expr: &crate::ast::Expr,
@@ -1047,6 +1172,74 @@ impl WasmCompiler {
                             "Member access to field '{}' requires type inference. \
                              Ensure the object '{}' is assigned from a struct literal.",
                             field_name, object_name
+                        )));
+                    }
+                } else if locals.is_gene_field(name) {
+                    // This is an implicit self field access (e.g., 'value' in a gene method)
+                    // Emit: local.get $self; i64.load <offset>
+                    let gene_name = locals.get_gene_name_for_field(name).ok_or_else(|| {
+                        WasmError::new(format!(
+                            "Internal error: gene field '{}' has no associated gene name",
+                            name
+                        ))
+                    })?;
+
+                    // Get the gene layout
+                    if let Some(layout) = self.gene_layouts.get(gene_name) {
+                        if let Some(field_layout) = layout.get_field(name) {
+                            // Emit: local.get $self (index 0 for gene methods)
+                            function.instruction(&Instruction::LocalGet(0));
+
+                            // Emit load instruction based on field type
+                            use crate::wasm::layout::WasmFieldType;
+                            match field_layout.wasm_type {
+                                WasmFieldType::I64 => {
+                                    function.instruction(&Instruction::I64Load(
+                                        wasm_encoder::MemArg {
+                                            offset: field_layout.offset as u64,
+                                            align: 3, // log2(8) = 3
+                                            memory_index: 0,
+                                        },
+                                    ));
+                                }
+                                WasmFieldType::F64 => {
+                                    function.instruction(&Instruction::F64Load(
+                                        wasm_encoder::MemArg {
+                                            offset: field_layout.offset as u64,
+                                            align: 3, // log2(8) = 3
+                                            memory_index: 0,
+                                        },
+                                    ));
+                                }
+                                WasmFieldType::I32 | WasmFieldType::Ptr => {
+                                    function.instruction(&Instruction::I32Load(
+                                        wasm_encoder::MemArg {
+                                            offset: field_layout.offset as u64,
+                                            align: 2, // log2(4) = 2
+                                            memory_index: 0,
+                                        },
+                                    ));
+                                }
+                                WasmFieldType::F32 => {
+                                    function.instruction(&Instruction::F32Load(
+                                        wasm_encoder::MemArg {
+                                            offset: field_layout.offset as u64,
+                                            align: 2, // log2(4) = 2
+                                            memory_index: 0,
+                                        },
+                                    ));
+                                }
+                            }
+                        } else {
+                            return Err(WasmError::new(format!(
+                                "Unknown field '{}' in gene '{}'",
+                                name, gene_name
+                            )));
+                        }
+                    } else {
+                        return Err(WasmError::new(format!(
+                            "Gene '{}' not registered. Gene layouts are auto-registered for genes with fields.",
+                            gene_name
                         )));
                     }
                 } else {
@@ -1637,7 +1830,7 @@ impl WasmCompiler {
     /// compiler.compile_to_file(&module, "output.wasm")?;
     /// ```
     pub fn compile_to_file(
-        &self,
+        &mut self,
         module: &Declaration,
         output_path: impl AsRef<Path>,
     ) -> Result<(), WasmError> {
@@ -1727,7 +1920,7 @@ mod tests {
         };
 
         let decl = Declaration::Function(Box::new(func));
-        let compiler = WasmCompiler::new();
+        let mut compiler = WasmCompiler::new();
         let wasm_bytes = compiler.compile(&decl).expect("Compilation failed");
 
         // Verify WASM magic number (0x00 0x61 0x73 0x6D) and version (0x01 0x00 0x00 0x00)
@@ -1760,7 +1953,7 @@ mod tests {
         };
 
         let decl = Declaration::Function(Box::new(func));
-        let compiler = WasmCompiler::new();
+        let mut compiler = WasmCompiler::new();
         let wasm_bytes = compiler.compile(&decl).expect("Compilation failed");
 
         // Verify valid WASM output
@@ -1783,7 +1976,7 @@ mod tests {
         };
 
         let decl = Declaration::Gene(gene);
-        let compiler = WasmCompiler::new();
+        let mut compiler = WasmCompiler::new();
         let result = compiler.compile(&decl);
 
         assert!(result.is_err());

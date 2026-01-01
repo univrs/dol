@@ -267,9 +267,7 @@ pub fn compile_source(source: &str, filename: &str) -> Result<CompiledSpirit, Co
     // Phase 1: Parse DOL source to AST
     // ========================================================================
     let mut parser = Parser::new(source);
-    let ast_file = parser
-        .parse_file()
-        .map_err(|e| CompilerError::ParseError(e))?;
+    let ast_file = parser.parse_file().map_err(CompilerError::ParseError)?;
 
     // ========================================================================
     // Phase 2: Lower AST to HIR (High-level Intermediate Representation)
