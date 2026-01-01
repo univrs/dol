@@ -332,6 +332,11 @@ fn walk_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
         Expr::Cast { expr, .. } => {
             v.visit_expr(expr);
         }
+        Expr::StructLiteral { fields, .. } => {
+            for (_, expr) in fields {
+                v.visit_expr(expr);
+            }
+        }
         Expr::Try(inner) => {
             v.visit_expr(inner);
         }
@@ -533,6 +538,11 @@ fn walk_expr_mut<V: MutVisitor + ?Sized>(v: &mut V, expr: &mut Expr) {
         }
         Expr::Cast { expr, .. } => {
             v.visit_expr(expr);
+        }
+        Expr::StructLiteral { fields, .. } => {
+            for (_, expr) in fields {
+                v.visit_expr(expr);
+            }
         }
         Expr::Try(inner) => {
             v.visit_expr(inner);

@@ -256,6 +256,18 @@ impl LoweringContext {
                 }))
             }
 
+            ast::Expr::StructLiteral { type_name, fields } => {
+                // Lower struct literal as a call to the type constructor with field arguments
+                let field_exprs: Vec<HirExpr> = fields
+                    .iter()
+                    .map(|(_, expr)| self.lower_ast_expr(expr))
+                    .collect();
+                HirExpr::Call(Box::new(HirCallExpr {
+                    func: HirExpr::Var(self.intern(type_name)),
+                    args: field_exprs,
+                }))
+            }
+
             ast::Expr::Try(inner) => {
                 // Lower try (?) operator as a call to 'try'
                 let inner_expr = self.lower_ast_expr(inner);

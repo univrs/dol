@@ -12,7 +12,7 @@
 #![cfg(feature = "wasm")]
 
 use metadol::parse_file;
-use metadol::wasm::{WasmCompiler, WasmError, WasmModule, WasmRuntime};
+use metadol::wasm::{WasmCompiler, WasmError, WasmRuntime};
 
 // ============================================
 // 1. WASM Module Validation Tests
@@ -154,7 +154,7 @@ fn test_wasm_module_with_function() {
         result.err()
     );
 
-    let module = result.unwrap();
+    let mut module = result.unwrap();
 
     // Try to call the exported function
     let call_result = module.call("get42", &[]);
@@ -175,7 +175,7 @@ fn test_wasm_call_nonexistent_function() {
     ];
 
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
-    let module = runtime.load(&minimal_wasm).expect("Failed to load module");
+    let mut module = runtime.load(&minimal_wasm).expect("Failed to load module");
 
     // Try to call a function that doesn't exist
     let result = module.call("nonexistent", &[]);
@@ -200,12 +200,16 @@ exegesis { A counter. }
     let compiler = WasmCompiler::new();
     let result = compiler.compile(&module);
 
-    // Should return NotImplemented error with descriptive message
+    // Should return error when compiling genes (only functions are supported)
     assert!(result.is_err());
 
     let err = result.unwrap_err();
-    assert!(err.message.contains("not fully implemented"));
-    assert!(err.message.contains("MLIR to LLVM to WASM"));
+    // The error message changed - now it's about requiring functions
+    assert!(
+        err.message.contains("No functions found") || err.message.contains("not fully implemented"),
+        "Expected function-related error, got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -221,8 +225,13 @@ exegesis { Adds two integers. }
     let compiler = WasmCompiler::new().with_optimization(true);
     let result = compiler.compile(&module);
 
-    // Currently returns NotImplemented
-    assert!(result.is_err());
+    // Compilation should succeed now that Int32 is supported
+    assert!(result.is_ok(), "Compilation failed: {:?}", result.err());
+
+    // Verify the output is valid WASM
+    let wasm_bytes = result.unwrap();
+    assert!(wasm_bytes.len() >= 8, "WASM output too short");
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Invalid WASM magic number");
 }
 
 #[test]
@@ -269,10 +278,9 @@ fn test_wasm_error_from_io() {
 // These tests are placeholders for when the full compilation pipeline is implemented
 
 #[test]
-#[ignore] // Remove this when MLIR->LLVM->WASM is implemented
 fn test_compile_and_execute_simple_function() {
     let source = r#"
-fun add(a: Int32, b: Int32) -> Int32 {
+fun add(a: i64, b: i64) -> i64 {
     return a + b
 }
 exegesis { Adds two integers. }
@@ -285,20 +293,20 @@ exegesis { Adds two integers. }
 
     // Load into runtime
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
-    let wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
     // Call the function
     let result = wasm_module
-        .call("add", &[5.into(), 3.into()])
+        .call("add", &[5i64.into(), 3i64.into()])
         .expect("Call failed");
 
-    // Verify result
-    assert_eq!(result.as_i32(), Some(8));
+    // Verify result - WASM returns i64
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(8));
 }
 
 #[test]
-#[ignore] // Remove this when MLIR->LLVM->WASM is implemented
-fn test_compile_and_execute_gene_method() {
+#[ignore] // Requires implicit 'self' parameter and gene field access (Phase 4)
+fn test_compile_and_execute_gene_method_with_field_access() {
     let source = r#"
 gene Counter {
     has value: Int64
@@ -317,21 +325,58 @@ exegesis { A counter with increment method. }
 
     // Load into runtime
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
-    let wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
     // Create counter instance and call increment
     let result = wasm_module
         .call("Counter.increment", &[])
         .expect("Call failed");
 
-    assert!(result.as_i64().is_some());
+    assert!(result.first().and_then(|v| v.i64()).is_some());
 }
 
 #[test]
-#[ignore] // Remove this when MLIR->LLVM->WASM is implemented
+fn test_compile_and_execute_gene_method_simple() {
+    // Test gene method that doesn't require field access
+    let source = r#"
+gene Math {
+    fun add(a: i64, b: i64) -> i64 {
+        return a + b
+    }
+
+    fun multiply(x: i64, y: i64) -> i64 {
+        return x * y
+    }
+}
+exegesis { Simple math operations. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Compile to WASM
+    let compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    // Load into runtime
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Call Math.add
+    let result = wasm_module
+        .call("Math.add", &[5i64.into(), 3i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(8));
+
+    // Call Math.multiply
+    let result = wasm_module
+        .call("Math.multiply", &[6i64.into(), 7i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+}
+
+#[test]
 fn test_compile_with_control_flow() {
     let source = r#"
-fun max(a: Int32, b: Int32) -> Int32 {
+fun max(a: i64, b: i64) -> i64 {
     if a > b {
         return a
     }
@@ -345,26 +390,25 @@ exegesis { Returns the maximum of two integers. }
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
-    let wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
     // Test with a > b
     let result = wasm_module
-        .call("max", &[10.into(), 5.into()])
+        .call("max", &[10i64.into(), 5i64.into()])
         .expect("Call failed");
-    assert_eq!(result.as_i32(), Some(10));
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(10));
 
     // Test with a < b
     let result = wasm_module
-        .call("max", &[3.into(), 7.into()])
+        .call("max", &[3i64.into(), 7i64.into()])
         .expect("Call failed");
-    assert_eq!(result.as_i32(), Some(7));
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(7));
 }
 
 #[test]
-#[ignore] // Remove this when MLIR->LLVM->WASM is implemented
 fn test_compile_with_pattern_matching() {
     let source = r#"
-fun classify(x: Int32) -> Int32 {
+fun classify(x: i64) -> i64 {
     match x {
         0 => 100,
         1 => 200,
@@ -379,23 +423,23 @@ exegesis { Classifies an integer. }
     let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
-    let wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
     // Test each case
     let result = wasm_module
-        .call("classify", &[0.into()])
+        .call("classify", &[0i64.into()])
         .expect("Call failed");
-    assert_eq!(result.as_i32(), Some(100));
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(100));
 
     let result = wasm_module
-        .call("classify", &[1.into()])
+        .call("classify", &[1i64.into()])
         .expect("Call failed");
-    assert_eq!(result.as_i32(), Some(200));
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(200));
 
     let result = wasm_module
-        .call("classify", &[42.into()])
+        .call("classify", &[42i64.into()])
         .expect("Call failed");
-    assert_eq!(result.as_i32(), Some(300));
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(300));
 }
 
 // ============================================

@@ -373,14 +373,14 @@ exegesis { A counter. }
     let compiler = WasmCompiler::new();
     let result = compiler.compile(&module);
 
-    // Currently returns NotImplemented error - this is expected
-    // When fully implemented, this should succeed
+    // Currently returns error when compiling genes (not functions) - this is expected
+    // When fully implemented, this should succeed or handle genes properly
     assert!(result.is_err());
 
     let err = result.unwrap_err();
     assert!(
-        err.message.contains("not fully implemented"),
-        "Expected 'not fully implemented' error, got: {}",
+        err.message.contains("No functions found") || err.message.contains("not fully implemented"),
+        "Expected function-related error, got: {}",
         err.message
     );
 }
@@ -404,8 +404,13 @@ exegesis { Adds two integers. }
 
     let result = compiler.compile(&module);
 
-    // Currently returns NotImplemented error
-    assert!(result.is_err());
+    // Compilation should succeed now that Int32 is supported
+    assert!(result.is_ok(), "Compilation failed: {:?}", result.err());
+
+    // Verify the output is valid WASM
+    let wasm_bytes = result.unwrap();
+    assert!(wasm_bytes.len() >= 8, "WASM output too short");
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Invalid WASM magic number");
 }
 
 #[cfg(feature = "wasm")]

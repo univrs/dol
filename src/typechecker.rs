@@ -645,6 +645,19 @@ impl TypeChecker {
                 Ok(Type::from_type_expr(target_type))
             }
 
+            // Struct literal - the result is the struct type
+            Expr::StructLiteral { type_name, fields } => {
+                // Type-check all field expressions
+                for (_, field_expr) in fields {
+                    self.infer(field_expr)?;
+                }
+                // The result type is the struct type (represented as a generic with no args)
+                Ok(Type::Generic {
+                    name: type_name.clone(),
+                    args: vec![],
+                })
+            }
+
             // Try expression - propagates errors, returns inner type on success
             Expr::Try(inner) => {
                 // Type-check the inner expression

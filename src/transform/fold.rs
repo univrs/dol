@@ -218,6 +218,13 @@ pub trait Fold {
                 target_type,
             },
             Expr::Try(inner) => Expr::Try(Box::new(self.fold_expr(*inner))),
+            Expr::StructLiteral { type_name, fields } => Expr::StructLiteral {
+                type_name,
+                fields: fields
+                    .into_iter()
+                    .map(|(name, expr)| (name, self.fold_expr(expr)))
+                    .collect(),
+            },
         }
     }
 

@@ -79,7 +79,9 @@
 use std::error::Error;
 use std::fmt;
 
+pub mod alloc;
 pub mod compiler;
+pub mod layout;
 pub mod runtime;
 
 // Re-export public types when wasm feature is enabled

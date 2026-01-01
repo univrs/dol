@@ -1427,6 +1427,13 @@ fn stringify_expr(expr: &Expr) -> String {
         Expr::Cast { expr, target_type } => {
             format!("{} as {:?}", stringify_expr(expr), target_type)
         }
+        Expr::StructLiteral { type_name, fields } => {
+            let field_strs: Vec<String> = fields
+                .iter()
+                .map(|(name, expr)| format!("{}: {}", name, stringify_expr(expr)))
+                .collect();
+            format!("{} {{ {} }}", type_name, field_strs.join(", "))
+        }
         Expr::Try(inner) => {
             format!("{}?", stringify_expr(inner))
         }

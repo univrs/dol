@@ -303,6 +303,15 @@ impl IdiomDesugar {
                 target_type,
             },
 
+            // Struct literal - transform field expressions
+            Expr::StructLiteral { type_name, fields } => Expr::StructLiteral {
+                type_name,
+                fields: fields
+                    .into_iter()
+                    .map(|(name, expr)| (name, self.desugar_expr(expr)))
+                    .collect(),
+            },
+
             // Try - transform inner expression
             Expr::Try(inner) => Expr::Try(Box::new(self.desugar_expr(*inner))),
         }

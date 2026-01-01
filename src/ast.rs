@@ -962,6 +962,22 @@ pub enum Expr {
         /// Arguments
         args: Vec<Expr>,
     },
+    /// Struct/Gene literal expression
+    ///
+    /// Represents a gene instance construction like `Point { x: 1.0, y: 2.0 }`
+    ///
+    /// # Example
+    ///
+    /// ```text
+    /// Point { x: 1.0, y: 2.0 }
+    /// geometry.Rectangle { width: 10, height: 20 }
+    /// ```
+    StructLiteral {
+        /// The type name (e.g., "Point" or "geometry.Rectangle")
+        type_name: String,
+        /// Field name-value pairs in declaration order
+        fields: Vec<(String, Expr)>,
+    },
     /// Member access (field or method)
     Member {
         /// Object being accessed

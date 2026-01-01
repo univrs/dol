@@ -276,6 +276,19 @@ impl Interpreter {
             // Type cast - evaluate expr, cast is a no-op in the interpreter
             Expr::Cast { expr, .. } => self.eval_in_env(expr, env),
 
+            // Struct literal - evaluate field expressions and build record
+            Expr::StructLiteral {
+                type_name: _,
+                fields,
+            } => {
+                let mut record = std::collections::HashMap::new();
+                for (name, expr) in fields {
+                    let value = self.eval_in_env(expr, env)?;
+                    record.insert(name.clone(), value);
+                }
+                Ok(Value::Record(record))
+            }
+
             // Try expression - evaluate the inner expression
             Expr::Try(inner) => self.eval_in_env(inner, env),
         }

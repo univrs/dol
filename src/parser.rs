@@ -1919,9 +1919,9 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::RightBrace)?;
 
                     // Create struct literal expression
-                    lhs = Expr::Call {
-                        callee: Box::new(Expr::Identifier(path_name)),
-                        args: fields.into_iter().map(|(_, v)| v).collect(),
+                    lhs = Expr::StructLiteral {
+                        type_name: path_name,
+                        fields,
                     };
                 } else {
                     lhs = Expr::Member {
@@ -2033,9 +2033,9 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::RightBrace)?;
 
                     // Create struct literal expression
-                    lhs = Expr::Call {
-                        callee: Box::new(Expr::Identifier(struct_name)),
-                        args: fields.into_iter().map(|(_, v)| v).collect(),
+                    lhs = Expr::StructLiteral {
+                        type_name: struct_name,
+                        fields,
                     };
                 } else {
                     break;
@@ -2119,6 +2119,14 @@ impl<'a> Parser<'a> {
                     return Ok(Expr::Literal(Literal::Bool(true)));
                 } else if name == "false" {
                     return Ok(Expr::Literal(Literal::Bool(false)));
+                }
+
+                // Check for numeric literals (lexer sends them as identifiers)
+                if let Ok(int_val) = name.parse::<i64>() {
+                    return Ok(Expr::Literal(Literal::Int(int_val)));
+                }
+                if let Ok(float_val) = name.parse::<f64>() {
+                    return Ok(Expr::Literal(Literal::Float(float_val)));
                 }
 
                 // Handle path expressions like Map::new, Type::Variant
@@ -2753,6 +2761,11 @@ impl<'a> Parser<'a> {
                     Ok(Pattern::Literal(Literal::Bool(true)))
                 } else if name == "false" {
                     Ok(Pattern::Literal(Literal::Bool(false)))
+                } else if let Ok(int_val) = name.parse::<i64>() {
+                    // Numeric pattern (lexer sends numbers as identifiers)
+                    Ok(Pattern::Literal(Literal::Int(int_val)))
+                } else if let Ok(float_val) = name.parse::<f64>() {
+                    Ok(Pattern::Literal(Literal::Float(float_val)))
                 } else {
                     Ok(Pattern::Identifier(name))
                 }

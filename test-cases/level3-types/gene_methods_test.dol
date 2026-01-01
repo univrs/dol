@@ -1,0 +1,98 @@
+// Test case: Gene declarations with methods
+//
+// This file tests gene (struct) support in WASM compilation.
+// Expected features:
+// - Gene declaration with fields
+// - Gene methods (instance methods)
+// - Field access
+// - Constructor-like patterns
+// - Gene with numeric fields
+
+module gene_methods_test @ 0.1.0
+
+// Test 1: Simple gene with fields
+gene Point {
+    has x: i64
+    has y: i64
+}
+
+// Test 2: Gene with a method
+gene Counter {
+    has value: i64
+
+    fun get() -> i64 {
+        return value
+    }
+
+    fun increment() -> i64 {
+        return value + 1
+    }
+}
+
+// Test 3: Gene with multiple methods
+gene Calculator {
+    has current: i64
+
+    fun add(n: i64) -> i64 {
+        return current + n
+    }
+
+    fun sub(n: i64) -> i64 {
+        return current - n
+    }
+
+    fun mul(n: i64) -> i64 {
+        return current * n
+    }
+
+    fun div(n: i64) -> i64 {
+        return current / n
+    }
+}
+
+// Test 4: Gene with derived computation
+gene Rectangle {
+    has width: i64
+    has height: i64
+
+    fun area() -> i64 {
+        return width * height
+    }
+
+    fun perimeter() -> i64 {
+        let w2: i64 = width * 2
+        let h2: i64 = height * 2
+        return w2 + h2
+    }
+}
+
+// Test 5: Gene with float fields
+gene Vector2D {
+    has x: f64
+    has y: f64
+
+    fun magnitude_squared() -> f64 {
+        return x * x + y * y
+    }
+
+    fun dot(other_x: f64, other_y: f64) -> f64 {
+        return x * other_x + y * other_y
+    }
+}
+
+// Test 6: Gene extending another gene (inheritance)
+gene Animal {
+    has age: i64
+
+    fun get_age() -> i64 {
+        return age
+    }
+}
+
+gene Dog extends Animal {
+    has breed_id: i64
+
+    fun bark_count() -> i64 {
+        return age * 2
+    }
+}

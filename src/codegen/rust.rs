@@ -1633,6 +1633,14 @@ impl RustCodegen {
                     Self::map_type_expr(target_type)
                 )
             }
+            // Struct literal - generate struct instantiation
+            Expr::StructLiteral { type_name, fields } => {
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(name, expr)| format!("{}: {}", name, self.gen_expr(expr)))
+                    .collect();
+                format!("{} {{ {} }}", type_name, field_strs.join(", "))
+            }
             // Try operator
             Expr::Try(inner) => {
                 format!("{}?", self.gen_expr(inner))
