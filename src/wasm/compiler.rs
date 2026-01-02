@@ -43,6 +43,7 @@ use crate::wasm::layout::{GeneLayout, GeneLayoutRegistry};
 #[cfg(feature = "wasm")]
 use crate::wasm::WasmError;
 #[cfg(feature = "wasm")]
+use std::cell::RefCell;
 use std::collections::HashMap;
 #[cfg(feature = "wasm")]
 use std::path::Path;
@@ -72,6 +73,8 @@ pub struct WasmCompiler {
     debug_info: bool,
     /// Registry of gene layouts for struct literal compilation
     gene_layouts: GeneLayoutRegistry,
+    /// String table for collecting string literals (interior mutability for &self methods)
+    string_table: RefCell<StringTable>,
 }
 
 /// Context for tracking loop control flow depths.
@@ -106,6 +109,88 @@ impl LoopContext {
             break_depth: self.break_depth.map(|d| d + 1),
             continue_depth: self.continue_depth.map(|d| d + 1),
         }
+    }
+}
+
+/// String table for WASM data section.
+///
+/// Collects and deduplicates string literals, returning (offset, length) pairs.
+/// Strings are stored in the WASM data section starting at a configurable base offset.
+#[cfg(feature = "wasm")]
+#[derive(Debug, Default, Clone)]
+struct StringTable {
+    /// Strings stored as (offset, content)
+    strings: Vec<(u32, String)>,
+    /// Next available offset
+    next_offset: u32,
+    /// Base offset in memory (typically after heap pointer)
+    base_offset: u32,
+}
+
+#[cfg(feature = "wasm")]
+impl StringTable {
+    /// Create a new string table with a base offset.
+    ///
+    /// The base offset is where strings will start in WASM linear memory.
+    /// Typically this is after the heap pointer and any reserved space.
+    fn new(base_offset: u32) -> Self {
+        Self {
+            strings: Vec::new(),
+            next_offset: base_offset,
+            base_offset,
+        }
+    }
+
+    /// Add a string to the table.
+    ///
+    /// Returns (pointer, length) for the string in WASM memory.
+    /// Deduplicates: if the string already exists, returns the existing location.
+    fn add(&mut self, s: &str) -> (u32, u32) {
+        // Check for existing string (deduplication)
+        for (offset, existing) in &self.strings {
+            if existing == s {
+                return (*offset, s.len() as u32);
+            }
+        }
+        // Add new string
+        let offset = self.next_offset;
+        let len = s.len() as u32;
+        self.strings.push((offset, s.to_string()));
+        self.next_offset += len;
+        (offset, len)
+    }
+
+    /// Check if the table has any strings.
+    fn is_empty(&self) -> bool {
+        self.strings.is_empty()
+    }
+
+    /// Get the number of strings in the table.
+    #[allow(dead_code)]
+    fn len(&self) -> usize {
+        self.strings.len()
+    }
+
+    /// Emit the WASM data section for all strings.
+    ///
+    /// This creates active data segments that initialize memory with the string contents.
+    fn emit_data_section(&self, module: &mut wasm_encoder::Module) {
+        if self.strings.is_empty() {
+            return;
+        }
+
+        let mut data_section = wasm_encoder::DataSection::new();
+
+        for (offset, content) in &self.strings {
+            // Active data segment: memory 0, offset expression, bytes
+            data_section.active(
+                0, // memory index
+                &wasm_encoder::ConstExpr::i32_const(*offset as i32),
+                content.as_bytes().iter().copied(),
+            );
+        }
+
+        module.section(&data_section);
     }
 }
 
@@ -326,6 +411,8 @@ impl WasmCompiler {
             optimize: false,
             debug_info: true,
             gene_layouts: GeneLayoutRegistry::new(),
+            // String table starts at offset 1024 (after heap pointer and reserved space)
+            string_table: RefCell::new(StringTable::new(1024)),
         }
     }
 
@@ -668,8 +755,9 @@ impl WasmCompiler {
         // Allow modules with only imports (no local functions)
         let has_local_functions = !functions.is_empty();
 
-        // Check if we need memory allocation (when gene layouts are registered)
-        let needs_memory = !self.gene_layouts.is_empty();
+        // Check if we need memory allocation (when gene layouts are registered or strings are used)
+        let has_strings = Self::has_string_literals(&file.declarations);
+        let needs_memory = !self.gene_layouts.is_empty() || has_strings;
 
         // Build WASM module
         let mut wasm_module = Module::new();
@@ -840,6 +928,12 @@ impl WasmCompiler {
         if has_local_functions || needs_memory {
             wasm_module.section(&code);
         }
+
+        // ============= DATA SECTION =============
+        // Emit string literals collected during compilation
+        self.string_table
+            .borrow()
+            .emit_data_section(&mut wasm_module);
 
         Ok(wasm_module.finish())
     }
@@ -1054,8 +1148,14 @@ impl WasmCompiler {
 
         match type_expr {
             TypeExpr::Named(name) => match name.to_lowercase().as_str() {
-                "i32" | "i64" | "int" | "int32" | "int64" => Ok(ValType::I64),
-                "f32" | "f64" | "float" | "float32" | "float64" => Ok(ValType::F64),
+                // 32-bit integers (including pointers)
+                "i32" | "int32" | "ptr" | "usize" => Ok(ValType::I32),
+                // 64-bit integers (default for DOL)
+                "i64" | "int" | "int64" => Ok(ValType::I64),
+                // Floating point
+                "f32" | "float32" => Ok(ValType::F32),
+                "f64" | "float" | "float64" => Ok(ValType::F64),
+                // Boolean
                 "bool" | "boolean" => Ok(ValType::I32),
                 other => Err(WasmError::new(format!(
                     "Unsupported type for WASM compilation: {}",
@@ -1497,10 +1597,13 @@ impl WasmCompiler {
                 Literal::Bool(b) => {
                     function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
                 }
-                Literal::String(_) => {
-                    return Err(WasmError::new(
-                        "String literals not yet supported in WASM compilation",
-                    ))
+                Literal::String(s) => {
+                    // Add string to table and get (ptr, len)
+                    let (ptr, len) = self.string_table.borrow_mut().add(s);
+                    // Push ptr and len onto stack as i32 values
+                    // This creates a "fat pointer" representation for strings
+                    function.instruction(&Instruction::I32Const(ptr as i32));
+                    function.instruction(&Instruction::I32Const(len as i32));
                 }
                 Literal::Char(_) => {
                     return Err(WasmError::new(
@@ -2227,6 +2330,8 @@ impl WasmCompiler {
     /// Check if an expression produces a value on the WASM stack.
     ///
     /// Some expressions like `if` without `else` produce no value.
+    /// Function calls are conservatively assumed to not produce values
+    /// since we don't have return type info at this point.
     fn expression_produces_value(&self, expr: &crate::ast::Expr) -> bool {
         use crate::ast::Expr;
 
@@ -2240,6 +2345,12 @@ impl WasmCompiler {
             Expr::Block {
                 final_expr: None, ..
             } => false,
+
+            // Function calls - conservatively assume no value produced
+            // This is safe for void functions, and for non-void functions
+            // the value will remain on the stack (not dropped), which is
+            // fine since we're about to return anyway or move to next statement.
+            Expr::Call { .. } => false,
 
             // All other expressions produce a value
             _ => true,
@@ -2278,6 +2389,102 @@ impl WasmCompiler {
         let wasm_bytes = self.compile(module)?;
         std::fs::write(output_path, wasm_bytes)?;
         Ok(())
+    }
+
+    /// Check if any declarations contain string literals.
+    ///
+    /// This is used to determine if memory needs to be allocated for the data section.
+    fn has_string_literals(declarations: &[crate::ast::Declaration]) -> bool {
+        use crate::ast::{Declaration, Expr, Literal, Statement, Stmt};
+
+        fn check_expr(expr: &Expr) -> bool {
+            match expr {
+                Expr::Literal(Literal::String(_)) => true,
+                Expr::Binary { left, right, .. } => check_expr(left) || check_expr(right),
+                Expr::Unary { operand, .. } => check_expr(operand),
+                Expr::Call { callee, args, .. } => {
+                    check_expr(callee) || args.iter().any(check_expr)
+                }
+                Expr::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } => {
+                    check_expr(condition)
+                        || check_expr(then_branch)
+                        || else_branch.as_ref().map_or(false, |e| check_expr(e))
+                }
+                Expr::Block {
+                    statements,
+                    final_expr,
+                } => {
+                    statements.iter().any(check_stmt)
+                        || final_expr.as_ref().map_or(false, |e| check_expr(e))
+                }
+                Expr::Member { object, .. } => check_expr(object),
+                Expr::StructLiteral { fields, .. } => fields.iter().any(|(_, e)| check_expr(e)),
+                Expr::Match { scrutinee, arms } => {
+                    check_expr(scrutinee)
+                        || arms.iter().any(|arm| {
+                            check_expr(&arm.body)
+                                || arm.guard.as_ref().map_or(false, |g| check_expr(g))
+                        })
+                }
+                Expr::Lambda { body, .. } => check_expr(body),
+                Expr::List(exprs) | Expr::Tuple(exprs) => exprs.iter().any(check_expr),
+                Expr::IdiomBracket { func, args } => {
+                    check_expr(func) || args.iter().any(check_expr)
+                }
+                Expr::Quote(e) | Expr::Unquote(e) | Expr::QuasiQuote(e) | Expr::Eval(e) => {
+                    check_expr(e)
+                }
+                Expr::Implies { left, right, .. } => check_expr(left) || check_expr(right),
+                Expr::SexBlock { statements, .. } => statements.iter().any(check_stmt),
+                _ => false,
+            }
+        }
+
+        fn check_stmt(stmt: &Stmt) -> bool {
+            match stmt {
+                Stmt::Expr(e) | Stmt::Return(Some(e)) => check_expr(e),
+                Stmt::Let { value, .. } => check_expr(value),
+                Stmt::Assign { target, value } => check_expr(target) || check_expr(value),
+                Stmt::For { iterable, body, .. } => {
+                    check_expr(iterable) || body.iter().any(check_stmt)
+                }
+                Stmt::While { condition, body } => {
+                    check_expr(condition) || body.iter().any(check_stmt)
+                }
+                Stmt::Loop { body } => body.iter().any(check_stmt),
+                _ => false,
+            }
+        }
+
+        fn check_function(func: &crate::ast::FunctionDecl) -> bool {
+            func.body.iter().any(check_stmt)
+        }
+
+        for decl in declarations {
+            match decl {
+                Declaration::Gene(gene) => {
+                    // Check methods in gene statements
+                    for stmt in &gene.statements {
+                        if let Statement::Function(func) = stmt {
+                            if check_function(func) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                Declaration::Function(func) => {
+                    if check_function(func) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 }
 
