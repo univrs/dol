@@ -9,6 +9,7 @@ import type {
   SpiritInstance,
   MemoryManager,
   LoaContext,
+  LoaRegistry as ILoaRegistry,
 } from './types.js';
 import { SpiritMemoryManager } from './memory.js';
 import { LoaRegistry } from './loa.js';
@@ -70,14 +71,15 @@ export class Spirit implements SpiritInstance {
    * const sum = calc.add(1n, 2n);
    * ```
    */
-  as<T>(): T {
+  as<T extends object>(): T {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
     return new Proxy({} as T, {
       get(_target, prop: string) {
         return (...args: unknown[]) => self.call(prop, args);
       },
-    });
+    }) as T;
   }
 
   /**
@@ -126,10 +128,10 @@ export class Spirit implements SpiritInstance {
  * Loader for Spirit WASM modules
  */
 export class SpiritLoader {
-  private registry: LoaRegistry;
+  private registry: ILoaRegistry;
   private debug: boolean;
 
-  constructor(options: { loas?: LoaRegistry; debug?: boolean } = {}) {
+  constructor(options: { loas?: ILoaRegistry; debug?: boolean } = {}) {
     this.registry = options.loas ?? new LoaRegistry();
     this.debug = options.debug ?? false;
   }
@@ -180,16 +182,28 @@ export class SpiritLoader {
     }
 
     // Compile and instantiate
-    const module = await WebAssembly.compile(wasmBytes);
+    const bytes = wasmBytes instanceof ArrayBuffer
+      ? wasmBytes
+      : new Uint8Array(wasmBytes).buffer;
+    const module = await WebAssembly.compile(bytes);
     const instance = await WebAssembly.instantiate(module, imports);
+
+    // Use the module's exported memory if available, otherwise fall back to imported memory
+    const exportedMemory = instance.exports.memory as WebAssembly.Memory | undefined;
+    const actualMemory = exportedMemory ?? memory;
 
     if (debug) {
       console.log('[SpiritLoader] Spirit loaded successfully');
-      const spirit = new Spirit(instance, memory, debug);
+      if (exportedMemory) {
+        console.log('[SpiritLoader] Using module-exported memory');
+      } else {
+        console.log('[SpiritLoader] Using imported memory');
+      }
+      const spirit = new Spirit(instance, actualMemory, debug);
       console.log('[SpiritLoader] Exports:', spirit.listFunctions());
     }
 
-    return new Spirit(instance, memory, debug);
+    return new Spirit(instance, actualMemory, debug);
   }
 
   /**

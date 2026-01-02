@@ -6,7 +6,6 @@
  */
 
 import type { GeneLayout, GeneField } from '../types.js';
-import type { BumpAllocator } from '../memory.js';
 
 // ============================================================================
 // String Encoding/Decoding

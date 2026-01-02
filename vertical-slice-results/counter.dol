@@ -1,0 +1,24 @@
+// Counter.dol - Minimal vertical slice test
+// This file tests the complete DOL -> WASM -> Runtime pipeline
+
+/// Counter gene with increment and add methods
+gene Counter {
+    has value: Int64
+
+    fun increment() -> Int64 {
+        return value + 1
+    }
+
+    fun get_value() -> Int64 {
+        return value
+    }
+
+    fun add(n: Int64) -> Int64 {
+        return value + n
+    }
+}
+
+/// Standalone function for simpler test
+fun add_numbers(a: Int64, b: Int64) -> Int64 {
+    return a + b
+}

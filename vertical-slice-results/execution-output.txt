@@ -1,0 +1,41 @@
+=== DOL -> WASM -> @vudo/runtime Vertical Slice ===
+
+Step 1: Loading counter.wasm...
+  Loaded 247 bytes
+
+Step 2: Creating Spirit instance...
+  Spirit loaded successfully
+  Exports: [
+  'Counter.increment',
+  'Counter.get_value',
+  'Counter.add',
+  'add_numbers'
+]
+
+Step 3: Testing add_numbers(3, 4)...
+  [32mPASS[0m add_numbers(3, 4): expected 7, got 7
+
+Step 4: Allocating Counter gene memory...
+  Allocated at ptr: 1024
+  Initial value: 10
+
+Step 5: Calling Counter.increment...
+  [32mPASS[0m Counter.increment(ptr where value=10): expected 11, got 11
+
+Step 6: Calling Counter.get_value...
+  [32mPASS[0m Counter.get_value(ptr where value=10): expected 10, got 10
+
+Step 7: Calling Counter.add(5)...
+  [32mPASS[0m Counter.add(ptr where value=10, 5): expected 15, got 15
+
+=== Vertical Slice Summary ===
+
+Results: 4 passed, 0 failed
+
+✅ add_numbers(3, 4)
+✅ Counter.increment(ptr where value=10)
+✅ Counter.get_value(ptr where value=10)
+✅ Counter.add(ptr where value=10, 5)
+
+[32mVERTICAL SLICE PASSED[0m
+All tests passed! The DOL -> WASM -> @vudo/runtime pipeline works.

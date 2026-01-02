@@ -48,7 +48,8 @@ describe('BumpAllocator', () => {
     expect(allocator.offset).toBe(1024 + 100);
 
     allocator.alloc(50);
-    expect(allocator.offset).toBe(1024 + 100 + 56); // aligned to 8
+    // 1124 aligned to 8 = 1128, then + 50 = 1178
+    expect(allocator.offset).toBe(1178);
   });
 
   it('should reset to base offset', () => {

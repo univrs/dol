@@ -70,7 +70,7 @@ export interface SpiritInstance {
   /** Call an exported function */
   call<R = unknown>(name: string, args?: unknown[]): R;
   /** Get typed interface */
-  as<T>(): T;
+  as<T extends object>(): T;
   /** Access memory manager */
   readonly memory: MemoryManager;
   /** Raw WASM exports */
@@ -109,8 +109,12 @@ export interface LoaRegistry {
   register(loa: Loa): void;
   /** Get a Loa by name */
   get(name: string): Loa | undefined;
+  /** Check if a Loa is registered */
+  has(name: string): boolean;
   /** Get all registered Loas */
   all(): Loa[];
+  /** Unregister a Loa */
+  unregister(name: string): boolean;
   /** Build imports object from registered Loas */
   buildImports(context: LoaContext): Record<string, WebAssembly.ImportValue>;
 }

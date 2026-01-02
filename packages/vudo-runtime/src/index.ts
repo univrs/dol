@@ -39,7 +39,7 @@ export type {
   // Loa types
   Loa,
   LoaContext,
-  LoaRegistry,
+  // LoaRegistry - exported as class from loa.js
 
   // Séance types
   SeanceInstance,
