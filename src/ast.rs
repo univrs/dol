@@ -274,6 +274,9 @@ pub enum Declaration {
 
     /// A top-level function declaration.
     Function(Box<FunctionDecl>),
+
+    /// A constant declaration.
+    Const(VarDecl),
 }
 
 impl Declaration {
@@ -286,6 +289,7 @@ impl Declaration {
             Declaration::System(s) => &s.name,
             Declaration::Evolution(e) => &e.name,
             Declaration::Function(f) => &f.name,
+            Declaration::Const(v) => &v.name,
         }
     }
 
@@ -298,6 +302,7 @@ impl Declaration {
             Declaration::System(s) => &s.exegesis,
             Declaration::Evolution(e) => &e.exegesis,
             Declaration::Function(f) => &f.exegesis,
+            Declaration::Const(_) => "", // Constants don't have exegesis
         }
     }
 
@@ -310,6 +315,7 @@ impl Declaration {
             Declaration::System(s) => s.span,
             Declaration::Evolution(e) => e.span,
             Declaration::Function(f) => f.span,
+            Declaration::Const(v) => v.span,
         }
     }
 
@@ -322,7 +328,9 @@ impl Declaration {
             Declaration::Trait(t) => &t.statements,
             Declaration::Constraint(c) => &c.statements,
             Declaration::System(s) => &s.statements,
-            Declaration::Evolution(_) | Declaration::Function(_) => return ids,
+            Declaration::Evolution(_) | Declaration::Function(_) | Declaration::Const(_) => {
+                return ids
+            }
         };
 
         for stmt in statements {

@@ -232,7 +232,25 @@ impl RustCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_toplevel_function(func),
+            Declaration::Const(var) => self.generate_const(var),
         }
+    }
+
+    /// Generate a Rust constant declaration.
+    fn generate_const(&self, var: &crate::ast::VarDecl) -> String {
+        let visibility = self.visibility_str();
+        let name = var.name.to_uppercase().replace('.', "_");
+        let type_str = var
+            .type_ann
+            .as_ref()
+            .map(|t| self.gen_type(t))
+            .unwrap_or_else(|| "i64".to_string());
+        let value = var
+            .value
+            .as_ref()
+            .map(|e| self.gen_expr(e))
+            .unwrap_or_else(|| "0".to_string());
+        format!("{}const {}: {} = {};", visibility, name, type_str, value)
     }
 
     /// Generate a top-level Rust function from a function declaration.

@@ -392,6 +392,192 @@ impl GeneLayoutRegistry {
     }
 }
 
+// ============================================================================
+// Enum Registry - For tracking enum definitions and variant indices
+// ============================================================================
+
+/// Definition of an enum type with its variants.
+///
+/// Simple enums (no payload) are represented as i32 discriminants in WASM.
+/// This struct tracks variant names and their indices for compilation.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // DOL:
+/// // gene AccountType {
+/// //     type: enum { Node, RevivalPool, Treasury }
+/// // }
+///
+/// // Becomes:
+/// // EnumDef {
+/// //     name: "AccountType",
+/// //     variants: [
+/// //         EnumVariantDef { name: "Node", index: 0 },
+/// //         EnumVariantDef { name: "RevivalPool", index: 1 },
+/// //         EnumVariantDef { name: "Treasury", index: 2 },
+/// //     ]
+/// // }
+/// ```
+#[derive(Debug, Clone)]
+pub struct EnumDef {
+    /// Name of the enum type
+    pub name: String,
+    /// Ordered list of variants with their discriminant indices
+    pub variants: Vec<EnumVariantDef>,
+}
+
+/// A single enum variant with its discriminant index.
+#[derive(Debug, Clone)]
+pub struct EnumVariantDef {
+    /// Name of the variant
+    pub name: String,
+    /// Discriminant value (i32 in WASM)
+    pub index: i32,
+}
+
+impl EnumDef {
+    /// Create a new enum definition from variant names.
+    ///
+    /// Variants are assigned sequential indices starting from 0.
+    pub fn new(name: String, variant_names: Vec<String>) -> Self {
+        let variants = variant_names
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| EnumVariantDef {
+                name,
+                index: i as i32,
+            })
+            .collect();
+        Self { name, variants }
+    }
+
+    /// Create a new enum definition with explicit discriminant values.
+    pub fn with_discriminants(name: String, variants: Vec<(String, i32)>) -> Self {
+        let variants = variants
+            .into_iter()
+            .map(|(name, index)| EnumVariantDef { name, index })
+            .collect();
+        Self { name, variants }
+    }
+
+    /// Get the index for a variant by name.
+    pub fn get_variant_index(&self, variant_name: &str) -> Option<i32> {
+        self.variants
+            .iter()
+            .find(|v| v.name == variant_name)
+            .map(|v| v.index)
+    }
+
+    /// Check if this enum has a variant with the given name.
+    pub fn has_variant(&self, variant_name: &str) -> bool {
+        self.variants.iter().any(|v| v.name == variant_name)
+    }
+
+    /// Get the number of variants in this enum.
+    pub fn variant_count(&self) -> usize {
+        self.variants.len()
+    }
+}
+
+/// Registry for enum type definitions.
+///
+/// Tracks all enum types encountered during compilation, mapping enum names
+/// to their variant definitions. This enables:
+///
+/// 1. Type checking enum variant access (e.g., `AccountType.Node`)
+/// 2. Emitting correct i32 constants for enum variants
+/// 3. Pattern matching exhaustiveness checking (future)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use metadol::wasm::layout::{EnumRegistry, EnumDef};
+///
+/// let mut registry = EnumRegistry::new();
+///
+/// // Register an enum from AST
+/// let enum_def = EnumDef::new(
+///     "AccountType".to_string(),
+///     vec!["Node".to_string(), "RevivalPool".to_string(), "Treasury".to_string()],
+/// );
+/// registry.register(enum_def);
+///
+/// // Later, resolve enum variant access
+/// let index = registry.get_variant_index("AccountType", "Node");
+/// assert_eq!(index, Some(0));
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct EnumRegistry {
+    enums: HashMap<String, EnumDef>,
+}
+
+impl EnumRegistry {
+    /// Create a new empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register an enum definition.
+    ///
+    /// If an enum with the same name already exists, it will be replaced.
+    pub fn register(&mut self, enum_def: EnumDef) {
+        self.enums.insert(enum_def.name.clone(), enum_def);
+    }
+
+    /// Register an enum from its name and variant names.
+    pub fn register_enum(&mut self, name: &str, variant_names: Vec<String>) {
+        self.register(EnumDef::new(name.to_string(), variant_names));
+    }
+
+    /// Get an enum definition by name.
+    pub fn get(&self, name: &str) -> Option<&EnumDef> {
+        self.enums.get(name)
+    }
+
+    /// Check if an enum with the given name exists.
+    pub fn contains(&self, name: &str) -> bool {
+        self.enums.contains_key(name)
+    }
+
+    /// Get the variant index for an enum variant.
+    ///
+    /// Returns `None` if the enum or variant doesn't exist.
+    pub fn get_variant_index(&self, enum_name: &str, variant_name: &str) -> Option<i32> {
+        self.enums
+            .get(enum_name)
+            .and_then(|e| e.get_variant_index(variant_name))
+    }
+
+    /// Check if a variant exists in an enum.
+    pub fn has_variant(&self, enum_name: &str, variant_name: &str) -> bool {
+        self.enums
+            .get(enum_name)
+            .map(|e| e.has_variant(variant_name))
+            .unwrap_or(false)
+    }
+
+    /// Get the number of registered enums.
+    pub fn len(&self) -> usize {
+        self.enums.len()
+    }
+
+    /// Check if the registry is empty.
+    pub fn is_empty(&self) -> bool {
+        self.enums.is_empty()
+    }
+
+    /// Iterate over all registered enum definitions.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &EnumDef)> {
+        self.enums.iter()
+    }
+
+    /// Clear all registered enums.
+    pub fn clear(&mut self) {
+        self.enums.clear();
+    }
+}
+
 /// Align an offset up to the specified alignment.
 ///
 /// Returns the smallest value >= offset that is a multiple of alignment.

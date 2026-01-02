@@ -194,6 +194,15 @@ impl LoweringContext {
                     decls: vec![],
                 })
             }
+            ast::Declaration::Const(var) => {
+                // Const declarations are lowered as module-level constants
+                let name = self.intern(&var.name);
+                HirDecl::Module(HirModuleDecl {
+                    id: self.fresh_id(),
+                    name,
+                    decls: vec![],
+                })
+            }
         }
     }
 }
