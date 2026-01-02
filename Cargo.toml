@@ -57,6 +57,11 @@ name = "dol-migrate"
 path = "src/bin/dol-migrate.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "vudo"
+path = "src/bin/vudo.rs"
+required-features = ["vudo"]
+
 [features]
 default = []
 cli = ["dep:clap", "dep:anyhow", "dep:colored", "dep:regex", "serde"]
@@ -64,6 +69,7 @@ serde = ["dep:serde", "dep:serde_json"]
 mlir = ["melior"]
 wasm = ["wasmtime", "wasm-encoder"]
 wasm-mlir = ["wasm", "mlir"]
+vudo = ["cli", "wasm"]
 
 [dependencies]
 # Core dependencies
