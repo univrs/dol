@@ -1,0 +1,124 @@
+// Test case: Loop control flow structures
+//
+// This file tests loop support in WASM compilation.
+// Expected features:
+// - while loops
+// - for loops (range-based)
+// - loop (infinite with break)
+// - break and continue statements
+// - Nested loops
+
+module loop_test @ 0.1.0
+
+// Test 1: Simple while loop - countdown
+fun test_while_countdown(n: i64) -> i64 {
+    let count: i64 = n
+    while count > 0 {
+        count = count - 1
+    }
+    return count
+}
+
+// Test 2: While loop with accumulator
+fun test_while_sum(n: i64) -> i64 {
+    let total: i64 = 0
+    let i: i64 = 0
+    while i < n {
+        total = total + i
+        i = i + 1
+    }
+    return total
+}
+
+// Test 3: For loop - sum range
+fun test_for_sum(n: i64) -> i64 {
+    let total: i64 = 0
+    for i in 0..n {
+        total = total + i
+    }
+    return total
+}
+
+// Test 4: For loop - factorial
+fun test_for_factorial(n: i64) -> i64 {
+    let result: i64 = 1
+    for i in 1..n {
+        result = result * i
+    }
+    return result
+}
+
+// Test 5: Infinite loop with break
+fun test_loop_break(target: i64) -> i64 {
+    let counter: i64 = 0
+    loop {
+        counter = counter + 1
+        if counter >= target {
+            break
+        }
+    }
+    return counter
+}
+
+// Test 6: Loop with continue
+fun test_loop_continue(n: i64) -> i64 {
+    let total: i64 = 0
+    let i: i64 = 0
+    while i < n {
+        i = i + 1
+        if i == 3 {
+            continue
+        }
+        total = total + i
+    }
+    return total
+}
+
+// Test 7: Nested while loops
+fun test_nested_while(rows: i64, cols: i64) -> i64 {
+    let total: i64 = 0
+    let i: i64 = 0
+    while i < rows {
+        let j: i64 = 0
+        while j < cols {
+            total = total + 1
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return total
+}
+
+// Test 8: Nested for loops
+fun test_nested_for(rows: i64, cols: i64) -> i64 {
+    let total: i64 = 0
+    for i in 0..rows {
+        for j in 0..cols {
+            total = total + 1
+        }
+    }
+    return total
+}
+
+// Test 9: While with complex condition
+fun test_while_complex(a: i64, b: i64) -> i64 {
+    let x: i64 = a
+    let y: i64 = b
+    while x > 0 && y > 0 {
+        x = x - 1
+        y = y - 1
+    }
+    return x + y
+}
+
+// Test 10: Loop computing GCD (Euclidean algorithm)
+fun test_gcd(a: i64, b: i64) -> i64 {
+    let x: i64 = a
+    let y: i64 = b
+    while y != 0 {
+        let temp: i64 = y
+        y = x % y
+        x = temp
+    }
+    return x
+}

@@ -84,6 +84,10 @@ impl TypeScriptCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_function(func),
+            Declaration::SexVar(var) => {
+                // Generate a global mutable variable
+                format!("let {}: any; // sex var\n", var.name)
+            }
         }
     }
 

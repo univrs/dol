@@ -1,0 +1,121 @@
+# Cargo.toml Patch for WASM Support
+# Apply these changes to ~/repos/univrs-identity/Cargo.toml
+
+# ============================================================================
+# ADDITIONS TO [package] SECTION
+# ============================================================================
+
+# Add after edition = "2021":
+# ---
+# [lib]
+# crate-type = ["cdylib", "rlib"]
+# ---
+
+# ============================================================================
+# NEW TARGET-SPECIFIC DEPENDENCIES
+# ============================================================================
+
+# Add after existing [dependencies] section:
+# ---
+# WASM browser RNG support - only for wasm32-unknown-unknown target
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+# ---
+
+# ============================================================================
+# MODIFY STORAGE DEPENDENCIES (make native-only)
+# ============================================================================
+
+# Remove these from [dependencies]:
+# chacha20poly1305 = "0.10"
+# scrypt = "0.11"
+
+# Add this new section:
+# ---
+# Encryption for stored keys (native only - filesystem not available in WASM)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+chacha20poly1305 = "0.10"
+scrypt = "0.11"
+# ---
+
+# ============================================================================
+# ADD TO [dev-dependencies]
+# ============================================================================
+
+# Add:
+# wasm-bindgen-test = "0.3"
+
+# ============================================================================
+# ADD FEATURES SECTION
+# ============================================================================
+
+# Replace existing [features] with:
+# ---
+[features]
+default = ["native"]
+native = []        # Enable native-only features (storage)
+wasm = []          # Enable WASM bindings
+libp2p = []        # Enable libp2p PeerId derivation
+# ---
+
+# ============================================================================
+# FULL MODIFIED Cargo.toml FOR REFERENCE
+# ============================================================================
+
+[package]
+name = "univrs-identity"
+version = "0.1.0"
+edition = "2021"
+authors = ["Univrs.io Contributors"]
+license = "MIT"
+description = "Unified Ed25519 cryptographic identity for Univrs ecosystem"
+repository = "https://github.com/univrs/univrs-identity"
+keywords = ["ed25519", "cryptography", "identity", "signature", "authentication", "wasm"]
+categories = ["cryptography", "authentication", "wasm"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Ed25519 cryptography
+ed25519-dalek = { version = "2.1", features = ["serde", "rand_core"] }
+
+# Random number generation
+rand = "0.8"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Encoding
+bs58 = "0.5"
+base64 = "0.21"
+
+# Error handling
+thiserror = "1.0"
+
+# Secret handling - zeroes memory on drop
+zeroize = { version = "1.7", features = ["derive"] }
+
+# WASM browser RNG support - only for wasm32-unknown-unknown target
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+
+# Encryption for stored keys (native only - filesystem not available in WASM)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+chacha20poly1305 = "0.10"
+scrypt = "0.11"
+
+[dev-dependencies]
+tempfile = "3.10"
+wasm-bindgen-test = "0.3"
+
+[features]
+default = ["native"]
+native = []        # Enable native-only features (storage)
+wasm = []          # Enable WASM bindings
+libp2p = []        # Enable libp2p PeerId derivation

@@ -1,0 +1,82 @@
+=== Git Branch List ===
+Date: 2026-01-01
+
+$ git branch -a
+
+  feature/gene-wasm
+  feature/hir-clean-v0.4.0
+  feature/mlir-wasm
+  feature/vudo-runtime
+* feature/vudo-runtime-phase2
+  feature/wasm-tests
+  main
+  remotes/origin/feature/HIR-dolv3
+  remotes/origin/feature/gene-wasm
+  remotes/origin/feature/hir-v0.3.0
+  remotes/origin/feature/mlir-wasm
+  remotes/origin/feature/vudo-runtime
+  remotes/origin/feature/wasm-tests
+  remotes/origin/main
+
+=== Git Status ===
+
+$ git status
+
+On branch feature/vudo-runtime-phase2
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   packages/vudo-runtime/src/index.ts
+	modified:   packages/vudo-runtime/src/spirit.ts
+	modified:   packages/vudo-runtime/src/types.ts
+	modified:   packages/vudo-runtime/src/utils/type-bridge.ts
+	modified:   packages/vudo-runtime/tests/memory.test.ts
+	modified:   packages/vudo-runtime/tests/spirit.test.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.github/workflows/npm.yml
+	docs/STRATEGIC-ANALYSIS.md
+	docs/STRATEGIC-ANALYSIS.md:Zone.Identifier
+	docs/vudo-runtime-comparison.md
+	docs/vudo-runtime-comparison.md:Zone.Identifier
+	investigation-summary.md
+	node_modules/
+	package.json
+	packages/vudo-cli/
+	packages/vudo-runtime/dist/
+	packages/vudo-runtime/node_modules/
+	pnpm-lock.yaml
+	pnpm-workspace.yaml
+	test-cases/failing/
+	test-cases/working/gene_methods_test.dol
+	test-cases/working/if_else_test.dol
+	test-cases/working/locals_test.dol
+	test-cases/working/loop_test.dol
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+=== Git Log (Last 20 Commits) ===
+
+$ git log --oneline -20
+
+ff7aba9 Merge pull request #5 from univrs/feature/vudo-runtime
+face2b7 feat: implement @vudo/runtime TypeScript package
+09b6672 docs: add @vudo/runtime package plan
+b6cf35f Merge pull request #4 from univrs/feature/wasm-tests
+ffccd5b ci: add WASM test job to CI workflow
+61099c1 chore: bump version to 0.6.0
+6f88ab9 Merge pull request #3 from univrs/feature/gene-wasm
+e35a176 docs: update test-plan.md with gene inheritance status
+1866df6 feat(wasm): implement gene inheritance for WASM compilation
+643c9e4 docs: update test-plan.md with current implementation status
+96bde66 feat(wasm): add block depth tracking for break/continue in nested control flow
+9d27357 Merge pull request #2 from univrs/feature/dol-wasm
+2d3b8d2 feat(wasm): implement implicit self parameter for gene methods
+f2198e4 Merge pull request #1 from univrs/feature/dol-wasm
+f5e42ca feat(wasm): implement member access, function lookup, and gene methods
+8857a58 fixing files and folders
+d2a989a fixing folders
+2ee8b83 typo
+4bbe8a0 adding scripts-dol and status-dol
+6d4e124 feat: add hyphal network and swarm modules

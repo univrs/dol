@@ -274,6 +274,7 @@ fn output_json(results: &[ParseResult], _args: &Args) {
                 Declaration::System(_) => "system".to_string(),
                 Declaration::Evolution(_) => "evolution".to_string(),
                 Declaration::Function(_) => "function".to_string(),
+                Declaration::SexVar(_) => "sex_var".to_string(),
             }),
             name: r.declaration.as_ref().map(|d| d.name().to_string()),
             error: r.error.clone(),
@@ -341,6 +342,7 @@ fn output_compact(results: &[ParseResult], _args: &Args) {
                 Declaration::System(_) => "system",
                 Declaration::Evolution(_) => "evolution",
                 Declaration::Function(_) => "function",
+                Declaration::SexVar(_) => "sex_var",
             };
             println!(
                 "OK\t{}\t{}\t{}",
@@ -423,6 +425,9 @@ fn print_declaration_summary(decl: &Declaration) {
                 f.name.dimmed(),
                 f.params.len()
             );
+        }
+        Declaration::SexVar(v) => {
+            println!("    {} sex var of type {:?}", v.name.dimmed(), v.type_ann);
         }
     }
 }

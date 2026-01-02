@@ -1,0 +1,50 @@
+{
+  "name": "@vudo/cli",
+  "version": "0.1.0",
+  "description": "CLI tool for running DOL WASM modules",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "vudo": "dist/bin/vudo.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@vudo/runtime": "workspace:*",
+    "commander": "^12.0.0",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "eslint": "^8.55.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "dol",
+    "vudo",
+    "wasm",
+    "cli"
+  ],
+  "author": "univrs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/univrs/dol.git",
+    "directory": "packages/vudo-cli"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,101 @@
+# DOL Test Count Summary
+# Generated: 2026-01-01
+
+================================================================================
+TEST COUNTS BY FEATURE FLAG
+================================================================================
+
+Default features (cargo test -- --list):
+  Total test count: 1705 tests
+
+With WASM feature (cargo test --features wasm -- --list):
+  Total test count: 1839 tests
+  Additional WASM tests: 134 tests
+
+================================================================================
+TEST ATTRIBUTE COUNTS (#[test] occurrences)
+================================================================================
+
+Integration tests (tests/*.rs):
+  Total #[test] attributes: 1159 across 31 files
+
+  Breakdown by file:
+  - tests/parser_exhaustive.rs: 118 tests
+  - tests/adaptive_tests.rs: 93 tests
+  - tests/parser_tests.rs: 80 tests
+  - tests/lexer_tests.rs: 77 tests
+  - tests/expr_comprehensive.rs: 73 tests
+  - tests/parser_stress.rs: 61 tests
+  - tests/lexer_stress.rs: 58 tests
+  - tests/ast_structure.rs: 54 tests
+  - tests/sex_tests.rs: 46 tests
+  - tests/typechecker_exhaustive.rs: 44 tests
+  - tests/dol2_tests.rs: 42 tests
+  - tests/integration_comprehensive.rs: 39 tests
+  - tests/codegen_rust_tests.rs: 36 tests
+  - tests/quote_tests.rs: 34 tests
+  - tests/wasm_execution.rs: 32 tests
+  - tests/compiler_e2e.rs: 32 tests
+  - tests/codegen_unit.rs: 31 tests
+  - tests/error_handling.rs: 30 tests
+  - tests/validator_unit.rs: 27 tests
+  - tests/idiom_tests.rs: 27 tests
+  - tests/lexer_exhaustive.rs: 27 tests
+  - tests/integration_tests.rs: 24 tests
+  - tests/codegen_operators_test.rs: 18 tests
+  - tests/reflect_tests.rs: 17 tests
+  - tests/generated/container_lifecycle_dol.rs: 10 tests
+  - tests/biology_tests.rs: 8 tests
+  - tests/wasm_test_helpers.rs: 6 tests
+  - tests/stress_tests.rs: 5 tests
+  - tests/compiler_integration.rs: 5 tests
+  - tests/wasm_debug.rs: 4 tests
+  - tests/codegen_golden.rs: 1 test
+
+Unit tests (src/*.rs, inline #[cfg(test)]):
+  Total #[test] attributes: 498 across 64 files
+
+  Top files by test count:
+  - src/codegen/rust.rs: 68 tests
+  - src/lower/expr.rs: 22 tests
+  - src/typechecker.rs: 21 tests
+  - src/macros/builtin.rs: 20 tests
+  - src/lexer.rs: 20 tests
+  - src/reflect.rs: 17 tests
+  - src/validator.rs: 16 tests
+  - src/hir/validate.rs: 13 tests
+  - src/wasm/layout.rs: 13 tests
+  - src/network/discovery.rs: 12 tests
+  - src/network/topology.rs: 12 tests
+
+================================================================================
+WASM-SPECIFIC TESTS
+================================================================================
+
+WASM feature tests (--features wasm):
+  wasm::alloc - 10 tests
+  wasm::compiler - 8 tests
+  wasm::layout - 13 tests
+  wasm::runtime - 3 tests
+  Integration (wasm_execution.rs) - 32 tests
+  Integration (wasm_debug.rs) - 4 tests
+  Integration (wasm_test_helpers.rs) - 6 tests
+
+Total WASM-specific: ~76 tests
+
+================================================================================
+SUMMARY
+================================================================================
+
+| Category                  | Count  |
+|---------------------------|--------|
+| Default feature tests     | 1705   |
+| WASM feature tests        | 1839   |
+| Integration #[test] attrs | 1159   |
+| Unit #[test] attrs        | 498    |
+| Total #[test] attributes  | 1657   |
+| Test files (tests/)       | 31     |
+| Source files with tests   | 64     |
+
+Note: The cargo test --list count (1705/1839) may differ from #[test] attribute
+count due to parameterized tests, test macros, and dynamic test generation.

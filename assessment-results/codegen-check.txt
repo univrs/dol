@@ -1,0 +1,64 @@
+Toolchain Audit: WASM Codegen Binary Check
+==========================================
+Date: 2026-01-01
+
+Initial Command: cargo run --bin dol-codegen --features wasm -- --help
+----------------------------------------------------------------------
+Result: FAILED
+Error: target `dol-codegen` in package `dol` requires the features: `cli`
+
+Note: The dol-codegen binary requires BOTH cli and wasm features to be enabled.
+
+
+Corrected Command: cargo run --bin dol-codegen --features cli,wasm -- --help
+-----------------------------------------------------------------------------
+Result: SUCCESS
+
+DOL (Design Ontology Language) - A declarative specification language for ontology-first development
+
+Usage: dol-codegen [OPTIONS] <PATHS>...
+
+Arguments:
+  <PATHS>...
+          Files or directories to process
+
+Options:
+  -t, --target <TARGET>
+          Target language for code generation
+
+          Possible values:
+          - rust:       Generate Rust code
+          - typescript: Generate TypeScript code
+          - jsonschema: Generate JSON Schema
+
+          [default: rust]
+
+  -o, --output <OUTPUT>
+          Output file (defaults to stdout)
+
+  -r, --recursive
+          Recursively process directories
+
+  -q, --quiet
+          Quiet mode: only show errors
+
+      --derive <DERIVE>
+          Include derive macros (Rust-specific)
+
+      --public
+          Generate public items (default)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+
+Supported Code Generation Targets:
+----------------------------------
+1. rust       - Generate Rust code (default)
+2. typescript - Generate TypeScript code
+3. jsonschema - Generate JSON Schema
+
+Result: dol-codegen is AVAILABLE (requires --features cli,wasm)

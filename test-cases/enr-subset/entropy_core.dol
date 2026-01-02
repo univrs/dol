@@ -1,0 +1,111 @@
+// ENR Entropy Core - Subset that compiles to WASM
+// This extracts the pure calculation functions from entropy.dol
+
+module enr.entropy_core @ 0.1.0
+
+exegesis {
+    Core entropy calculation functions for the ENR system.
+    This is a subset of entropy.dol using only WASM-supported features.
+}
+
+// Network entropy factors
+gene NetworkEntropyInput {
+    exegesis { Network entropy calculation inputs. }
+
+    has hops: i64
+    has latency_variance_ms: f64
+    has packet_loss_probability: f64
+    has bandwidth_saturation: f64
+}
+
+// Calculate network entropy: Sn = a1*hops + a2*latency + a3*loss + a4*saturation
+fun calculate_network_entropy(input: i32) -> f64 {
+    // Entropy factors (inlined constants)
+    let hop_base: f64 = 0.1
+    let latency_factor: f64 = 0.01
+    let loss_factor: f64 = 5.0
+    let saturation_factor: f64 = 2.0
+    let max_entropy: f64 = 10.0
+
+    // Load fields from struct (i32 pointer)
+    // Layout: hops(i64):0, latency(f64):8, loss(f64):16, saturation(f64):24
+    let hops_i64: i64 = 0
+    let entropy: f64 = 0.0
+
+    // For now, just return a test value
+    return 5.5
+}
+
+// Compute entropy factors
+gene ComputeEntropyInput {
+    exegesis { Compute entropy calculation inputs. }
+
+    has cpu_cycles: i64
+    has memory_bytes: i64
+    has context_switches: i64
+    has cache_miss_rate: f64
+}
+
+// Simple pure function - no struct access needed
+fun add_entropy(a: f64, b: f64) -> f64 {
+    return a + b
+}
+
+fun scale_entropy(value: f64, factor: f64) -> f64 {
+    return value * factor
+}
+
+fun clamp_entropy(value: f64, max_val: f64) -> f64 {
+    if value > max_val {
+        return max_val
+    }
+    return value
+}
+
+// Combined entropy calculation (pure math)
+fun weighted_sum(
+    network: f64,
+    compute: f64,
+    storage: f64,
+    temporal: f64,
+    w_net: f64,
+    w_comp: f64,
+    w_stor: f64,
+    w_temp: f64
+) -> f64 {
+    let sum: f64 = network * w_net
+    sum = sum + compute * w_comp
+    sum = sum + storage * w_stor
+    sum = sum + temporal * w_temp
+    return sum
+}
+
+// Price multiplier based on total entropy
+fun entropy_price_multiplier(total: f64) -> f64 {
+    let low_threshold: f64 = 2.0
+    let med_threshold: f64 = 5.0
+    let high_threshold: f64 = 8.0
+    let max_multiplier: f64 = 5.0
+
+    let multiplier: f64 = 1.0
+
+    if total < low_threshold {
+        multiplier = 1.0 + total * 0.05
+    } else {
+        if total < med_threshold {
+            multiplier = 1.1 + (total - 2.0) * 0.1
+        } else {
+            if total < high_threshold {
+                multiplier = 1.4 + (total - 5.0) * 0.2
+            } else {
+                multiplier = 2.0 + (total - 8.0) * 0.5
+            }
+        }
+    }
+
+    // Clamp to max
+    if multiplier > max_multiplier {
+        return max_multiplier
+    }
+    return multiplier
+}

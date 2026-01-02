@@ -95,3 +95,15 @@ export {
   getTypeSize,
   getTypeAlignment,
 } from './utils/type-bridge.js';
+
+// ============================================================================
+// Messaging
+// ============================================================================
+
+export {
+  MessageBus,
+  createMessageBus,
+  createMessagingLoa,
+  type Message,
+  type MessageHandler,
+} from './messagebus.js';

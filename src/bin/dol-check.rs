@@ -313,6 +313,7 @@ fn check_file(
         Declaration::System(_) => "system",
         Declaration::Evolution(_) => "evolution",
         Declaration::Function(_) => "function",
+        Declaration::SexVar(_) => "sex_var",
     };
 
     Ok((

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>univrs-identity WASM Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+        }
+        #results {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .pass {
+            color: #28a745;
+            padding: 8px;
+            border-left: 3px solid #28a745;
+            margin: 5px 0;
+            background: #f8fff8;
+        }
+        .fail {
+            color: #dc3545;
+            padding: 8px;
+            border-left: 3px solid #dc3545;
+            margin: 5px 0;
+            background: #fff8f8;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .summary.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .summary.failure {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ed25519 WASM Test Suite</h1>
+    <p>Testing <code>univrs-identity</code> WebAssembly bindings in the browser.</p>
+    <div id="results">
+        <p class="loading">Loading WASM module...</p>
+    </div>
+
+    <script type="module">
+        // Import from the pkg directory (built by wasm-pack)
+        import init, {
+            WasmKeypair,
+            WasmPublicKey,
+            verify_signature,
+            sign_message,
+            derive_public_key,
+            generate_keypair_json
+        } from './pkg/univrs_identity.js';
+
+        async function runTests() {
+            const results = document.getElementById('results');
+            results.innerHTML = '';
+
+            let passed = 0;
+            let failed = 0;
+            const testResults = [];
+
+            function test(name, fn) {
+                try {
+                    fn();
+                    testResults.push({ name, status: 'pass' });
+                    passed++;
+                } catch (e) {
+                    testResults.push({ name, status: 'fail', error: e.message || e.toString() });
+                    failed++;
+                }
+            }
+
+            function assertEqual(actual, expected, msg) {
+                if (actual !== expected) {
+                    throw new Error(`${msg}: expected ${expected}, got ${actual}`);
+                }
+            }
+
+            function assertArrayEqual(actual, expected, msg) {
+                if (actual.length !== expected.length) {
+                    throw new Error(`${msg}: length mismatch ${actual.length} vs ${expected.length}`);
+                }
+                for (let i = 0; i < actual.length; i++) {
+                    if (actual[i] !== expected[i]) {
+                        throw new Error(`${msg}: mismatch at index ${i}`);
+                    }
+                }
+            }
+
+            function assertTrue(value, msg) {
+                if (!value) {
+                    throw new Error(msg || 'Expected true');
+                }
+            }
+
+            function assertFalse(value, msg) {
+                if (value) {
+                    throw new Error(msg || 'Expected false');
+                }
+            }
+
+            // Initialize WASM
+            try {
+                await init();
+                results.innerHTML = '<p>WASM initialized successfully. Running tests...</p>';
+            } catch (e) {
+                results.innerHTML = `<p class="fail">Failed to initialize WASM: ${e}</p>`;
+                return;
+            }
+
+            // ===== Test Suite =====
+
+            // Test 1: Keypair generation
+            test('Keypair generation', () => {
+                const kp = new WasmKeypair();
+                assertEqual(kp.public_key_bytes().length, 32, 'Public key length');
+            });
+
+            // Test 2: Different keypairs have different public keys
+            test('Keypair uniqueness', () => {
+                const kp1 = new WasmKeypair();
+                const kp2 = new WasmKeypair();
+                const pk1 = kp1.public_key_base58();
+                const pk2 = kp2.public_key_base58();
+                if (pk1 === pk2) {
+                    throw new Error('Two keypairs should have different public keys');
+                }
+            });
+
+            // Test 3: Sign and verify
+            test('Sign and verify message', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('Hello, WASM!');
+                const signature = kp.sign(message);
+
+                assertEqual(signature.length, 64, 'Signature length');
+                assertTrue(kp.verify(message, signature), 'Signature should verify');
+            });
+
+            // Test 4: Deterministic signatures
+            test('Deterministic signatures', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('test message');
+                const sig1 = kp.sign(message);
+                const sig2 = kp.sign(message);
+
+                assertArrayEqual(sig1, sig2, 'Same message should produce same signature');
+            });
+
+            // Test 5: Wrong message fails verification
+            test('Wrong message fails verification', () => {
+                const kp = new WasmKeypair();
+                const signature = kp.sign(new TextEncoder().encode('original'));
+
+                assertFalse(
+                    kp.verify(new TextEncoder().encode('different'), signature),
+                    'Wrong message should fail verification'
+                );
+            });
+
+            // Test 6: Wrong key fails verification
+            test('Wrong key fails verification', () => {
+                const kp1 = new WasmKeypair();
+                const kp2 = new WasmKeypair();
+                const message = new TextEncoder().encode('test');
+                const signature = kp1.sign(message);
+
+                assertFalse(
+                    kp2.verify(message, signature),
+                    'Wrong key should fail verification'
+                );
+            });
+
+            // Test 7: Standalone verify function
+            test('Standalone verify function', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('test');
+                const signature = kp.sign(message);
+
+                assertTrue(
+                    verify_signature(kp.public_key_bytes(), message, signature),
+                    'Standalone verify should work'
+                );
+            });
+
+            // Test 8: Standalone sign function
+            test('Standalone sign function', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('test');
+                const secretKey = kp.secret_key_bytes();
+                const signature = sign_message(secretKey, message);
+
+                assertEqual(signature.length, 64, 'Signature length');
+                assertTrue(kp.verify(message, signature), 'Standalone signed should verify');
+            });
+
+            // Test 9: Derive public key
+            test('Derive public key from secret', () => {
+                const kp = new WasmKeypair();
+                const secretKey = kp.secret_key_bytes();
+                const derivedPk = derive_public_key(secretKey);
+
+                assertArrayEqual(derivedPk, kp.public_key_bytes(), 'Derived public key should match');
+            });
+
+            // Test 10: Public key Base58 roundtrip
+            test('Public key Base58 roundtrip', () => {
+                const kp = new WasmKeypair();
+                const b58 = kp.public_key_base58();
+                const pk = WasmPublicKey.from_base58(b58);
+
+                assertEqual(pk.to_base58(), b58, 'Base58 roundtrip');
+            });
+
+            // Test 11: Public key hex roundtrip
+            test('Public key hex roundtrip', () => {
+                const kp = new WasmKeypair();
+                const hex = kp.public_key_hex();
+                assertEqual(hex.length, 64, 'Hex length should be 64');
+
+                const pk = WasmPublicKey.from_hex(hex);
+                assertEqual(pk.to_hex(), hex, 'Hex roundtrip');
+            });
+
+            // Test 12: Public key bytes roundtrip
+            test('Public key bytes roundtrip', () => {
+                const kp = new WasmKeypair();
+                const bytes = kp.public_key_bytes();
+                const pk = WasmPublicKey.from_bytes(bytes);
+
+                assertArrayEqual(pk.to_bytes(), bytes, 'Bytes roundtrip');
+            });
+
+            // Test 13: Peer ID format
+            test('Peer ID format', () => {
+                const kp = new WasmKeypair();
+                const peerId = kp.peer_id();
+
+                assertEqual(peerId.length, 8, 'Peer ID should be 8 characters');
+                assertTrue(kp.public_key_base58().startsWith(peerId), 'Peer ID should be prefix of Base58');
+            });
+
+            // Test 14: Keypair restoration from bytes
+            test('Keypair restoration from secret bytes', () => {
+                const kp1 = new WasmKeypair();
+                const secret = kp1.secret_key_bytes();
+                const kp2 = WasmKeypair.from_bytes(secret);
+
+                assertEqual(kp1.public_key_base58(), kp2.public_key_base58(), 'Restored keypair should match');
+            });
+
+            // Test 15: JSON keypair generation
+            test('JSON keypair generation', () => {
+                const json = generate_keypair_json();
+                const parsed = JSON.parse(json);
+
+                assertTrue(typeof parsed.publicKey === 'string', 'Should have publicKey');
+                assertTrue(typeof parsed.secretKey === 'string', 'Should have secretKey');
+                assertTrue(parsed.publicKey.length > 0, 'publicKey should not be empty');
+                assertTrue(parsed.secretKey.length > 0, 'secretKey should not be empty');
+            });
+
+            // Test 16: Sign Base64 encoding
+            test('Sign with Base64 encoding', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('test');
+                const sigBase64 = kp.sign_base64(message);
+
+                assertTrue(typeof sigBase64 === 'string', 'Should return string');
+                assertTrue(sigBase64.length > 0, 'Should not be empty');
+            });
+
+            // Test 17: Sign hex encoding
+            test('Sign with hex encoding', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('test');
+                const sigHex = kp.sign_hex(message);
+
+                assertEqual(sigHex.length, 128, 'Hex signature should be 128 chars');
+            });
+
+            // Test 18: Invalid public key bytes
+            test('Invalid public key bytes rejected', () => {
+                try {
+                    WasmPublicKey.from_bytes(new Uint8Array([1, 2, 3]));
+                    throw new Error('Should have thrown');
+                } catch (e) {
+                    assertTrue(e.message.includes('expected') || e.message.includes('invalid'),
+                        'Should indicate invalid key');
+                }
+            });
+
+            // Test 19: WasmPublicKey verification
+            test('WasmPublicKey can verify signatures', () => {
+                const kp = new WasmKeypair();
+                const message = new TextEncoder().encode('test');
+                const signature = kp.sign(message);
+
+                const pk = WasmPublicKey.from_bytes(kp.public_key_bytes());
+                assertTrue(pk.verify(message, signature), 'WasmPublicKey should verify');
+            });
+
+            // Test 20: Large message signing
+            test('Large message signing', () => {
+                const kp = new WasmKeypair();
+                const largeMessage = new Uint8Array(1024 * 100); // 100KB
+                crypto.getRandomValues(largeMessage);
+
+                const signature = kp.sign(largeMessage);
+                assertTrue(kp.verify(largeMessage, signature), 'Large message should verify');
+            });
+
+            // ===== Render Results =====
+            results.innerHTML = testResults.map(r =>
+                r.status === 'pass'
+                    ? `<div class="pass">PASS: ${r.name}</div>`
+                    : `<div class="fail">FAIL: ${r.name} - ${r.error}</div>`
+            ).join('');
+
+            const summaryClass = failed === 0 ? 'success' : 'failure';
+            results.innerHTML += `
+                <div class="summary ${summaryClass}">
+                    Results: ${passed} passed, ${failed} failed
+                </div>
+            `;
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

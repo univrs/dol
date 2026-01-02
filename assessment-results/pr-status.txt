@@ -1,0 +1,15 @@
+=== PR #5 Status Check ===
+Date: 2026-01-01
+
+$ gh pr view 5 --json state,title,mergeable
+
+{
+  "mergeable": "UNKNOWN",
+  "state": "MERGED",
+  "title": "feat: implement @vudo/runtime TypeScript package"
+}
+
+=== Summary ===
+PR #5 Status: MERGED
+Title: feat: implement @vudo/runtime TypeScript package
+Mergeable: UNKNOWN (already merged, so not applicable)

@@ -274,6 +274,12 @@ pub enum Declaration {
 
     /// A top-level function declaration.
     Function(Box<FunctionDecl>),
+
+    /// A sex var declaration - mutable global state.
+    SexVar(VarDecl),
+
+    /// A constant declaration - immutable compile-time value.
+    Const(ConstDecl),
 }
 
 impl Declaration {
@@ -286,6 +292,8 @@ impl Declaration {
             Declaration::System(s) => &s.name,
             Declaration::Evolution(e) => &e.name,
             Declaration::Function(f) => &f.name,
+            Declaration::SexVar(v) => &v.name,
+            Declaration::Const(c) => &c.name,
         }
     }
 
@@ -298,6 +306,8 @@ impl Declaration {
             Declaration::System(s) => &s.exegesis,
             Declaration::Evolution(e) => &e.exegesis,
             Declaration::Function(f) => &f.exegesis,
+            Declaration::SexVar(_) => "sex var",
+            Declaration::Const(_) => "const",
         }
     }
 
@@ -310,6 +320,8 @@ impl Declaration {
             Declaration::System(s) => s.span,
             Declaration::Evolution(e) => e.span,
             Declaration::Function(f) => f.span,
+            Declaration::SexVar(v) => v.span,
+            Declaration::Const(c) => c.span,
         }
     }
 
@@ -322,7 +334,10 @@ impl Declaration {
             Declaration::Trait(t) => &t.statements,
             Declaration::Constraint(c) => &c.statements,
             Declaration::System(s) => &s.statements,
-            Declaration::Evolution(_) | Declaration::Function(_) => return ids,
+            Declaration::Evolution(_)
+            | Declaration::Function(_)
+            | Declaration::SexVar(_)
+            | Declaration::Const(_) => return ids,
         };
 
         for stmt in statements {
@@ -1403,6 +1418,30 @@ pub struct VarDecl {
     pub type_ann: Option<TypeExpr>,
     /// Optional initial value
     pub value: Option<Expr>,
+    /// Source location
+    pub span: Span,
+}
+
+/// A top-level constant declaration: `const NAME: Type = value`.
+///
+/// Constants are immutable values that are evaluated at compile time
+/// and can be referenced throughout the module.
+///
+/// # DOL Syntax
+///
+/// ```dol
+/// const PI: Float64 = 3.14159
+/// const MAX_HOPS: Int32 = 100
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ConstDecl {
+    /// Constant name
+    pub name: String,
+    /// Optional type annotation
+    pub type_ann: Option<TypeExpr>,
+    /// Constant value (required for const declarations)
+    pub value: Expr,
     /// Source location
     pub span: Span,
 }

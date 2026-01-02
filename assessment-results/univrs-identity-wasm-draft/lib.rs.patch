@@ -1,0 +1,218 @@
+# lib.rs Modifications for WASM Support
+# Apply these changes to ~/repos/univrs-identity/src/lib.rs
+
+# ============================================================================
+# MODIFY MODULE DECLARATIONS
+# ============================================================================
+
+# Change:
+# ---
+# pub mod storage;
+# ---
+
+# To:
+# ---
+#[cfg(not(target_arch = "wasm32"))]
+pub mod storage;
+# ---
+
+# ============================================================================
+# ADD WASM MODULE
+# ============================================================================
+
+# Add at end of file (before final closing brace if any):
+# ---
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
+// Re-export WASM types when wasm feature is enabled
+#[cfg(feature = "wasm")]
+pub use wasm::{
+    WasmKeypair, WasmPublicKey, WasmError,
+    generate_keypair_json, verify_signature, sign_message, derive_public_key
+};
+# ---
+
+# ============================================================================
+# UPDATE PRELUDE MODULE
+# ============================================================================
+
+# Modify prelude module to be conditional:
+# ---
+/// Prelude module for convenient imports.
+///
+/// ```rust
+/// use univrs_identity::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::claims::SignedClaim;
+    pub use crate::error::{IdentityError, Result};
+    pub use crate::keypair::Keypair;
+    pub use crate::signature::{PublicKey, Signature};
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use crate::storage;
+
+    #[cfg(feature = "wasm")]
+    pub use crate::wasm::{WasmKeypair, WasmPublicKey};
+}
+# ---
+
+# ============================================================================
+# FULL MODIFIED lib.rs FOR REFERENCE
+# ============================================================================
+
+//! # univrs-identity
+//!
+//! Unified Ed25519 cryptographic identity for the Univrs ecosystem.
+//!
+//! This crate implements the identity system specified in `identity.dol`,
+//! providing self-sovereign cryptographic identity that works across all
+//! Univrs components (orchestrator, dashboard, P2P network).
+//!
+//! ## Core Principles
+//!
+//! 1. **SELF-SOVEREIGN**: No central authority issues or revokes identities
+//! 2. **CRYPTOGRAPHIC**: Identity = public key, proof = signature
+//! 3. **PORTABLE**: Same identity works across all Univrs components
+//! 4. **PERSISTENT**: Identity survives system restarts (encrypted storage)
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use univrs_identity::{Keypair, PublicKey, Signature};
+//!
+//! // Generate a new identity
+//! let keypair = Keypair::generate();
+//! println!("Identity: {}", keypair.public_key());
+//! println!("Peer ID: {}", keypair.public_key().to_peer_id());
+//!
+//! // Sign a message
+//! let message = b"Hello, Univrs!";
+//! let signature = keypair.sign(message);
+//!
+//! // Verify the signature
+//! assert!(keypair.public_key().verify(message, &signature));
+//! ```
+//!
+//! ## WASM Support
+//!
+//! Enable the `wasm` feature for browser environments:
+//!
+//! ```typescript
+//! import init, { WasmKeypair } from 'univrs-identity';
+//!
+//! await init();
+//! const kp = new WasmKeypair();
+//! console.log(kp.public_key_base58());
+//! ```
+//!
+//! ## Persistent Storage (Native Only)
+//!
+//! ```rust,no_run
+//! # #[cfg(not(target_arch = "wasm32"))]
+//! use univrs_identity::{Keypair, storage};
+//!
+//! // Generate and save a keypair
+//! # #[cfg(not(target_arch = "wasm32"))]
+//! # fn main() {
+//! let keypair = Keypair::generate();
+//! storage::save(&keypair, "my_identity.json", "secure-passphrase").unwrap();
+//!
+//! // Load keypair later
+//! let loaded = storage::load("my_identity.json", "secure-passphrase").unwrap();
+//! assert_eq!(keypair.public_key(), loaded.public_key());
+//! # }
+//! # #[cfg(target_arch = "wasm32")]
+//! # fn main() {}
+//! ```
+//!
+//! ## Modules
+//!
+//! - [`keypair`]: Ed25519 keypair generation and signing
+//! - [`signature`]: Public keys and signatures with encoding/verification
+//! - [`storage`]: Encrypted persistent storage for keypairs (native only)
+//! - [`claims`]: Signed claims and attestations
+//! - [`error`]: Error types for identity operations
+//! - [`wasm`]: WebAssembly bindings (requires `wasm` feature)
+
+pub mod claims;
+pub mod error;
+pub mod keypair;
+pub mod signature;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod storage;
+
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
+// Re-export main types for convenience
+pub use claims::SignedClaim;
+pub use error::{IdentityError, Result};
+pub use keypair::Keypair;
+pub use signature::{PublicKey, Signature};
+
+// Re-export WASM types when wasm feature is enabled
+#[cfg(feature = "wasm")]
+pub use wasm::{
+    derive_public_key, generate_keypair_json, sign_message, verify_signature, WasmError,
+    WasmKeypair, WasmPublicKey,
+};
+
+/// Prelude module for convenient imports.
+///
+/// ```rust
+/// use univrs_identity::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::claims::SignedClaim;
+    pub use crate::error::{IdentityError, Result};
+    pub use crate::keypair::Keypair;
+    pub use crate::signature::{PublicKey, Signature};
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use crate::storage;
+
+    #[cfg(feature = "wasm")]
+    pub use crate::wasm::{WasmKeypair, WasmPublicKey};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_full_workflow() {
+        // Generate identity
+        let keypair = Keypair::generate();
+        let public_key = keypair.public_key();
+
+        // Sign message
+        let message = b"Test message for signing";
+        let signature = keypair.sign(message);
+
+        // Verify signature
+        assert!(public_key.verify(message, &signature));
+
+        // Display identity
+        println!("Public Key (base58): {}", public_key);
+        println!("Peer ID: {}", public_key.to_peer_id());
+    }
+
+    #[test]
+    fn test_cross_module_integration() {
+        // Generate keypair
+        let keypair = Keypair::generate();
+
+        // Test encoding round-trips
+        let pk_b58 = keypair.public_key().to_base58();
+        let pk_restored = PublicKey::from_base58(&pk_b58).unwrap();
+        assert_eq!(keypair.public_key(), pk_restored);
+
+        // Test signing and verification
+        let message = b"integration test";
+        let sig = keypair.sign(message);
+        assert!(keypair.public_key().verify(message, &sig));
+    }
+}

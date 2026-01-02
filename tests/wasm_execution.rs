@@ -800,3 +800,312 @@ exegesis { A large gene for performance testing. }
         duration
     );
 }
+
+// ============================================
+// 9. Vertical Slice Output Test
+// ============================================
+
+#[test]
+fn test_compile_counter_to_file() {
+    use metadol::Parser;
+    use std::fs;
+
+    let source = r#"
+module counter_test @ 0.1.0
+
+/// Counter gene with increment and add methods
+gene Counter {
+    has value: Int64
+
+    fun increment() -> Int64 {
+        return value + 1
+    }
+
+    fun get_value() -> Int64 {
+        return value
+    }
+
+    fun add(n: Int64) -> Int64 {
+        return value + n
+    }
+
+    // Test field mutation
+    sex fun set_value(new_val: Int64) -> Int64 {
+        self.value = new_val
+        return value
+    }
+
+    // Increment with mutation
+    sex fun increment_mut() -> Int64 {
+        self.value = value + 1
+        return value
+    }
+}
+
+/// Standalone function for simpler test
+fun add_numbers(a: Int64, b: Int64) -> Int64 {
+    return a + b
+}
+"#;
+
+    let mut parser = Parser::new(source);
+    let dol_file = parser.parse_file().expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile_file(&dol_file)
+        .expect("Compilation failed");
+
+    // Write to file for TypeScript integration test
+    fs::write("vertical-slice-results/counter.wasm", &wasm_bytes).expect("Failed to write file");
+    println!("Wrote {} bytes to counter.wasm", wasm_bytes.len());
+
+    // Verify module loads
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test add_numbers
+    let result = wasm_module
+        .call("add_numbers", &[3i64.into(), 4i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(7));
+
+    // Test Counter.increment with self pointer at 0
+    let result = wasm_module
+        .call("Counter.increment", &[0i32.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    // Test Counter.set_value (field mutation)
+    // Allocate at address 1024 (past static data)
+    let result = wasm_module
+        .call("Counter.set_value", &[1024i32.into(), 42i64.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(42),
+        "set_value should return new value"
+    );
+
+    // Verify value was actually stored
+    let result = wasm_module
+        .call("Counter.get_value", &[1024i32.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(42),
+        "get_value should read the stored value"
+    );
+
+    // Test increment_mut (field mutation)
+    let result = wasm_module
+        .call("Counter.increment_mut", &[1024i32.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(43),
+        "increment_mut should update and return new value"
+    );
+
+    // Verify increment persisted
+    let result = wasm_module
+        .call("Counter.get_value", &[1024i32.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(43),
+        "get_value should see updated value after increment_mut"
+    );
+}
+
+// ============================================
+// 10. SEX Var Global Variable Tests
+// ============================================
+
+#[test]
+fn test_compile_and_execute_sex_var_global() {
+    use metadol::Parser;
+
+    // Test sex var: global mutable variable
+    let source = r#"
+module sex_var_test @ 0.1.0
+
+sex var counter: i64 = 0
+
+sex fun increment() -> i64 {
+    counter = counter + 1
+    return counter
+}
+
+sex fun get_counter() -> i64 {
+    return counter
+}
+
+sex fun reset() -> i64 {
+    counter = 0
+    return counter
+}
+"#;
+
+    let mut parser = Parser::new(source);
+    let dol_file = parser.parse_file().expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile_file(&dol_file)
+        .expect("Compilation failed");
+
+    // Verify WASM is valid
+    assert!(wasm_bytes.len() > 8, "WASM should have content");
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Should have WASM magic");
+
+    // Load and verify the module
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+
+    // Initial value should be 0
+    let result = wasm_module
+        .call("get_counter", &[])
+        .expect("Call get_counter failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+
+    // First increment should return 1
+    let result = wasm_module
+        .call("increment", &[])
+        .expect("Call increment failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    // Second increment should return 2
+    let result = wasm_module
+        .call("increment", &[])
+        .expect("Call increment failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(2));
+
+    // Get should confirm value is 2
+    let result = wasm_module
+        .call("get_counter", &[])
+        .expect("Call get_counter failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(2));
+
+    // Reset should return 0
+    let result = wasm_module.call("reset", &[]).expect("Call reset failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+// ============================================
+// 11. ENR Entropy Core Compilation Test
+// ============================================
+
+#[test]
+fn test_compile_entropy_core_from_file() {
+    use metadol::Parser;
+    use std::fs;
+
+    let source = fs::read_to_string("test-cases/enr-subset/entropy_core.dol")
+        .expect("Failed to read entropy_core.dol");
+
+    let mut parser = Parser::new(&source);
+    let dol_file = parser
+        .parse_file()
+        .expect("Failed to parse entropy_core.dol");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile_file(&dol_file)
+        .expect("Failed to compile entropy_core.dol");
+
+    // Verify valid WASM
+    assert!(wasm_bytes.len() >= 8, "WASM too short");
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Invalid WASM magic number");
+
+    // Write to file for inspection
+    fs::write("test-cases/enr-subset/entropy_core.wasm", &wasm_bytes)
+        .expect("Failed to write entropy_core.wasm");
+    println!("Wrote {} bytes to entropy_core.wasm", wasm_bytes.len());
+
+    // Load and verify module
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test add_entropy(3.0, 4.0) = 7.0
+    let result = wasm_module
+        .call(
+            "add_entropy",
+            &[
+                wasmtime::Val::F64(3.0f64.to_bits()),
+                wasmtime::Val::F64(4.0f64.to_bits()),
+            ],
+        )
+        .expect("Call add_entropy failed");
+    let value = match result.first() {
+        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
+        _ => panic!("Expected f64 return"),
+    };
+    assert!(
+        (value - 7.0).abs() < 0.001,
+        "add_entropy(3.0, 4.0) should be 7.0, got {}",
+        value
+    );
+
+    // Test scale_entropy(5.0, 2.0) = 10.0
+    let result = wasm_module
+        .call(
+            "scale_entropy",
+            &[
+                wasmtime::Val::F64(5.0f64.to_bits()),
+                wasmtime::Val::F64(2.0f64.to_bits()),
+            ],
+        )
+        .expect("Call scale_entropy failed");
+    let value = match result.first() {
+        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
+        _ => panic!("Expected f64 return"),
+    };
+    assert!(
+        (value - 10.0).abs() < 0.001,
+        "scale_entropy(5.0, 2.0) should be 10.0, got {}",
+        value
+    );
+
+    // Test clamp_entropy(15.0, 10.0) = 10.0 (clamped)
+    let result = wasm_module
+        .call(
+            "clamp_entropy",
+            &[
+                wasmtime::Val::F64(15.0f64.to_bits()),
+                wasmtime::Val::F64(10.0f64.to_bits()),
+            ],
+        )
+        .expect("Call clamp_entropy failed");
+    let value = match result.first() {
+        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
+        _ => panic!("Expected f64 return"),
+    };
+    assert!(
+        (value - 10.0).abs() < 0.001,
+        "clamp_entropy(15.0, 10.0) should be 10.0, got {}",
+        value
+    );
+
+    // Test clamp_entropy(5.0, 10.0) = 5.0 (not clamped)
+    let result = wasm_module
+        .call(
+            "clamp_entropy",
+            &[
+                wasmtime::Val::F64(5.0f64.to_bits()),
+                wasmtime::Val::F64(10.0f64.to_bits()),
+            ],
+        )
+        .expect("Call clamp_entropy failed");
+    let value = match result.first() {
+        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
+        _ => panic!("Expected f64 return"),
+    };
+    assert!(
+        (value - 5.0).abs() < 0.001,
+        "clamp_entropy(5.0, 10.0) should be 5.0, got {}",
+        value
+    );
+
+    println!("All entropy_core.dol functions executed successfully!");
+}

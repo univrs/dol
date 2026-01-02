@@ -194,6 +194,16 @@ impl LoweringContext {
                     decls: vec![],
                 })
             }
+            ast::Declaration::SexVar(var) => {
+                // Lower sex var as a static/global variable
+                // For now, treat as an empty module placeholder
+                let name = self.intern(&var.name);
+                HirDecl::Module(HirModuleDecl {
+                    id: self.fresh_id(),
+                    name,
+                    decls: vec![],
+                })
+            }
         }
     }
 }

@@ -8,6 +8,7 @@
 import type { LoadOptions, SeanceInstance, SpiritInstance } from './types.js';
 import { Spirit, loadSpirit } from './spirit.js';
 import { LoaRegistry } from './loa.js';
+import { MessageBus, createMessagingLoa } from './messagebus.js';
 
 // ============================================================================
 // Séance Class
@@ -35,15 +36,18 @@ import { LoaRegistry } from './loa.js';
 export class Seance implements SeanceInstance {
   private spiritMap: Map<string, Spirit> = new Map();
   private registry: LoaRegistry;
+  private messageBus: MessageBus;
   private debug: boolean;
   private defaultOptions: LoadOptions;
 
   constructor(options: {
     loas?: LoaRegistry;
+    messageBus?: MessageBus;
     debug?: boolean;
     defaultLoadOptions?: LoadOptions;
   } = {}) {
     this.registry = options.loas ?? new LoaRegistry();
+    this.messageBus = options.messageBus ?? new MessageBus({ debug: options.debug });
     this.debug = options.debug ?? false;
     this.defaultOptions = options.defaultLoadOptions ?? {};
   }
@@ -64,10 +68,20 @@ export class Seance implements SeanceInstance {
       throw new Error(`Spirit '${name}' is already summoned in this session`);
     }
 
+    // Register Spirit with the MessageBus
+    this.messageBus.register(name);
+
+    // Create messaging Loa for this Spirit
+    const messagingLoa = createMessagingLoa(this.messageBus, name);
+
+    // Create a registry that includes the messaging Loa
+    const spiritRegistry = options.loas ?? this.registry;
+    spiritRegistry.register(messagingLoa);
+
     const mergedOptions: LoadOptions = {
       ...this.defaultOptions,
       ...options,
-      loas: options.loas ?? this.registry,
+      loas: spiritRegistry,
       debug: options.debug ?? this.debug,
     };
 
@@ -149,6 +163,10 @@ export class Seance implements SeanceInstance {
       console.log(`[Séance] Releasing Spirit '${name}'...`);
     }
 
+    // Clear any pending messages and unregister from MessageBus
+    this.messageBus.clear(name);
+    this.messageBus.unregister(name);
+
     // Reset Spirit's memory allocator
     const spirit = this.spiritMap.get(name);
     if (spirit) {
@@ -170,11 +188,15 @@ export class Seance implements SeanceInstance {
       console.log(`[Séance] Dismissing session with ${this.spiritMap.size} Spirit(s)...`);
     }
 
+    // Clear MessageBus and unregister all Spirits
+    this.messageBus.clearAll();
+
     // Reset all Spirit memory allocators
     for (const [name, spirit] of this.spiritMap) {
       if (this.debug) {
         console.log(`[Séance] Releasing Spirit '${name}'...`);
       }
+      this.messageBus.unregister(name);
       spirit.memory.reset();
     }
 
@@ -193,10 +215,74 @@ export class Seance implements SeanceInstance {
   }
 
   /**
+   * Get the MessageBus for this session
+   */
+  get messages(): MessageBus {
+    return this.messageBus;
+  }
+
+  /**
    * Get the number of summoned Spirits
    */
   get size(): number {
     return this.spiritMap.size;
+  }
+
+  // ===========================================================================
+  // Messaging Convenience Methods
+  // ===========================================================================
+
+  /**
+   * Send a message from one Spirit to another
+   *
+   * @param from - Source Spirit name
+   * @param to - Destination Spirit name
+   * @param channel - Message channel identifier
+   * @param payload - Data to send
+   * @returns true if message was delivered
+   *
+   * @example
+   * ```typescript
+   * seance.send('ping', 'pong', 1, new Uint8Array([1, 2, 3]));
+   * ```
+   */
+  send(from: string, to: string, channel: number, payload: Uint8Array): boolean {
+    return this.messageBus.send(from, to, channel, payload);
+  }
+
+  /**
+   * Check number of pending messages for a Spirit
+   *
+   * @param name - Spirit name
+   * @param channel - Optional channel filter (0 = all channels)
+   */
+  pending(name: string, channel: number = 0): number {
+    return this.messageBus.pending(name, channel);
+  }
+
+  /**
+   * Broadcast a message to all Spirits except the sender
+   *
+   * @param from - Source Spirit name
+   * @param channel - Message channel identifier
+   * @param payload - Data to send
+   * @returns Number of Spirits that received the message
+   *
+   * @example
+   * ```typescript
+   * seance.broadcast('coordinator', 1, new Uint8Array([0xFF]));
+   * ```
+   */
+  broadcast(from: string, channel: number, payload: Uint8Array): number {
+    let delivered = 0;
+    for (const name of this.spiritMap.keys()) {
+      if (name !== from) {
+        if (this.messageBus.send(from, name, channel, payload)) {
+          delivered++;
+        }
+      }
+    }
+    return delivered;
   }
 }
 
@@ -209,6 +295,7 @@ export class Seance implements SeanceInstance {
  */
 export function createSeance(options?: {
   loas?: LoaRegistry;
+  messageBus?: MessageBus;
   debug?: boolean;
 }): Seance {
   return new Seance(options);
@@ -229,7 +316,7 @@ export function createSeance(options?: {
  */
 export async function withSeance<T>(
   fn: (seance: Seance) => Promise<T>,
-  options?: { loas?: LoaRegistry; debug?: boolean }
+  options?: { loas?: LoaRegistry; messageBus?: MessageBus; debug?: boolean }
 ): Promise<T> {
   const seance = new Seance(options);
 

@@ -85,6 +85,7 @@ impl JsonSchemaCodegen {
                 Declaration::System(s) => to_pascal_case(&s.name),
                 Declaration::Evolution(e) => to_pascal_case(&e.name),
                 Declaration::Function(f) => to_pascal_case(&f.name),
+                Declaration::SexVar(v) => to_pascal_case(&v.name),
             };
             let schema = generator.generate_declaration_inner(decl);
             defs.push(format!("    \"{}\": {}", name, schema));
@@ -110,6 +111,7 @@ impl JsonSchemaCodegen {
             Declaration::System(s) => to_pascal_case(&s.name),
             Declaration::Evolution(e) => to_pascal_case(&e.name),
             Declaration::Function(f) => to_pascal_case(&f.name),
+            Declaration::SexVar(v) => to_pascal_case(&v.name),
         };
 
         let inner = self.generate_declaration_inner(decl);
@@ -135,6 +137,7 @@ impl JsonSchemaCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_function(func),
+            Declaration::SexVar(var) => self.generate_sex_var(var),
         }
     }
 
@@ -147,6 +150,18 @@ impl JsonSchemaCodegen {
     "properties": {{}}
 }}"#,
             func.name
+        )
+    }
+
+    /// Generate schema for a sex var (placeholder - globals don't map well to JSON Schema).
+    fn generate_sex_var(&self, var: &crate::ast::VarDecl) -> String {
+        format!(
+            r#"{{
+    "type": "object",
+    "description": "Global mutable variable {}",
+    "properties": {{}}
+}}"#,
+            var.name
         )
     }
 

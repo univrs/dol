@@ -232,6 +232,7 @@ impl RustCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_toplevel_function(func),
+            Declaration::SexVar(var) => self.gen_global_var(var),
         }
     }
 
