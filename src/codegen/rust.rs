@@ -232,25 +232,42 @@ impl RustCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_toplevel_function(func),
-            Declaration::Const(var) => self.generate_const(var),
+            Declaration::Const(c) => self.generate_const(c),
+            Declaration::SexVar(v) => self.generate_sex_var(v),
         }
     }
 
     /// Generate a Rust constant declaration.
-    fn generate_const(&self, var: &crate::ast::VarDecl) -> String {
+    fn generate_const(&self, c: &crate::ast::ConstDecl) -> String {
         let visibility = self.visibility_str();
-        let name = var.name.to_uppercase().replace('.', "_");
-        let type_str = var
+        let name = c.name.to_uppercase().replace('.', "_");
+        let type_str = c
             .type_ann
             .as_ref()
             .map(|t| self.gen_type(t))
             .unwrap_or_else(|| "i64".to_string());
-        let value = var
+        let value = self.gen_expr(&c.value);
+        format!("{}const {}: {} = {};", visibility, name, type_str, value)
+    }
+
+    /// Generate a Rust static mut declaration for SEX variables.
+    fn generate_sex_var(&self, v: &crate::ast::VarDecl) -> String {
+        let visibility = self.visibility_str();
+        let name = v.name.to_uppercase().replace('.', "_");
+        let type_str = v
+            .type_ann
+            .as_ref()
+            .map(|t| self.gen_type(t))
+            .unwrap_or_else(|| "i64".to_string());
+        let value = v
             .value
             .as_ref()
             .map(|e| self.gen_expr(e))
             .unwrap_or_else(|| "0".to_string());
-        format!("{}const {}: {} = {};", visibility, name, type_str, value)
+        format!(
+            "{}static mut {}: {} = {};",
+            visibility, name, type_str, value
+        )
     }
 
     /// Generate a top-level Rust function from a function declaration.
@@ -581,6 +598,7 @@ impl RustCodegen {
     }
 
     /// Generate a Rust method from a function declaration.
+    #[allow(dead_code)]
     fn gen_method(&self, func: &FunctionDecl) -> String {
         // Delegate to gen_method_with_fields with empty field list
         self.gen_method_with_fields(func, &[])
@@ -3636,7 +3654,7 @@ impl TypeMapper for RustCodegen {
                 "UInt8" => "u8".to_string(),
                 "UInt16" => "u16".to_string(),
                 "UInt32" => "u32".to_string(),
-                "UInt64" => "u64".to_string(),
+                "UInt64" => "isize".to_string(), // isize for FFI compatibility with negative values
                 "Float32" => "f32".to_string(),
                 "Float64" => "f64".to_string(),
                 "String" => "String".to_string(),

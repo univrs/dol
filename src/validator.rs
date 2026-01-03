@@ -146,7 +146,7 @@ pub fn validate_with_options(decl: &Declaration, options: &ValidationOptions) ->
         Declaration::System(system) => validate_system(system, &mut result),
         Declaration::Evolution(evolution) => validate_evolution(evolution, &mut result),
         Declaration::Function(_) => {} // Top-level functions don't need special validation yet
-        Declaration::Const(_) => {}    // Constants are validated by type checking
+        Declaration::Const(_) | Declaration::SexVar(_) => {} // Constants and SexVars are validated by type checking
     }
 
     // DOL 2.0 Type checking (if enabled)
@@ -246,6 +246,9 @@ fn validate_naming(decl: &Declaration, result: &mut ValidationResult) {
 
         // Constants should be SCREAMING_SNAKE_CASE
         Declaration::Const(_) => {}
+
+        // SexVars should be SCREAMING_SNAKE_CASE like constants
+        Declaration::SexVar(_) => {}
     }
 }
 
@@ -279,7 +282,10 @@ fn validate_statements(decl: &Declaration, result: &mut ValidationResult) {
         Declaration::Trait(t) => &t.statements,
         Declaration::Constraint(c) => &c.statements,
         Declaration::System(s) => &s.statements,
-        Declaration::Evolution(_) | Declaration::Function(_) | Declaration::Const(_) => return, // Different structure
+        Declaration::Evolution(_)
+        | Declaration::Function(_)
+        | Declaration::Const(_)
+        | Declaration::SexVar(_) => return, // Different structure
     };
 
     // Check for duplicate statements

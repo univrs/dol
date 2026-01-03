@@ -84,14 +84,15 @@ impl TypeScriptCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_function(func),
-            Declaration::Const(var) => self.generate_const(var),
+            Declaration::Const(c) => self.generate_const(c),
+            Declaration::SexVar(v) => self.generate_sex_var(v),
         }
     }
 
     /// Generate a TypeScript constant declaration.
-    fn generate_const(&self, var: &crate::ast::VarDecl) -> String {
-        let name = var.name.to_uppercase().replace('.', "_");
-        let type_str = var
+    fn generate_const(&self, c: &crate::ast::ConstDecl) -> String {
+        let name = c.name.to_uppercase().replace('.', "_");
+        let type_str = c
             .type_ann
             .as_ref()
             .map(Self::map_type_expr)
@@ -99,6 +100,18 @@ impl TypeScriptCodegen {
         // For now, just use a placeholder value - full expression codegen not implemented
         let value = "0 /* TODO: const expression */".to_string();
         format!("export const {}: {} = {};", name, type_str, value)
+    }
+
+    /// Generate a TypeScript mutable variable for SEX variables.
+    fn generate_sex_var(&self, v: &crate::ast::VarDecl) -> String {
+        let name = v.name.to_uppercase().replace('.', "_");
+        let type_str = v
+            .type_ann
+            .as_ref()
+            .map(Self::map_type_expr)
+            .unwrap_or_else(|| "number".to_string());
+        let value = "0 /* TODO: sex var expression */".to_string();
+        format!("export let {}: {} = {};", name, type_str, value)
     }
 
     /// Generate a TypeScript function from a function declaration.

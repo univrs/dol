@@ -314,6 +314,7 @@ fn check_file(
         Declaration::Evolution(_) => "evolution",
         Declaration::Function(_) => "function",
         Declaration::Const(_) => "const",
+        Declaration::SexVar(_) => "sex_var",
     };
 
     Ok((

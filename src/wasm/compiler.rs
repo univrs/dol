@@ -2020,25 +2020,21 @@ impl WasmCompiler {
                         // Emit the value expression
                         self.emit_expression(function, value, locals, loop_ctx, string_pool)?;
 
-                            // Emit the value expression
-                            self.emit_expression(function, value, locals, loop_ctx)?;
+                        // Check if it's a global variable (sex var) first
+                        if let Some(global_idx) = locals.lookup_global(name) {
+                            // Store to global variable
+                            function.instruction(&Instruction::GlobalSet(global_idx));
+                        } else {
+                            // Look up the local index
+                            let local_idx = locals.lookup(name).ok_or_else(|| {
+                                WasmError::new(format!(
+                                    "Cannot assign to unknown variable: {}",
+                                    name
+                                ))
+                            })?;
 
-                            // Check if it's a global variable (sex var) first
-                            if let Some(global_idx) = locals.lookup_global(name) {
-                                // Store to global variable
-                                function.instruction(&Instruction::GlobalSet(global_idx));
-                            } else {
-                                // Look up the local index
-                                let local_idx = locals.lookup(name).ok_or_else(|| {
-                                    WasmError::new(format!(
-                                        "Cannot assign to unknown variable: {}",
-                                        name
-                                    ))
-                                })?;
-
-                                // Store the value in the local
-                                function.instruction(&Instruction::LocalSet(local_idx));
-                            }
+                            // Store the value in the local
+                            function.instruction(&Instruction::LocalSet(local_idx));
                         }
                     }
                     Expr::Member { object, field } => {
