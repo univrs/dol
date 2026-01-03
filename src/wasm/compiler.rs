@@ -43,7 +43,6 @@ use crate::wasm::layout::{EnumRegistry, GeneLayout, GeneLayoutRegistry};
 #[cfg(feature = "wasm")]
 use crate::wasm::WasmError;
 #[cfg(feature = "wasm")]
-use std::cell::RefCell;
 use std::collections::HashMap;
 #[cfg(feature = "wasm")]
 use std::path::Path;
@@ -75,6 +74,24 @@ pub struct WasmCompiler {
     gene_layouts: GeneLayoutRegistry,
     /// Registry of enum definitions for variant compilation
     enum_registry: EnumRegistry,
+}
+
+/// Represents a WASM import declaration.
+///
+/// Used for sex functions without bodies, which are treated as host function imports.
+#[cfg(feature = "wasm")]
+#[derive(Debug, Clone)]
+struct WasmImport {
+    /// Module name for the import (e.g., "loa")
+    module: String,
+    /// Function name for the import
+    name: String,
+    /// Parameter types
+    params: Vec<wasm_encoder::ValType>,
+    /// Return type (None for void)
+    result: Option<wasm_encoder::ValType>,
+    /// Type index in the type section (set during compilation)
+    type_idx: u32,
 }
 
 /// Context for tracking loop control flow depths.
@@ -215,6 +232,10 @@ struct LocalsTable {
     func_indices: HashMap<String, u32>,
     /// Maps variable names to their WASM type (for parameters that need widening)
     wasm_types: HashMap<String, wasm_encoder::ValType>,
+    /// Maps global variable names to their WASM global indices (sex vars)
+    global_indices: HashMap<String, u32>,
+    /// Maps function names to their return types
+    func_return_types: HashMap<String, wasm_encoder::ValType>,
 }
 
 #[cfg(feature = "wasm")]
@@ -246,6 +267,8 @@ impl LocalsTable {
             dol_types: HashMap::new(),
             func_indices: HashMap::new(),
             wasm_types: HashMap::new(),
+            global_indices: HashMap::new(),
+            func_return_types: HashMap::new(),
         };
 
         // Add implicit 'self' parameter at index 0 for gene methods
@@ -1222,11 +1245,6 @@ impl WasmCompiler {
         }
 
         // ============= DATA SECTION =============
-        // Emit string literals collected during compilation
-        self.string_table
-            .borrow()
-            .emit_data_section(&mut wasm_module);
-
         // Emit data section for string literals (if any)
         if !string_pool.is_empty() {
             use wasm_encoder::DataSection;
@@ -2051,10 +2069,10 @@ impl WasmCompiler {
                         };
 
                         // Emit object expression (pushes pointer onto stack)
-                        self.emit_expression(function, object, locals, loop_ctx)?;
+                        self.emit_expression(function, object, locals, loop_ctx, string_pool)?;
 
                         // Emit value expression (pushes value onto stack)
-                        self.emit_expression(function, value, locals, loop_ctx)?;
+                        self.emit_expression(function, value, locals, loop_ctx, string_pool)?;
 
                         // Look up gene layout and emit store instruction
                         if let Some(type_name) = gene_type {
@@ -2504,7 +2522,7 @@ impl WasmCompiler {
                 // Emit right operand
                 self.emit_expression(function, right, locals, loop_ctx, string_pool)?;
                 // Emit operation
-                self.emit_binary_op(function, *op)?;
+                self.emit_binary_op(function, *op, operand_type)?;
             }
             Expr::Call { callee, args } => {
                 match callee.as_ref() {
