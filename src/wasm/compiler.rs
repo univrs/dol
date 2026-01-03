@@ -1099,7 +1099,8 @@ impl WasmCompiler {
         // ============= MEMORY SECTION =============
         if needs_memory {
             BumpAllocator::emit_memory_section(&mut wasm_module, 1);
-            BumpAllocator::emit_globals(&mut wasm_module, heap_start);
+            // Note: globals are emitted below in the GLOBAL SECTION, not here
+            // This avoids duplicate global sections
         }
 
         // ============= GLOBAL SECTION =============
@@ -3151,6 +3152,10 @@ impl WasmCompiler {
     }
 
     /// Infer the type of an expression based on the locals table.
+    ///
+    /// Note: For identifiers that will be widened (e.g., i32 enum params),
+    /// this returns the widened type (i64) to match the actual stack type
+    /// after emit_expression.
     fn infer_expression_type(
         &self,
         expr: &crate::ast::Expr,
@@ -3167,7 +3172,15 @@ impl WasmCompiler {
                 crate::ast::Literal::String(_) => ValType::I32, // pointer
                 _ => ValType::I64,                              // default
             },
-            Expr::Identifier(name) => locals.lookup_var_type(name).unwrap_or(ValType::I64),
+            Expr::Identifier(name) => {
+                // Check if this identifier will be widened during emit_expression
+                // If so, return i64 to match the actual stack type after widening
+                if locals.needs_widening(name) {
+                    ValType::I64
+                } else {
+                    locals.lookup_var_type(name).unwrap_or(ValType::I64)
+                }
+            }
             Expr::Binary { left, op, .. } => {
                 // For comparison ops, result is always i32 (boolean)
                 use crate::ast::BinaryOp;

@@ -157,3 +157,135 @@ exegesis { Doubles a number. }
     println!("double(21) returned: {:?}", result);
     assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
 }
+
+#[test]
+fn debug_enum_type_mapping() {
+    use metadol::parse_file;
+    use metadol::wasm::WasmCompiler;
+
+    let source = r#"
+fun compare_account_type(a: AccountType, b: AccountType) -> i32 {
+    if a == b {
+        return 1
+    }
+    return 0
+}
+exegesis { Compare two account types. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    println!("Parsed function:");
+    println!("{:#?}", module);
+
+    // Create compiler and register the enum
+    let mut compiler = WasmCompiler::new();
+    compiler.register_enum(
+        "AccountType",
+        vec![
+            "Node".to_string(),
+            "RevivalPool".to_string(),
+            "Treasury".to_string(),
+        ],
+    );
+
+    match compiler.compile(&module) {
+        Ok(wasm_bytes) => {
+            println!("\nCompiled {} bytes", wasm_bytes.len());
+            println!("WASM hex dump (all bytes):");
+            for (i, byte) in wasm_bytes.iter().enumerate() {
+                print!("{:02x} ", byte);
+                if (i + 1) % 16 == 0 {
+                    println!();
+                }
+            }
+            println!();
+
+            // Write to temp file for external validation
+            std::fs::write("/tmp/enum_test.wasm", &wasm_bytes).ok();
+
+            // Try to load with WasmRuntime
+            let runtime = WasmRuntime::new().expect("Failed to create runtime");
+            match runtime.load(&wasm_bytes) {
+                Ok(_) => println!("WasmRuntime load: SUCCESS"),
+                Err(e) => {
+                    println!("WasmRuntime load FAILED: {:?}", e);
+                    // Print raw error with Debug for more details
+                    println!("Full error: {:#?}", e);
+                }
+            }
+        }
+        Err(e) => {
+            println!("Compilation error: {:?}", e);
+        }
+    }
+}
+
+#[test]
+fn debug_gene_inheritance_wasm() {
+    use metadol::wasm::WasmCompiler;
+    use metadol::Parser;
+
+    let source = r#"
+module inheritance_test @ 0.1.0
+
+gene Animal {
+    has age: i64
+
+    fun get_age() -> i64 {
+        return age
+    }
+}
+
+gene Dog extends Animal {
+    has breed_id: i64
+
+    fun bark_count() -> i64 {
+        return age * 2
+    }
+}
+"#;
+
+    let mut parser = Parser::new(source);
+    let dol_file = parser.parse_file().expect("Failed to parse");
+
+    println!("Parsed file successfully");
+    println!(
+        "Module path: {:?}",
+        dol_file.module.as_ref().map(|m| &m.path)
+    );
+    println!("Declarations: {}", dol_file.declarations.len());
+
+    for (i, decl) in dol_file.declarations.iter().enumerate() {
+        match decl {
+            metadol::Declaration::Gene(gene) => {
+                println!("  [{}] Gene: {} extends {:?}", i, gene.name, gene.extends);
+            }
+            _ => println!("  [{}] Other declaration", i),
+        }
+    }
+
+    let mut compiler = WasmCompiler::new();
+    match compiler.compile_file(&dol_file) {
+        Ok(wasm_bytes) => {
+            println!("\nCompiled {} bytes", wasm_bytes.len());
+            println!("WASM hex dump (first 128 bytes):");
+            for (i, byte) in wasm_bytes.iter().take(128).enumerate() {
+                print!("{:02x} ", byte);
+                if (i + 1) % 16 == 0 {
+                    println!();
+                }
+            }
+            println!();
+
+            // Try to load with WasmRuntime
+            let runtime = WasmRuntime::new().expect("Failed to create runtime");
+            match runtime.load(&wasm_bytes) {
+                Ok(_) => println!("WasmRuntime load: SUCCESS"),
+                Err(e) => println!("WasmRuntime load FAILED: {:?}", e),
+            }
+        }
+        Err(e) => {
+            println!("Compilation error: {:?}", e);
+        }
+    }
+}
