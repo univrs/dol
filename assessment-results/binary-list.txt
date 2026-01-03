@@ -1,0 +1,64 @@
+Toolchain Audit: Binary List
+=============================
+Date: 2026-01-01
+
+Command 1: ls -la target/debug/dol-*
+----------------------------------------
+-rwxr-xr-x 2 ardeshir ardeshir 138453784 Jan  1 21:06 target/debug/dol-build-crate
+-rw-r--r-- 1 ardeshir ardeshir      3349 Jan  1 21:06 target/debug/dol-build-crate.d
+-rwxr-xr-x 2 ardeshir ardeshir 138345592 Jan  1 21:06 target/debug/dol-check
+-rw-r--r-- 1 ardeshir ardeshir      3337 Jan  1 21:06 target/debug/dol-check.d
+-rwxr-xr-x 2 ardeshir ardeshir 138722432 Jan  1 21:06 target/debug/dol-codegen
+-rw-r--r-- 1 ardeshir ardeshir      3341 Jan  1 21:06 target/debug/dol-codegen.d
+-rwxr-xr-x 2 ardeshir ardeshir 131295624 Jan  1 21:06 target/debug/dol-mcp
+-rw-r--r-- 1 ardeshir ardeshir      3333 Jan  1 21:06 target/debug/dol-mcp.d
+-rwxr-xr-x 2 ardeshir ardeshir  19652408 Jan  1 21:06 target/debug/dol-migrate
+-rw-r--r-- 1 ardeshir ardeshir      3341 Jan  1 21:06 target/debug/dol-migrate.d
+-rwxr-xr-x 2 ardeshir ardeshir 138147008 Jan  1 21:06 target/debug/dol-parse
+-rw-r--r-- 1 ardeshir ardeshir      3337 Jan  1 21:06 target/debug/dol-parse.d
+-rwxr-xr-x 2 ardeshir ardeshir  14025464 Jan  1 21:06 target/debug/dol-test
+-rw-r--r-- 1 ardeshir ardeshir      3335 Jan  1 21:06 target/debug/dol-test.d
+
+Summary: 7 binaries found
+-------------------------
+1. dol-build-crate (138 MB)
+2. dol-check       (138 MB)
+3. dol-codegen     (138 MB)
+4. dol-mcp         (131 MB)
+5. dol-migrate     ( 20 MB)
+6. dol-parse       (138 MB)
+7. dol-test        ( 14 MB)
+
+
+Command 2: cargo run --bin dol-check --features cli -- --help
+-------------------------------------------------------------
+DOL (Design Ontology Language) - A declarative specification language for ontology-first development
+
+Usage: dol-check [OPTIONS] <PATHS>...
+
+Arguments:
+  <PATHS>...  Directories or files to check
+
+Options:
+      --require-exegesis
+          Require exegesis blocks to be present and non-empty
+      --min-exegesis-length <MIN_EXEGESIS_LENGTH>
+          Minimum exegesis length (characters) [default: 20]
+      --coverage-source <COVERAGE_SOURCE>
+          Source directory to check coverage against
+      --strict
+          Strict mode: treat warnings as errors
+      --typecheck
+          Enable DOL 2.0 type checking
+      --ci
+          CI mode: exit code only, minimal output
+  -f, --format <FORMAT>
+          Output format [default: pretty] [possible values: pretty, json, compact]
+  -q, --quiet
+          Quiet mode
+  -h, --help
+          Print help
+  -V, --version
+          Print version
+
+Result: dol-check is AVAILABLE and functional

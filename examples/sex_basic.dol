@@ -1,0 +1,27 @@
+// sex_basic.dol - Basic SEX system examples
+// This file tests the complete SEX syntax
+
+// Host imports (no body = WASM import)
+sex fun vudo_print(ptr: Int32, len: Int32)
+sex fun vudo_alloc(size: Int32) -> Int32
+
+// Pure function - no effects allowed
+fun add(a: Int64, b: Int64) -> Int64 {
+    return a + b
+}
+
+// Sex function with body - effects allowed
+sex fun log_and_add(a: Int64, b: Int64) -> Int64 {
+    // vudo_print("Adding...", 10)  // Would call the import
+    return a + b
+}
+
+// Sex block in pure function
+fun compute_with_debug(x: Int64) -> Int64 {
+    let result = x * 2
+    sex {
+        // vudo_print("Debug: result computed", 22)
+        let debug_val = result
+    }
+    return result
+}

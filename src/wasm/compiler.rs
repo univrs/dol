@@ -43,6 +43,7 @@ use crate::wasm::layout::{EnumRegistry, GeneLayout, GeneLayoutRegistry};
 #[cfg(feature = "wasm")]
 use crate::wasm::WasmError;
 #[cfg(feature = "wasm")]
+use std::cell::RefCell;
 use std::collections::HashMap;
 #[cfg(feature = "wasm")]
 use std::path::Path;
@@ -111,6 +112,88 @@ impl LoopContext {
     }
 }
 
+/// String table for WASM data section.
+///
+/// Collects and deduplicates string literals, returning (offset, length) pairs.
+/// Strings are stored in the WASM data section starting at a configurable base offset.
+#[cfg(feature = "wasm")]
+#[derive(Debug, Default, Clone)]
+struct StringTable {
+    /// Strings stored as (offset, content)
+    strings: Vec<(u32, String)>,
+    /// Next available offset
+    next_offset: u32,
+    /// Base offset in memory (typically after heap pointer)
+    base_offset: u32,
+}
+
+#[cfg(feature = "wasm")]
+impl StringTable {
+    /// Create a new string table with a base offset.
+    ///
+    /// The base offset is where strings will start in WASM linear memory.
+    /// Typically this is after the heap pointer and any reserved space.
+    fn new(base_offset: u32) -> Self {
+        Self {
+            strings: Vec::new(),
+            next_offset: base_offset,
+            base_offset,
+        }
+    }
+
+    /// Add a string to the table.
+    ///
+    /// Returns (pointer, length) for the string in WASM memory.
+    /// Deduplicates: if the string already exists, returns the existing location.
+    fn add(&mut self, s: &str) -> (u32, u32) {
+        // Check for existing string (deduplication)
+        for (offset, existing) in &self.strings {
+            if existing == s {
+                return (*offset, s.len() as u32);
+            }
+        }
+        // Add new string
+        let offset = self.next_offset;
+        let len = s.len() as u32;
+        self.strings.push((offset, s.to_string()));
+        self.next_offset += len;
+        (offset, len)
+    }
+
+    /// Check if the table has any strings.
+    fn is_empty(&self) -> bool {
+        self.strings.is_empty()
+    }
+
+    /// Get the number of strings in the table.
+    #[allow(dead_code)]
+    fn len(&self) -> usize {
+        self.strings.len()
+    }
+
+    /// Emit the WASM data section for all strings.
+    ///
+    /// This creates active data segments that initialize memory with the string contents.
+    fn emit_data_section(&self, module: &mut wasm_encoder::Module) {
+        if self.strings.is_empty() {
+            return;
+        }
+
+        let mut data_section = wasm_encoder::DataSection::new();
+
+        for (offset, content) in &self.strings {
+            // Active data segment: memory 0, offset expression, bytes
+            data_section.active(
+                0, // memory index
+                &wasm_encoder::ConstExpr::i32_const(*offset as i32),
+                content.as_bytes().iter().copied(),
+            );
+        }
+
+        module.section(&data_section);
+    }
+}
+
 /// Table for tracking local variables within a function.
 ///
 /// This tracks both function parameters (which are the first locals in WASM)
@@ -124,6 +207,8 @@ struct LocalsTable {
     name_to_index: HashMap<String, u32>,
     /// Types of declared locals (not including parameters)
     local_types: Vec<wasm_encoder::ValType>,
+    /// Maps variable names to their WASM ValType for type inference
+    var_types: HashMap<String, wasm_encoder::ValType>,
     /// Maps variable names to their DOL type (gene name) for member access
     dol_types: HashMap<String, String>,
     /// Maps function names to their WASM function indices
@@ -157,6 +242,7 @@ impl LocalsTable {
             param_count: params.len() as u32 + self_offset,
             name_to_index: HashMap::new(),
             local_types: Vec::new(),
+            var_types: HashMap::new(),
             dol_types: HashMap::new(),
             func_indices: HashMap::new(),
             wasm_types: HashMap::new(),
@@ -165,6 +251,9 @@ impl LocalsTable {
         // Add implicit 'self' parameter at index 0 for gene methods
         if has_self {
             table.name_to_index.insert("self".to_string(), 0);
+            table
+                .var_types
+                .insert("self".to_string(), wasm_encoder::ValType::I32);
         }
 
         // Add declared parameters (offset by 1 if we have self)
@@ -172,10 +261,18 @@ impl LocalsTable {
             table
                 .name_to_index
                 .insert(param.name.clone(), i as u32 + self_offset);
+            // Track parameter type for type inference
+            let val_type = Self::type_expr_to_val_type(&param.type_ann);
+            table.var_types.insert(param.name.clone(), val_type);
         }
 
         // Track gene field names for implicit field access
         if let Some(ctx) = gene_context {
+            // Store gene name for 'self' type lookups
+            table
+                .dol_types
+                .insert("self".to_string(), ctx.gene_name.clone());
+
             for field_name in &ctx.field_names {
                 // Store field names with a special prefix to identify them
                 table.dol_types.insert(
@@ -211,6 +308,16 @@ impl LocalsTable {
         self.func_indices.get(name).copied()
     }
 
+    /// Register a global variable's WASM index (sex var).
+    fn register_global(&mut self, name: &str, index: u32) {
+        self.global_indices.insert(name.to_string(), index);
+    }
+
+    /// Look up a global variable's WASM index by name.
+    fn lookup_global(&self, name: &str) -> Option<u32> {
+        self.global_indices.get(name).copied()
+    }
+
     /// Declare a new local variable.
     ///
     /// Returns the index assigned to this local. The index is param_count + local_index.
@@ -218,7 +325,47 @@ impl LocalsTable {
         let index = self.param_count + self.local_types.len() as u32;
         self.name_to_index.insert(name.to_string(), index);
         self.local_types.push(val_type);
+        self.var_types.insert(name.to_string(), val_type);
         index
+    }
+
+    /// Look up the WASM ValType of a variable by name.
+    fn lookup_var_type(&self, name: &str) -> Option<wasm_encoder::ValType> {
+        self.var_types.get(name).copied()
+    }
+
+    /// Register a function with its return type.
+    fn register_function_with_type(
+        &mut self,
+        name: &str,
+        index: u32,
+        return_type: wasm_encoder::ValType,
+    ) {
+        self.func_indices.insert(name.to_string(), index);
+        self.func_return_types.insert(name.to_string(), return_type);
+    }
+
+    /// Look up a function's return type by name.
+    fn lookup_function_return_type(&self, name: &str) -> Option<wasm_encoder::ValType> {
+        self.func_return_types.get(name).copied()
+    }
+
+    /// Convert a DOL TypeExpr to a WASM ValType.
+    fn type_expr_to_val_type(ty: &crate::ast::TypeExpr) -> wasm_encoder::ValType {
+        use crate::ast::TypeExpr;
+        match ty {
+            TypeExpr::Named(name) => match name.as_str() {
+                "i32" | "Int32" => wasm_encoder::ValType::I32,
+                "i64" | "Int64" => wasm_encoder::ValType::I64,
+                "f32" | "Float32" => wasm_encoder::ValType::F32,
+                "f64" | "Float64" => wasm_encoder::ValType::F64,
+                "bool" | "Bool" => wasm_encoder::ValType::I32, // booleans as i32
+                _ => wasm_encoder::ValType::I32, // default to i32 for references/gene types
+            },
+            TypeExpr::Generic { .. } => wasm_encoder::ValType::I32, // generics are pointers
+            TypeExpr::Function { .. } => wasm_encoder::ValType::I32, // function refs are pointers
+            _ => wasm_encoder::ValType::I64,                        // default
+        }
     }
 
     /// Declare a new local variable with DOL type information.
@@ -795,25 +942,30 @@ impl WasmCompiler {
     /// if compilation fails.
     pub fn compile_file(&mut self, file: &crate::ast::DolFile) -> Result<Vec<u8>, WasmError> {
         use wasm_encoder::{
-            CodeSection, ExportKind, ExportSection, Function, FunctionSection, Module, TypeSection,
-            ValType,
+            CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
+            ImportSection, Module, TypeSection, ValType,
         };
 
         // Register gene layouts in dependency order (parents before children)
         self.register_gene_layouts_ordered(&file.declarations)?;
 
-        // Extract all functions from all declarations
+        // Extract imports (sex fun without body)
+        let mut imports = self.extract_imports(&file.declarations)?;
+
+        // Extract all local functions (with body) from all declarations
         let mut functions: Vec<ExtractedFunction> = Vec::new();
         for decl in &file.declarations {
             let extracted = self.extract_functions(decl)?;
-            functions.extend(extracted);
+            // Filter out import functions (sex fun without body)
+            for f in extracted {
+                if !Self::is_import(f.func) {
+                    functions.push(f);
+                }
+            }
         }
 
-        if functions.is_empty() {
-            return Err(WasmError::new(
-                "No functions found in file - only function declarations are currently supported for WASM compilation",
-            ));
-        }
+        // Allow modules with only imports (no local functions)
+        let has_local_functions = !functions.is_empty();
 
         // Collect string literals from all declarations
         let mut string_pool = StringPool::new();
@@ -834,19 +986,32 @@ impl WasmCompiler {
         // Build WASM module
         let mut wasm_module = Module::new();
 
-        // Type section: function signatures
+        // ============= TYPE SECTION =============
+        // Order: alloc type (if needed), import types, local function types
         let mut types = TypeSection::new();
-        let mut type_indices = Vec::new();
+        let mut next_type_idx = 0u32;
 
         // If we need memory, add the alloc function type first
         if needs_memory {
             let (alloc_params, alloc_results) = BumpAllocator::alloc_type_signature();
             types.function(alloc_params, alloc_results);
-            type_indices.push(0);
+            next_type_idx += 1;
         }
 
-        // Add user function types (offset by 1 if we have alloc)
-        let type_offset = if needs_memory { 1u32 } else { 0u32 };
+        // Add import function types
+        for import in &mut imports {
+            let results = if let Some(res) = import.result {
+                vec![res]
+            } else {
+                vec![]
+            };
+            types.function(import.params.clone(), results);
+            import.type_idx = next_type_idx;
+            next_type_idx += 1;
+        }
+
+        // Add local function types
+        let local_func_type_offset = next_type_idx;
         for extracted in &functions {
             let mut params: Vec<ValType> = Vec::new();
 
@@ -867,36 +1032,113 @@ impl WasmCompiler {
             };
 
             types.function(params, results);
-            let user_func_idx = type_indices.len() - if needs_memory { 1 } else { 0 };
-            type_indices.push(type_offset + user_func_idx as u32);
+            next_type_idx += 1;
         }
 
         wasm_module.section(&types);
 
-        // Function section: function indices
-        let mut funcs = FunctionSection::new();
-        if needs_memory {
-            funcs.function(0);
+        // ============= IMPORT SECTION =============
+        // Import functions come from the "loa" module (host Loa functions)
+        if !imports.is_empty() {
+            let mut import_section = ImportSection::new();
+            for import in &imports {
+                import_section.import(
+                    &import.module,
+                    &import.name,
+                    EntityType::Function(import.type_idx),
+                );
+            }
+            wasm_module.section(&import_section);
         }
+
+        // ============= FUNCTION SECTION =============
+        // Function indices: imports get 0..n-1, then alloc (if needed), then local functions
+        // Note: imports already occupy indices 0..import_count-1
+        let import_count = imports.len() as u32;
+        let alloc_func_idx = if needs_memory {
+            Some(import_count) // alloc comes right after imports
+        } else {
+            None
+        };
+        let local_func_idx_offset = import_count + if needs_memory { 1 } else { 0 };
+
+        let mut funcs = FunctionSection::new();
+        // Add alloc function type reference
+        if needs_memory {
+            funcs.function(0); // alloc uses type 0
+        }
+        // Add local function type references
         for (i, _func) in functions.iter().enumerate() {
-            funcs.function(type_offset + i as u32);
+            funcs.function(local_func_type_offset + i as u32);
         }
         wasm_module.section(&funcs);
 
-        // Memory section (if needed)
+        // ============= MEMORY SECTION =============
         if needs_memory {
             BumpAllocator::emit_memory_section(&mut wasm_module, 1);
             BumpAllocator::emit_globals(&mut wasm_module, heap_start);
         }
 
-        // Export section: export all user functions
+        // ============= GLOBAL SECTION =============
+        // Extract sex var declarations and emit globals
+        let user_globals = self.extract_sex_vars(&file.declarations)?;
+        let has_user_globals = !user_globals.is_empty();
+        let mut user_global_map: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+
+        if needs_memory || has_user_globals {
+            use wasm_encoder::{ConstExpr, GlobalSection, GlobalType};
+
+            let mut globals = GlobalSection::new();
+
+            // Allocator globals (index 0, 1) - only if we need memory
+            if needs_memory {
+                // HEAP_BASE: mutable i32, starts after static data
+                globals.global(
+                    GlobalType {
+                        val_type: ValType::I32,
+                        mutable: true,
+                    },
+                    &ConstExpr::i32_const(1024),
+                );
+                // HEAP_END: immutable i32, end of first memory page
+                globals.global(
+                    GlobalType {
+                        val_type: ValType::I32,
+                        mutable: false,
+                    },
+                    &ConstExpr::i32_const(65536),
+                );
+            }
+
+            // User globals (sex var) start at index 2 if memory is needed, otherwise 0
+            let user_global_start = if needs_memory { 2u32 } else { 0u32 };
+            for (i, (name, var)) in user_globals.iter().enumerate() {
+                let global_idx = user_global_start + i as u32;
+                user_global_map.insert(name.clone(), global_idx);
+
+                // Determine the WASM type and initial value from the var declaration
+                let (val_type, init_expr) = self.get_global_type_and_init(var)?;
+                globals.global(
+                    GlobalType {
+                        val_type,
+                        mutable: true, // sex var is always mutable
+                    },
+                    &init_expr,
+                );
+            }
+
+            wasm_module.section(&globals);
+        }
+
+        // ============= EXPORT SECTION =============
         let mut exports = ExportSection::new();
-        let func_idx_offset = if needs_memory { 1u32 } else { 0u32 };
+        // Export local functions (not imports)
         for (idx, extracted) in functions.iter().enumerate() {
             exports.export(
                 &extracted.exported_name,
                 ExportKind::Func,
-                func_idx_offset + idx as u32,
+                local_func_idx_offset + idx as u32,
             );
         }
         if needs_memory {
@@ -904,7 +1146,7 @@ impl WasmCompiler {
         }
         wasm_module.section(&exports);
 
-        // Code section: function bodies
+        // ============= CODE SECTION =============
         let mut code = CodeSection::new();
 
         // Add alloc function if memory is needed
@@ -913,14 +1155,24 @@ impl WasmCompiler {
             code.function(&alloc_func);
         }
 
-        // Register all function names for call resolution
-        let func_name_map: std::collections::HashMap<String, u32> = functions
-            .iter()
-            .enumerate()
-            .map(|(i, f)| (f.exported_name.clone(), func_idx_offset + i as u32))
-            .collect();
+        // Build function name map for call resolution
+        // Include both imports and local functions
+        let mut func_name_map: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
 
-        // Add user function code
+        // Register imports
+        for (i, import) in imports.iter().enumerate() {
+            func_name_map.insert(import.name.clone(), i as u32);
+        }
+
+        // Register local functions
+        for (i, f) in functions.iter().enumerate() {
+            let wasm_idx = local_func_idx_offset + i as u32;
+            func_name_map.insert(f.exported_name.clone(), wasm_idx);
+            func_name_map.insert(f.func.name.clone(), wasm_idx);
+        }
+
+        // Add local function code
         for (idx, extracted) in functions.iter().enumerate() {
             let mut locals_table = LocalsTable::new_with_gene_context(
                 &extracted.func.params,
@@ -936,9 +1188,12 @@ impl WasmCompiler {
 
             // Register all function indices for call resolution
             for (name, wasm_idx) in &func_name_map {
-                locals_table
-                    .dol_types
-                    .insert(format!("__func_{}", name), format!("wasm_idx:{}", wasm_idx));
+                locals_table.register_function(name, *wasm_idx);
+            }
+
+            // Register all global variables (sex var) for global.get/set
+            for (name, global_idx) in &user_global_map {
+                locals_table.register_global(name, *global_idx);
             }
 
             // Collect locals from function body
@@ -960,7 +1215,17 @@ impl WasmCompiler {
             self.emit_function_body(&mut function, extracted.func, &locals_table, &string_pool)?;
             code.function(&function);
         }
-        wasm_module.section(&code);
+
+        // Only emit code section if we have local functions
+        if has_local_functions || needs_memory {
+            wasm_module.section(&code);
+        }
+
+        // ============= DATA SECTION =============
+        // Emit string literals collected during compilation
+        self.string_table
+            .borrow()
+            .emit_data_section(&mut wasm_module);
 
         // Emit data section for string literals (if any)
         if !string_pool.is_empty() {
@@ -1120,12 +1385,215 @@ impl WasmCompiler {
                 }
                 Ok(funcs)
             }
+            Declaration::Const(_) => {
+                // Constants don't contain functions, return empty
+                Ok(vec![])
+            }
             _ => {
                 // For now, we only support direct function declarations and genes
                 // Future: extract functions from Trait/System bodies
                 Ok(vec![])
             }
         }
+    }
+
+    /// Extract imports from DOL declarations.
+    ///
+    /// A sex fun without body is treated as a WASM import.
+    /// All imports use the "loa" module name (the Loa host function registry).
+    fn extract_imports(&self, declarations: &[Declaration]) -> Result<Vec<WasmImport>, WasmError> {
+        use crate::ast::{Declaration, Purity};
+
+        let mut imports = Vec::new();
+
+        for decl in declarations {
+            if let Declaration::Function(func) = decl {
+                // A sex fun without body is an import
+                if func.purity == Purity::Sex && func.body.is_empty() {
+                    let params: Vec<wasm_encoder::ValType> = func
+                        .params
+                        .iter()
+                        .map(|p| self.dol_type_to_wasm(&p.type_ann))
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let result = if let Some(ref ret_type) = func.return_type {
+                        Some(self.dol_type_to_wasm(ret_type)?)
+                    } else {
+                        None
+                    };
+
+                    imports.push(WasmImport {
+                        module: "loa".to_string(),
+                        name: func.name.clone(),
+                        params,
+                        result,
+                        type_idx: 0, // Will be set later
+                    });
+                }
+            }
+        }
+
+        Ok(imports)
+    }
+
+    /// Check if a function is an import (sex fun without body).
+    fn is_import(func: &crate::ast::FunctionDecl) -> bool {
+        use crate::ast::Purity;
+        func.purity == Purity::Sex && func.body.is_empty()
+    }
+
+    /// Extract sex var declarations from a list of declarations.
+    ///
+    /// Returns a vector of (name, VarDecl) pairs for all SexVar declarations.
+    fn extract_sex_vars<'a>(
+        &self,
+        declarations: &'a [Declaration],
+    ) -> Result<Vec<(String, &'a crate::ast::VarDecl)>, WasmError> {
+        let mut sex_vars = Vec::new();
+
+        for decl in declarations {
+            if let Declaration::SexVar(var) = decl {
+                sex_vars.push((var.name.clone(), var));
+            }
+        }
+
+        Ok(sex_vars)
+    }
+
+    /// Extract const declarations from DOL modules.
+    ///
+    /// Returns a vector of (name, ConstDecl) pairs for all Const declarations.
+    fn extract_consts<'a>(
+        &self,
+        declarations: &'a [Declaration],
+    ) -> Result<Vec<(String, &'a crate::ast::ConstDecl)>, WasmError> {
+        let mut consts = Vec::new();
+
+        for decl in declarations {
+            if let Declaration::Const(const_decl) = decl {
+                consts.push((const_decl.name.clone(), const_decl));
+            }
+        }
+
+        Ok(consts)
+    }
+
+    /// Get the WASM type and initialization expression for a const declaration.
+    fn get_const_type_and_init(
+        &self,
+        const_decl: &crate::ast::ConstDecl,
+    ) -> Result<(wasm_encoder::ValType, wasm_encoder::ConstExpr), WasmError> {
+        use wasm_encoder::{ConstExpr, ValType};
+
+        // Determine the type from the type annotation or infer from value
+        let val_type = if let Some(ref type_ann) = const_decl.type_ann {
+            self.dol_type_to_wasm(type_ann)?
+        } else {
+            // Infer from value
+            match &const_decl.value {
+                crate::ast::Expr::Literal(lit) => match lit {
+                    crate::ast::Literal::Int(_) => ValType::I64,
+                    crate::ast::Literal::Float(_) => ValType::F64,
+                    crate::ast::Literal::Bool(_) => ValType::I32,
+                    _ => return Err(WasmError::new("Cannot infer type for const")),
+                },
+                _ => {
+                    return Err(WasmError::new(
+                        "Cannot infer type for complex const expression",
+                    ))
+                }
+            }
+        };
+
+        // Determine the initial value
+        let init_expr = match &const_decl.value {
+            crate::ast::Expr::Literal(lit) => match lit {
+                crate::ast::Literal::Int(i) => match val_type {
+                    ValType::I32 => ConstExpr::i32_const(*i as i32),
+                    ValType::I64 => ConstExpr::i64_const(*i),
+                    ValType::F32 => ConstExpr::f32_const(*i as f32),
+                    ValType::F64 => ConstExpr::f64_const(*i as f64),
+                    _ => return Err(WasmError::new("Unsupported const type")),
+                },
+                crate::ast::Literal::Float(f) => match val_type {
+                    ValType::F32 => ConstExpr::f32_const(*f as f32),
+                    ValType::F64 => ConstExpr::f64_const(*f),
+                    ValType::I32 => ConstExpr::i32_const(*f as i32),
+                    ValType::I64 => ConstExpr::i64_const(*f as i64),
+                    _ => return Err(WasmError::new("Unsupported const type")),
+                },
+                crate::ast::Literal::Bool(b) => ConstExpr::i32_const(if *b { 1 } else { 0 }),
+                _ => return Err(WasmError::new("Unsupported literal for const")),
+            },
+            _ => {
+                // For complex expressions, use a default value
+                // In a full implementation, we'd evaluate the const expression at compile time
+                match val_type {
+                    ValType::I32 => ConstExpr::i32_const(0),
+                    ValType::I64 => ConstExpr::i64_const(0),
+                    ValType::F32 => ConstExpr::f32_const(0.0),
+                    ValType::F64 => ConstExpr::f64_const(0.0),
+                    _ => return Err(WasmError::new("Unsupported const type")),
+                }
+            }
+        };
+
+        Ok((val_type, init_expr))
+    }
+
+    /// Get the WASM type and initialization expression for a sex var.
+    fn get_global_type_and_init(
+        &self,
+        var: &crate::ast::VarDecl,
+    ) -> Result<(wasm_encoder::ValType, wasm_encoder::ConstExpr), WasmError> {
+        use wasm_encoder::{ConstExpr, ValType};
+
+        // Determine the type from the type annotation or default to i64
+        let val_type = if let Some(ref type_ann) = var.type_ann {
+            self.dol_type_to_wasm(type_ann)?
+        } else {
+            ValType::I64 // Default to i64
+        };
+
+        // Determine the initial value
+        let init_expr = if let Some(ref value) = var.value {
+            match value {
+                crate::ast::Expr::Literal(lit) => match lit {
+                    crate::ast::Literal::Int(i) => match val_type {
+                        ValType::I32 => ConstExpr::i32_const(*i as i32),
+                        ValType::I64 => ConstExpr::i64_const(*i),
+                        ValType::F32 => ConstExpr::f32_const(*i as f32),
+                        ValType::F64 => ConstExpr::f64_const(*i as f64),
+                        _ => return Err(WasmError::new("Unsupported global type")),
+                    },
+                    crate::ast::Literal::Float(f) => match val_type {
+                        ValType::F32 => ConstExpr::f32_const(*f as f32),
+                        ValType::F64 => ConstExpr::f64_const(*f),
+                        ValType::I32 => ConstExpr::i32_const(*f as i32),
+                        ValType::I64 => ConstExpr::i64_const(*f as i64),
+                        _ => return Err(WasmError::new("Unsupported global type")),
+                    },
+                    crate::ast::Literal::Bool(b) => ConstExpr::i32_const(if *b { 1 } else { 0 }),
+                    _ => return Err(WasmError::new("Unsupported literal for global")),
+                },
+                _ => {
+                    return Err(WasmError::new(
+                        "Global variable initializer must be a constant literal",
+                    ))
+                }
+            }
+        } else {
+            // Default initialization to zero
+            match val_type {
+                ValType::I32 => ConstExpr::i32_const(0),
+                ValType::I64 => ConstExpr::i64_const(0),
+                ValType::F32 => ConstExpr::f32_const(0.0),
+                ValType::F64 => ConstExpr::f64_const(0.0),
+                _ => return Err(WasmError::new("Unsupported global type")),
+            }
+        };
+
+        Ok((val_type, init_expr))
     }
 
     /// Convert a DOL type expression to a WASM value type.
@@ -1552,18 +2020,107 @@ impl WasmCompiler {
                         // Emit the value expression
                         self.emit_expression(function, value, locals, loop_ctx, string_pool)?;
 
-                        // Look up the local index
-                        let local_idx = locals.lookup(name).ok_or_else(|| {
-                            WasmError::new(format!("Cannot assign to unknown variable: {}", name))
-                        })?;
+                            // Emit the value expression
+                            self.emit_expression(function, value, locals, loop_ctx)?;
 
-                        // Store the value in the local
-                        function.instruction(&Instruction::LocalSet(local_idx));
+                            // Check if it's a global variable (sex var) first
+                            if let Some(global_idx) = locals.lookup_global(name) {
+                                // Store to global variable
+                                function.instruction(&Instruction::GlobalSet(global_idx));
+                            } else {
+                                // Look up the local index
+                                let local_idx = locals.lookup(name).ok_or_else(|| {
+                                    WasmError::new(format!(
+                                        "Cannot assign to unknown variable: {}",
+                                        name
+                                    ))
+                                })?;
+
+                                // Store the value in the local
+                                function.instruction(&Instruction::LocalSet(local_idx));
+                            }
+                        }
                     }
-                    Expr::Member { .. } => {
-                        return Err(WasmError::new(
-                            "Member assignment not yet supported in WASM compilation (Phase 3)",
-                        ))
+                    Expr::Member { object, field } => {
+                        // Field assignment: object.field = value
+                        // WASM store expects [address, value] on stack
+
+                        // Infer gene type from object expression
+                        let gene_type = match object.as_ref() {
+                            Expr::Identifier(var_name) => {
+                                // Look up DOL type from locals table (works for 'self' and other vars)
+                                locals.lookup_dol_type(var_name).map(|s| s.to_string())
+                            }
+                            _ => None,
+                        };
+
+                        // Emit object expression (pushes pointer onto stack)
+                        self.emit_expression(function, object, locals, loop_ctx)?;
+
+                        // Emit value expression (pushes value onto stack)
+                        self.emit_expression(function, value, locals, loop_ctx)?;
+
+                        // Look up gene layout and emit store instruction
+                        if let Some(type_name) = gene_type {
+                            if let Some(layout) = self.gene_layouts.get(&type_name) {
+                                if let Some(field_layout) = layout.get_field(field) {
+                                    use crate::wasm::layout::WasmFieldType;
+                                    match field_layout.wasm_type {
+                                        WasmFieldType::I64 => {
+                                            function.instruction(&Instruction::I64Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: field_layout.offset as u64,
+                                                    align: 3, // log2(8) = 3
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        WasmFieldType::F64 => {
+                                            function.instruction(&Instruction::F64Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: field_layout.offset as u64,
+                                                    align: 3, // log2(8) = 3
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        WasmFieldType::I32 | WasmFieldType::Ptr => {
+                                            function.instruction(&Instruction::I32Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: field_layout.offset as u64,
+                                                    align: 2, // log2(4) = 2
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        WasmFieldType::F32 => {
+                                            function.instruction(&Instruction::F32Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: field_layout.offset as u64,
+                                                    align: 2, // log2(4) = 2
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                    }
+                                } else {
+                                    return Err(WasmError::new(format!(
+                                        "Unknown field '{}' in gene '{}'",
+                                        field, type_name
+                                    )));
+                                }
+                            } else {
+                                return Err(WasmError::new(format!(
+                                    "Gene type '{}' not registered for field assignment",
+                                    type_name
+                                )));
+                            }
+                        } else {
+                            return Err(WasmError::new(format!(
+                                "Cannot determine gene type for field assignment to '{}'",
+                                field
+                            )));
+                        }
                     }
                     _ => {
                         return Err(WasmError::new(format!(
@@ -1926,6 +2483,9 @@ impl WasmCompiler {
                             gene_name
                         )));
                     }
+                } else if let Some(global_idx) = locals.lookup_global(name) {
+                    // Global variable (sex var) - emit global.get
+                    function.instruction(&Instruction::GlobalGet(global_idx));
                 } else {
                     // Simple identifier - look up in locals table
                     let local_idx = locals
@@ -1941,6 +2501,8 @@ impl WasmCompiler {
                 }
             }
             Expr::Binary { left, op, right } => {
+                // Infer the operand type for correct instruction selection
+                let operand_type = self.infer_expression_type(left, locals);
                 // Emit left operand
                 self.emit_expression(function, left, locals, loop_ctx, string_pool)?;
                 // Emit right operand
@@ -2112,13 +2674,16 @@ impl WasmCompiler {
                 self.emit_expression(function, condition, locals, loop_ctx, string_pool)?;
 
                 // Determine result type based on whether we have an else branch
-                let block_type = if else_branch.is_some() {
-                    // Both branches produce a value - assume i64 for now
-                    wasm_encoder::BlockType::Result(wasm_encoder::ValType::I64)
-                } else {
-                    // No else branch means no value produced
-                    wasm_encoder::BlockType::Empty
-                };
+                // AND whether the branches actually produce values
+                let block_type =
+                    if else_branch.is_some() && self.expression_produces_value(then_branch) {
+                        // Both branches exist and produce a value - infer the type
+                        let result_type = self.infer_expression_type(then_branch, locals);
+                        wasm_encoder::BlockType::Result(result_type)
+                    } else {
+                        // No else branch or branches don't produce values (e.g., assignments)
+                        wasm_encoder::BlockType::Empty
+                    };
 
                 function.instruction(&Instruction::If(block_type));
 
@@ -2571,74 +3136,258 @@ impl WasmCompiler {
         Ok(())
     }
 
+    /// Infer the type of an expression based on the locals table.
+    fn infer_expression_type(
+        &self,
+        expr: &crate::ast::Expr,
+        locals: &LocalsTable,
+    ) -> wasm_encoder::ValType {
+        use crate::ast::Expr;
+        use wasm_encoder::ValType;
+
+        match expr {
+            Expr::Literal(lit) => match lit {
+                crate::ast::Literal::Int(_) => ValType::I64,
+                crate::ast::Literal::Float(_) => ValType::F64,
+                crate::ast::Literal::Bool(_) => ValType::I32,
+                crate::ast::Literal::String(_) => ValType::I32, // pointer
+                _ => ValType::I64,                              // default
+            },
+            Expr::Identifier(name) => locals.lookup_var_type(name).unwrap_or(ValType::I64),
+            Expr::Binary { left, op, .. } => {
+                // For comparison ops, result is always i32 (boolean)
+                use crate::ast::BinaryOp;
+                match op {
+                    BinaryOp::Eq
+                    | BinaryOp::Ne
+                    | BinaryOp::Lt
+                    | BinaryOp::Le
+                    | BinaryOp::Gt
+                    | BinaryOp::Ge => ValType::I32,
+                    _ => self.infer_expression_type(left, locals),
+                }
+            }
+            Expr::Call { callee, .. } => {
+                if let Expr::Identifier(func_name) = callee.as_ref() {
+                    locals
+                        .lookup_function_return_type(func_name)
+                        .unwrap_or(ValType::I64)
+                } else {
+                    ValType::I64
+                }
+            }
+            _ => ValType::I64, // default
+        }
+    }
+
     /// Emit a binary operation as a WASM instruction.
     fn emit_binary_op(
         &self,
         function: &mut wasm_encoder::Function,
         op: crate::ast::BinaryOp,
+        val_type: wasm_encoder::ValType,
     ) -> Result<(), WasmError> {
         use crate::ast::BinaryOp;
         use wasm_encoder::Instruction;
+        use wasm_encoder::ValType;
 
-        // For simplicity, assume i64 operations
-        // A full implementation would track types through the expression tree
-        match op {
-            BinaryOp::Add => {
+        match (op, val_type) {
+            // Arithmetic operations
+            (BinaryOp::Add, ValType::I64) => {
                 function.instruction(&Instruction::I64Add);
             }
-            BinaryOp::Sub => {
+            (BinaryOp::Add, ValType::I32) => {
+                function.instruction(&Instruction::I32Add);
+            }
+            (BinaryOp::Add, ValType::F64) => {
+                function.instruction(&Instruction::F64Add);
+            }
+            (BinaryOp::Add, ValType::F32) => {
+                function.instruction(&Instruction::F32Add);
+            }
+
+            (BinaryOp::Sub, ValType::I64) => {
                 function.instruction(&Instruction::I64Sub);
             }
-            BinaryOp::Mul => {
+            (BinaryOp::Sub, ValType::I32) => {
+                function.instruction(&Instruction::I32Sub);
+            }
+            (BinaryOp::Sub, ValType::F64) => {
+                function.instruction(&Instruction::F64Sub);
+            }
+            (BinaryOp::Sub, ValType::F32) => {
+                function.instruction(&Instruction::F32Sub);
+            }
+
+            (BinaryOp::Mul, ValType::I64) => {
                 function.instruction(&Instruction::I64Mul);
             }
-            BinaryOp::Div => {
+            (BinaryOp::Mul, ValType::I32) => {
+                function.instruction(&Instruction::I32Mul);
+            }
+            (BinaryOp::Mul, ValType::F64) => {
+                function.instruction(&Instruction::F64Mul);
+            }
+            (BinaryOp::Mul, ValType::F32) => {
+                function.instruction(&Instruction::F32Mul);
+            }
+
+            (BinaryOp::Div, ValType::I64) => {
                 function.instruction(&Instruction::I64DivS);
             }
-            BinaryOp::Mod => {
+            (BinaryOp::Div, ValType::I32) => {
+                function.instruction(&Instruction::I32DivS);
+            }
+            (BinaryOp::Div, ValType::F64) => {
+                function.instruction(&Instruction::F64Div);
+            }
+            (BinaryOp::Div, ValType::F32) => {
+                function.instruction(&Instruction::F32Div);
+            }
+
+            (BinaryOp::Mod, ValType::I64) => {
                 function.instruction(&Instruction::I64RemS);
             }
-            BinaryOp::Eq => {
+            (BinaryOp::Mod, ValType::I32) => {
+                function.instruction(&Instruction::I32RemS);
+            }
+            (BinaryOp::Mod, ValType::F64 | ValType::F32) => {
+                return Err(WasmError::new(
+                    "Modulo not supported for floating point types",
+                ))
+            }
+
+            // Comparison operations - result type is always i32
+            (BinaryOp::Eq, ValType::I64) => {
                 function.instruction(&Instruction::I64Eq);
             }
-            BinaryOp::Ne => {
+            (BinaryOp::Eq, ValType::I32) => {
+                function.instruction(&Instruction::I32Eq);
+            }
+            (BinaryOp::Eq, ValType::F64) => {
+                function.instruction(&Instruction::F64Eq);
+            }
+            (BinaryOp::Eq, ValType::F32) => {
+                function.instruction(&Instruction::F32Eq);
+            }
+
+            (BinaryOp::Ne, ValType::I64) => {
                 function.instruction(&Instruction::I64Ne);
             }
-            BinaryOp::Lt => {
+            (BinaryOp::Ne, ValType::I32) => {
+                function.instruction(&Instruction::I32Ne);
+            }
+            (BinaryOp::Ne, ValType::F64) => {
+                function.instruction(&Instruction::F64Ne);
+            }
+            (BinaryOp::Ne, ValType::F32) => {
+                function.instruction(&Instruction::F32Ne);
+            }
+
+            (BinaryOp::Lt, ValType::I64) => {
                 function.instruction(&Instruction::I64LtS);
             }
-            BinaryOp::Le => {
+            (BinaryOp::Lt, ValType::I32) => {
+                function.instruction(&Instruction::I32LtS);
+            }
+            (BinaryOp::Lt, ValType::F64) => {
+                function.instruction(&Instruction::F64Lt);
+            }
+            (BinaryOp::Lt, ValType::F32) => {
+                function.instruction(&Instruction::F32Lt);
+            }
+
+            (BinaryOp::Le, ValType::I64) => {
                 function.instruction(&Instruction::I64LeS);
             }
-            BinaryOp::Gt => {
+            (BinaryOp::Le, ValType::I32) => {
+                function.instruction(&Instruction::I32LeS);
+            }
+            (BinaryOp::Le, ValType::F64) => {
+                function.instruction(&Instruction::F64Le);
+            }
+            (BinaryOp::Le, ValType::F32) => {
+                function.instruction(&Instruction::F32Le);
+            }
+
+            (BinaryOp::Gt, ValType::I64) => {
                 function.instruction(&Instruction::I64GtS);
             }
-            BinaryOp::Ge => {
+            (BinaryOp::Gt, ValType::I32) => {
+                function.instruction(&Instruction::I32GtS);
+            }
+            (BinaryOp::Gt, ValType::F64) => {
+                function.instruction(&Instruction::F64Gt);
+            }
+            (BinaryOp::Gt, ValType::F32) => {
+                function.instruction(&Instruction::F32Gt);
+            }
+
+            (BinaryOp::Ge, ValType::I64) => {
                 function.instruction(&Instruction::I64GeS);
             }
-            BinaryOp::And => {
+            (BinaryOp::Ge, ValType::I32) => {
+                function.instruction(&Instruction::I32GeS);
+            }
+            (BinaryOp::Ge, ValType::F64) => {
+                function.instruction(&Instruction::F64Ge);
+            }
+            (BinaryOp::Ge, ValType::F32) => {
+                function.instruction(&Instruction::F32Ge);
+            }
+
+            // Bitwise operations (integer only)
+            (BinaryOp::And, ValType::I64) => {
                 function.instruction(&Instruction::I64And);
             }
-            BinaryOp::Or => {
+            (BinaryOp::And, ValType::I32) => {
+                function.instruction(&Instruction::I32And);
+            }
+            (BinaryOp::And, ValType::F64 | ValType::F32) => {
+                return Err(WasmError::new(
+                    "Bitwise AND not supported for floating point types",
+                ))
+            }
+
+            (BinaryOp::Or, ValType::I64) => {
                 function.instruction(&Instruction::I64Or);
             }
-            BinaryOp::Pow => {
+            (BinaryOp::Or, ValType::I32) => {
+                function.instruction(&Instruction::I32Or);
+            }
+            (BinaryOp::Or, ValType::F64 | ValType::F32) => {
+                return Err(WasmError::new(
+                    "Bitwise OR not supported for floating point types",
+                ))
+            }
+
+            (BinaryOp::Pow, _) => {
                 return Err(WasmError::new(
                     "Exponentiation not supported in basic WASM (requires math functions)",
                 ))
             }
-            BinaryOp::Pipe
-            | BinaryOp::Compose
-            | BinaryOp::Apply
-            | BinaryOp::Bind
-            | BinaryOp::Member
-            | BinaryOp::Map
-            | BinaryOp::Ap
-            | BinaryOp::Implies
-            | BinaryOp::Range => {
+            (
+                BinaryOp::Pipe
+                | BinaryOp::Compose
+                | BinaryOp::Apply
+                | BinaryOp::Bind
+                | BinaryOp::Member
+                | BinaryOp::Map
+                | BinaryOp::Ap
+                | BinaryOp::Implies
+                | BinaryOp::Range,
+                _,
+            ) => {
                 return Err(WasmError::new(format!(
                     "Operator {:?} not supported in WASM compilation",
                     op
+                )))
+            }
+            // Default for unsupported combinations
+            _ => {
+                return Err(WasmError::new(format!(
+                    "Unsupported type {:?} for operator {:?}",
+                    val_type, op
                 )))
             }
         }
@@ -2649,6 +3398,8 @@ impl WasmCompiler {
     /// Check if an expression produces a value on the WASM stack.
     ///
     /// Some expressions like `if` without `else` produce no value.
+    /// Function calls are conservatively assumed to not produce values
+    /// since we don't have return type info at this point.
     fn expression_produces_value(&self, expr: &crate::ast::Expr) -> bool {
         use crate::ast::Expr;
 
@@ -2658,10 +3409,39 @@ impl WasmCompiler {
                 else_branch: None, ..
             } => false,
 
+            // If-else: check if the then branch produces a value
+            // Assignments and blocks without final expressions don't produce values
+            Expr::If {
+                then_branch,
+                else_branch: Some(_),
+                ..
+            } => self.expression_produces_value(then_branch),
+
             // Block without final expression produces no value
             Expr::Block {
                 final_expr: None, ..
             } => false,
+
+            // Block with statements that are assignments produces no value
+            Expr::Block {
+                statements,
+                final_expr: Some(final_expr),
+            } => {
+                // Check if the final_expr is an assignment (produces no value)
+                // or if it's a value-producing expression
+                if statements.is_empty() {
+                    self.expression_produces_value(final_expr)
+                } else {
+                    // Block with statements and final expression - check the final
+                    self.expression_produces_value(final_expr)
+                }
+            }
+
+            // Function calls - conservatively assume no value produced
+            // This is safe for void functions, and for non-void functions
+            // the value will remain on the stack (not dropped), which is
+            // fine since we're about to return anyway or move to next statement.
+            Expr::Call { .. } => false,
 
             // All other expressions produce a value
             _ => true,
@@ -2700,6 +3480,102 @@ impl WasmCompiler {
         let wasm_bytes = self.compile(module)?;
         std::fs::write(output_path, wasm_bytes)?;
         Ok(())
+    }
+
+    /// Check if any declarations contain string literals.
+    ///
+    /// This is used to determine if memory needs to be allocated for the data section.
+    fn has_string_literals(declarations: &[crate::ast::Declaration]) -> bool {
+        use crate::ast::{Declaration, Expr, Literal, Statement, Stmt};
+
+        fn check_expr(expr: &Expr) -> bool {
+            match expr {
+                Expr::Literal(Literal::String(_)) => true,
+                Expr::Binary { left, right, .. } => check_expr(left) || check_expr(right),
+                Expr::Unary { operand, .. } => check_expr(operand),
+                Expr::Call { callee, args, .. } => {
+                    check_expr(callee) || args.iter().any(check_expr)
+                }
+                Expr::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } => {
+                    check_expr(condition)
+                        || check_expr(then_branch)
+                        || else_branch.as_ref().map_or(false, |e| check_expr(e))
+                }
+                Expr::Block {
+                    statements,
+                    final_expr,
+                } => {
+                    statements.iter().any(check_stmt)
+                        || final_expr.as_ref().map_or(false, |e| check_expr(e))
+                }
+                Expr::Member { object, .. } => check_expr(object),
+                Expr::StructLiteral { fields, .. } => fields.iter().any(|(_, e)| check_expr(e)),
+                Expr::Match { scrutinee, arms } => {
+                    check_expr(scrutinee)
+                        || arms.iter().any(|arm| {
+                            check_expr(&arm.body)
+                                || arm.guard.as_ref().map_or(false, |g| check_expr(g))
+                        })
+                }
+                Expr::Lambda { body, .. } => check_expr(body),
+                Expr::List(exprs) | Expr::Tuple(exprs) => exprs.iter().any(check_expr),
+                Expr::IdiomBracket { func, args } => {
+                    check_expr(func) || args.iter().any(check_expr)
+                }
+                Expr::Quote(e) | Expr::Unquote(e) | Expr::QuasiQuote(e) | Expr::Eval(e) => {
+                    check_expr(e)
+                }
+                Expr::Implies { left, right, .. } => check_expr(left) || check_expr(right),
+                Expr::SexBlock { statements, .. } => statements.iter().any(check_stmt),
+                _ => false,
+            }
+        }
+
+        fn check_stmt(stmt: &Stmt) -> bool {
+            match stmt {
+                Stmt::Expr(e) | Stmt::Return(Some(e)) => check_expr(e),
+                Stmt::Let { value, .. } => check_expr(value),
+                Stmt::Assign { target, value } => check_expr(target) || check_expr(value),
+                Stmt::For { iterable, body, .. } => {
+                    check_expr(iterable) || body.iter().any(check_stmt)
+                }
+                Stmt::While { condition, body } => {
+                    check_expr(condition) || body.iter().any(check_stmt)
+                }
+                Stmt::Loop { body } => body.iter().any(check_stmt),
+                _ => false,
+            }
+        }
+
+        fn check_function(func: &crate::ast::FunctionDecl) -> bool {
+            func.body.iter().any(check_stmt)
+        }
+
+        for decl in declarations {
+            match decl {
+                Declaration::Gene(gene) => {
+                    // Check methods in gene statements
+                    for stmt in &gene.statements {
+                        if let Statement::Function(func) = stmt {
+                            if check_function(func) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                Declaration::Function(func) => {
+                    if check_function(func) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 }
 

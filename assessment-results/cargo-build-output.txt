@@ -1,0 +1,11 @@
+Toolchain Audit: Cargo Build Output
+=====================================
+Command: cd /home/ardeshir/repos/univrs-dol && cargo build --features cli,wasm 2>&1
+Date: 2026-01-01
+
+Output:
+-------
+   Compiling dol v0.6.0 (/home/ardeshir/repos/univrs-dol)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.06s
+
+Result: SUCCESS

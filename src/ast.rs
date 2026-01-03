@@ -1415,6 +1415,30 @@ pub struct VarDecl {
     pub span: Span,
 }
 
+/// A top-level constant declaration: `const NAME: Type = value`.
+///
+/// Constants are immutable values that are evaluated at compile time
+/// and can be referenced throughout the module.
+///
+/// # DOL Syntax
+///
+/// ```dol
+/// const PI: Float64 = 3.14159
+/// const MAX_HOPS: Int32 = 100
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ConstDecl {
+    /// Constant name
+    pub name: String,
+    /// Optional type annotation
+    pub type_ann: Option<TypeExpr>,
+    /// Constant value (required for const declarations)
+    pub value: Expr,
+    /// Source location
+    pub span: Span,
+}
+
 /// External function declaration for FFI.
 ///
 /// Represents a `sex extern fun` declaration for foreign function interface.

@@ -1,0 +1,95 @@
+// Test case: Trait definitions and implementations
+//
+// This file tests trait support in WASM compilation.
+// Expected features:
+// - Trait declaration with capabilities
+// - Trait with method signatures
+// - Gene implementing traits
+// - Multiple trait implementations
+
+module trait_impl_test @ 0.1.0
+
+// Test 1: Basic trait with capabilities
+trait Comparable {
+    Comparable can compare
+    Comparable is ordered
+}
+
+exegesis {
+    The Comparable trait defines types that can be compared
+    and have a natural ordering.
+}
+
+// Test 2: Trait with method requirements
+trait Numeric {
+    Numeric can add
+    Numeric can subtract
+    Numeric can multiply
+    Numeric can divide
+}
+
+exegesis {
+    The Numeric trait defines types that support basic
+    arithmetic operations.
+}
+
+// Test 3: Trait for string-like types
+trait Stringable {
+    Stringable can convert_to_string
+    Stringable can get_length
+}
+
+exegesis {
+    The Stringable trait defines types that can be converted
+    to string representation.
+}
+
+// Test 4: Trait combining other traits (conceptual)
+trait Number {
+    Number is Numeric
+    Number is Comparable
+    Number is deterministic
+}
+
+exegesis {
+    The Number trait combines numeric and comparison
+    capabilities for complete number types.
+}
+
+// Test 5: Gene implementing traits (conceptual - actual syntax may vary)
+gene IntWrapper {
+    has value: i64
+
+    // Methods that would satisfy Comparable
+    fun compare_to(other: i64) -> i64 {
+        if value > other {
+            return 1
+        }
+        if value < other {
+            return -1
+        }
+        return 0
+    }
+
+    // Methods that would satisfy Numeric
+    fun add_value(n: i64) -> i64 {
+        return value + n
+    }
+
+    fun sub_value(n: i64) -> i64 {
+        return value - n
+    }
+}
+
+// Test 6: Trait with constraints
+trait Container {
+    Container has capacity
+    Container can store
+    Container can retrieve
+    Container requires capacity > 0
+}
+
+exegesis {
+    The Container trait defines types that can hold items.
+    Containers must have positive capacity.
+}

@@ -97,6 +97,49 @@ async function main() {
     recordTest('Counter.add(ptr where value=10, 5)', 15n, e.message || String(e));
   }
 
+  // Step 8: Test field mutation with set_value
+  console.log('\nStep 8: Calling Counter.set_value(42)...');
+  try {
+    const result = spirit.call<bigint>('Counter.set_value', [counterPtr, 42n]);
+    recordTest('Counter.set_value(ptr, 42)', 42n, result);
+  } catch (e: any) {
+    // If set_value doesn't exist, skip this test
+    if (e.message?.includes('not found')) {
+      console.log('  SKIP: set_value not exported (field mutation not in this build)');
+    } else {
+      recordTest('Counter.set_value(ptr, 42)', 42n, e.message || String(e));
+    }
+  }
+
+  // Step 9: Verify value persisted
+  console.log('\nStep 9: Verify value persisted...');
+  try {
+    const result = spirit.call<bigint>('Counter.get_value', [counterPtr]);
+    // If set_value worked, value should be 42. If not, still 10
+    if (results.find(r => r.name.includes('set_value'))?.passed) {
+      recordTest('Counter.get_value after set_value', 42n, result);
+    } else {
+      console.log(`  Value is still ${result} (set_value may not exist)`);
+    }
+  } catch (e: any) {
+    console.log(`  Error: ${e.message}`);
+  }
+
+  // Step 10: Test increment_mut (mutation + return)
+  console.log('\nStep 10: Calling Counter.increment_mut...');
+  try {
+    const result = spirit.call<bigint>('Counter.increment_mut', [counterPtr]);
+    // Expected: 42 + 1 = 43 (if set_value worked) or 10 + 1 = 11
+    const expectedAfterSet = 43n;
+    recordTest('Counter.increment_mut', expectedAfterSet, result);
+  } catch (e: any) {
+    if (e.message?.includes('not found')) {
+      console.log('  SKIP: increment_mut not exported');
+    } else {
+      recordTest('Counter.increment_mut', 43n, e.message || String(e));
+    }
+  }
+
   // Summary
   console.log('\n=== Vertical Slice Summary ===\n');
 

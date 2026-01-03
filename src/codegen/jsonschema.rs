@@ -165,6 +165,18 @@ impl JsonSchemaCodegen {
         )
     }
 
+    /// Generate schema for a sex var (placeholder - globals don't map well to JSON Schema).
+    fn generate_sex_var(&self, var: &crate::ast::VarDecl) -> String {
+        format!(
+            r#"{{
+    "type": "object",
+    "description": "Global mutable variable {}",
+    "properties": {{}}
+}}"#,
+            var.name
+        )
+    }
+
     /// Generate a JSON Schema object from a gene declaration.
     fn generate_gene(&self, gene: &Gene) -> String {
         let properties = self.extract_properties(&gene.statements);

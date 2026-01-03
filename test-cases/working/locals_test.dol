@@ -1,0 +1,59 @@
+// Test case: Local variables (let bindings)
+//
+// This file tests local variable support in WASM compilation.
+// Expected features:
+// - let bindings with type annotations
+// - let bindings with type inference
+// - Multiple local variables
+// - Using locals in expressions
+// - Reassignment (var bindings)
+
+module locals_test @ 0.1.0
+
+// Test 1: Simple let binding with type annotation
+fun test_simple_let(x: i64) -> i64 {
+    let doubled: i64 = x + x
+    return doubled
+}
+
+// Test 2: Let binding with type inference
+fun test_let_inference(x: i64) -> i64 {
+    let result = x * 2
+    return result
+}
+
+// Test 3: Multiple local variables
+fun test_multiple_locals(a: i64, b: i64) -> i64 {
+    let sum: i64 = a + b
+    let diff: i64 = a - b
+    let product: i64 = sum * diff
+    return product
+}
+
+// Test 4: Chained local computations
+fun test_chained_locals(x: i64) -> i64 {
+    let step1: i64 = x + 1
+    let step2: i64 = step1 * 2
+    let step3: i64 = step2 - 1
+    return step3
+}
+
+// Test 5: Local shadowing (same name in nested scope)
+// Note: This tests whether the compiler handles nested scopes correctly
+fun test_shadowing(x: i64) -> i64 {
+    let temp: i64 = x + 10
+    let temp: i64 = temp + 20
+    return temp
+}
+
+// Test 6: Local with float type
+fun test_float_local(x: f64) -> f64 {
+    let doubled: f64 = x + x
+    return doubled
+}
+
+// Test 7: Local with boolean type
+fun test_bool_local(x: i64) -> i64 {
+    let is_positive: bool = x > 0
+    return x
+}

@@ -1,0 +1,49 @@
+> @vudo/runtime@0.1.0 test
+> vitest
+
+
+ DEV  v1.6.1 /home/ardeshir/repos/univrs-dol/packages/vudo-runtime
+
+ ✓ tests/loa.test.ts  (15 tests) 6ms
+ ✓ tests/memory.test.ts  (20 tests) 6ms
+stdout | tests/spirit.test.ts > SpiritLoader > should accept debug option
+[SpiritLoader] Loading WASM module...
+[SpiritLoader] Available imports: [
+  'memory',
+  'vudo_print',
+  'vudo_alloc',
+  'vudo_now',
+  'vudo_random',
+  'vudo_emit_effect',
+  'vudo_debug',
+  'vudo_abort'
+]
+
+stdout | tests/spirit.test.ts > SpiritLoader > should accept debug option
+[SpiritLoader] Spirit loaded successfully
+[SpiritLoader] Exports: [ 'add' ]
+
+ ✓ tests/seance.test.ts  (16 tests) 20ms
+ ✓ tests/spirit.test.ts  (15 tests) 20ms
+
+ Test Files  4 passed (4)
+      Tests  66 passed (66)
+   Start at  21:06:48
+   Duration  347ms (transform 192ms, setup 0ms, collect 257ms, tests 52ms, environment 0ms, prepare 297ms)
+
+=== TEST SUMMARY ===
+Test Suite: @vudo/runtime v0.1.0
+Test Framework: Vitest 1.6.1
+
+Results:
+- Test Files: 4 passed (4 total)
+- Tests: 66 passed (66 total)
+- Duration: 347ms
+
+Test File Breakdown:
+1. tests/loa.test.ts - 15 tests (6ms)
+2. tests/memory.test.ts - 20 tests (6ms)
+3. tests/seance.test.ts - 16 tests (20ms)
+4. tests/spirit.test.ts - 15 tests (20ms)
+
+Status: ALL TESTS PASSING

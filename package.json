@@ -1,0 +1,20 @@
+{
+  "name": "univrs-dol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Domain Ontology Language - TypeScript packages workspace",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test:run",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "pnpm": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}

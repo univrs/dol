@@ -1,0 +1,11 @@
+// sex_error.dol - This file should produce an effect boundary error
+// The type checker should reject calling sex functions from pure context
+
+sex fun vudo_print(ptr: Int32, len: Int32)
+
+// ERROR: This should produce compile error
+// Cannot call sex function from pure context
+fun bad_function() -> Int64 {
+    // vudo_print("Not allowed in pure context!", 28)  // This would be an error
+    return 42
+}

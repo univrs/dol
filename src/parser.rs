@@ -368,6 +368,10 @@ impl<'a> Parser<'a> {
                 let func = self.parse_function_decl()?;
                 Ok(Declaration::Function(Box::new(func)))
             }
+            TokenKind::Const => {
+                // Top-level constant declaration
+                self.parse_const_decl()
+            }
             TokenKind::Exegesis => {
                 // Skip file-level exegesis block
                 self.advance(); // consume 'exegesis'
@@ -1681,6 +1685,38 @@ impl<'a> Parser<'a> {
         self.parse_var_decl(Mutability::Immutable)
     }
 
+    /// Parses a top-level const declaration: const NAME: Type = value
+    ///
+    /// Returns a Declaration::Const for use in module-level declarations.
+    pub fn parse_const_decl(&mut self) -> Result<Declaration, ParseError> {
+        let start_span = self.current.span;
+        self.expect(TokenKind::Const)?;
+
+        let name = self.expect_identifier()?;
+
+        // Parse optional type annotation
+        let type_ann = if self.current.kind == TokenKind::Colon {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        // Const requires a value
+        self.expect(TokenKind::Equal)?;
+        let value = self.parse_expr(0)?;
+
+        // Consume optional semicolon
+        self.consume_optional_semicolon();
+
+        Ok(Declaration::Const(ConstDecl {
+            name,
+            type_ann,
+            value,
+            span: start_span.merge(&self.previous.span),
+        }))
+    }
+
     /// Parses an extern function declaration: sex extern [abi] fun name(...) -> Type
     pub fn parse_sex_extern(&mut self) -> Result<ExternDecl, ParseError> {
         let start_span = self.current.span;
@@ -1747,13 +1783,7 @@ impl<'a> Parser<'a> {
         match next.kind {
             TokenKind::Var => {
                 let var_decl = self.parse_sex_var()?;
-                Ok(Declaration::Gene(Gene {
-                    name: var_decl.name.clone(),
-                    extends: None,
-                    statements: vec![],
-                    exegesis: format!("sex var {}", var_decl.name),
-                    span: var_decl.span,
-                }))
+                Ok(Declaration::SexVar(var_decl))
             }
             TokenKind::Function => {
                 self.advance(); // consume 'sex'
@@ -3474,12 +3504,20 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.expect(TokenKind::LeftBrace)?;
-        let mut body = Vec::new();
-        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
-            body.push(self.parse_stmt()?);
-        }
-        self.expect(TokenKind::RightBrace)?;
+        // Body is optional for sex fun (import declaration if no body)
+        let body = if self.current.kind == TokenKind::LeftBrace {
+            self.advance(); // consume '{'
+            let mut stmts = Vec::new();
+            while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof
+            {
+                stmts.push(self.parse_stmt()?);
+            }
+            self.expect(TokenKind::RightBrace)?;
+            stmts
+        } else {
+            // No body - this is an import declaration (only valid for sex fun)
+            Vec::new()
+        };
 
         let span = start_span.merge(&self.previous.span);
 

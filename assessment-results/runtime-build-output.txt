@@ -1,0 +1,82 @@
+> @vudo/runtime@0.1.0 build
+> tsup src/index.ts --format cjs,esm --dts --clean
+
+CLI Building entry: src/index.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Target: es2022
+CLI Cleaning output folder
+CJS Build start
+ESM Build start
+
+ WARN  The condition "types" here will never be used as it comes after both "import" and "require" [package.json]
+
+    package.json:13:6:
+      13 |       "types": "./dist/index.d.ts"
+         |       ~~~~~~~
+
+  The "import" condition comes earlier and will be used for all "import" statements:
+
+    package.json:11:6:
+      11 |       "import": "./dist/index.js",
+         |       ~~~~~~~~
+
+  The "require" condition comes earlier and will be used for all "require" calls:
+
+    package.json:12:6:
+      12 |       "require": "./dist/index.cjs",
+         |       ~~~~~~~~~
+
+
+
+
+ WARN  The condition "types" here will never be used as it comes after both "import" and "require" [package.json]
+
+    package.json:13:6:
+      13 |       "types": "./dist/index.d.ts"
+         |       ~~~~~~~
+
+  The "import" condition comes earlier and will be used for all "import" statements:
+
+    package.json:11:6:
+      11 |       "import": "./dist/index.js",
+         |       ~~~~~~~~
+
+  The "require" condition comes earlier and will be used for all "require" calls:
+
+    package.json:12:6:
+      12 |       "require": "./dist/index.cjs",
+         |       ~~~~~~~~~
+
+
+
+CJS dist/index.cjs 20.73 KB
+CJS Build success in 48ms
+ESM dist/index.js 18.54 KB
+ESM Build success in 48ms
+DTS Build start
+DTS Build success in 760ms
+DTS dist/index.d.cts 16.29 KB
+DTS dist/index.d.ts  16.29 KB
+
+=== BUILD SUMMARY ===
+Build Tool: tsup v8.5.1
+Target: ES2022
+Formats: CJS, ESM, DTS
+
+Output Files:
+- dist/index.cjs     - 20.73 KB (CommonJS)
+- dist/index.js      - 18.54 KB (ESM)
+- dist/index.d.cts   - 16.29 KB (TypeScript declarations for CJS)
+- dist/index.d.ts    - 16.29 KB (TypeScript declarations for ESM)
+
+Build Timing:
+- CJS build: 48ms
+- ESM build: 48ms
+- DTS build: 760ms
+
+Warnings:
+- 2 warnings about package.json exports field ordering (types condition should come before import/require)
+  Recommendation: Reorder "types" to be first in the exports condition list
+
+Status: BUILD SUCCESSFUL

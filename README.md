@@ -688,6 +688,16 @@ at your option.
 DOL is part of the [Univrs](https://github.com/univrs) ecosystem, building the foundation for VUDO OS — 
 a distributed, AI-native operating system where systems describe their ontological nature before their functionality.
 
+## Disclaimer
+
+> [!IMPORTANT] > **This is an experimental system. _We break things frequently_.**
+
+- Not accepting contributions yet (but we plan to!)
+- No stability guarantees
+- Pin commits if you need consistency
+- This is a learning resource, not production software
+- **No support provided** - See [SUPPORT.md](SUPPORT.md)
+
 ---
 
 ## Disclaimer

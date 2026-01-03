@@ -1,0 +1,122 @@
+name: NPM Packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Type check
+        run: pnpm typecheck
+
+  publish:
+    name: Publish to NPM
+    needs: [build-and-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Check if @vudo/runtime version changed
+        id: runtime-version
+        run: |
+          CURRENT=$(node -p "require('./packages/vudo-runtime/package.json').version")
+          NPM_VERSION=$(npm view @vudo/runtime version 2>/dev/null || echo "0.0.0")
+          if [ "$CURRENT" != "$NPM_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish @vudo/runtime
+        if: steps.runtime-version.outputs.changed == 'true'
+        run: pnpm --filter @vudo/runtime publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Check if @vudo/cli version changed
+        id: cli-version
+        run: |
+          CURRENT=$(node -p "require('./packages/vudo-cli/package.json').version")
+          NPM_VERSION=$(npm view @vudo/cli version 2>/dev/null || echo "0.0.0")
+          if [ "$CURRENT" != "$NPM_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish @vudo/cli
+        if: steps.cli-version.outputs.changed == 'true'
+        run: pnpm --filter @vudo/cli publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
