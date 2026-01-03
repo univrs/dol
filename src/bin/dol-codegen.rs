@@ -109,17 +109,6 @@ fn main() -> ExitCode {
             "{} Do not edit manually - regenerate from source .dol files\n\n",
             comment_prefix
         ));
-
-        // Add common Rust prelude and type aliases
-        if args.target == TargetLanguage::Rust {
-            generated_code.push_str("use std::collections::HashMap;\n\n");
-            generated_code.push_str("// Type aliases for naming consistency\n");
-            generated_code.push_str("pub type BinaryOp = BinOp;\n");
-            generated_code.push_str("pub type Statement = Stmt;\n");
-            generated_code.push_str("pub type Predicate = WherePredicate;\n");
-            generated_code.push_str("pub type Literal = Expr;\n");
-            generated_code.push('\n');
-        }
     }
 
     for path in &files {

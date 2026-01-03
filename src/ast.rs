@@ -275,11 +275,8 @@ pub enum Declaration {
     /// A top-level function declaration.
     Function(Box<FunctionDecl>),
 
-    /// A sex var declaration - mutable global state.
-    SexVar(VarDecl),
-
-    /// A constant declaration - immutable compile-time value.
-    Const(ConstDecl),
+    /// A constant declaration.
+    Const(VarDecl),
 }
 
 impl Declaration {
@@ -292,8 +289,7 @@ impl Declaration {
             Declaration::System(s) => &s.name,
             Declaration::Evolution(e) => &e.name,
             Declaration::Function(f) => &f.name,
-            Declaration::SexVar(v) => &v.name,
-            Declaration::Const(c) => &c.name,
+            Declaration::Const(v) => &v.name,
         }
     }
 
@@ -306,8 +302,7 @@ impl Declaration {
             Declaration::System(s) => &s.exegesis,
             Declaration::Evolution(e) => &e.exegesis,
             Declaration::Function(f) => &f.exegesis,
-            Declaration::SexVar(_) => "sex var",
-            Declaration::Const(_) => "const",
+            Declaration::Const(_) => "", // Constants don't have exegesis
         }
     }
 
@@ -320,8 +315,7 @@ impl Declaration {
             Declaration::System(s) => s.span,
             Declaration::Evolution(e) => e.span,
             Declaration::Function(f) => f.span,
-            Declaration::SexVar(v) => v.span,
-            Declaration::Const(c) => c.span,
+            Declaration::Const(v) => v.span,
         }
     }
 
@@ -334,10 +328,9 @@ impl Declaration {
             Declaration::Trait(t) => &t.statements,
             Declaration::Constraint(c) => &c.statements,
             Declaration::System(s) => &s.statements,
-            Declaration::Evolution(_)
-            | Declaration::Function(_)
-            | Declaration::SexVar(_)
-            | Declaration::Const(_) => return ids,
+            Declaration::Evolution(_) | Declaration::Function(_) | Declaration::Const(_) => {
+                return ids
+            }
         };
 
         for stmt in statements {

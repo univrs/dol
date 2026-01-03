@@ -84,11 +84,21 @@ impl TypeScriptCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_function(func),
-            Declaration::SexVar(var) => {
-                // Generate a global mutable variable
-                format!("let {}: any; // sex var\n", var.name)
-            }
+            Declaration::Const(var) => self.generate_const(var),
         }
+    }
+
+    /// Generate a TypeScript constant declaration.
+    fn generate_const(&self, var: &crate::ast::VarDecl) -> String {
+        let name = var.name.to_uppercase().replace('.', "_");
+        let type_str = var
+            .type_ann
+            .as_ref()
+            .map(Self::map_type_expr)
+            .unwrap_or_else(|| "number".to_string());
+        // For now, just use a placeholder value - full expression codegen not implemented
+        let value = "0 /* TODO: const expression */".to_string();
+        format!("export const {}: {} = {};", name, type_str, value)
     }
 
     /// Generate a TypeScript function from a function declaration.

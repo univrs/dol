@@ -11,6 +11,7 @@
 
 #![cfg(feature = "wasm")]
 
+use metadol::parse_dol_file;
 use metadol::parse_file;
 use metadol::wasm::{WasmCompiler, WasmError, WasmRuntime};
 
@@ -802,310 +803,653 @@ exegesis { A large gene for performance testing. }
 }
 
 // ============================================
-// 9. Vertical Slice Output Test
+// 10. Enum Type Tests
 // ============================================
 
 #[test]
-fn test_compile_counter_to_file() {
-    use metadol::Parser;
-    use std::fs;
-
+fn test_enum_variant_access() {
+    // Test accessing enum variants which should compile to i32 constants
+    // Note: Functions return the enum type (which maps to i32 in WASM)
     let source = r#"
-module counter_test @ 0.1.0
-
-/// Counter gene with increment and add methods
-gene Counter {
-    has value: Int64
-
-    fun increment() -> Int64 {
-        return value + 1
-    }
-
-    fun get_value() -> Int64 {
-        return value
-    }
-
-    fun add(n: Int64) -> Int64 {
-        return value + n
-    }
-
-    // Test field mutation
-    sex fun set_value(new_val: Int64) -> Int64 {
-        self.value = new_val
-        return value
-    }
-
-    // Increment with mutation
-    sex fun increment_mut() -> Int64 {
-        self.value = value + 1
-        return value
-    }
+fun get_node() -> AccountType {
+    return AccountType.Node
 }
-
-/// Standalone function for simpler test
-fun add_numbers(a: Int64, b: Int64) -> Int64 {
-    return a + b
-}
+exegesis { Function returning enum variant discriminant. }
 "#;
+    let module = parse_file(source).expect("Failed to parse");
 
-    let mut parser = Parser::new(source);
-    let dol_file = parser.parse_file().expect("Failed to parse");
-
+    // Create compiler and register the enum
     let mut compiler = WasmCompiler::new();
-    let wasm_bytes = compiler
-        .compile_file(&dol_file)
-        .expect("Compilation failed");
+    compiler.register_enum(
+        "AccountType",
+        vec![
+            "Node".to_string(),
+            "RevivalPool".to_string(),
+            "Treasury".to_string(),
+        ],
+    );
 
-    // Write to file for TypeScript integration test
-    fs::write("vertical-slice-results/counter.wasm", &wasm_bytes).expect("Failed to write file");
-    println!("Wrote {} bytes to counter.wasm", wasm_bytes.len());
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
 
-    // Verify module loads
+    // Load into runtime
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
     let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
-    // Test add_numbers
-    let result = wasm_module
-        .call("add_numbers", &[3i64.into(), 4i64.into()])
-        .expect("Call failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(7));
-
-    // Test Counter.increment with self pointer at 0
-    let result = wasm_module
-        .call("Counter.increment", &[0i32.into()])
-        .expect("Call failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
-
-    // Test Counter.set_value (field mutation)
-    // Allocate at address 1024 (past static data)
-    let result = wasm_module
-        .call("Counter.set_value", &[1024i32.into(), 42i64.into()])
-        .expect("Call failed");
+    // Test enum variant - should return discriminant index 0
+    let result = wasm_module.call("get_node", &[]).expect("Call failed");
     assert_eq!(
-        result.first().and_then(|v| v.i64()),
-        Some(42),
-        "set_value should return new value"
-    );
-
-    // Verify value was actually stored
-    let result = wasm_module
-        .call("Counter.get_value", &[1024i32.into()])
-        .expect("Call failed");
-    assert_eq!(
-        result.first().and_then(|v| v.i64()),
-        Some(42),
-        "get_value should read the stored value"
-    );
-
-    // Test increment_mut (field mutation)
-    let result = wasm_module
-        .call("Counter.increment_mut", &[1024i32.into()])
-        .expect("Call failed");
-    assert_eq!(
-        result.first().and_then(|v| v.i64()),
-        Some(43),
-        "increment_mut should update and return new value"
-    );
-
-    // Verify increment persisted
-    let result = wasm_module
-        .call("Counter.get_value", &[1024i32.into()])
-        .expect("Call failed");
-    assert_eq!(
-        result.first().and_then(|v| v.i64()),
-        Some(43),
-        "get_value should see updated value after increment_mut"
+        result.first().and_then(|v| v.i32()),
+        Some(0),
+        "Node should be index 0"
     );
 }
 
-// ============================================
-// 10. SEX Var Global Variable Tests
-// ============================================
-
 #[test]
-fn test_compile_and_execute_sex_var_global() {
-    use metadol::Parser;
-
-    // Test sex var: global mutable variable
+fn test_enum_variant_revival_pool() {
+    // Test second enum variant
     let source = r#"
-module sex_var_test @ 0.1.0
-
-sex var counter: i64 = 0
-
-sex fun increment() -> i64 {
-    counter = counter + 1
-    return counter
+fun get_revival_pool() -> AccountType {
+    return AccountType.RevivalPool
 }
-
-sex fun get_counter() -> i64 {
-    return counter
-}
-
-sex fun reset() -> i64 {
-    counter = 0
-    return counter
-}
+exegesis { Function returning RevivalPool variant. }
 "#;
-
-    let mut parser = Parser::new(source);
-    let dol_file = parser.parse_file().expect("Failed to parse");
+    let module = parse_file(source).expect("Failed to parse");
 
     let mut compiler = WasmCompiler::new();
-    let wasm_bytes = compiler
-        .compile_file(&dol_file)
-        .expect("Compilation failed");
+    compiler.register_enum(
+        "AccountType",
+        vec![
+            "Node".to_string(),
+            "RevivalPool".to_string(),
+            "Treasury".to_string(),
+        ],
+    );
 
-    // Verify WASM is valid
-    assert!(wasm_bytes.len() > 8, "WASM should have content");
-    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Should have WASM magic");
-
-    // Load and verify the module
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
-    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
-    // Initial value should be 0
     let result = wasm_module
-        .call("get_counter", &[])
-        .expect("Call get_counter failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+        .call("get_revival_pool", &[])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i32()),
+        Some(1),
+        "RevivalPool should be index 1"
+    );
+}
 
-    // First increment should return 1
+#[test]
+fn test_enum_variant_treasury() {
+    // Test third enum variant
+    let source = r#"
+fun get_treasury() -> AccountType {
+    return AccountType.Treasury
+}
+exegesis { Function returning Treasury variant. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    compiler.register_enum(
+        "AccountType",
+        vec![
+            "Node".to_string(),
+            "RevivalPool".to_string(),
+            "Treasury".to_string(),
+        ],
+    );
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_treasury", &[]).expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i32()),
+        Some(2),
+        "Treasury should be index 2"
+    );
+}
+
+#[test]
+fn test_enum_type_mapping() {
+    // Test that enum types are correctly mapped to i32 in function signatures
+    let source = r#"
+fun compare_account_type(a: AccountType, b: AccountType) -> i32 {
+    if a == b {
+        return 1
+    }
+    return 0
+}
+exegesis { Compare two account types. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Create compiler and register the enum
+    let mut compiler = WasmCompiler::new();
+    compiler.register_enum(
+        "AccountType",
+        vec![
+            "Node".to_string(),
+            "RevivalPool".to_string(),
+            "Treasury".to_string(),
+        ],
+    );
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    // Load into runtime
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test comparing same enum values
+    // Note: DOL `i32` return type maps to WASM i64 for uniformity
     let result = wasm_module
-        .call("increment", &[])
-        .expect("Call increment failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+        .call("compare_account_type", &[0i32.into(), 0i32.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(1),
+        "Same values should be equal"
+    );
 
-    // Second increment should return 2
+    // Test comparing different enum values
     let result = wasm_module
-        .call("increment", &[])
-        .expect("Call increment failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(2));
+        .call("compare_account_type", &[0i32.into(), 1i32.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(0),
+        "Different values should not be equal"
+    );
+}
 
-    // Get should confirm value is 2
+#[test]
+fn test_multiple_enums() {
+    // Test with multiple enum types registered
+    // Note: Functions return enum types (which map to i32 in WASM)
+    let source = r#"
+fun get_cpu_resource() -> ResourceType {
+    return ResourceType.Cpu
+}
+exegesis { Gets CPU resource type. }
+
+fun get_storage_resource() -> ResourceType {
+    return ResourceType.Storage
+}
+exegesis { Gets storage resource type. }
+
+fun get_admin_role() -> Role {
+    return Role.Admin
+}
+exegesis { Gets admin role. }
+"#;
+    let file = parse_dol_file(source).expect("Failed to parse");
+
+    // Create compiler and register multiple enums
+    let mut compiler = WasmCompiler::new();
+    compiler.register_enum(
+        "ResourceType",
+        vec![
+            "Cpu".to_string(),
+            "Memory".to_string(),
+            "Gpu".to_string(),
+            "Storage".to_string(),
+            "Bandwidth".to_string(),
+        ],
+    );
+    compiler.register_enum(
+        "Role",
+        vec!["Admin".to_string(), "User".to_string(), "Guest".to_string()],
+    );
+
+    let wasm_bytes = compiler.compile_file(&file).expect("Compilation failed");
+
+    // Load into runtime
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test ResourceType variants
     let result = wasm_module
-        .call("get_counter", &[])
-        .expect("Call get_counter failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(2));
+        .call("get_cpu_resource", &[])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i32()),
+        Some(0),
+        "Cpu should be index 0"
+    );
 
-    // Reset should return 0
-    let result = wasm_module.call("reset", &[]).expect("Call reset failed");
-    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+    let result = wasm_module
+        .call("get_storage_resource", &[])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i32()),
+        Some(3),
+        "Storage should be index 3"
+    );
+
+    // Test Role variants
+    let result = wasm_module
+        .call("get_admin_role", &[])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i32()),
+        Some(0),
+        "Admin should be index 0"
+    );
+}
+
+#[test]
+fn test_enum_registry_api() {
+    // Test the enum registry API on the compiler
+    let mut compiler = WasmCompiler::new();
+
+    // Should not have any enums initially
+    assert!(!compiler.has_enum("AccountType"));
+
+    // Register an enum
+    compiler.register_enum(
+        "AccountType",
+        vec![
+            "Node".to_string(),
+            "RevivalPool".to_string(),
+            "Treasury".to_string(),
+        ],
+    );
+
+    // Should now have the enum
+    assert!(compiler.has_enum("AccountType"));
+    assert!(!compiler.has_enum("UnknownType"));
+
+    // Should be able to get variant indices
+    assert_eq!(
+        compiler.get_enum_variant_index("AccountType", "Node"),
+        Some(0)
+    );
+    assert_eq!(
+        compiler.get_enum_variant_index("AccountType", "RevivalPool"),
+        Some(1)
+    );
+    assert_eq!(
+        compiler.get_enum_variant_index("AccountType", "Treasury"),
+        Some(2)
+    );
+
+    // Unknown variants should return None
+    assert_eq!(
+        compiler.get_enum_variant_index("AccountType", "Unknown"),
+        None
+    );
+    assert_eq!(compiler.get_enum_variant_index("UnknownType", "Node"), None);
 }
 
 // ============================================
-// 11. ENR Entropy Core Compilation Test
+// 12. String Type Tests
 // ============================================
 
 #[test]
-fn test_compile_entropy_core_from_file() {
-    use metadol::Parser;
-    use std::fs;
-
-    let source = fs::read_to_string("test-cases/enr-subset/entropy_core.dol")
-        .expect("Failed to read entropy_core.dol");
-
-    let mut parser = Parser::new(&source);
-    let dol_file = parser
-        .parse_file()
-        .expect("Failed to parse entropy_core.dol");
+fn test_compile_string_literal_returns_pointer() {
+    // Test that string literals compile to return an i32 pointer
+    let source = r#"
+fun get_greeting() -> String {
+    return "Hello, World!"
+}
+exegesis { Returns a greeting string. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
 
     let mut compiler = WasmCompiler::new();
-    let wasm_bytes = compiler
-        .compile_file(&dol_file)
-        .expect("Failed to compile entropy_core.dol");
+    let result = compiler.compile(&module);
 
-    // Verify valid WASM
-    assert!(wasm_bytes.len() >= 8, "WASM too short");
+    assert!(
+        result.is_ok(),
+        "String literal compilation failed: {:?}",
+        result.err()
+    );
+
+    let wasm_bytes = result.unwrap();
+
+    // Verify the output is valid WASM
+    assert!(wasm_bytes.len() >= 8, "WASM output too short");
     assert_eq!(&wasm_bytes[0..4], b"\0asm", "Invalid WASM magic number");
 
-    // Write to file for inspection
-    fs::write("test-cases/enr-subset/entropy_core.wasm", &wasm_bytes)
-        .expect("Failed to write entropy_core.wasm");
-    println!("Wrote {} bytes to entropy_core.wasm", wasm_bytes.len());
-
-    // Load and verify module
+    // Load and execute
     let runtime = WasmRuntime::new().expect("Failed to create runtime");
     let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
 
-    // Test add_entropy(3.0, 4.0) = 7.0
-    let result = wasm_module
-        .call(
-            "add_entropy",
-            &[
-                wasmtime::Val::F64(3.0f64.to_bits()),
-                wasmtime::Val::F64(4.0f64.to_bits()),
-            ],
-        )
-        .expect("Call add_entropy failed");
-    let value = match result.first() {
-        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
-        _ => panic!("Expected f64 return"),
-    };
-    assert!(
-        (value - 7.0).abs() < 0.001,
-        "add_entropy(3.0, 4.0) should be 7.0, got {}",
-        value
+    // The function returns a pointer (i32) to the string in memory
+    let result = wasm_module.call("get_greeting", &[]).expect("Call failed");
+
+    // Verify we get an i32 pointer back (the address where the string is stored)
+    let ptr = result
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32 result");
+    // The string should be at offset 0 in the data section
+    assert_eq!(ptr, 0, "Expected string pointer at offset 0");
+}
+
+#[test]
+#[ignore] // Requires get_memory() implementation
+fn test_string_literal_in_data_section() {
+    // Test that string data is properly stored in the WASM data section
+    let source = r#"
+fun get_message() -> String {
+    return "Test"
+}
+exegesis { Returns a test string. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    // Load into runtime
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Call the function to get the string pointer
+    let result = wasm_module.call("get_message", &[]).expect("Call failed");
+
+    let ptr = result
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32 result");
+    assert_eq!(ptr, 0, "Expected string at offset 0");
+
+    // TODO: Implement get_memory() on WasmModule to verify string data
+    // For now, just verify the pointer was returned
+}
+
+#[test]
+fn test_multiple_string_literals() {
+    // Test that multiple string literals are properly stored and deduplicated
+    let source = r#"
+fun get_hello() -> String {
+    return "hello"
+}
+exegesis { Returns hello. }
+
+fun get_world() -> String {
+    return "world"
+}
+exegesis { Returns world. }
+
+fun get_hello_again() -> String {
+    return "hello"
+}
+exegesis { Returns hello again. }
+"#;
+    let file = parse_dol_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile_file(&file).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Get pointers for all three strings
+    let hello_ptr = wasm_module
+        .call("get_hello", &[])
+        .expect("Call failed")
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32");
+
+    let world_ptr = wasm_module
+        .call("get_world", &[])
+        .expect("Call failed")
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32");
+
+    let hello_again_ptr = wasm_module
+        .call("get_hello_again", &[])
+        .expect("Call failed")
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32");
+
+    // "hello" should be deduplicated - both functions return the same pointer
+    assert_eq!(
+        hello_ptr, hello_again_ptr,
+        "Duplicate strings should have same pointer"
     );
 
-    // Test scale_entropy(5.0, 2.0) = 10.0
-    let result = wasm_module
-        .call(
-            "scale_entropy",
-            &[
-                wasmtime::Val::F64(5.0f64.to_bits()),
-                wasmtime::Val::F64(2.0f64.to_bits()),
-            ],
-        )
-        .expect("Call scale_entropy failed");
-    let value = match result.first() {
-        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
-        _ => panic!("Expected f64 return"),
-    };
-    assert!(
-        (value - 10.0).abs() < 0.001,
-        "scale_entropy(5.0, 2.0) should be 10.0, got {}",
-        value
+    // "world" should be at a different offset than "hello"
+    assert_ne!(
+        hello_ptr, world_ptr,
+        "Different strings should have different pointers"
     );
+}
 
-    // Test clamp_entropy(15.0, 10.0) = 10.0 (clamped)
-    let result = wasm_module
-        .call(
-            "clamp_entropy",
-            &[
-                wasmtime::Val::F64(15.0f64.to_bits()),
-                wasmtime::Val::F64(10.0f64.to_bits()),
-            ],
-        )
-        .expect("Call clamp_entropy failed");
-    let value = match result.first() {
-        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
-        _ => panic!("Expected f64 return"),
-    };
+#[test]
+fn test_string_type_in_function_parameter() {
+    // Test that String type is accepted as a function parameter
+    let source = r#"
+fun identity(s: String) -> String {
+    return s
+}
+exegesis { Returns the input string. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let result = compiler.compile(&module);
+
     assert!(
-        (value - 10.0).abs() < 0.001,
-        "clamp_entropy(15.0, 10.0) should be 10.0, got {}",
-        value
+        result.is_ok(),
+        "String parameter compilation failed: {:?}",
+        result.err()
     );
+}
 
-    // Test clamp_entropy(5.0, 10.0) = 5.0 (not clamped)
+#[test]
+#[ignore] // Requires get_memory() implementation
+fn test_empty_string_literal() {
+    // Test that empty string literals work correctly
+    let source = r#"
+fun get_empty() -> String {
+    return ""
+}
+exegesis { Returns an empty string. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Call the function
+    let result = wasm_module.call("get_empty", &[]).expect("Call failed");
+
+    // Should return a pointer
+    let ptr = result
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32 result");
+    assert_eq!(ptr, 0, "Expected empty string at offset 0");
+
+    // TODO: Implement get_memory() on WasmModule to verify empty string length
+}
+
+// ============================================
+// 13. Hello World Spirit End-to-End Tests
+// ============================================
+
+/// This test demonstrates the complete DOL → WASM → Execution pipeline
+/// for a "Hello World" Spirit - the minimal viable Spirit in the Univrs ecosystem.
+#[test]
+fn test_hello_world_spirit_e2e() {
+    // A minimal Spirit with state and behavior
+    // Uses parse_file for single declaration (currently supported)
+    let source = r#"
+fun spirit_main(input: i64) -> i64 {
+    return input * 2
+}
+exegesis { Spirit main entry point - doubles input. }
+"#;
+
+    let module = parse_file(source).expect("Failed to parse Hello Spirit");
+
+    // Compile to WASM
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler
+        .compile(&module)
+        .expect("Failed to compile Hello Spirit to WASM");
+
+    // Verify valid WASM module
+    assert!(wasm_bytes.len() > 8, "WASM should have content");
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Should have WASM magic number");
+
+    // Load into runtime
+    let runtime = WasmRuntime::new().expect("Failed to create WASM runtime");
+    let mut wasm_module = runtime
+        .load(&wasm_bytes)
+        .expect("Failed to load Spirit WASM");
+
+    // Execute spirit_main - the entry point
     let result = wasm_module
-        .call(
-            "clamp_entropy",
-            &[
-                wasmtime::Val::F64(5.0f64.to_bits()),
-                wasmtime::Val::F64(10.0f64.to_bits()),
-            ],
-        )
-        .expect("Call clamp_entropy failed");
-    let value = match result.first() {
-        Some(wasmtime::Val::F64(bits)) => f64::from_bits(*bits),
-        _ => panic!("Expected f64 return"),
-    };
-    assert!(
-        (value - 5.0).abs() < 0.001,
-        "clamp_entropy(5.0, 10.0) should be 5.0, got {}",
-        value
+        .call("spirit_main", &[21i64.into()])
+        .expect("Call spirit_main failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(42),
+        "Spirit should double input: 21 * 2 = 42"
     );
+}
 
-    println!("All entropy_core.dol functions executed successfully!");
+/// Test a Spirit with fibonacci computation
+#[test]
+fn test_spirit_with_computation() {
+    let source = r#"
+fun fibonacci(n: i64) -> i64 {
+    if n <= 1 {
+        return n
+    }
+    let a: i64 = 0
+    let b: i64 = 1
+    let i: i64 = 2
+    while i <= n {
+        let temp: i64 = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    return b
+}
+exegesis { Computes nth Fibonacci number iteratively. }
+"#;
+
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test Fibonacci: fib(10) = 55
+    let result = wasm_module
+        .call("fibonacci", &[10i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(55));
+
+    // Test Fibonacci: fib(7) = 13
+    let result = wasm_module
+        .call("fibonacci", &[7i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(13));
+}
+
+/// Test Spirit with ENR-like entropy calculation
+#[test]
+fn test_spirit_enr_entropy() {
+    let source = r#"
+fun calculate_entropy_cost(hops: i64, base_cost: i64) -> i64 {
+    return hops * base_cost
+}
+exegesis { Calculate entropy cost based on hop count. }
+"#;
+
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test entropy calculation: 5 hops * 10 cost = 50
+    let result = wasm_module
+        .call("calculate_entropy_cost", &[5i64.into(), 10i64.into()])
+        .expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(50),
+        "5 hops * 10 cost = 50"
+    );
+}
+
+/// Test Spirit with complex control flow
+#[test]
+fn test_spirit_control_flow() {
+    let source = r#"
+fun process_request(request_type: i64, value: i64) -> i64 {
+    match request_type {
+        0 => {
+            // Echo request
+            return value
+        },
+        1 => {
+            // Double request
+            return value * 2
+        },
+        2 => {
+            // Square request
+            return value * value
+        },
+        _ => {
+            // Unknown request
+            return 0
+        },
+    }
+}
+exegesis { Process different request types. }
+"#;
+
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test echo: type 0, value 42 -> 42
+    let result = wasm_module
+        .call("process_request", &[0i64.into(), 42i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+
+    // Test double: type 1, value 21 -> 42
+    let result = wasm_module
+        .call("process_request", &[1i64.into(), 21i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+
+    // Test square: type 2, value 7 -> 49
+    let result = wasm_module
+        .call("process_request", &[2i64.into(), 7i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(49));
+
+    // Test unknown: type 99, value 100 -> 0
+    let result = wasm_module
+        .call("process_request", &[99i64.into(), 100i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
 }

@@ -39,7 +39,7 @@ use crate::ast::Declaration;
 #[cfg(feature = "wasm")]
 use crate::wasm::alloc::BumpAllocator;
 #[cfg(feature = "wasm")]
-use crate::wasm::layout::{GeneLayout, GeneLayoutRegistry};
+use crate::wasm::layout::{EnumRegistry, GeneLayout, GeneLayoutRegistry};
 #[cfg(feature = "wasm")]
 use crate::wasm::WasmError;
 #[cfg(feature = "wasm")]
@@ -73,8 +73,8 @@ pub struct WasmCompiler {
     debug_info: bool,
     /// Registry of gene layouts for struct literal compilation
     gene_layouts: GeneLayoutRegistry,
-    /// String table for collecting string literals (interior mutability for &self methods)
-    string_table: RefCell<StringTable>,
+    /// Registry of enum definitions for variant compilation
+    enum_registry: EnumRegistry,
 }
 
 /// Context for tracking loop control flow depths.
@@ -213,10 +213,8 @@ struct LocalsTable {
     dol_types: HashMap<String, String>,
     /// Maps function names to their WASM function indices
     func_indices: HashMap<String, u32>,
-    /// Maps function names to their return type
-    func_return_types: HashMap<String, wasm_encoder::ValType>,
-    /// Maps global variable names (sex var) to their WASM global indices
-    global_indices: HashMap<String, u32>,
+    /// Maps variable names to their WASM type (for parameters that need widening)
+    wasm_types: HashMap<String, wasm_encoder::ValType>,
 }
 
 #[cfg(feature = "wasm")]
@@ -247,8 +245,7 @@ impl LocalsTable {
             var_types: HashMap::new(),
             dol_types: HashMap::new(),
             func_indices: HashMap::new(),
-            func_return_types: HashMap::new(),
-            global_indices: HashMap::new(),
+            wasm_types: HashMap::new(),
         };
 
         // Add implicit 'self' parameter at index 0 for gene methods
@@ -403,6 +400,19 @@ impl LocalsTable {
         self.dol_types.get(name).map(|s| s.as_str())
     }
 
+    /// Set the WASM type for a variable (used for parameter type tracking).
+    fn set_wasm_type(&mut self, name: &str, wasm_type: wasm_encoder::ValType) {
+        self.wasm_types.insert(name.to_string(), wasm_type);
+    }
+
+    /// Check if a variable needs widening from i32 to i64.
+    ///
+    /// Returns true if the variable is stored as i32 (e.g., enum types)
+    /// but needs to participate in i64 operations.
+    fn needs_widening(&self, name: &str) -> bool {
+        matches!(self.wasm_types.get(name), Some(wasm_encoder::ValType::I32))
+    }
+
     /// Get the locals declaration for the WASM Function constructor.
     ///
     /// Returns a vector of (count, type) pairs, with consecutive same-type
@@ -443,22 +453,81 @@ struct GeneContext {
     field_names: Vec<String>,
 }
 
-/// A WASM import extracted from a `sex fun` without body.
+/// Pool for collecting string literals during compilation.
 ///
-/// These are host functions that will be provided by the Loa runtime.
+/// String literals are stored in the WASM data section. This pool
+/// collects unique strings and assigns them memory offsets.
+///
+/// Memory layout for strings:
+/// ```text
+/// [4 bytes: length][UTF-8 bytes]
+/// ```
+///
+/// The string value returned by the compiler is a single i32 pointer
+/// to the start of this structure (the length prefix).
 #[cfg(feature = "wasm")]
-#[derive(Debug, Clone)]
-struct WasmImport {
-    /// Module name for the import (always "loa" for host functions)
-    module: String,
-    /// Function name as declared in DOL
-    name: String,
-    /// Parameter types
-    params: Vec<wasm_encoder::ValType>,
-    /// Return type (if any)
-    result: Option<wasm_encoder::ValType>,
-    /// Type index in the type section
-    type_idx: u32,
+#[derive(Debug, Clone, Default)]
+struct StringPool {
+    /// Maps string content to (offset, length) in data section
+    strings: HashMap<String, (u32, u32)>,
+    /// Raw bytes to be placed in data section
+    data: Vec<u8>,
+    /// Current offset in data section
+    current_offset: u32,
+}
+
+#[cfg(feature = "wasm")]
+impl StringPool {
+    /// Create a new empty string pool.
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a string to the pool, returning its memory offset.
+    ///
+    /// If the string already exists, returns the existing offset.
+    /// The returned offset points to the length-prefixed string.
+    fn add(&mut self, s: &str) -> u32 {
+        if let Some(&(offset, _len)) = self.strings.get(s) {
+            return offset;
+        }
+
+        let offset = self.current_offset;
+        let len = s.len() as u32;
+
+        // Write length prefix (4 bytes, little-endian)
+        self.data.extend_from_slice(&len.to_le_bytes());
+        // Write string bytes
+        self.data.extend_from_slice(s.as_bytes());
+
+        // Track total size: 4 bytes for length + string bytes
+        let total_size = 4 + len;
+        self.current_offset += total_size;
+
+        // Align to 4 bytes for next entry
+        let padding = (4 - (self.current_offset % 4)) % 4;
+        self.data
+            .extend(std::iter::repeat(0).take(padding as usize));
+        self.current_offset += padding;
+
+        self.strings.insert(s.to_string(), (offset, len));
+        offset
+    }
+
+    /// Get the total size of the data section.
+    fn data_size(&self) -> u32 {
+        self.current_offset
+    }
+
+    /// Get the raw data bytes for the data section.
+    fn get_data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Check if the pool is empty.
+    fn is_empty(&self) -> bool {
+        self.strings.is_empty()
+    }
 }
 
 #[cfg(feature = "wasm")]
@@ -481,9 +550,51 @@ impl WasmCompiler {
             optimize: false,
             debug_info: true,
             gene_layouts: GeneLayoutRegistry::new(),
-            // String table starts at offset 1024 (after heap pointer and reserved space)
-            string_table: RefCell::new(StringTable::new(1024)),
+            enum_registry: EnumRegistry::new(),
         }
+    }
+
+    /// Register an enum type for compilation.
+    ///
+    /// When enums are registered, the compiler can resolve enum variant
+    /// access expressions (e.g., `AccountType.Node`) to their i32 discriminant.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the enum type
+    /// * `variant_names` - The ordered list of variant names
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use metadol::wasm::WasmCompiler;
+    ///
+    /// let mut compiler = WasmCompiler::new();
+    ///
+    /// // Register AccountType enum
+    /// compiler.register_enum("AccountType", vec![
+    ///     "Node".to_string(),
+    ///     "RevivalPool".to_string(),
+    ///     "Treasury".to_string(),
+    /// ]);
+    ///
+    /// // Now AccountType.Node resolves to 0, AccountType.Treasury to 2
+    /// ```
+    pub fn register_enum(&mut self, name: &str, variant_names: Vec<String>) {
+        self.enum_registry.register_enum(name, variant_names);
+    }
+
+    /// Get the variant index for an enum variant.
+    ///
+    /// Returns `None` if the enum or variant doesn't exist.
+    pub fn get_enum_variant_index(&self, enum_name: &str, variant_name: &str) -> Option<i32> {
+        self.enum_registry
+            .get_variant_index(enum_name, variant_name)
+    }
+
+    /// Check if an enum with the given name is registered.
+    pub fn has_enum(&self, name: &str) -> bool {
+        self.enum_registry.contains(name)
     }
 
     /// Register a gene layout for struct literal compilation.
@@ -654,8 +765,19 @@ impl WasmCompiler {
             ));
         }
 
-        // Check if we need memory allocation (when gene layouts are registered)
-        let needs_memory = !self.gene_layouts.is_empty();
+        // Collect string literals from the module
+        let mut string_pool = StringPool::new();
+        self.collect_strings_from_declaration(module, &mut string_pool);
+
+        // Check if we need memory allocation (when gene layouts are registered or strings are used)
+        let needs_memory = !self.gene_layouts.is_empty() || !string_pool.is_empty();
+
+        // Calculate heap start after string data (aligned to 8 bytes)
+        let heap_start = if !string_pool.is_empty() {
+            crate::wasm::alloc::align_up(string_pool.data_size(), 8).max(1024)
+        } else {
+            1024
+        };
 
         // Build WASM module
         let mut wasm_module = Module::new();
@@ -712,7 +834,7 @@ impl WasmCompiler {
         // Memory section (if needed)
         if needs_memory {
             BumpAllocator::emit_memory_section(&mut wasm_module, 1);
-            BumpAllocator::emit_globals(&mut wasm_module, 1024);
+            BumpAllocator::emit_globals(&mut wasm_module, heap_start);
         }
 
         // Export section: export all user functions (not alloc, which is internal)
@@ -749,6 +871,13 @@ impl WasmCompiler {
                 extracted.gene_context.as_ref(),
             );
 
+            // Track WASM types for parameters (for type-aware operations like i32 widening)
+            for param in &extracted.func.params {
+                if let Ok(wasm_type) = self.dol_type_to_wasm(&param.type_ann) {
+                    locals_table.set_wasm_type(&param.name, wasm_type);
+                }
+            }
+
             // Register all function indices for call resolution
             for (func_idx, other_extracted) in functions.iter().enumerate() {
                 let wasm_idx = func_idx_offset + func_idx as u32;
@@ -776,10 +905,23 @@ impl WasmCompiler {
 
             let _ = alloc_func_idx; // Will be used when struct allocation is implemented
             let _ = idx; // Function index available for debugging
-            self.emit_function_body(&mut function, extracted.func, &locals_table)?;
+            self.emit_function_body(&mut function, extracted.func, &locals_table, &string_pool)?;
             code.function(&function);
         }
         wasm_module.section(&code);
+
+        // Emit data section for string literals (if any)
+        if !string_pool.is_empty() {
+            use wasm_encoder::DataSection;
+            let mut data = DataSection::new();
+            // Active data segment at memory 0, offset 0
+            data.active(
+                0,
+                &wasm_encoder::ConstExpr::i32_const(0),
+                string_pool.get_data().iter().copied(),
+            );
+            wasm_module.section(&data);
+        }
 
         Ok(wasm_module.finish())
     }
@@ -825,9 +967,21 @@ impl WasmCompiler {
         // Allow modules with only imports (no local functions)
         let has_local_functions = !functions.is_empty();
 
+        // Collect string literals from all declarations
+        let mut string_pool = StringPool::new();
+        for decl in &file.declarations {
+            self.collect_strings_from_declaration(decl, &mut string_pool);
+        }
+
         // Check if we need memory allocation (when gene layouts are registered or strings are used)
-        let has_strings = Self::has_string_literals(&file.declarations);
-        let needs_memory = !self.gene_layouts.is_empty() || has_strings;
+        let needs_memory = !self.gene_layouts.is_empty() || !string_pool.is_empty();
+
+        // Calculate heap start after string data (aligned to 8 bytes)
+        let heap_start = if !string_pool.is_empty() {
+            crate::wasm::alloc::align_up(string_pool.data_size(), 8).max(1024)
+        } else {
+            1024
+        };
 
         // Build WASM module
         let mut wasm_module = Module::new();
@@ -922,6 +1076,7 @@ impl WasmCompiler {
         // ============= MEMORY SECTION =============
         if needs_memory {
             BumpAllocator::emit_memory_section(&mut wasm_module, 1);
+            BumpAllocator::emit_globals(&mut wasm_module, heap_start);
         }
 
         // ============= GLOBAL SECTION =============
@@ -1024,6 +1179,13 @@ impl WasmCompiler {
                 extracted.gene_context.as_ref(),
             );
 
+            // Track WASM types for parameters (for type-aware operations like i32 widening)
+            for param in &extracted.func.params {
+                if let Ok(wasm_type) = self.dol_type_to_wasm(&param.type_ann) {
+                    locals_table.set_wasm_type(&param.name, wasm_type);
+                }
+            }
+
             // Register all function indices for call resolution
             for (name, wasm_idx) in &func_name_map {
                 locals_table.register_function(name, *wasm_idx);
@@ -1037,6 +1199,11 @@ impl WasmCompiler {
             // Collect locals from function body
             self.collect_locals(&extracted.func.body, &mut locals_table)?;
 
+            // If we have gene layouts, add a temp local for struct pointer
+            if !self.gene_layouts.is_empty() {
+                locals_table.declare("__struct_ptr", ValType::I32);
+            }
+
             // Match expressions need a temp local
             locals_table.declare("__match_temp", ValType::I64);
 
@@ -1045,8 +1212,7 @@ impl WasmCompiler {
 
             let mut function = Function::new(locals);
             let _ = idx;
-            let _ = alloc_func_idx;
-            self.emit_function_body(&mut function, extracted.func, &locals_table)?;
+            self.emit_function_body(&mut function, extracted.func, &locals_table, &string_pool)?;
             code.function(&function);
         }
 
@@ -1060,6 +1226,19 @@ impl WasmCompiler {
         self.string_table
             .borrow()
             .emit_data_section(&mut wasm_module);
+
+        // Emit data section for string literals (if any)
+        if !string_pool.is_empty() {
+            use wasm_encoder::DataSection;
+            let mut data = DataSection::new();
+            // Active data segment at memory 0, offset 0
+            data.active(
+                0,
+                &wasm_encoder::ConstExpr::i32_const(0),
+                string_pool.get_data().iter().copied(),
+            );
+            wasm_module.section(&data);
+        }
 
         Ok(wasm_module.finish())
     }
@@ -1431,33 +1610,50 @@ impl WasmCompiler {
         use wasm_encoder::ValType;
 
         match type_expr {
-            TypeExpr::Named(name) => match name.to_lowercase().as_str() {
-                // 32-bit integers (including pointers)
-                "i32" | "int32" | "ptr" | "usize" => Ok(ValType::I32),
-                // 64-bit integers (default for DOL)
-                "i64" | "int" | "int64" => Ok(ValType::I64),
-                // Floating point
-                "f32" | "float32" => Ok(ValType::F32),
-                "f64" | "float" | "float64" => Ok(ValType::F64),
-                // Boolean
-                "bool" | "boolean" => Ok(ValType::I32),
-                other => Err(WasmError::new(format!(
-                    "Unsupported type for WASM compilation: {}",
-                    other
-                ))),
-            },
-            TypeExpr::Generic { .. } => Err(WasmError::new(
-                "Generic types not yet supported in WASM compilation",
-            )),
+            TypeExpr::Named(name) => {
+                // First check primitive types (lowercase comparison)
+                match name.to_lowercase().as_str() {
+                    "i32" | "i64" | "int" | "int32" | "int64" => Ok(ValType::I64),
+                    "f32" | "f64" | "float" | "float32" | "float64" => Ok(ValType::F64),
+                    "bool" | "boolean" => Ok(ValType::I32),
+                    // String is represented as a single i32 pointer to length-prefixed data
+                    "string" | "str" => Ok(ValType::I32),
+                    _ => {
+                        // Check if it's a registered enum type
+                        if self.enum_registry.contains(name) {
+                            // Enum types are represented as i32 discriminants
+                            Ok(ValType::I32)
+                        } else {
+                            Err(WasmError::new(format!(
+                                "Unsupported type for WASM compilation: {}",
+                                name
+                            )))
+                        }
+                    }
+                }
+            }
+            TypeExpr::Generic { name, args: _ } => {
+                // Handle collection types as i32 pointers
+                match name.as_str() {
+                    "List" | "Vec" | "Option" | "Map" | "HashMap" | "Result" => Ok(ValType::I32),
+                    // Reference types
+                    _ if name.starts_with('&') => Ok(ValType::I32),
+                    _ => Err(WasmError::new(format!(
+                        "Unsupported generic type for WASM compilation: {}",
+                        name
+                    ))),
+                }
+            }
             TypeExpr::Function { .. } => Err(WasmError::new(
                 "Function types not yet supported in WASM compilation",
             )),
             TypeExpr::Tuple(_) => Err(WasmError::new(
                 "Tuple types not yet supported in WASM compilation",
             )),
-            TypeExpr::Enum { .. } => Err(WasmError::new(
-                "Enum types not yet supported in WASM compilation",
-            )),
+            TypeExpr::Enum { .. } => {
+                // Inline enum types are represented as i32 discriminants
+                Ok(ValType::I32)
+            }
             TypeExpr::Never => Err(WasmError::new(
                 "Never type not supported in WASM compilation",
             )),
@@ -1598,12 +1794,140 @@ impl WasmCompiler {
         Ok(())
     }
 
+    /// Collect all string literals from a declaration into a StringPool.
+    fn collect_strings_from_declaration(&self, decl: &Declaration, pool: &mut StringPool) {
+        use crate::ast::{Declaration, Statement};
+
+        match decl {
+            Declaration::Function(func) => {
+                for stmt in &func.body {
+                    self.collect_strings_from_stmt(stmt, pool);
+                }
+            }
+            Declaration::Gene(gene) => {
+                for stmt in &gene.statements {
+                    if let Statement::Function(func) = stmt {
+                        for body_stmt in &func.body {
+                            self.collect_strings_from_stmt(body_stmt, pool);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Collect string literals from a statement.
+    fn collect_strings_from_stmt(&self, stmt: &crate::ast::Stmt, pool: &mut StringPool) {
+        use crate::ast::Stmt;
+
+        match stmt {
+            Stmt::Expr(expr) | Stmt::Return(Some(expr)) => {
+                self.collect_strings_from_expr(expr, pool);
+            }
+            Stmt::Let { value, .. } => {
+                self.collect_strings_from_expr(value, pool);
+            }
+            Stmt::Assign { value, .. } => {
+                self.collect_strings_from_expr(value, pool);
+            }
+            Stmt::While { condition, body } => {
+                self.collect_strings_from_expr(condition, pool);
+                for s in body {
+                    self.collect_strings_from_stmt(s, pool);
+                }
+            }
+            Stmt::For { iterable, body, .. } => {
+                self.collect_strings_from_expr(iterable, pool);
+                for s in body {
+                    self.collect_strings_from_stmt(s, pool);
+                }
+            }
+            Stmt::Loop { body } => {
+                for s in body {
+                    self.collect_strings_from_stmt(s, pool);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Collect string literals from an expression.
+    fn collect_strings_from_expr(&self, expr: &crate::ast::Expr, pool: &mut StringPool) {
+        use crate::ast::{Expr, Literal};
+
+        match expr {
+            Expr::Literal(Literal::String(s)) => {
+                pool.add(s);
+            }
+            Expr::Binary { left, right, .. } => {
+                self.collect_strings_from_expr(left, pool);
+                self.collect_strings_from_expr(right, pool);
+            }
+            Expr::Unary { operand, .. } => {
+                self.collect_strings_from_expr(operand, pool);
+            }
+            Expr::Call { callee, args } => {
+                self.collect_strings_from_expr(callee, pool);
+                for arg in args {
+                    self.collect_strings_from_expr(arg, pool);
+                }
+            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.collect_strings_from_expr(condition, pool);
+                self.collect_strings_from_expr(then_branch, pool);
+                if let Some(e) = else_branch {
+                    self.collect_strings_from_expr(e, pool);
+                }
+            }
+            Expr::Match { scrutinee, arms } => {
+                self.collect_strings_from_expr(scrutinee, pool);
+                for arm in arms {
+                    self.collect_strings_from_expr(&arm.body, pool);
+                }
+            }
+            Expr::Block {
+                statements,
+                final_expr,
+            } => {
+                for stmt in statements {
+                    self.collect_strings_from_stmt(stmt, pool);
+                }
+                if let Some(e) = final_expr {
+                    self.collect_strings_from_expr(e, pool);
+                }
+            }
+            Expr::StructLiteral { fields, .. } => {
+                for (_name, value) in fields {
+                    self.collect_strings_from_expr(value, pool);
+                }
+            }
+            Expr::List(items) | Expr::Tuple(items) => {
+                for item in items {
+                    self.collect_strings_from_expr(item, pool);
+                }
+            }
+            Expr::Member { object, .. } => {
+                self.collect_strings_from_expr(object, pool);
+            }
+            Expr::Lambda { body, .. } => {
+                self.collect_strings_from_expr(body, pool);
+            }
+            _ => {}
+        }
+    }
+
     /// Emit the body of a function as WASM instructions.
     fn emit_function_body(
         &self,
         function: &mut wasm_encoder::Function,
         func_decl: &crate::ast::FunctionDecl,
         locals: &LocalsTable,
+        string_pool: &StringPool,
     ) -> Result<(), WasmError> {
         use crate::ast::Stmt;
         use wasm_encoder::Instruction;
@@ -1622,22 +1946,22 @@ impl WasmCompiler {
             if is_last && has_return_type {
                 if let Stmt::Expr(expr) = stmt {
                     // Emit the expression without dropping - its value becomes the return
-                    self.emit_expression(function, expr, locals, loop_ctx)?;
+                    self.emit_expression(function, expr, locals, loop_ctx, string_pool)?;
                     // No Drop - the value on stack is the return value
                 } else if let Stmt::Return(Some(expr)) = stmt {
                     // Explicit return - emit expression and return
-                    self.emit_expression(function, expr, locals, loop_ctx)?;
+                    self.emit_expression(function, expr, locals, loop_ctx, string_pool)?;
                     function.instruction(&Instruction::Return);
                 } else if let Stmt::Return(None) = stmt {
                     // Explicit void return
                     function.instruction(&Instruction::Return);
                 } else {
                     // Other statement types - emit normally
-                    self.emit_statement(function, stmt, locals, loop_ctx)?;
+                    self.emit_statement(function, stmt, locals, loop_ctx, string_pool)?;
                 }
             } else {
                 // Not the last statement - emit normally
-                self.emit_statement(function, stmt, locals, loop_ctx)?;
+                self.emit_statement(function, stmt, locals, loop_ctx, string_pool)?;
             }
         }
 
@@ -1654,6 +1978,7 @@ impl WasmCompiler {
         stmt: &crate::ast::Stmt,
         locals: &LocalsTable,
         loop_ctx: LoopContext,
+        string_pool: &StringPool,
     ) -> Result<(), WasmError> {
         use crate::ast::{Expr, Stmt};
         use wasm_encoder::Instruction;
@@ -1661,12 +1986,12 @@ impl WasmCompiler {
         match stmt {
             Stmt::Return(expr_opt) => {
                 if let Some(expr) = expr_opt {
-                    self.emit_expression(function, expr, locals, loop_ctx)?;
+                    self.emit_expression(function, expr, locals, loop_ctx, string_pool)?;
                 }
                 function.instruction(&Instruction::Return);
             }
             Stmt::Expr(expr) => {
-                self.emit_expression(function, expr, locals, loop_ctx)?;
+                self.emit_expression(function, expr, locals, loop_ctx, string_pool)?;
                 // Drop the result if it's an expression statement that produces a value
                 // Note: Some expressions like if-without-else produce no value
                 if self.expression_produces_value(expr) {
@@ -1675,7 +2000,7 @@ impl WasmCompiler {
             }
             Stmt::Let { name, value, .. } => {
                 // Emit the value expression
-                self.emit_expression(function, value, locals, loop_ctx)?;
+                self.emit_expression(function, value, locals, loop_ctx, string_pool)?;
 
                 // Look up the local index (should exist from collect_locals pass)
                 let local_idx = locals.lookup(name).ok_or_else(|| {
@@ -1692,91 +2017,8 @@ impl WasmCompiler {
                 // Handle assignment to different target types
                 match target {
                     Expr::Identifier(name) => {
-                        // Check if this is a dotted identifier (e.g., "self.value")
-                        // The lexer produces these as single tokens when there's no whitespace
-                        if let Some(dot_pos) = name.find('.') {
-                            let object_name = &name[..dot_pos];
-                            let field_name = &name[dot_pos + 1..];
-
-                            // Look up the object's DOL type
-                            let gene_type =
-                                locals.lookup_dol_type(object_name).map(|s| s.to_string());
-
-                            // Emit object address (for memory store)
-                            let local_idx = locals.lookup(object_name).ok_or_else(|| {
-                                WasmError::new(format!(
-                                    "Cannot assign to field of unknown object: {}",
-                                    object_name
-                                ))
-                            })?;
-                            function.instruction(&Instruction::LocalGet(local_idx));
-
-                            // Emit value expression
-                            self.emit_expression(function, value, locals, loop_ctx)?;
-
-                            // Emit store instruction
-                            if let Some(type_name) = gene_type {
-                                if let Some(layout) = self.gene_layouts.get(&type_name) {
-                                    if let Some(field_layout) = layout.get_field(field_name) {
-                                        use crate::wasm::layout::WasmFieldType;
-                                        match field_layout.wasm_type {
-                                            WasmFieldType::I64 => {
-                                                function.instruction(&Instruction::I64Store(
-                                                    wasm_encoder::MemArg {
-                                                        offset: field_layout.offset as u64,
-                                                        align: 3,
-                                                        memory_index: 0,
-                                                    },
-                                                ));
-                                            }
-                                            WasmFieldType::F64 => {
-                                                function.instruction(&Instruction::F64Store(
-                                                    wasm_encoder::MemArg {
-                                                        offset: field_layout.offset as u64,
-                                                        align: 3,
-                                                        memory_index: 0,
-                                                    },
-                                                ));
-                                            }
-                                            WasmFieldType::I32 | WasmFieldType::Ptr => {
-                                                function.instruction(&Instruction::I32Store(
-                                                    wasm_encoder::MemArg {
-                                                        offset: field_layout.offset as u64,
-                                                        align: 2,
-                                                        memory_index: 0,
-                                                    },
-                                                ));
-                                            }
-                                            WasmFieldType::F32 => {
-                                                function.instruction(&Instruction::F32Store(
-                                                    wasm_encoder::MemArg {
-                                                        offset: field_layout.offset as u64,
-                                                        align: 2,
-                                                        memory_index: 0,
-                                                    },
-                                                ));
-                                            }
-                                        }
-                                    } else {
-                                        return Err(WasmError::new(format!(
-                                            "Unknown field '{}' in gene '{}'",
-                                            field_name, type_name
-                                        )));
-                                    }
-                                } else {
-                                    return Err(WasmError::new(format!(
-                                        "Gene type '{}' not registered for field assignment",
-                                        type_name
-                                    )));
-                                }
-                            } else {
-                                return Err(WasmError::new(format!(
-                                    "Cannot determine gene type for field assignment to '{}.{}'",
-                                    object_name, field_name
-                                )));
-                            }
-                        } else {
-                            // Simple identifier assignment
+                        // Emit the value expression
+                        self.emit_expression(function, value, locals, loop_ctx, string_pool)?;
 
                             // Emit the value expression
                             self.emit_expression(function, value, locals, loop_ctx)?;
@@ -1899,7 +2141,7 @@ impl WasmCompiler {
                 let body_ctx = LoopContext::enter_loop();
 
                 // Evaluate condition (in parent context, before loop constructs)
-                self.emit_expression(function, condition, locals, loop_ctx)?;
+                self.emit_expression(function, condition, locals, loop_ctx, string_pool)?;
 
                 // Branch out of outer block if condition is false (i32.eqz inverts boolean)
                 function.instruction(&Instruction::I32Eqz);
@@ -1907,7 +2149,7 @@ impl WasmCompiler {
 
                 // Loop body with loop context
                 for stmt in body {
-                    self.emit_statement(function, stmt, locals, body_ctx)?;
+                    self.emit_statement(function, stmt, locals, body_ctx, string_pool)?;
                 }
 
                 // Continue - branch back to loop start (depth 0)
@@ -1946,11 +2188,11 @@ impl WasmCompiler {
                     })?;
 
                     // Initialize loop variable with start value (in parent context)
-                    self.emit_expression(function, left, locals, loop_ctx)?;
+                    self.emit_expression(function, left, locals, loop_ctx, string_pool)?;
                     function.instruction(&Instruction::LocalSet(loop_var));
 
                     // Store end value (in parent context)
-                    self.emit_expression(function, right, locals, loop_ctx)?;
+                    self.emit_expression(function, right, locals, loop_ctx, string_pool)?;
                     function.instruction(&Instruction::LocalSet(end_var));
 
                     // Outer block for break
@@ -1971,7 +2213,7 @@ impl WasmCompiler {
 
                     // Body with loop context
                     for stmt in body {
-                        self.emit_statement(function, stmt, locals, body_ctx)?;
+                        self.emit_statement(function, stmt, locals, body_ctx, string_pool)?;
                     }
 
                     // Increment loop variable
@@ -2003,7 +2245,7 @@ impl WasmCompiler {
 
                 // Loop body with loop context
                 for stmt in body {
-                    self.emit_statement(function, stmt, locals, body_ctx)?;
+                    self.emit_statement(function, stmt, locals, body_ctx, string_pool)?;
                 }
 
                 // Continue - infinite loop back to start
@@ -2038,6 +2280,7 @@ impl WasmCompiler {
         expr: &crate::ast::Expr,
         locals: &LocalsTable,
         loop_ctx: LoopContext,
+        string_pool: &StringPool,
     ) -> Result<(), WasmError> {
         use crate::ast::{Expr, Literal};
         use wasm_encoder::Instruction;
@@ -2054,12 +2297,21 @@ impl WasmCompiler {
                     function.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
                 }
                 Literal::String(s) => {
-                    // Add string to table and get (ptr, len)
-                    let (ptr, len) = self.string_table.borrow_mut().add(s);
-                    // Push ptr and len onto stack as i32 values
-                    // This creates a "fat pointer" representation for strings
-                    function.instruction(&Instruction::I32Const(ptr as i32));
-                    function.instruction(&Instruction::I32Const(len as i32));
+                    // String literals are stored in the data section.
+                    // We look up the offset from the pre-collected string pool
+                    // and emit an i32.const with the pointer to the length-prefixed string.
+                    let offset =
+                        string_pool
+                            .strings
+                            .get(s)
+                            .map(|(off, _)| *off)
+                            .ok_or_else(|| {
+                                WasmError::new(format!(
+                                    "Internal error: string literal '{}' not found in string pool",
+                                    s
+                                ))
+                            })?;
+                    function.instruction(&Instruction::I32Const(offset as i32));
                 }
                 Literal::Char(_) => {
                     return Err(WasmError::new(
@@ -2080,11 +2332,20 @@ impl WasmCompiler {
                     let object_name = &name[..dot_pos];
                     let field_name = &name[dot_pos + 1..];
 
-                    // Look up the object variable
+                    // First check if this is an enum variant access (e.g., AccountType.Node)
+                    if let Some(variant_index) = self
+                        .enum_registry
+                        .get_variant_index(object_name, field_name)
+                    {
+                        // Emit the enum discriminant as i32 (enum types are always i32)
+                        function.instruction(&Instruction::I32Const(variant_index));
+                        return Ok(());
+                    }
+
+                    // Look up the object variable (fall back to struct field access)
                     let local_idx = locals.lookup(object_name).ok_or_else(|| {
                         WasmError::new(format!("Unknown identifier: {}", object_name))
                     })?;
-
                     // Get the DOL type of the object
                     let gene_type = locals.lookup_dol_type(object_name).map(|s| s.to_string());
 
@@ -2231,34 +2492,177 @@ impl WasmCompiler {
                         .lookup(name)
                         .ok_or_else(|| WasmError::new(format!("Unknown identifier: {}", name)))?;
                     function.instruction(&Instruction::LocalGet(local_idx));
+
+                    // If this is an i32 parameter (e.g., enum type), widen to i64
+                    // for compatibility with i64-based operations
+                    if locals.needs_widening(name) {
+                        function.instruction(&Instruction::I64ExtendI32S);
+                    }
                 }
             }
             Expr::Binary { left, op, right } => {
                 // Infer the operand type for correct instruction selection
                 let operand_type = self.infer_expression_type(left, locals);
                 // Emit left operand
-                self.emit_expression(function, left, locals, loop_ctx)?;
+                self.emit_expression(function, left, locals, loop_ctx, string_pool)?;
                 // Emit right operand
-                self.emit_expression(function, right, locals, loop_ctx)?;
-                // Emit operation with correct type
-                self.emit_binary_op(function, *op, operand_type)?;
+                self.emit_expression(function, right, locals, loop_ctx, string_pool)?;
+                // Emit operation
+                self.emit_binary_op(function, *op)?;
             }
             Expr::Call { callee, args } => {
-                // For now, only support direct function calls (not expressions)
-                if let Expr::Identifier(func_name) = callee.as_ref() {
-                    // Emit arguments
-                    for arg in args {
-                        self.emit_expression(function, arg, locals, loop_ctx)?;
+                match callee.as_ref() {
+                    // Direct function call: func(args)
+                    Expr::Identifier(func_name) => {
+                        // Emit arguments
+                        for arg in args {
+                            self.emit_expression(function, arg, locals, loop_ctx, string_pool)?;
+                        }
+                        // Look up function index
+                        let func_idx = locals.lookup_function(func_name).ok_or_else(|| {
+                            WasmError::new(format!("Unknown function: {}", func_name))
+                        })?;
+                        function.instruction(&Instruction::Call(func_idx));
                     }
-                    // Look up function index
-                    let func_idx = locals.lookup_function(func_name).ok_or_else(|| {
-                        WasmError::new(format!("Unknown function: {}", func_name))
-                    })?;
-                    function.instruction(&Instruction::Call(func_idx));
-                } else {
-                    return Err(WasmError::new(
-                        "Only direct function calls are supported in WASM compilation",
-                    ));
+                    // Method call: object.method(args)
+                    Expr::Member { object, field } => {
+                        // Emit the object (receiver) first
+                        self.emit_expression(function, object, locals, loop_ctx, string_pool)?;
+
+                        // Handle collection/iterator methods as passthrough for now
+                        // These methods return the object pointer unchanged (lazy evaluation)
+                        match field.as_str() {
+                            // Iterator creation methods - return the collection pointer
+                            "iter" | "into_iter" | "iter_mut" => {
+                                // Collection is already on stack, no-op
+                            }
+                            // Transformation methods - return an iterator/collection pointer
+                            "map" | "filter" | "filter_map" | "flat_map" | "take" | "skip"
+                            | "enumerate" | "zip" | "chain" | "rev" => {
+                                // Emit any closure/function arguments
+                                for arg in args {
+                                    self.emit_expression(
+                                        function,
+                                        arg,
+                                        locals,
+                                        loop_ctx,
+                                        string_pool,
+                                    )?;
+                                    // Drop the closure arg for now (lazy evaluation)
+                                    function.instruction(&Instruction::Drop);
+                                }
+                                // Keep the collection pointer on stack
+                            }
+                            // Terminal methods - consume iterator and produce result
+                            "collect" | "sum" | "product" | "count" | "last" | "first" => {
+                                // For now, just return the pointer
+                                // TODO: Implement actual collection materialization
+                            }
+                            // Option methods
+                            "unwrap" | "unwrap_or" | "unwrap_or_else" | "expect" => {
+                                // For unwrap, just return the inner value pointer
+                                // TODO: Implement proper unwrapping with panic handling
+                            }
+                            "is_some" | "is_none" => {
+                                // Check if pointer is null
+                                function.instruction(&Instruction::I32Const(0));
+                                if field == "is_none" {
+                                    function.instruction(&Instruction::I32Eq);
+                                } else {
+                                    function.instruction(&Instruction::I32Ne);
+                                }
+                            }
+                            // List/Vec methods
+                            "len" | "length" | "size" => {
+                                // Load length from first word of collection struct
+                                function.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                    offset: 0,
+                                    align: 2,
+                                    memory_index: 0,
+                                }));
+                                // Widen to i64 for consistency
+                                function.instruction(&Instruction::I64ExtendI32U);
+                            }
+                            "is_empty" => {
+                                // Check if length is 0
+                                function.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                    offset: 0,
+                                    align: 2,
+                                    memory_index: 0,
+                                }));
+                                function.instruction(&Instruction::I32Const(0));
+                                function.instruction(&Instruction::I32Eq);
+                            }
+                            "push" | "pop" | "insert" | "remove" | "clear" => {
+                                // Mutation methods - emit args and drop for now
+                                for arg in args {
+                                    self.emit_expression(
+                                        function,
+                                        arg,
+                                        locals,
+                                        loop_ctx,
+                                        string_pool,
+                                    )?;
+                                    function.instruction(&Instruction::Drop);
+                                }
+                            }
+                            "get" => {
+                                // Get element at index - emit index arg
+                                if let Some(idx_arg) = args.first() {
+                                    self.emit_expression(
+                                        function,
+                                        idx_arg,
+                                        locals,
+                                        loop_ctx,
+                                        string_pool,
+                                    )?;
+                                    // TODO: Implement proper array indexing
+                                    function.instruction(&Instruction::Drop);
+                                }
+                            }
+                            // Map methods
+                            "keys" | "values" | "entries" | "contains_key" => {
+                                // For now, return the map pointer
+                                for arg in args {
+                                    self.emit_expression(
+                                        function,
+                                        arg,
+                                        locals,
+                                        loop_ctx,
+                                        string_pool,
+                                    )?;
+                                    function.instruction(&Instruction::Drop);
+                                }
+                            }
+                            // Clone/Copy
+                            "clone" | "copy" => {
+                                // For now, just return the same pointer
+                            }
+                            // Default: Try as gene method call
+                            _ => {
+                                // Emit arguments (self is already on stack)
+                                for arg in args {
+                                    self.emit_expression(
+                                        function,
+                                        arg,
+                                        locals,
+                                        loop_ctx,
+                                        string_pool,
+                                    )?;
+                                }
+                                // Look up method as function
+                                let func_idx = locals.lookup_function(field).ok_or_else(|| {
+                                    WasmError::new(format!("Unknown method: {}", field))
+                                })?;
+                                function.instruction(&Instruction::Call(func_idx));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(WasmError::new(
+                            "Only direct function calls and method calls are supported in WASM compilation",
+                        ));
+                    }
                 }
             }
             Expr::If {
@@ -2267,7 +2671,7 @@ impl WasmCompiler {
                 else_branch,
             } => {
                 // Emit condition (should produce i32 boolean value)
-                self.emit_expression(function, condition, locals, loop_ctx)?;
+                self.emit_expression(function, condition, locals, loop_ctx, string_pool)?;
 
                 // Determine result type based on whether we have an else branch
                 // AND whether the branches actually produce values
@@ -2287,12 +2691,12 @@ impl WasmCompiler {
                 let if_ctx = loop_ctx.enter_block();
 
                 // Emit then branch with updated context
-                self.emit_expression(function, then_branch, locals, if_ctx)?;
+                self.emit_expression(function, then_branch, locals, if_ctx, string_pool)?;
 
                 // Emit else branch if present
                 if let Some(else_expr) = else_branch {
                     function.instruction(&Instruction::Else);
-                    self.emit_expression(function, else_expr, locals, if_ctx)?;
+                    self.emit_expression(function, else_expr, locals, if_ctx, string_pool)?;
                 }
 
                 function.instruction(&Instruction::End);
@@ -2305,12 +2709,12 @@ impl WasmCompiler {
                 // Note: A pure block expression doesn't add WASM block structure,
                 // so we don't increment the loop context here
                 for stmt in statements {
-                    self.emit_statement(function, stmt, locals, loop_ctx)?;
+                    self.emit_statement(function, stmt, locals, loop_ctx, string_pool)?;
                 }
 
                 // Emit final expression if present (this becomes the block's value)
                 if let Some(expr) = final_expr {
-                    self.emit_expression(function, expr, locals, loop_ctx)?;
+                    self.emit_expression(function, expr, locals, loop_ctx, string_pool)?;
                 }
             }
             Expr::Match { scrutinee, arms } => {
@@ -2328,7 +2732,7 @@ impl WasmCompiler {
                     .position(|arm| matches!(&arm.pattern, Pattern::Wildcard));
 
                 // Emit the scrutinee value
-                self.emit_expression(function, scrutinee, locals, loop_ctx)?;
+                self.emit_expression(function, scrutinee, locals, loop_ctx, string_pool)?;
 
                 // Store in a temporary local for multiple pattern checks
                 let temp_local = locals.lookup("__match_temp").ok_or_else(|| {
@@ -2349,6 +2753,7 @@ impl WasmCompiler {
                     wildcard_idx,
                     locals,
                     loop_ctx,
+                    string_pool,
                 )?;
             }
             Expr::Lambda { .. } => {
@@ -2367,7 +2772,7 @@ impl WasmCompiler {
                 };
 
                 // Emit object expression (should produce a pointer)
-                self.emit_expression(function, object, locals, loop_ctx)?;
+                self.emit_expression(function, object, locals, loop_ctx, string_pool)?;
 
                 // Look up the gene layout and field
                 if let Some(type_name) = gene_type {
@@ -2440,12 +2845,12 @@ impl WasmCompiler {
                     UnaryOp::Neg => {
                         // For negation: 0 - value (i64)
                         function.instruction(&Instruction::I64Const(0));
-                        self.emit_expression(function, operand, locals, loop_ctx)?;
+                        self.emit_expression(function, operand, locals, loop_ctx, string_pool)?;
                         function.instruction(&Instruction::I64Sub);
                     }
                     UnaryOp::Not => {
                         // For boolean not: eqz (value == 0)
-                        self.emit_expression(function, operand, locals, loop_ctx)?;
+                        self.emit_expression(function, operand, locals, loop_ctx, string_pool)?;
                         function.instruction(&Instruction::I64Eqz);
                     }
                     _ => {
@@ -2525,7 +2930,13 @@ impl WasmCompiler {
                             // Get pointer
                             function.instruction(&Instruction::LocalGet(ptr_local));
                             // Emit value
-                            self.emit_expression(function, field_value, locals, loop_ctx)?;
+                            self.emit_expression(
+                                function,
+                                field_value,
+                                locals,
+                                loop_ctx,
+                                string_pool,
+                            )?;
                             // Store at offset
                             use crate::wasm::layout::WasmFieldType;
                             match field_layout.wasm_type {
@@ -2605,6 +3016,7 @@ impl WasmCompiler {
         wildcard_idx: Option<usize>,
         locals: &LocalsTable,
         loop_ctx: LoopContext,
+        string_pool: &StringPool,
     ) -> Result<(), WasmError> {
         use crate::ast::{Literal, Pattern};
         use wasm_encoder::Instruction;
@@ -2630,10 +3042,11 @@ impl WasmCompiler {
                     wildcard_idx,
                     locals,
                     loop_ctx,
+                    string_pool,
                 );
             } else {
                 // This is the last arm and it's wildcard - emit its body directly
-                self.emit_expression(function, &arm.body, locals, loop_ctx)?;
+                self.emit_expression(function, &arm.body, locals, loop_ctx, string_pool)?;
                 return Ok(());
             }
         }
@@ -2671,7 +3084,7 @@ impl WasmCompiler {
                 let if_ctx = loop_ctx.enter_block();
 
                 // Emit the body for this arm
-                self.emit_expression(function, &arm.body, locals, if_ctx)?;
+                self.emit_expression(function, &arm.body, locals, if_ctx, string_pool)?;
 
                 function.instruction(&Instruction::Else);
 
@@ -2688,10 +3101,17 @@ impl WasmCompiler {
                         wildcard_idx,
                         locals,
                         if_ctx,
+                        string_pool,
                     )?;
                 } else if let Some(wild_idx) = wildcard_idx {
                     // Emit wildcard body
-                    self.emit_expression(function, &arms[wild_idx].body, locals, if_ctx)?;
+                    self.emit_expression(
+                        function,
+                        &arms[wild_idx].body,
+                        locals,
+                        if_ctx,
+                        string_pool,
+                    )?;
                 } else {
                     // No wildcard - this is non-exhaustive
                     // Emit unreachable or a default value
@@ -2703,7 +3123,7 @@ impl WasmCompiler {
             Pattern::Identifier(_) => {
                 // Identifier pattern binds the value - for now, treat like wildcard
                 // In a full implementation, we'd bind to a local variable
-                self.emit_expression(function, &arm.body, locals, loop_ctx)?;
+                self.emit_expression(function, &arm.body, locals, loop_ctx, string_pool)?;
             }
             _ => {
                 return Err(WasmError::new(format!(

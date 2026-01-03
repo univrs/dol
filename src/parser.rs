@@ -466,6 +466,32 @@ impl<'a> Parser<'a> {
                     self.parse_declaration()
                 }
             }
+            TokenKind::Const => {
+                // Parse constant declaration: const NAME: TYPE = value
+                let start_span = self.current.span;
+                self.advance(); // consume 'const'
+
+                // Parse name
+                let name = self.expect_identifier()?;
+
+                // Parse type annotation
+                self.expect(TokenKind::Colon)?;
+                let type_ann = Some(self.parse_type()?);
+
+                // Parse value
+                self.expect(TokenKind::Equal)?;
+                let value = Some(self.parse_expr(0)?);
+
+                let span = start_span.merge(&self.previous.span);
+
+                Ok(Declaration::Const(VarDecl {
+                    mutability: Mutability::Immutable,
+                    name,
+                    type_ann,
+                    value,
+                    span,
+                }))
+            }
             _ => Err(ParseError::InvalidDeclaration {
                 found: self.current.lexeme.clone(),
                 span: self.current.span,

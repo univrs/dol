@@ -232,8 +232,25 @@ impl RustCodegen {
             Declaration::System(system) => self.generate_system(system),
             Declaration::Evolution(evolution) => self.generate_evolution(evolution),
             Declaration::Function(func) => self.generate_toplevel_function(func),
-            Declaration::SexVar(var) => self.gen_global_var(var),
+            Declaration::Const(var) => self.generate_const(var),
         }
+    }
+
+    /// Generate a Rust constant declaration.
+    fn generate_const(&self, var: &crate::ast::VarDecl) -> String {
+        let visibility = self.visibility_str();
+        let name = var.name.to_uppercase().replace('.', "_");
+        let type_str = var
+            .type_ann
+            .as_ref()
+            .map(|t| self.gen_type(t))
+            .unwrap_or_else(|| "i64".to_string());
+        let value = var
+            .value
+            .as_ref()
+            .map(|e| self.gen_expr(e))
+            .unwrap_or_else(|| "0".to_string());
+        format!("{}const {}: {} = {};", visibility, name, type_str, value)
     }
 
     /// Generate a top-level Rust function from a function declaration.
@@ -550,10 +567,13 @@ impl RustCodegen {
             output.push_str("    }\n");
         }
 
+        // Collect field names for self. prefix resolution
+        let field_names: Vec<&str> = fields.iter().map(|(name, _, _, _)| name.as_str()).collect();
+
         // Generate methods from function declarations
         for func in functions {
             output.push('\n');
-            output.push_str(&self.gen_method(func));
+            output.push_str(&self.gen_method_with_fields(func, &field_names));
         }
 
         output.push_str("}\n");
@@ -562,6 +582,12 @@ impl RustCodegen {
 
     /// Generate a Rust method from a function declaration.
     fn gen_method(&self, func: &FunctionDecl) -> String {
+        // Delegate to gen_method_with_fields with empty field list
+        self.gen_method_with_fields(func, &[])
+    }
+
+    /// Generate a Rust method with field name tracking for self. prefix.
+    fn gen_method_with_fields(&self, func: &FunctionDecl, field_names: &[&str]) -> String {
         let visibility = self.visibility_str();
         let mut output = String::new();
 
@@ -589,10 +615,10 @@ impl RustCodegen {
         }
 
         // If no explicit self parameter but this is a method in an impl block,
-        // add &mut self by default (methods in genes that use `this.field` need this)
+        // add &self by default (DOL methods are read-only unless explicitly mutating)
         if !skip_first {
             // Methods in impl blocks need a self receiver
-            params_str.push("&mut self".to_string());
+            params_str.push("&self".to_string());
         }
 
         // Add remaining parameters
@@ -615,9 +641,49 @@ impl RustCodegen {
 
         output.push_str(" {\n");
 
-        // Generate method body
+        // Generate method body with field name resolution
         for stmt in &func.body {
-            output.push_str(&self.gen_stmt(stmt, 2));
+            let mut stmt_code = self.gen_stmt(stmt, 2);
+
+            // Add self. prefix for field names that appear as bare identifiers
+            // We do this by replacing field names that are not already prefixed
+            for field_name in field_names {
+                // Match patterns where field appears as a complete identifier
+                // (followed by non-identifier characters to avoid matching inside other words)
+                // Pattern pairs: (match, replacement)
+                // All patterns require word boundary after field name
+                let non_ident_chars = [
+                    ' ', ')', '/', '*', '+', '-', ',', ';', '\n', '\t', '.', ':', '<', '>', '=',
+                    '!', '&', '|', '[', ']', '{', '}',
+                ];
+
+                for suffix in non_ident_chars.iter() {
+                    // After open paren: (field_name...
+                    let from = format!("({}{}", field_name, suffix);
+                    let to = format!("(self.{}{}", field_name, suffix);
+                    stmt_code = stmt_code.replace(&from, &to);
+
+                    // After space: " field_name..." but NOT inside keywords
+                    // Check that next char is not alphabetic (would mean it's part of larger word)
+                    let from = format!(" {}{}", field_name, suffix);
+                    let to = format!(" self.{}{}", field_name, suffix);
+                    stmt_code = stmt_code.replace(&from, &to);
+                }
+
+                // Handle "return field_name;"
+                let from = format!("return {};", field_name);
+                let to = format!("return self.{};", field_name);
+                stmt_code = stmt_code.replace(&from, &to);
+
+                // Handle "return (field_name"
+                let from = format!("return ({}", field_name);
+                let to = format!("return (self.{}", field_name);
+                if !stmt_code.contains(&format!("return (self.{}", field_name)) {
+                    stmt_code = stmt_code.replace(&from, &to);
+                }
+            }
+
+            output.push_str(&stmt_code);
         }
 
         output.push_str("    }\n");
@@ -3562,6 +3628,7 @@ impl TypeMapper for RustCodegen {
     fn map_type_expr(ty: &TypeExpr) -> String {
         match ty {
             TypeExpr::Named(name) => match name.as_str() {
+                // DOL canonical types (PascalCase)
                 "Int8" => "i8".to_string(),
                 "Int16" => "i16".to_string(),
                 "Int32" => "i32".to_string(),
@@ -3569,13 +3636,27 @@ impl TypeMapper for RustCodegen {
                 "UInt8" => "u8".to_string(),
                 "UInt16" => "u16".to_string(),
                 "UInt32" => "u32".to_string(),
-                "UInt64" => "isize".to_string(),
+                "UInt64" => "u64".to_string(),
                 "Float32" => "f32".to_string(),
                 "Float64" => "f64".to_string(),
                 "String" => "String".to_string(),
                 "Char" => "char".to_string(),
                 "Bool" => "bool".to_string(),
                 "Void" => "()".to_string(),
+                // Rust-style aliases (for ergonomics in DOL source)
+                "i8" => "i8".to_string(),
+                "i16" => "i16".to_string(),
+                "i32" => "i32".to_string(),
+                "i64" => "i64".to_string(),
+                "u8" => "u8".to_string(),
+                "u16" => "u16".to_string(),
+                "u32" => "u32".to_string(),
+                "u64" => "u64".to_string(),
+                "f32" => "f32".to_string(),
+                "f64" => "f64".to_string(),
+                "bool" => "bool".to_string(),
+                "isize" => "isize".to_string(),
+                "usize" => "usize".to_string(),
                 _ => to_pascal_case(name),
             },
             TypeExpr::Generic { name, args } => {

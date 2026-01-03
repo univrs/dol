@@ -166,8 +166,7 @@ fn walk_declaration<V: Visitor + ?Sized>(v: &mut V, decl: &Declaration) {
         Declaration::System(sys) => v.visit_system(sys),
         Declaration::Evolution(evo) => v.visit_evolution(evo),
         Declaration::Function(func) => v.visit_function_decl(func),
-        Declaration::SexVar(_) => { /* SexVar has no nested structure to visit */ }
-        Declaration::Const(_) => { /* Const has no nested structure to visit */ }
+        Declaration::Const(_) => {} // Constants don't need walking
     }
 }
 
@@ -378,8 +377,7 @@ fn walk_declaration_mut<V: MutVisitor + ?Sized>(v: &mut V, decl: &mut Declaratio
         Declaration::System(sys) => v.visit_system(sys),
         Declaration::Evolution(evo) => v.visit_evolution(evo),
         Declaration::Function(func) => v.visit_function_decl(func),
-        Declaration::SexVar(_) => { /* SexVar has no nested structure to visit */ }
-        Declaration::Const(_) => { /* Const has no nested structure to visit */ }
+        Declaration::Const(_) => {} // Constants don't need walking
     }
 }
 
