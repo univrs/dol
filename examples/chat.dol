@@ -1,0 +1,35 @@
+// Chat - Multi-Spirit coordination
+// All effects inferred from usage
+
+gene ChatRoom {
+    has name: String
+    has message_count: Int
+
+    fun tick() {
+        if pending() > 0 {
+            let msg = recv()
+            let from = sender()
+
+            println("[" + self.name + "] " + from.to_string() + ": " + msg)
+            broadcast(msg)
+
+            self.message_count = self.message_count + 1
+        }
+    }
+}
+
+gene ChatUser {
+    has name: String
+    has room: SpiritId
+
+    fun say(msg: String) {
+        send(self.room, self.name + ": " + msg)
+    }
+
+    fun tick() {
+        if pending() > 0 {
+            let msg = recv()
+            println("[" + self.name + " sees] " + msg)
+        }
+    }
+}

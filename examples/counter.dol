@@ -1,0 +1,27 @@
+// Counter Spirit - Stateful example
+// Mutation effects inferred automatically
+
+gene Counter {
+    has value: Int
+
+    fun get() -> Int {
+        return self.value
+    }
+
+    fun increment() {
+        self.value = self.value + 1
+        println("Counter: " + self.value.to_string())
+    }
+
+    fun add(n: Int) -> Int {
+        self.value = self.value + n
+        return self.value
+    }
+}
+
+fun main() {
+    let c = Counter { value: 0 }
+    c.increment()
+    c.increment()
+    print("Final: " + c.get().to_string())
+}

@@ -1,0 +1,257 @@
+// Effect System Test: Transitive Diamond Pattern
+// ===============================================
+//
+// What this test validates:
+//   - Diamond dependency pattern in call graphs
+//   - A calls B and C, both B and C call D
+//   - Effect from D propagates through both paths to A
+//   - Effect deduplication (same effect through multiple paths = single effect)
+//   - Mixed effects through diamond patterns
+//
+// Expected effect inference results:
+//   - diamond_top() -> Effectful(IO) when bottom is effectful
+//   - diamond_top_pure() -> Pure when entire diamond is pure
+
+gene Diamond.Pure @0.1.0 {
+    """
+    Diamond pattern where all functions are pure.
+    The entire diamond remains pure.
+
+         top
+        /   \
+       B     C
+        \   /
+       bottom
+    """
+
+    // Bottom of diamond - pure
+    fn bottom(x: Int) -> Int {
+        x * x
+    }
+
+    // Left path - calls bottom
+    fn left(x: Int) -> Int {
+        bottom(x) + 1
+    }
+
+    // Right path - calls bottom
+    fn right(x: Int) -> Int {
+        bottom(x) - 1
+    }
+
+    // Top of diamond - calls both left and right
+    fn top(x: Int) -> Int {
+        left(x) + right(x)
+    }
+}
+
+gene Diamond.Effectful @0.1.0 {
+    """
+    Diamond pattern where bottom is effectful.
+    Effect propagates through both paths to top.
+
+         top (IO)
+        /   \
+       B(IO) C(IO)
+        \   /
+       bottom(IO)
+    """
+
+    // Bottom of diamond - effectful
+    fn bottom(x: Int) -> Int {
+        @io.println("bottom: " + @fmt.int(x));
+        x * x
+    }
+
+    // Left path - calls bottom -> effectful
+    fn left(x: Int) -> Int {
+        bottom(x) + 1
+    }
+
+    // Right path - calls bottom -> effectful
+    fn right(x: Int) -> Int {
+        bottom(x) - 1
+    }
+
+    // Top of diamond - calls both -> effectful (effect deduplicated)
+    fn top(x: Int) -> Int {
+        left(x) + right(x)
+    }
+}
+
+gene Diamond.Mixed @0.1.0 {
+    """
+    Diamond with different effects on different paths.
+    Top accumulates effects from both paths.
+
+         top (IO + Msg)
+        /   \
+       B(IO) C(Msg)
+        \   /
+       bottom (pure)
+    """
+
+    // Bottom - pure
+    fn bottom(x: Int) -> Int {
+        x * x
+    }
+
+    // Left path - IO effect
+    fn left(x: Int) -> Int {
+        let result = bottom(x);
+        @io.println("left: " + @fmt.int(result));
+        result + 1
+    }
+
+    // Right path - Msg effect
+    fn right(x: Int) -> Int {
+        let result = bottom(x);
+        @msg.send(@msg.self(), result);
+        result - 1
+    }
+
+    // Top - accumulates both IO and Msg effects
+    fn top(x: Int) -> Int {
+        left(x) + right(x)
+    }
+}
+
+gene Diamond.Deep @0.1.0 {
+    """
+    Multiple stacked diamond patterns.
+
+           top
+          /   \
+         M1   M2
+        / \ / \
+       L1 L2 L3 L4
+        \  \/  /
+         bottom
+    """
+
+    // Bottom - effectful
+    fn bottom(x: Int) -> Int {
+        @io.println("bottom");
+        x
+    }
+
+    // Layer 1 - all call bottom
+    fn l1(x: Int) -> Int { bottom(x) + 1 }
+    fn l2(x: Int) -> Int { bottom(x) + 2 }
+    fn l3(x: Int) -> Int { bottom(x) + 3 }
+    fn l4(x: Int) -> Int { bottom(x) + 4 }
+
+    // Middle layer - diamonds formed
+    fn m1(x: Int) -> Int { l1(x) + l2(x) }
+    fn m2(x: Int) -> Int { l3(x) + l4(x) }
+
+    // Top - combines middle layer
+    fn top(x: Int) -> Int { m1(x) + m2(x) }
+}
+
+gene Diamond.Conditional @0.1.0 {
+    """
+    Diamond with conditional calls.
+    Effect status depends on reachability analysis.
+    """
+
+    fn bottom_pure(x: Int) -> Int {
+        x * 2
+    }
+
+    fn bottom_effectful(x: Int) -> Int {
+        @io.println("effectful bottom");
+        x * 2
+    }
+
+    // Left path - conditionally effectful
+    fn left(x: Int, use_pure: Bool) -> Int {
+        if use_pure {
+            bottom_pure(x)
+        } else {
+            bottom_effectful(x)
+        }
+    }
+
+    // Right path - conditionally effectful
+    fn right(x: Int, use_pure: Bool) -> Int {
+        if use_pure {
+            bottom_pure(x)
+        } else {
+            bottom_effectful(x)
+        }
+    }
+
+    // Top - must be effectful because effectful path is reachable
+    fn top(x: Int, use_pure: Bool) -> Int {
+        left(x, use_pure) + right(x, use_pure)
+    }
+}
+
+gene Diamond.Recursive @0.1.0 {
+    """
+    Recursive diamond pattern.
+    Effect must propagate even through recursive calls.
+    """
+
+    fn effectful_base(x: Int) -> Int {
+        @io.println("base case");
+        1
+    }
+
+    fn pure_combine(a: Int, b: Int) -> Int {
+        a + b
+    }
+
+    // Recursive with effectful base case
+    fn diamond_fib(n: Int) -> Int {
+        if n <= 1 {
+            effectful_base(n)
+        } else {
+            pure_combine(diamond_fib(n - 1), diamond_fib(n - 2))
+        }
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    // Pure diamond
+    assert_pure(Diamond.Pure.bottom);
+    assert_pure(Diamond.Pure.left);
+    assert_pure(Diamond.Pure.right);
+    assert_pure(Diamond.Pure.top);
+
+    // Effectful diamond
+    assert_effectful(Diamond.Effectful.bottom, IO);
+    assert_effectful(Diamond.Effectful.left, IO);
+    assert_effectful(Diamond.Effectful.right, IO);
+    assert_effectful(Diamond.Effectful.top, IO);
+
+    // Mixed diamond
+    assert_pure(Diamond.Mixed.bottom);
+    assert_effectful(Diamond.Mixed.left, IO);
+    assert_effectful(Diamond.Mixed.right, Msg);
+    assert_effectful(Diamond.Mixed.top, [IO, Msg]);
+
+    // Deep diamond
+    assert_effectful(Diamond.Deep.bottom, IO);
+    assert_effectful(Diamond.Deep.l1, IO);
+    assert_effectful(Diamond.Deep.l2, IO);
+    assert_effectful(Diamond.Deep.l3, IO);
+    assert_effectful(Diamond.Deep.l4, IO);
+    assert_effectful(Diamond.Deep.m1, IO);
+    assert_effectful(Diamond.Deep.m2, IO);
+    assert_effectful(Diamond.Deep.top, IO);
+
+    // Conditional diamond - conservatively effectful
+    assert_pure(Diamond.Conditional.bottom_pure);
+    assert_effectful(Diamond.Conditional.bottom_effectful, IO);
+    assert_effectful(Diamond.Conditional.left, IO);
+    assert_effectful(Diamond.Conditional.right, IO);
+    assert_effectful(Diamond.Conditional.top, IO);
+
+    // Recursive diamond
+    assert_effectful(Diamond.Recursive.effectful_base, IO);
+    assert_pure(Diamond.Recursive.pure_combine);
+    assert_effectful(Diamond.Recursive.diamond_fib, IO);
+}

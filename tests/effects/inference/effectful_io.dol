@@ -1,0 +1,120 @@
+// Effect System Test: I/O Effects
+// ================================
+//
+// What this test validates:
+//   - Functions performing I/O operations are inferred as effectful
+//   - print, println, log, error intrinsics mark functions as effectful
+//   - I/O effect is correctly propagated
+//
+// Expected effect inference results:
+//   - print(msg) -> Effectful(IO)
+//   - println(msg) -> Effectful(IO)
+//   - log(level, msg) -> Effectful(IO)
+//   - error(msg) -> Effectful(IO)
+//   - debug(value) -> Effectful(IO)
+//   - trace(label, value) -> Effectful(IO)
+
+gene IO.Basic @0.1.0 {
+    """
+    Basic I/O operations that introduce the IO effect.
+    These functions interact with the external world
+    (console, logging system) and cannot be pure.
+    """
+
+    // Effectful(IO): writes to stdout without newline
+    fn print(msg: String) -> Unit {
+        @io.print(msg)
+    }
+
+    // Effectful(IO): writes to stdout with newline
+    fn println(msg: String) -> Unit {
+        @io.println(msg)
+    }
+
+    // Effectful(IO): writes to logging system
+    fn log(level: String, msg: String) -> Unit {
+        @io.log(level, msg)
+    }
+
+    // Effectful(IO): writes to stderr
+    fn error(msg: String) -> Unit {
+        @io.error(msg)
+    }
+
+    // Effectful(IO): debug output with value inspection
+    fn debug(value: Any) -> Unit {
+        @io.println("[DEBUG] " + @fmt.debug(value))
+    }
+
+    // Effectful(IO): trace with label
+    fn trace(label: String, value: Any) -> Unit {
+        @io.println("[TRACE] " + label + ": " + @fmt.debug(value))
+    }
+
+    // Effectful(IO): formatted print
+    fn printf(format: String, args: List[Any]) -> Unit {
+        @io.print(@fmt.format(format, args))
+    }
+
+    // Effectful(IO): read from stdin
+    fn read_line() -> String {
+        @io.read_line()
+    }
+
+    // Effectful(IO): prompt and read
+    fn prompt(msg: String) -> String {
+        print(msg);
+        read_line()
+    }
+}
+
+gene IO.Logging @0.1.0 {
+    """
+    Structured logging operations with different levels.
+    All logging operations are effectful.
+    """
+
+    // Effectful(IO): info level log
+    fn info(msg: String) -> Unit {
+        @io.log("INFO", msg)
+    }
+
+    // Effectful(IO): warning level log
+    fn warn(msg: String) -> Unit {
+        @io.log("WARN", msg)
+    }
+
+    // Effectful(IO): error level log
+    fn error(msg: String) -> Unit {
+        @io.log("ERROR", msg)
+    }
+
+    // Effectful(IO): debug level log
+    fn debug(msg: String) -> Unit {
+        @io.log("DEBUG", msg)
+    }
+
+    // Effectful(IO): structured log with context
+    fn log_with_context(level: String, msg: String, context: Map[String, Any]) -> Unit {
+        @io.log(level, msg + " " + @fmt.debug(context))
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    assert_effectful(IO.Basic.print, IO);
+    assert_effectful(IO.Basic.println, IO);
+    assert_effectful(IO.Basic.log, IO);
+    assert_effectful(IO.Basic.error, IO);
+    assert_effectful(IO.Basic.debug, IO);
+    assert_effectful(IO.Basic.trace, IO);
+    assert_effectful(IO.Basic.printf, IO);
+    assert_effectful(IO.Basic.read_line, IO);
+    assert_effectful(IO.Basic.prompt, IO);
+
+    assert_effectful(IO.Logging.info, IO);
+    assert_effectful(IO.Logging.warn, IO);
+    assert_effectful(IO.Logging.error, IO);
+    assert_effectful(IO.Logging.debug, IO);
+    assert_effectful(IO.Logging.log_with_context, IO);
+}

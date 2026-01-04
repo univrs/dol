@@ -1,0 +1,104 @@
+// Test case: Math standard library usage
+//
+// This file tests the math stdlib derived functions.
+// The extern functions (ln, sin, cos, etc.) require libm
+// at link time, but derived functions are pure DOL.
+//
+// Expected features:
+// - Constant declarations (PI, E, etc.)
+// - Extern function declarations (sex extern fun)
+// - Derived function implementations
+
+module math_test @ 0.1.0
+
+// Local constants matching stdlib/math.dol
+const PI: f64 = 3.141592653589793
+const E: f64 = 2.718281828459045
+
+exegesis {
+    Test module for math library functionality.
+    Tests both constants and derived functions.
+}
+
+// Simulate extern - in actual use these call libm
+fun mock_sqrt(x: f64) -> f64 {
+    // Placeholder for testing derived functions
+    // In real execution, this would be: extern fun sqrt(x: f64) -> f64
+    return x  // Mock: just return input for compilation test
+}
+
+// Test: Derived function - degree to radian conversion
+fun deg_to_rad(deg: f64) -> f64 {
+    return deg * PI / 180.0
+}
+
+// Test: Derived function - radian to degree conversion
+fun rad_to_deg(rad: f64) -> f64 {
+    return rad * 180.0 / PI
+}
+
+// Test: Derived function - clamp value
+fun clamp(x: f64, min_val: f64, max_val: f64) -> f64 {
+    if x < min_val {
+        return min_val
+    }
+    if x > max_val {
+        return max_val
+    }
+    return x
+}
+
+// Test: Derived function - linear interpolation
+fun lerp(a: f64, b: f64, t: f64) -> f64 {
+    return a + t * (b - a)
+}
+
+// Test: Derived function - sign
+fun sign(x: f64) -> f64 {
+    if x < 0.0 {
+        return -1.0
+    }
+    if x > 0.0 {
+        return 1.0
+    }
+    return 0.0
+}
+
+// Test: EROEI calculation (Energy Return On Energy Invested)
+fun eroei(energy_out: f64, energy_in: f64) -> f64 {
+    if energy_in <= 0.0 {
+        return 0.0
+    }
+    return energy_out / energy_in
+}
+
+// Test: Efficiency percentage
+fun efficiency(useful_output: f64, total_input: f64) -> f64 {
+    if total_input <= 0.0 {
+        return 0.0
+    }
+    return (useful_output / total_input) * 100.0
+}
+
+// Integration test gene using math functions
+gene EnergySystem {
+    has input_energy: f64
+    has output_energy: f64
+
+    fun get_eroei() -> f64 {
+        return eroei(output_energy, input_energy)
+    }
+
+    fun get_efficiency() -> f64 {
+        return efficiency(output_energy, input_energy)
+    }
+
+    fun is_net_positive() -> bool {
+        return output_energy > input_energy
+    }
+}
+
+exegesis {
+    EnergySystem gene demonstrates using math functions
+    for thermodynamic calculations in the Univrs ecosystem.
+}

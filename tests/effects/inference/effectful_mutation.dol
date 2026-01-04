@@ -1,0 +1,185 @@
+// Effect System Test: Mutation Effects
+// =====================================
+//
+// What this test validates:
+//   - Functions that mutate state are inferred as effectful
+//   - Mutable fields in genes introduce Mutation effect
+//   - get operations on mutable state are also effectful (observable state)
+//
+// Expected effect inference results:
+//   - Counter.get() -> Effectful(Mut)
+//   - Counter.increment() -> Effectful(Mut)
+//   - Counter.set(value) -> Effectful(Mut)
+//   - Counter.add(n) -> Effectful(Mut)
+//   - Counter.reset() -> Effectful(Mut)
+
+gene Counter @0.1.0 {
+    """
+    A simple counter with mutable state.
+    All operations that access or modify the counter
+    value are effectful due to observable state mutation.
+    """
+
+    // Mutable state field
+    mut value: Int = 0
+
+    // Effectful(Mut): read current value
+    // Even reading is effectful because state is observable
+    fn get() -> Int {
+        self.value
+    }
+
+    // Effectful(Mut): increment counter by 1
+    fn increment() -> Unit {
+        self.value = self.value + 1
+    }
+
+    // Effectful(Mut): decrement counter by 1
+    fn decrement() -> Unit {
+        self.value = self.value - 1
+    }
+
+    // Effectful(Mut): set counter to specific value
+    fn set(new_value: Int) -> Unit {
+        self.value = new_value
+    }
+
+    // Effectful(Mut): add n to counter
+    fn add(n: Int) -> Unit {
+        self.value = self.value + n
+    }
+
+    // Effectful(Mut): subtract n from counter
+    fn subtract(n: Int) -> Unit {
+        self.value = self.value - n
+    }
+
+    // Effectful(Mut): reset counter to zero
+    fn reset() -> Unit {
+        self.value = 0
+    }
+
+    // Effectful(Mut): increment and return new value
+    fn increment_and_get() -> Int {
+        self.value = self.value + 1;
+        self.value
+    }
+
+    // Effectful(Mut): get and then increment
+    fn get_and_increment() -> Int {
+        let old = self.value;
+        self.value = self.value + 1;
+        old
+    }
+}
+
+gene Stack[T] @0.1.0 {
+    """
+    A mutable stack data structure.
+    Push and pop operations are effectful.
+    """
+
+    // Mutable state: list of elements
+    mut items: List[T] = []
+
+    // Effectful(Mut): push element onto stack
+    fn push(item: T) -> Unit {
+        self.items = @list.append(self.items, item)
+    }
+
+    // Effectful(Mut): pop element from stack
+    fn pop() -> Option[T] {
+        if @list.is_empty(self.items) {
+            None
+        } else {
+            let last = @list.last(self.items);
+            self.items = @list.init(self.items);
+            Some(last)
+        }
+    }
+
+    // Effectful(Mut): peek at top element
+    fn peek() -> Option[T] {
+        if @list.is_empty(self.items) {
+            None
+        } else {
+            Some(@list.last(self.items))
+        }
+    }
+
+    // Effectful(Mut): check if stack is empty
+    fn is_empty() -> Bool {
+        @list.is_empty(self.items)
+    }
+
+    // Effectful(Mut): get stack size
+    fn size() -> Int {
+        @list.length(self.items)
+    }
+
+    // Effectful(Mut): clear all elements
+    fn clear() -> Unit {
+        self.items = []
+    }
+}
+
+gene Cache[K, V] @0.1.0 {
+    """
+    A simple cache with mutable storage.
+    """
+
+    mut storage: Map[K, V] = {}
+
+    // Effectful(Mut): store value in cache
+    fn put(key: K, value: V) -> Unit {
+        self.storage = @map.insert(self.storage, key, value)
+    }
+
+    // Effectful(Mut): retrieve value from cache
+    fn get(key: K) -> Option[V] {
+        @map.get(self.storage, key)
+    }
+
+    // Effectful(Mut): remove value from cache
+    fn remove(key: K) -> Option[V] {
+        let value = @map.get(self.storage, key);
+        self.storage = @map.remove(self.storage, key);
+        value
+    }
+
+    // Effectful(Mut): check if key exists
+    fn contains(key: K) -> Bool {
+        @map.contains_key(self.storage, key)
+    }
+
+    // Effectful(Mut): clear entire cache
+    fn clear() -> Unit {
+        self.storage = {}
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    assert_effectful(Counter.get, Mut);
+    assert_effectful(Counter.increment, Mut);
+    assert_effectful(Counter.decrement, Mut);
+    assert_effectful(Counter.set, Mut);
+    assert_effectful(Counter.add, Mut);
+    assert_effectful(Counter.subtract, Mut);
+    assert_effectful(Counter.reset, Mut);
+    assert_effectful(Counter.increment_and_get, Mut);
+    assert_effectful(Counter.get_and_increment, Mut);
+
+    assert_effectful(Stack.push, Mut);
+    assert_effectful(Stack.pop, Mut);
+    assert_effectful(Stack.peek, Mut);
+    assert_effectful(Stack.is_empty, Mut);
+    assert_effectful(Stack.size, Mut);
+    assert_effectful(Stack.clear, Mut);
+
+    assert_effectful(Cache.put, Mut);
+    assert_effectful(Cache.get, Mut);
+    assert_effectful(Cache.remove, Mut);
+    assert_effectful(Cache.contains, Mut);
+    assert_effectful(Cache.clear, Mut);
+}

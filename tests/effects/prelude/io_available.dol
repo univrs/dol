@@ -1,0 +1,150 @@
+// Effect System Prelude Test: I/O Functions Available
+// ====================================================
+//
+// What this test validates:
+//   - All standard I/O prelude functions are available
+//   - I/O functions are correctly typed and callable
+//   - I/O effect is properly attributed to prelude functions
+//   - Both input and output operations are covered
+//
+// Expected effect inference results:
+//   - All @io.* functions should be Effectful(IO)
+
+gene Prelude.IO.Test @0.1.0 {
+    """
+    Tests availability and effect inference of I/O prelude functions.
+    """
+
+    // Test: @io.print - write to stdout without newline
+    fn test_print() -> Unit {
+        @io.print("Hello")
+    }
+
+    // Test: @io.println - write to stdout with newline
+    fn test_println() -> Unit {
+        @io.println("Hello, World!")
+    }
+
+    // Test: @io.eprint - write to stderr without newline
+    fn test_eprint() -> Unit {
+        @io.eprint("Error: ")
+    }
+
+    // Test: @io.eprintln - write to stderr with newline
+    fn test_eprintln() -> Unit {
+        @io.eprintln("Error occurred!")
+    }
+
+    // Test: @io.read_line - read line from stdin
+    fn test_read_line() -> String {
+        @io.read_line()
+    }
+
+    // Test: @io.read_all - read all from stdin
+    fn test_read_all() -> String {
+        @io.read_all()
+    }
+
+    // Test: @io.flush - flush stdout
+    fn test_flush() -> Unit {
+        @io.print("Buffered...");
+        @io.flush()
+    }
+
+    // Test: @io.log - structured logging
+    fn test_log() -> Unit {
+        @io.log("INFO", "Application started")
+    }
+
+    // Test: @io.log_at - logging with level
+    fn test_log_levels() -> Unit {
+        @io.log("DEBUG", "Debug message");
+        @io.log("INFO", "Info message");
+        @io.log("WARN", "Warning message");
+        @io.log("ERROR", "Error message")
+    }
+
+    // Combined usage test
+    fn test_combined_io() -> Unit {
+        @io.println("=== Starting Test ===");
+        @io.print("Enter your name: ");
+        @io.flush();
+        let name = @io.read_line();
+        @io.println("Hello, " + name + "!");
+        @io.log("INFO", "Greeted user: " + name);
+        @io.println("=== Test Complete ===")
+    }
+
+    // File I/O operations
+    fn test_file_read(path: String) -> String {
+        @io.read_file(path)
+    }
+
+    fn test_file_write(path: String, content: String) -> Unit {
+        @io.write_file(path, content)
+    }
+
+    fn test_file_append(path: String, content: String) -> Unit {
+        @io.append_file(path, content)
+    }
+
+    fn test_file_exists(path: String) -> Bool {
+        @io.file_exists(path)
+    }
+
+    fn test_file_delete(path: String) -> Unit {
+        @io.delete_file(path)
+    }
+
+    // Directory operations
+    fn test_dir_list(path: String) -> List[String] {
+        @io.list_dir(path)
+    }
+
+    fn test_dir_create(path: String) -> Unit {
+        @io.create_dir(path)
+    }
+
+    fn test_dir_exists(path: String) -> Bool {
+        @io.dir_exists(path)
+    }
+}
+
+// Test assertions for prelude availability and effects
+test prelude_io {
+    // Output functions - all Effectful(IO)
+    assert_effectful(Prelude.IO.Test.test_print, IO);
+    assert_effectful(Prelude.IO.Test.test_println, IO);
+    assert_effectful(Prelude.IO.Test.test_eprint, IO);
+    assert_effectful(Prelude.IO.Test.test_eprintln, IO);
+    assert_effectful(Prelude.IO.Test.test_flush, IO);
+    assert_effectful(Prelude.IO.Test.test_log, IO);
+    assert_effectful(Prelude.IO.Test.test_log_levels, IO);
+
+    // Input functions - all Effectful(IO)
+    assert_effectful(Prelude.IO.Test.test_read_line, IO);
+    assert_effectful(Prelude.IO.Test.test_read_all, IO);
+
+    // Combined - Effectful(IO)
+    assert_effectful(Prelude.IO.Test.test_combined_io, IO);
+
+    // File operations - all Effectful(IO)
+    assert_effectful(Prelude.IO.Test.test_file_read, IO);
+    assert_effectful(Prelude.IO.Test.test_file_write, IO);
+    assert_effectful(Prelude.IO.Test.test_file_append, IO);
+    assert_effectful(Prelude.IO.Test.test_file_exists, IO);
+    assert_effectful(Prelude.IO.Test.test_file_delete, IO);
+
+    // Directory operations - all Effectful(IO)
+    assert_effectful(Prelude.IO.Test.test_dir_list, IO);
+    assert_effectful(Prelude.IO.Test.test_dir_create, IO);
+    assert_effectful(Prelude.IO.Test.test_dir_exists, IO);
+
+    // Type signatures
+    assert_signature(@io.print, Fn(String) -> Unit);
+    assert_signature(@io.println, Fn(String) -> Unit);
+    assert_signature(@io.read_line, Fn() -> String);
+    assert_signature(@io.log, Fn(String, String) -> Unit);
+    assert_signature(@io.read_file, Fn(String) -> String);
+    assert_signature(@io.write_file, Fn(String, String) -> Unit);
+}

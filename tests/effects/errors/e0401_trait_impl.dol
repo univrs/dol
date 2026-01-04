@@ -1,0 +1,142 @@
+// Effect System Error Test: E0401 - Effectful Implementation of Pure Trait Method
+// ================================================================================
+//
+// What this test validates:
+//   - Error E0401 is raised when implementing a pure trait method with effects
+//   - Trait contracts specify purity requirements
+//   - Implementations must honor the trait's effect constraints
+//
+// Expected error:
+//   E0401: effectful implementation of pure trait method
+//   - Trait 'Comparable' declares 'compare' as pure
+//   - Implementation in 'Counter' contains IO effects
+//
+// This is a compile-time error - the file should NOT parse/validate successfully
+
+trait Comparable @0.1.0 {
+    """
+    Trait for types that can be compared.
+    The compare method MUST be pure - no side effects allowed.
+    """
+
+    // Declared as pure (no effect annotation = pure by default)
+    fn compare(self, other: Self) -> Int;
+
+    // Pure helper methods derived from compare
+    fn less_than(self, other: Self) -> Bool {
+        self.compare(other) < 0
+    }
+
+    fn greater_than(self, other: Self) -> Bool {
+        self.compare(other) > 0
+    }
+
+    fn equals(self, other: Self) -> Bool {
+        self.compare(other) == 0
+    }
+}
+
+gene Counter @0.1.0 {
+    """
+    A counter that incorrectly implements Comparable with effects.
+    """
+
+    value: Int
+
+    // ERROR E0401: This implementation is effectful but trait requires pure
+    impl Comparable {
+        fn compare(self, other: Counter) -> Int {
+            // VIOLATION: IO effect in a pure trait method implementation
+            @io.println("Comparing " + @fmt.int(self.value) + " with " + @fmt.int(other.value));
+
+            if self.value < other.value {
+                -1
+            } else if self.value > other.value {
+                1
+            } else {
+                0
+            }
+        }
+    }
+}
+
+// Another example: Msg effect violation
+
+trait Hashable @0.1.0 {
+    """
+    Trait for hashable types.
+    Hash computation must be deterministic and pure.
+    """
+
+    fn hash(self) -> Int;
+}
+
+gene NetworkNode @0.1.0 {
+    """
+    A network node that incorrectly hashes with message passing.
+    """
+
+    id: String
+
+    // ERROR E0401: Msg effect violates pure trait requirement
+    impl Hashable {
+        fn hash(self) -> Int {
+            // VIOLATION: Messaging effect in pure trait method
+            @msg.send(@msg.self(), { type: "hash_request", id: self.id });
+            let response = @msg.recv();
+            response.hash_value
+        }
+    }
+}
+
+// Another example: Mutation effect violation
+
+trait Sizable @0.1.0 {
+    """
+    Trait for types with a size.
+    Size queries must be pure.
+    """
+
+    fn size(self) -> Int;
+}
+
+gene CachedList @0.1.0 {
+    """
+    A list that incorrectly caches size with mutation.
+    """
+
+    items: List[Int]
+    mut cached_size: Option[Int] = None
+
+    // ERROR E0401: Mutation effect violates pure trait requirement
+    impl Sizable {
+        fn size(self) -> Int {
+            // VIOLATION: Caching mutates state
+            match self.cached_size {
+                Some(s) => s,
+                None => {
+                    let s = @list.length(self.items);
+                    self.cached_size = Some(s);  // MUTATION!
+                    s
+                }
+            }
+        }
+    }
+}
+
+// Expected diagnostic output:
+// error[E0401]: effectful implementation of pure trait method
+//   --> e0401_trait_impl.dol:42:9
+//    |
+// 42 |         fn compare(self, other: Counter) -> Int {
+//    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//    |
+//    = note: trait 'Comparable' declares 'compare' as pure
+//    = note: implementation contains IO effect from '@io.println'
+//    = help: remove the effectful operation or change trait to allow effects
+
+test expect_error {
+    assert_error(E0401, Counter.compare);
+    assert_error(E0401, NetworkNode.hash);
+    assert_error(E0401, CachedList.size);
+}

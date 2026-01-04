@@ -1,0 +1,146 @@
+// Effect System Test: Transitive Linear Chain
+// ============================================
+//
+// What this test validates:
+//   - Effects propagate through a linear chain of function calls
+//   - A pure function calling an effectful function becomes effectful
+//   - Effect propagation works through multiple levels of indirection
+//
+// Expected effect inference results:
+//   - level_0_pure() -> Pure
+//   - level_1_calls_pure() -> Pure
+//   - level_2_calls_pure() -> Pure
+//   - base_effectful() -> Effectful(IO)
+//   - level_1_calls_effectful() -> Effectful(IO)
+//   - level_2_calls_effectful() -> Effectful(IO)
+//   - level_3_calls_effectful() -> Effectful(IO)
+
+gene Chain.Pure @0.1.0 {
+    """
+    A chain of pure functions calling other pure functions.
+    The entire chain remains pure.
+    """
+
+    // Level 0: base pure function
+    fn level_0_pure(x: Int) -> Int {
+        x * 2
+    }
+
+    // Level 1: calls level 0 (pure) -> remains pure
+    fn level_1_calls_pure(x: Int) -> Int {
+        level_0_pure(x) + 1
+    }
+
+    // Level 2: calls level 1 (pure) -> remains pure
+    fn level_2_calls_pure(x: Int) -> Int {
+        level_1_calls_pure(x) + level_1_calls_pure(x)
+    }
+
+    // Level 3: calls level 2 (pure) -> remains pure
+    fn level_3_calls_pure(x: Int) -> Int {
+        level_2_calls_pure(x) * level_2_calls_pure(x)
+    }
+
+    // Level 4: calls level 3 (pure) -> remains pure
+    fn level_4_calls_pure(x: Int) -> Int {
+        level_3_calls_pure(x) - level_0_pure(x)
+    }
+}
+
+gene Chain.Effectful @0.1.0 {
+    """
+    A chain where the base function is effectful.
+    All callers become effectful through transitive propagation.
+    """
+
+    // Level 0: base effectful function (IO)
+    fn base_effectful(x: Int) -> Int {
+        @io.println("Computing with: " + @fmt.int(x));
+        x * 2
+    }
+
+    // Level 1: calls base_effectful -> becomes effectful
+    fn level_1_calls_effectful(x: Int) -> Int {
+        base_effectful(x) + 1
+    }
+
+    // Level 2: calls level 1 -> becomes effectful (transitive)
+    fn level_2_calls_effectful(x: Int) -> Int {
+        level_1_calls_effectful(x) + level_1_calls_effectful(x)
+    }
+
+    // Level 3: calls level 2 -> becomes effectful (transitive)
+    fn level_3_calls_effectful(x: Int) -> Int {
+        level_2_calls_effectful(x) * 2
+    }
+
+    // Level 4: calls level 3 -> becomes effectful (transitive)
+    fn level_4_calls_effectful(x: Int) -> Int {
+        level_3_calls_effectful(x) - x
+    }
+
+    // Level 5: calls level 4 -> becomes effectful (transitive)
+    fn level_5_calls_effectful(x: Int) -> Int {
+        level_4_calls_effectful(x) / 2
+    }
+}
+
+gene Chain.Mixed @0.1.0 {
+    """
+    A chain that starts pure but introduces effects at some level.
+    Functions above the effect introduction point remain pure,
+    functions at or below become effectful.
+    """
+
+    // Pure: no effects
+    fn pure_helper(x: Int) -> Int {
+        x + 100
+    }
+
+    // Pure: calls pure_helper
+    fn another_pure(x: Int) -> Int {
+        pure_helper(x) * 2
+    }
+
+    // Effectful: introduces IO effect mid-chain
+    fn introduces_effect(x: Int) -> Int {
+        let intermediate = another_pure(x);
+        @io.println("Intermediate: " + @fmt.int(intermediate));
+        intermediate
+    }
+
+    // Effectful: calls introduces_effect
+    fn after_effect_1(x: Int) -> Int {
+        introduces_effect(x) + 1
+    }
+
+    // Effectful: calls after_effect_1
+    fn after_effect_2(x: Int) -> Int {
+        after_effect_1(x) + after_effect_1(x + 1)
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    // Pure chain remains pure
+    assert_pure(Chain.Pure.level_0_pure);
+    assert_pure(Chain.Pure.level_1_calls_pure);
+    assert_pure(Chain.Pure.level_2_calls_pure);
+    assert_pure(Chain.Pure.level_3_calls_pure);
+    assert_pure(Chain.Pure.level_4_calls_pure);
+
+    // Effectful chain - effects propagate
+    assert_effectful(Chain.Effectful.base_effectful, IO);
+    assert_effectful(Chain.Effectful.level_1_calls_effectful, IO);
+    assert_effectful(Chain.Effectful.level_2_calls_effectful, IO);
+    assert_effectful(Chain.Effectful.level_3_calls_effectful, IO);
+    assert_effectful(Chain.Effectful.level_4_calls_effectful, IO);
+    assert_effectful(Chain.Effectful.level_5_calls_effectful, IO);
+
+    // Mixed chain - effects start at introduction point
+    assert_pure(Chain.Mixed.pure_helper);
+    assert_pure(Chain.Mixed.another_pure);
+    assert_effectful(Chain.Mixed.introduces_effect, IO);
+    assert_effectful(Chain.Mixed.after_effect_1, IO);
+    assert_effectful(Chain.Mixed.after_effect_2, IO);
+}

@@ -1,0 +1,200 @@
+// Effect System Regression Test: Counter Spirit
+// ==============================================
+//
+// What this test validates:
+//   - Counter pattern correctly tracks mutation effects
+//   - Spirit lifecycle hooks have appropriate effects
+//   - State access consistently inferred as effectful
+//   - Common counter operations all show Mut effect
+//
+// Regression context:
+//   - Bug #127: Counter.get was incorrectly marked as pure
+//   - Bug #143: init hook effect not propagating to spawn
+//   - This test ensures these bugs don't resurface
+//
+// Expected effect inference results:
+//   - All state-accessing methods: Effectful(Mut)
+//   - Pure helper methods: Pure
+//   - Lifecycle hooks: Effectful(Msg, Mut)
+
+spirit Counter @0.1.0 {
+    """
+    A simple counter spirit demonstrating stateful actor pattern.
+    This is a regression test to ensure correct effect inference.
+    """
+
+    // Mutable state
+    mut value: Int = 0
+    mut history: List[Int] = []
+    mut max_seen: Int = 0
+
+    // Lifecycle: init hook - called when spirit spawns
+    // Should be Effectful(Mut) due to state initialization
+    fn init() -> Unit {
+        self.value = 0;
+        self.history = [];
+        self.max_seen = 0;
+        @io.println("Counter initialized")
+    }
+
+    // Lifecycle: terminate hook - called on shutdown
+    fn terminate(reason: Any) -> Unit {
+        @io.println("Counter terminating: " + @fmt.debug(reason))
+    }
+
+    // REGRESSION CHECK: get() must be Effectful(Mut)
+    // Bug #127 incorrectly marked this as Pure
+    fn get() -> Int {
+        self.value
+    }
+
+    // Standard mutation operations
+    fn increment() -> Unit {
+        let new_value = self.value + 1;
+        self.value = new_value;
+        self.history = @list.append(self.history, new_value);
+        if new_value > self.max_seen {
+            self.max_seen = new_value
+        }
+    }
+
+    fn decrement() -> Unit {
+        let new_value = self.value - 1;
+        self.value = new_value;
+        self.history = @list.append(self.history, new_value)
+    }
+
+    fn set(new_value: Int) -> Unit {
+        self.value = new_value;
+        self.history = @list.append(self.history, new_value);
+        if new_value > self.max_seen {
+            self.max_seen = new_value
+        }
+    }
+
+    fn add(n: Int) -> Unit {
+        self.set(self.value + n)
+    }
+
+    fn subtract(n: Int) -> Unit {
+        self.set(self.value - n)
+    }
+
+    fn reset() -> Unit {
+        self.value = 0;
+        self.history = @list.append(self.history, 0)
+    }
+
+    // Compound operations
+    fn increment_and_get() -> Int {
+        self.increment();
+        self.value
+    }
+
+    fn get_and_increment() -> Int {
+        let old = self.value;
+        self.increment();
+        old
+    }
+
+    // Query operations (still effectful due to state read)
+    fn get_history() -> List[Int] {
+        self.history
+    }
+
+    fn get_max() -> Int {
+        self.max_seen
+    }
+
+    fn get_history_length() -> Int {
+        @list.length(self.history)
+    }
+
+    // Pure helper - no state access
+    fn clamp_value(x: Int, lo: Int, hi: Int) -> Int {
+        if x < lo {
+            lo
+        } else if x > hi {
+            hi
+        } else {
+            x
+        }
+    }
+
+    // Uses pure helper with state
+    fn set_clamped(value: Int, lo: Int, hi: Int) -> Unit {
+        self.set(clamp_value(value, lo, hi))
+    }
+
+    // Message handler
+    fn handle(msg: Any) -> Any {
+        match msg {
+            { type: "get" } => {
+                { value: self.get() }
+            },
+            { type: "increment" } => {
+                self.increment();
+                { ok: true }
+            },
+            { type: "decrement" } => {
+                self.decrement();
+                { ok: true }
+            },
+            { type: "set", value: v } => {
+                self.set(v);
+                { ok: true }
+            },
+            { type: "add", amount: n } => {
+                self.add(n);
+                { ok: true }
+            },
+            { type: "reset" } => {
+                self.reset();
+                { ok: true }
+            },
+            { type: "history" } => {
+                { history: self.get_history() }
+            },
+            _ => {
+                { error: "unknown message type" }
+            }
+        }
+    }
+}
+
+// Regression test assertions
+test regression_counter {
+    // CRITICAL: get() must be Effectful(Mut), not Pure
+    // This was bug #127
+    assert_effectful(Counter.get, Mut);
+
+    // All state mutations
+    assert_effectful(Counter.increment, Mut);
+    assert_effectful(Counter.decrement, Mut);
+    assert_effectful(Counter.set, Mut);
+    assert_effectful(Counter.add, Mut);
+    assert_effectful(Counter.subtract, Mut);
+    assert_effectful(Counter.reset, Mut);
+
+    // Compound operations
+    assert_effectful(Counter.increment_and_get, Mut);
+    assert_effectful(Counter.get_and_increment, Mut);
+
+    // Query operations (state read = Mut)
+    assert_effectful(Counter.get_history, Mut);
+    assert_effectful(Counter.get_max, Mut);
+    assert_effectful(Counter.get_history_length, Mut);
+
+    // Pure helper
+    assert_pure(Counter.clamp_value);
+
+    // Combined pure helper + state
+    assert_effectful(Counter.set_clamped, Mut);
+
+    // Lifecycle hooks have IO for logging
+    assert_effectful(Counter.init, [IO, Mut]);
+    assert_effectful(Counter.terminate, IO);
+
+    // Message handler accesses state
+    assert_effectful(Counter.handle, Mut);
+}

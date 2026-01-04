@@ -1,0 +1,56 @@
+// Effect System Test: Pure Basic Functions
+// =========================================
+//
+// What this test validates:
+//   - Basic pure functions with no side effects are correctly inferred as pure
+//   - Arithmetic operations maintain purity
+//   - Functions that only transform inputs to outputs without external interaction
+//
+// Expected effect inference results:
+//   - add(a, b) -> Pure
+//   - multiply(a, b) -> Pure
+//   - negate(x) -> Pure
+//   - double(x) -> Pure
+//   - increment(x) -> Pure
+
+gene Math.Pure @0.1.0 {
+    """
+    Basic pure mathematical operations.
+    All functions are deterministic and have no side effects.
+    """
+
+    // Pure: takes two numbers, returns their sum
+    // No I/O, no mutation, no messaging
+    fn add(a: Int, b: Int) -> Int {
+        a + b
+    }
+
+    // Pure: takes two numbers, returns their product
+    fn multiply(a: Int, b: Int) -> Int {
+        a * b
+    }
+
+    // Pure: negates a number
+    fn negate(x: Int) -> Int {
+        -x
+    }
+
+    // Pure: doubles a number (uses only local computation)
+    fn double(x: Int) -> Int {
+        x + x
+    }
+
+    // Pure: increments by one
+    fn increment(x: Int) -> Int {
+        x + 1
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    assert_pure(Math.Pure.add);
+    assert_pure(Math.Pure.multiply);
+    assert_pure(Math.Pure.negate);
+    assert_pure(Math.Pure.double);
+    assert_pure(Math.Pure.increment);
+}

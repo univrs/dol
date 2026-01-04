@@ -1,0 +1,7 @@
+// Hello World - Clean DOL
+// Effects are inferred automatically by the compiler.
+
+fun main() {
+    print("Hello from DOL!")
+    println("Effects are inferred automatically.")
+}

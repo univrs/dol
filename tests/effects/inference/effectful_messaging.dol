@@ -1,0 +1,160 @@
+// Effect System Test: Messaging Effects
+// ======================================
+//
+// What this test validates:
+//   - Functions performing message passing are inferred as effectful
+//   - send, recv, pending, broadcast operations mark functions as effectful
+//   - Messaging effect is distinct from IO effect
+//
+// Expected effect inference results:
+//   - send(target, msg) -> Effectful(Msg)
+//   - recv() -> Effectful(Msg)
+//   - pending() -> Effectful(Msg)
+//   - broadcast(msg) -> Effectful(Msg)
+//   - request(target, msg) -> Effectful(Msg)
+//   - reply(msg) -> Effectful(Msg)
+
+gene Msg.Basic @0.1.0 {
+    """
+    Basic messaging operations for actor-like communication.
+    These operations interact with the message queue and
+    other actors, introducing the Msg effect.
+    """
+
+    // Effectful(Msg): send message to target actor
+    fn send(target: ActorId, msg: Any) -> Unit {
+        @msg.send(target, msg)
+    }
+
+    // Effectful(Msg): receive next message (blocking)
+    fn recv() -> Any {
+        @msg.recv()
+    }
+
+    // Effectful(Msg): check if messages are pending
+    fn pending() -> Bool {
+        @msg.pending()
+    }
+
+    // Effectful(Msg): receive with timeout
+    fn recv_timeout(timeout_ms: Int) -> Option[Any] {
+        @msg.recv_timeout(timeout_ms)
+    }
+
+    // Effectful(Msg): try to receive (non-blocking)
+    fn try_recv() -> Option[Any] {
+        @msg.try_recv()
+    }
+
+    // Effectful(Msg): broadcast to all known actors
+    fn broadcast(msg: Any) -> Unit {
+        @msg.broadcast(msg)
+    }
+
+    // Effectful(Msg): get own actor ID
+    fn self_id() -> ActorId {
+        @msg.self()
+    }
+}
+
+gene Msg.Patterns @0.1.0 {
+    """
+    Common messaging patterns built on basic operations.
+    All inherit the Msg effect from underlying calls.
+    """
+
+    // Effectful(Msg): request-response pattern
+    fn request(target: ActorId, msg: Any) -> Any {
+        let request_id = @msg.new_request_id();
+        @msg.send(target, { type: "request", id: request_id, payload: msg });
+        loop {
+            let response = @msg.recv();
+            if response.type == "response" && response.id == request_id {
+                return response.payload
+            }
+            // Re-queue other messages
+            @msg.requeue(response)
+        }
+    }
+
+    // Effectful(Msg): reply to current request
+    fn reply(request_id: RequestId, msg: Any) -> Unit {
+        let sender = @msg.current_sender();
+        @msg.send(sender, { type: "response", id: request_id, payload: msg })
+    }
+
+    // Effectful(Msg): forward message to another actor
+    fn forward(target: ActorId, msg: Any) -> Unit {
+        @msg.send(target, msg)
+    }
+
+    // Effectful(Msg): subscribe to topic
+    fn subscribe(topic: String) -> Unit {
+        @msg.subscribe(topic)
+    }
+
+    // Effectful(Msg): publish to topic
+    fn publish(topic: String, msg: Any) -> Unit {
+        @msg.publish(topic, msg)
+    }
+
+    // Effectful(Msg): spawn new actor
+    fn spawn(gene: Gene) -> ActorId {
+        @msg.spawn(gene)
+    }
+
+    // Effectful(Msg): link to actor (receive exit signals)
+    fn link(target: ActorId) -> Unit {
+        @msg.link(target)
+    }
+}
+
+gene Msg.Selective @0.1.0 {
+    """
+    Selective receive patterns for filtering messages.
+    """
+
+    // Effectful(Msg): receive message matching predicate
+    fn recv_matching(predicate: Fn(Any) -> Bool) -> Any {
+        loop {
+            let msg = @msg.recv();
+            if predicate(msg) {
+                return msg
+            }
+            @msg.requeue(msg)
+        }
+    }
+
+    // Effectful(Msg): receive message of specific type
+    fn recv_type(msg_type: String) -> Any {
+        recv_matching(|msg| msg.type == msg_type)
+    }
+
+    // Effectful(Msg): receive from specific sender
+    fn recv_from(sender: ActorId) -> Any {
+        recv_matching(|msg| @msg.sender_of(msg) == sender)
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    assert_effectful(Msg.Basic.send, Msg);
+    assert_effectful(Msg.Basic.recv, Msg);
+    assert_effectful(Msg.Basic.pending, Msg);
+    assert_effectful(Msg.Basic.recv_timeout, Msg);
+    assert_effectful(Msg.Basic.try_recv, Msg);
+    assert_effectful(Msg.Basic.broadcast, Msg);
+    assert_effectful(Msg.Basic.self_id, Msg);
+
+    assert_effectful(Msg.Patterns.request, Msg);
+    assert_effectful(Msg.Patterns.reply, Msg);
+    assert_effectful(Msg.Patterns.forward, Msg);
+    assert_effectful(Msg.Patterns.subscribe, Msg);
+    assert_effectful(Msg.Patterns.publish, Msg);
+    assert_effectful(Msg.Patterns.spawn, Msg);
+    assert_effectful(Msg.Patterns.link, Msg);
+
+    assert_effectful(Msg.Selective.recv_matching, Msg);
+    assert_effectful(Msg.Selective.recv_type, Msg);
+    assert_effectful(Msg.Selective.recv_from, Msg);
+}

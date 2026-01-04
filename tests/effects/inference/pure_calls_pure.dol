@@ -1,0 +1,76 @@
+// Effect System Test: Pure Calls Pure
+// ====================================
+//
+// What this test validates:
+//   - Pure functions calling other pure functions remain pure
+//   - Effect composition: Pure + Pure = Pure
+//   - Nested pure calls maintain purity through the call chain
+//
+// Expected effect inference results:
+//   - square(x) -> Pure (calls multiply which is pure)
+//   - sum_of_squares(a, b) -> Pure (calls square and add, both pure)
+//   - cube(x) -> Pure (calls multiply twice)
+//   - power_of_four(x) -> Pure (calls square twice)
+//   - average(a, b) -> Pure (calls add and divide, both pure)
+
+gene Math.Composed @0.1.0 {
+    """
+    Composed pure functions that call other pure functions.
+    Demonstrates that purity is preserved through composition.
+    """
+
+    // Helper: pure multiplication
+    fn multiply(a: Int, b: Int) -> Int {
+        a * b
+    }
+
+    // Helper: pure addition
+    fn add(a: Int, b: Int) -> Int {
+        a + b
+    }
+
+    // Helper: pure division
+    fn divide(a: Int, b: Int) -> Int {
+        a / b
+    }
+
+    // Pure: calls multiply (pure) -> remains pure
+    fn square(x: Int) -> Int {
+        multiply(x, x)
+    }
+
+    // Pure: calls square (pure) and add (pure) -> remains pure
+    fn sum_of_squares(a: Int, b: Int) -> Int {
+        add(square(a), square(b))
+    }
+
+    // Pure: calls multiply twice -> remains pure
+    fn cube(x: Int) -> Int {
+        multiply(multiply(x, x), x)
+    }
+
+    // Pure: calls square twice -> remains pure
+    fn power_of_four(x: Int) -> Int {
+        square(square(x))
+    }
+
+    // Pure: calls add and divide -> remains pure
+    fn average(a: Int, b: Int) -> Int {
+        divide(add(a, b), 2)
+    }
+
+    // Pure: deeply nested pure calls
+    fn complex_calc(a: Int, b: Int, c: Int) -> Int {
+        add(sum_of_squares(a, b), square(c))
+    }
+}
+
+// Test assertions for effect inference
+test effects {
+    assert_pure(Math.Composed.square);
+    assert_pure(Math.Composed.sum_of_squares);
+    assert_pure(Math.Composed.cube);
+    assert_pure(Math.Composed.power_of_four);
+    assert_pure(Math.Composed.average);
+    assert_pure(Math.Composed.complex_calc);
+}

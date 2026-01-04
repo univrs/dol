@@ -1,0 +1,235 @@
+// Effect System Prelude Test: All Prelude Functions Combined
+// ===========================================================
+//
+// What this test validates:
+//   - Multiple prelude modules can be used together
+//   - Effect combination works correctly (IO + Msg + Time + Mut)
+//   - Complex scenarios using multiple prelude categories
+//   - Effect inference handles multi-effect functions
+//
+// Expected effect inference results:
+//   - Functions using single prelude: that prelude's effect
+//   - Functions using multiple preludes: combined effects
+
+gene Prelude.Combined.Test @0.1.0 {
+    """
+    Tests combining multiple prelude modules in realistic scenarios.
+    """
+
+    mut request_count: Int = 0
+    mut last_request_time: Option[Timestamp] = None
+
+    // IO only
+    fn log_message(level: String, msg: String) -> Unit {
+        @io.println("[" + level + "] " + msg)
+    }
+
+    // Msg only
+    fn notify_subscribers(event: Any) -> Unit {
+        @msg.publish("events", event)
+    }
+
+    // Time only
+    fn get_current_time() -> Timestamp {
+        @time.now()
+    }
+
+    // Mut only
+    fn increment_request_count() -> Unit {
+        self.request_count = self.request_count + 1
+    }
+
+    // IO + Time: Timestamped logging
+    fn log_with_timestamp(msg: String) -> Unit {
+        let now = @time.now();
+        let timestamp = @time.format(now, "%Y-%m-%d %H:%M:%S");
+        @io.println("[" + timestamp + "] " + msg)
+    }
+
+    // IO + Msg: Log and broadcast
+    fn log_and_notify(msg: String) -> Unit {
+        @io.println("Broadcasting: " + msg);
+        @msg.broadcast({ type: "announcement", message: msg })
+    }
+
+    // Msg + Time: Timed message receive
+    fn recv_with_timeout(timeout_ms: Int) -> Option[Any] {
+        let start = @time.now();
+        let deadline = @time.timestamp_add(start, @time.duration_millis(timeout_ms));
+
+        loop {
+            if @time.now() > deadline {
+                return None
+            }
+            let msg = @msg.try_recv();
+            if msg.is_some() {
+                return msg
+            }
+            @time.sleep(10)
+        }
+    }
+
+    // IO + Mut: Logged mutation
+    fn logged_increment() -> Int {
+        self.request_count = self.request_count + 1;
+        @io.println("Request count: " + @fmt.int(self.request_count));
+        self.request_count
+    }
+
+    // Msg + Mut: Track message stats
+    fn recv_and_track() -> Any {
+        self.request_count = self.request_count + 1;
+        @msg.recv()
+    }
+
+    // Time + Mut: Record timestamp
+    fn record_request_time() -> Unit {
+        self.last_request_time = Some(@time.now())
+    }
+
+    // IO + Msg + Time: Full logging with notification
+    fn full_log_event(event_type: String, data: Any) -> Unit {
+        let timestamp = @time.format(@time.now(), "%H:%M:%S.%f");
+        let log_msg = "[" + timestamp + "] Event: " + event_type;
+        @io.println(log_msg);
+        @msg.publish("events", {
+            type: event_type,
+            data: data,
+            timestamp: @time.now()
+        })
+    }
+
+    // All effects: Complete request handler
+    fn handle_request(request: Any) -> Any {
+        // Time: record when
+        let start = @time.now();
+        self.last_request_time = Some(start);
+
+        // Mut: track count
+        self.request_count = self.request_count + 1;
+        let req_num = self.request_count;
+
+        // IO: log start
+        @io.println("Handling request #" + @fmt.int(req_num));
+
+        // Process...
+        let result = process_request(request);
+
+        // Time: measure duration
+        let elapsed = @time.elapsed(start);
+
+        // IO: log completion
+        @io.println("Request #" + @fmt.int(req_num) + " completed in " + @time.format_duration(elapsed));
+
+        // Msg: notify completion
+        @msg.publish("requests", {
+            type: "completed",
+            request_num: req_num,
+            duration: elapsed
+        });
+
+        result
+    }
+
+    // Pure helper (no effects)
+    fn process_request(request: Any) -> Any {
+        // Just transform data, no effects
+        { processed: true, original: request }
+    }
+
+    // Complex scenario: Supervised worker
+    fn supervised_worker() -> Never {
+        let supervisor = @msg.current_sender();
+        @io.println("Worker started, reporting to supervisor");
+
+        loop {
+            // Heartbeat every second
+            @time.sleep(1000);
+
+            // Track activity
+            self.request_count = self.request_count + 1;
+
+            // Log status
+            @io.println("Worker heartbeat #" + @fmt.int(self.request_count));
+
+            // Report to supervisor
+            @msg.send(supervisor, { type: "heartbeat", count: self.request_count });
+
+            // Check for commands
+            let cmd = @msg.try_recv();
+            match cmd {
+                Some({ type: "stop" }) => {
+                    @io.println("Worker stopping");
+                    @msg.exit("normal")
+                },
+                Some({ type: "work", data: data }) => {
+                    @io.println("Processing work");
+                    let result = process_request(data);
+                    @msg.send(supervisor, { type: "result", data: result })
+                },
+                _ => ()
+            }
+        }
+    }
+
+    // Scenario: Rate-limited logger
+    mut last_log_time: Option[Timestamp] = None
+    mut log_count: Int = 0
+
+    fn rate_limited_log(msg: String, min_interval_ms: Int) -> Bool {
+        let now = @time.now();
+
+        match self.last_log_time {
+            Some(last) => {
+                let elapsed = @time.timestamp_diff(now, last);
+                let min_duration = @time.duration_millis(min_interval_ms);
+
+                if elapsed >= min_duration {
+                    // Enough time passed, log it
+                    self.last_log_time = Some(now);
+                    self.log_count = self.log_count + 1;
+                    @io.println("[" + @fmt.int(self.log_count) + "] " + msg);
+                    true
+                } else {
+                    // Rate limited
+                    false
+                }
+            },
+            None => {
+                // First log
+                self.last_log_time = Some(now);
+                self.log_count = 1;
+                @io.println("[1] " + msg);
+                true
+            }
+        }
+    }
+}
+
+// Test assertions for combined effects
+test prelude_combined {
+    // Single effects
+    assert_effectful(Prelude.Combined.Test.log_message, IO);
+    assert_effectful(Prelude.Combined.Test.notify_subscribers, Msg);
+    assert_effectful(Prelude.Combined.Test.get_current_time, Time);
+    assert_effectful(Prelude.Combined.Test.increment_request_count, Mut);
+
+    // Two-effect combinations
+    assert_effectful(Prelude.Combined.Test.log_with_timestamp, [IO, Time]);
+    assert_effectful(Prelude.Combined.Test.log_and_notify, [IO, Msg]);
+    assert_effectful(Prelude.Combined.Test.recv_with_timeout, [Msg, Time]);
+    assert_effectful(Prelude.Combined.Test.logged_increment, [IO, Mut]);
+    assert_effectful(Prelude.Combined.Test.recv_and_track, [Msg, Mut]);
+    assert_effectful(Prelude.Combined.Test.record_request_time, [Time, Mut]);
+
+    // Three-effect combination
+    assert_effectful(Prelude.Combined.Test.full_log_event, [IO, Msg, Time]);
+
+    // All four effects
+    assert_effectful(Prelude.Combined.Test.handle_request, [IO, Msg, Time, Mut]);
+    assert_effectful(Prelude.Combined.Test.supervised_worker, [IO, Msg, Time, Mut]);
+    assert_effectful(Prelude.Combined.Test.rate_limited_log, [IO, Time, Mut]);
+
+    // Pure helper
+    assert_pure(Prelude.Combined.Test.process_request);
+}
