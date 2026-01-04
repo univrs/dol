@@ -1866,3 +1866,971 @@ exegesis { Double negates a number (returns original). }
         .expect("Call failed");
     assert_eq!(result.first().and_then(|v| v.i64()), Some(-17));
 }
+
+// ============================================
+// 10. Layout Module Unit Tests
+// ============================================
+
+/// Test WasmFieldType::size for all variants
+#[test]
+fn test_wasm_field_type_size() {
+    use metadol::wasm::layout::WasmFieldType;
+
+    assert_eq!(WasmFieldType::I32.size(), 4);
+    assert_eq!(WasmFieldType::I64.size(), 8);
+    assert_eq!(WasmFieldType::F32.size(), 4);
+    assert_eq!(WasmFieldType::F64.size(), 8);
+    assert_eq!(WasmFieldType::Ptr.size(), 4);
+}
+
+/// Test WasmFieldType::alignment for all variants
+#[test]
+fn test_wasm_field_type_alignment() {
+    use metadol::wasm::layout::WasmFieldType;
+
+    assert_eq!(WasmFieldType::I32.alignment(), 4);
+    assert_eq!(WasmFieldType::I64.alignment(), 8);
+    assert_eq!(WasmFieldType::F32.alignment(), 4);
+    assert_eq!(WasmFieldType::F64.alignment(), 8);
+    assert_eq!(WasmFieldType::Ptr.alignment(), 4);
+}
+
+/// Test WasmFieldType::alignment_log2 for all variants
+#[test]
+fn test_wasm_field_type_alignment_log2() {
+    use metadol::wasm::layout::WasmFieldType;
+
+    // log2(4) = 2, log2(8) = 3
+    assert_eq!(WasmFieldType::I32.alignment_log2(), 2);
+    assert_eq!(WasmFieldType::I64.alignment_log2(), 3);
+    assert_eq!(WasmFieldType::F32.alignment_log2(), 2);
+    assert_eq!(WasmFieldType::F64.alignment_log2(), 3);
+    assert_eq!(WasmFieldType::Ptr.alignment_log2(), 2);
+}
+
+/// Test WasmFieldType Display trait
+#[test]
+fn test_wasm_field_type_display() {
+    use metadol::wasm::layout::WasmFieldType;
+
+    assert_eq!(format!("{}", WasmFieldType::I32), "i32");
+    assert_eq!(format!("{}", WasmFieldType::I64), "i64");
+    assert_eq!(format!("{}", WasmFieldType::F32), "f32");
+    assert_eq!(format!("{}", WasmFieldType::F64), "f64");
+    assert_eq!(format!("{}", WasmFieldType::Ptr), "ptr");
+}
+
+/// Test WasmFieldType::to_val_type for WASM encoding
+#[test]
+fn test_wasm_field_type_to_val_type() {
+    use metadol::wasm::layout::WasmFieldType;
+
+    // I32 and Ptr both map to ValType::I32
+    assert_eq!(WasmFieldType::I32.to_val_type(), wasm_encoder::ValType::I32);
+    assert_eq!(WasmFieldType::Ptr.to_val_type(), wasm_encoder::ValType::I32);
+    assert_eq!(WasmFieldType::I64.to_val_type(), wasm_encoder::ValType::I64);
+    assert_eq!(WasmFieldType::F32.to_val_type(), wasm_encoder::ValType::F32);
+    assert_eq!(WasmFieldType::F64.to_val_type(), wasm_encoder::ValType::F64);
+}
+
+/// Test FieldLayout::primitive constructor
+#[test]
+fn test_field_layout_primitive() {
+    use metadol::wasm::layout::{FieldLayout, WasmFieldType};
+
+    let field = FieldLayout::primitive("x", 0, WasmFieldType::F64);
+
+    assert_eq!(field.name, "x");
+    assert_eq!(field.offset, 0);
+    assert_eq!(field.size, 8);
+    assert_eq!(field.alignment, 8);
+    assert_eq!(field.wasm_type, WasmFieldType::F64);
+    assert!(!field.is_reference);
+    assert!(field.nested_layout.is_none());
+}
+
+/// Test FieldLayout::reference constructor
+#[test]
+fn test_field_layout_reference() {
+    use metadol::wasm::layout::{FieldLayout, WasmFieldType};
+
+    let field = FieldLayout::reference("other", 16);
+
+    assert_eq!(field.name, "other");
+    assert_eq!(field.offset, 16);
+    assert_eq!(field.size, 4);
+    assert_eq!(field.alignment, 4);
+    assert_eq!(field.wasm_type, WasmFieldType::Ptr);
+    assert!(field.is_reference);
+    assert!(field.nested_layout.is_none());
+}
+
+/// Test FieldLayout::inline constructor
+#[test]
+fn test_field_layout_inline() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let inner_layout = GeneLayout {
+        name: "Inner".to_string(),
+        fields: vec![FieldLayout::primitive("val", 0, WasmFieldType::I32)],
+        total_size: 4,
+        alignment: 4,
+    };
+
+    let field = FieldLayout::inline("nested", 8, inner_layout);
+
+    assert_eq!(field.name, "nested");
+    assert_eq!(field.offset, 8);
+    assert_eq!(field.size, 4);
+    assert_eq!(field.alignment, 4);
+    assert!(!field.is_reference);
+    assert!(field.nested_layout.is_some());
+    assert_eq!(field.nested_layout.as_ref().unwrap().name, "Inner");
+}
+
+/// Test GeneLayout::new constructor
+#[test]
+fn test_gene_layout_new() {
+    use metadol::wasm::layout::GeneLayout;
+
+    let layout = GeneLayout::new("TestGene");
+
+    assert_eq!(layout.name, "TestGene");
+    assert!(layout.fields.is_empty());
+    assert_eq!(layout.total_size, 0);
+    assert_eq!(layout.alignment, 1);
+}
+
+/// Test GeneLayout::default
+#[test]
+fn test_gene_layout_default() {
+    use metadol::wasm::layout::GeneLayout;
+
+    let layout = GeneLayout::default();
+
+    assert_eq!(layout.name, "");
+    assert!(layout.fields.is_empty());
+    assert_eq!(layout.total_size, 0);
+    assert_eq!(layout.alignment, 1);
+}
+
+/// Test GeneLayout::get_field and get_field_offset
+#[test]
+fn test_gene_layout_get_field() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let layout = GeneLayout {
+        name: "Point".to_string(),
+        fields: vec![
+            FieldLayout::primitive("x", 0, WasmFieldType::F64),
+            FieldLayout::primitive("y", 8, WasmFieldType::F64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+
+    // Test get_field
+    let x_field = layout.get_field("x");
+    assert!(x_field.is_some());
+    assert_eq!(x_field.unwrap().offset, 0);
+
+    let y_field = layout.get_field("y");
+    assert!(y_field.is_some());
+    assert_eq!(y_field.unwrap().offset, 8);
+
+    let z_field = layout.get_field("z");
+    assert!(z_field.is_none());
+
+    // Test get_field_offset
+    assert_eq!(layout.get_field_offset("x"), Some(0));
+    assert_eq!(layout.get_field_offset("y"), Some(8));
+    assert_eq!(layout.get_field_offset("z"), None);
+}
+
+/// Test GeneLayout::type_id
+#[test]
+fn test_gene_layout_type_id() {
+    use metadol::wasm::layout::GeneLayout;
+
+    let layout1 = GeneLayout::new("Point");
+    let layout2 = GeneLayout::new("Point");
+    let layout3 = GeneLayout::new("Vector");
+
+    // Same name should produce same type_id
+    assert_eq!(layout1.type_id(), layout2.type_id());
+
+    // Different name should produce different type_id
+    assert_ne!(layout1.type_id(), layout3.type_id());
+
+    // Type IDs should be non-zero for non-empty names
+    assert_ne!(layout1.type_id(), 0);
+}
+
+/// Test GeneLayout::has_references and pointer_offsets
+#[test]
+fn test_gene_layout_references() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    // Layout without references
+    let no_refs = GeneLayout {
+        name: "NoRefs".to_string(),
+        fields: vec![
+            FieldLayout::primitive("a", 0, WasmFieldType::I64),
+            FieldLayout::primitive("b", 8, WasmFieldType::I64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+    assert!(!no_refs.has_references());
+    assert!(no_refs.pointer_offsets().is_empty());
+
+    // Layout with references
+    let with_refs = GeneLayout {
+        name: "WithRefs".to_string(),
+        fields: vec![
+            FieldLayout::primitive("val", 0, WasmFieldType::I64),
+            FieldLayout::reference("next", 8),
+            FieldLayout::reference("prev", 12),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+    assert!(with_refs.has_references());
+    let offsets = with_refs.pointer_offsets();
+    assert_eq!(offsets.len(), 2);
+    assert!(offsets.contains(&8));
+    assert!(offsets.contains(&12));
+}
+
+/// Test GeneLayout::field_count and is_empty
+#[test]
+fn test_gene_layout_field_count() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let empty = GeneLayout::new("Empty");
+    assert!(empty.is_empty());
+    assert_eq!(empty.field_count(), 0);
+
+    let with_fields = GeneLayout {
+        name: "Point".to_string(),
+        fields: vec![
+            FieldLayout::primitive("x", 0, WasmFieldType::F64),
+            FieldLayout::primitive("y", 8, WasmFieldType::F64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+    assert!(!with_fields.is_empty());
+    assert_eq!(with_fields.field_count(), 2);
+}
+
+/// Test GeneLayoutRegistry operations
+#[test]
+fn test_gene_layout_registry() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, GeneLayoutRegistry, WasmFieldType};
+
+    let mut registry = GeneLayoutRegistry::new();
+
+    // Initially empty
+    assert!(registry.is_empty());
+    assert_eq!(registry.len(), 0);
+    assert!(!registry.contains("Point"));
+    assert!(registry.get("Point").is_none());
+
+    // Register a layout
+    let point = GeneLayout {
+        name: "Point".to_string(),
+        fields: vec![
+            FieldLayout::primitive("x", 0, WasmFieldType::F64),
+            FieldLayout::primitive("y", 8, WasmFieldType::F64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+    registry.register(point);
+
+    assert!(!registry.is_empty());
+    assert_eq!(registry.len(), 1);
+    assert!(registry.contains("Point"));
+
+    let retrieved = registry.get("Point");
+    assert!(retrieved.is_some());
+    assert_eq!(retrieved.unwrap().total_size, 16);
+
+    // Register another layout
+    let vector = GeneLayout {
+        name: "Vector".to_string(),
+        fields: vec![
+            FieldLayout::primitive("dx", 0, WasmFieldType::F64),
+            FieldLayout::primitive("dy", 8, WasmFieldType::F64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+    registry.register(vector);
+
+    assert_eq!(registry.len(), 2);
+
+    // Iterate
+    let names: Vec<_> = registry.iter().map(|(n, _)| n.clone()).collect();
+    assert!(names.contains(&"Point".to_string()));
+    assert!(names.contains(&"Vector".to_string()));
+
+    // Remove
+    let removed = registry.remove("Point");
+    assert!(removed.is_some());
+    assert_eq!(removed.unwrap().name, "Point");
+    assert!(!registry.contains("Point"));
+    assert_eq!(registry.len(), 1);
+
+    // Clear
+    registry.clear();
+    assert!(registry.is_empty());
+    assert_eq!(registry.len(), 0);
+}
+
+// ============================================
+// 11. Alloc Module Unit Tests
+// ============================================
+
+/// Test BumpAllocator::new and accessor methods
+#[test]
+fn test_bump_allocator_new() {
+    use metadol::wasm::alloc::BumpAllocator;
+
+    let allocator = BumpAllocator::new(0, 1);
+
+    assert_eq!(allocator.heap_base_global(), 0);
+    assert_eq!(allocator.heap_end_global(), 1);
+
+    // Test with different indices
+    let allocator2 = BumpAllocator::new(5, 10);
+    assert_eq!(allocator2.heap_base_global(), 5);
+    assert_eq!(allocator2.heap_end_global(), 10);
+}
+
+/// Test alloc module constants
+#[test]
+fn test_alloc_constants() {
+    use metadol::wasm::alloc::{
+        DEFAULT_HEAP_START, DEFAULT_MEMORY_PAGES, MAX_MEMORY_PAGES, PAGE_SIZE,
+    };
+
+    assert_eq!(DEFAULT_MEMORY_PAGES, 1);
+    assert_eq!(MAX_MEMORY_PAGES, 256);
+    assert_eq!(PAGE_SIZE, 65536);
+    assert_eq!(DEFAULT_HEAP_START, 1024);
+
+    // Validate relationships
+    assert!(DEFAULT_HEAP_START < PAGE_SIZE);
+    assert!(DEFAULT_MEMORY_PAGES <= MAX_MEMORY_PAGES);
+}
+
+/// Test BumpAllocator::emit_globals generates valid WASM
+#[test]
+fn test_bump_allocator_emit_globals() {
+    use metadol::wasm::alloc::BumpAllocator;
+    use wasm_encoder::Module;
+
+    let mut module = Module::new();
+    BumpAllocator::emit_globals(&mut module, 1024);
+
+    // Module should encode without panic
+    let bytes = module.finish();
+    assert!(!bytes.is_empty());
+
+    // Should start with WASM magic number
+    assert_eq!(&bytes[0..4], b"\0asm");
+}
+
+/// Test BumpAllocator::emit_globals_with_end
+#[test]
+fn test_bump_allocator_emit_globals_with_end() {
+    use metadol::wasm::alloc::BumpAllocator;
+    use wasm_encoder::Module;
+
+    let mut module = Module::new();
+    // 4 pages = 256KB
+    BumpAllocator::emit_globals_with_end(&mut module, 2048, 4 * 65536);
+
+    let bytes = module.finish();
+    assert!(!bytes.is_empty());
+    assert_eq!(&bytes[0..4], b"\0asm");
+}
+
+/// Test BumpAllocator::emit_memory_section
+#[test]
+fn test_bump_allocator_emit_memory_section() {
+    use metadol::wasm::alloc::BumpAllocator;
+    use wasm_encoder::Module;
+
+    let mut module = Module::new();
+    BumpAllocator::emit_memory_section(&mut module, 2); // 2 pages = 128KB
+
+    let bytes = module.finish();
+    assert!(!bytes.is_empty());
+    assert_eq!(&bytes[0..4], b"\0asm");
+}
+
+/// Test BumpAllocator::emit_alloc_function generates instructions
+#[test]
+fn test_bump_allocator_emit_alloc_function() {
+    use metadol::wasm::alloc::BumpAllocator;
+
+    let instructions = BumpAllocator::emit_alloc_function();
+
+    // Should have a non-trivial number of instructions
+    assert!(instructions.len() > 10);
+
+    // First instruction should be GlobalGet(0) to load heap base
+    assert!(matches!(
+        instructions[0],
+        wasm_encoder::Instruction::GlobalGet(0)
+    ));
+
+    // Last instruction should be End
+    assert!(matches!(
+        instructions.last(),
+        Some(wasm_encoder::Instruction::End)
+    ));
+}
+
+/// Test BumpAllocator::build_alloc_function creates a complete function
+#[test]
+fn test_bump_allocator_build_alloc_function() {
+    use metadol::wasm::alloc::BumpAllocator;
+
+    let function = BumpAllocator::build_alloc_function();
+
+    // Function should encode without error
+    let mut func_section = wasm_encoder::CodeSection::new();
+    func_section.function(&function);
+    // If it encodes without panic, the function is valid
+}
+
+/// Test BumpAllocator::alloc_type_signature
+#[test]
+fn test_bump_allocator_alloc_type_signature() {
+    use metadol::wasm::alloc::BumpAllocator;
+
+    let (params, results) = BumpAllocator::alloc_type_signature();
+
+    // alloc(size: i32, align: i32) -> i32
+    assert_eq!(params.len(), 2);
+    assert_eq!(params[0], wasm_encoder::ValType::I32);
+    assert_eq!(params[1], wasm_encoder::ValType::I32);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0], wasm_encoder::ValType::I32);
+}
+
+// ============================================
+// 12. Runtime Module Additional Tests
+// ============================================
+
+/// Test WasmRuntime::default implementation
+#[test]
+fn test_wasm_runtime_default() {
+    // Default implementation should not panic
+    let runtime = WasmRuntime::default();
+    drop(runtime);
+}
+
+/// Test WasmModule::instance accessor
+#[test]
+fn test_wasm_module_instance() {
+    let source = r#"
+fun get_value() -> i64 {
+    return 42
+}
+exegesis { Returns 42. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test instance accessor - get instance and verify we can access it
+    let instance = wasm_module.instance();
+
+    // We can't easily test exports without borrowing issues,
+    // but we can verify the instance exists
+    let _ = instance;
+
+    // Verify module still works
+    let result = wasm_module.call("get_value", &[]).expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+}
+
+/// Test WasmModule::store_mut accessor
+#[test]
+fn test_wasm_module_store_mut() {
+    let source = r#"
+fun add(a: i64, b: i64) -> i64 {
+    return a + b
+}
+exegesis { Adds two numbers. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Access store_mut - it should work (the store data is () which is unit type)
+    {
+        let store = wasm_module.store_mut();
+        // Store should be usable - accessing data doesn't panic
+        let _data = store.data();
+    }
+
+    // Call function to verify module still works after accessing store
+    let result = wasm_module
+        .call("add", &[10i64.into(), 32i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+}
+
+/// Test WasmRuntime::load_file with non-existent file
+#[test]
+fn test_wasm_runtime_load_file_error() {
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let result = runtime.load_file("/nonexistent/path/module.wasm");
+
+    // Should fail with file not found error
+    assert!(result.is_err());
+}
+
+/// Test WasmRuntime::load_file with valid WASM file
+#[test]
+fn test_wasm_runtime_load_file() {
+    use std::io::Write;
+
+    // Create a valid WASM module
+    let source = r#"
+fun double(x: i64) -> i64 {
+    return x * 2
+}
+exegesis { Doubles a number. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    // Write to temp file
+    let temp_path = "/tmp/test_load_file.wasm";
+    let mut file = std::fs::File::create(temp_path).expect("Failed to create temp file");
+    file.write_all(&wasm_bytes)
+        .expect("Failed to write WASM bytes");
+    drop(file);
+
+    // Load from file
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime
+        .load_file(temp_path)
+        .expect("Failed to load from file");
+
+    // Verify it works
+    let result = wasm_module
+        .call("double", &[21i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+
+    // Cleanup
+    std::fs::remove_file(temp_path).ok();
+}
+
+// ============================================
+// 13. Compiler Coverage Tests
+// ============================================
+
+/// Test boolean literal compilation
+#[test]
+fn test_bool_literal_compilation() {
+    let source = r#"
+fun get_true() -> i64 {
+    if true {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_true", &[]).expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+}
+
+/// Test boolean false literal
+#[test]
+fn test_bool_false_literal() {
+    let source = r#"
+fun get_false() -> i64 {
+    if false {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 0. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_false", &[]).expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test match expression with wildcards
+#[test]
+fn test_match_with_wildcard() {
+    let source = r#"
+fun classify(x: i64) -> i64 {
+    match x {
+        0 => 100,
+        1 => 200,
+        _ => 999,
+    }
+}
+exegesis { Classifies value. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test specific cases
+    let result = wasm_module
+        .call("classify", &[0i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(100));
+
+    let result = wasm_module
+        .call("classify", &[1i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(200));
+
+    // Wildcard case
+    let result = wasm_module
+        .call("classify", &[42i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(999));
+}
+
+/// Test if-else with returns
+#[test]
+fn test_if_else_with_returns() {
+    let source = r#"
+fun sign(x: i64) -> i64 {
+    if x > 0 {
+        return 1
+    }
+    if x < 0 {
+        return -1
+    }
+    return 0
+}
+exegesis { Returns sign of number. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("sign", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("sign", &[(-7i64).into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(-1));
+
+    let result = wasm_module
+        .call("sign", &[0i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test while loop
+#[test]
+fn test_while_loop() {
+    let source = r#"
+fun sum_to(n: i64) -> i64 {
+    let result = 0
+    let i = 0
+    while i <= n {
+        result = result + i
+        i = i + 1
+    }
+    return result
+}
+exegesis { Sum of 0 to n. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // sum(0..5) = 0+1+2+3+4+5 = 15
+    let result = wasm_module
+        .call("sum_to", &[5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(15));
+}
+
+/// Test for loop with range literals
+#[test]
+fn test_for_loop_range_literal() {
+    let source = r#"
+fun sum_five() -> i64 {
+    let total = 0
+    for i in 0..5 {
+        total = total + i
+    }
+    return total
+}
+exegesis { Sum 0 to 4. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // sum(0..5) = 0+1+2+3+4 = 10
+    let result = wasm_module.call("sum_five", &[]).expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(10));
+}
+
+/// Test modulo operator
+#[test]
+fn test_modulo_operator() {
+    let source = r#"
+fun is_even(x: i64) -> i64 {
+    if x % 2 == 0 {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if even. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("is_even", &[4i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("is_even", &[7i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test division operator
+#[test]
+fn test_division_operator() {
+    let source = r#"
+fun divide(a: i64, b: i64) -> i64 {
+    return a / b
+}
+exegesis { Divides a by b. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("divide", &[42i64.into(), 6i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(7));
+}
+
+/// Test logical AND operator
+#[test]
+fn test_logical_and() {
+    let source = r#"
+fun both_positive(a: i64, b: i64) -> i64 {
+    if a > 0 && b > 0 {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if both positive. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("both_positive", &[5i64.into(), 3i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("both_positive", &[5i64.into(), (-3i64).into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test logical OR operator
+#[test]
+fn test_logical_or() {
+    let source = r#"
+fun either_positive(a: i64, b: i64) -> i64 {
+    if a > 0 || b > 0 {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if either positive. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("either_positive", &[(-5i64).into(), 3i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("either_positive", &[(-5i64).into(), (-3i64).into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test less than or equal operator
+#[test]
+fn test_lte_operator() {
+    let source = r#"
+fun is_lte(a: i64, b: i64) -> i64 {
+    if a <= b {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if a <= b. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("is_lte", &[5i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("is_lte", &[4i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("is_lte", &[6i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test greater than or equal operator
+#[test]
+fn test_gte_operator() {
+    let source = r#"
+fun is_gte(a: i64, b: i64) -> i64 {
+    if a >= b {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if a >= b. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("is_gte", &[5i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("is_gte", &[6i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    let result = wasm_module
+        .call("is_gte", &[4i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test not equal operator
+#[test]
+fn test_not_equal_operator() {
+    let source = r#"
+fun is_ne(a: i64, b: i64) -> i64 {
+    if a != b {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if a != b. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("is_ne", &[5i64.into(), 5i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+
+    let result = wasm_module
+        .call("is_ne", &[5i64.into(), 6i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+}
