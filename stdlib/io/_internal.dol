@@ -1,0 +1,41 @@
+/// IO Internal Module
+/// ====================
+/// INTERNAL: Host function bindings for IO operations.
+/// These are low-level primitives that should not be used directly.
+/// Use the public API in mod.dol instead.
+
+module io._internal @0.1.0
+
+exegesis {
+    Host function bindings for IO operations. These low-level primitives
+    interface directly with the WASM host or native runtime to perform
+    actual input/output. All functions operate on raw pointers into
+    linear memory. User code should use io.print, io.println, etc.
+}
+
+/// Print a string to stdout (no newline)
+/// ptr: pointer to string data in linear memory
+/// len: length of string in bytes
+sex fun _host_print(ptr: Int, len: Int)
+
+/// Print a string to stdout with trailing newline
+/// ptr: pointer to string data in linear memory
+/// len: length of string in bytes
+sex fun _host_println(ptr: Int, len: Int)
+
+/// Log a message at specified level
+/// level: 0=Debug, 1=Info, 2=Warn, 3=Error
+/// ptr: pointer to message data in linear memory
+/// len: length of message in bytes
+sex fun _host_log(level: Int, ptr: Int, len: Int)
+
+/// Print a string to stderr
+/// ptr: pointer to string data in linear memory
+/// len: length of string in bytes
+sex fun _host_error(ptr: Int, len: Int)
+
+/// Read from stdin into buffer
+/// buf: pointer to buffer in linear memory
+/// max: maximum bytes to read
+/// returns: number of bytes actually read, or -1 on error
+sex fun _host_read(buf: Int, max: Int) -> Int

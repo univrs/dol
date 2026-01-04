@@ -1,0 +1,238 @@
+/// DOL Math Standard Library
+/// ==========================
+/// Mathematical functions for scientific and thermodynamic calculations.
+/// Provides constants, exponential/logarithmic functions, trigonometry,
+/// and utility functions backed by libm.
+
+module math @0.1.0
+
+exegesis {
+    Mathematical functions for scientific and thermodynamic calculations.
+    Provides constants (PI, E, TAU), exponential/logarithmic functions,
+    trigonometry, hyperbolic functions, and utility functions backed by libm.
+    Includes specialized EROEI (Energy Return On Energy Invested) utilities
+    for thermodynamic analysis in the Univrs.io ecosystem.
+}
+
+// ===========================================================================
+// Mathematical Constants
+// ===========================================================================
+
+/// Pi - ratio of circle circumference to diameter
+pub const PI: f64 = 3.141592653589793
+
+/// Euler's number - base of natural logarithm
+pub const E: f64 = 2.718281828459045
+
+/// Natural logarithm of 2
+pub const LN2: f64 = 0.6931471805599453
+
+/// Natural logarithm of 10
+pub const LN10: f64 = 2.302585092994046
+
+/// Square root of 2
+pub const SQRT2: f64 = 1.4142135623730951
+
+/// Tau - 2 * Pi (full circle in radians)
+pub const TAU: f64 = 6.283185307179586
+
+// ===========================================================================
+// Exponential and Logarithmic Functions (libm bindings)
+// ===========================================================================
+
+/// Natural logarithm (base e)
+/// Returns ln(x) for x > 0
+sex extern fun ln(x: f64) -> f64
+
+/// Common logarithm (base 10)
+/// Returns log10(x) for x > 0
+sex extern fun log10(x: f64) -> f64
+
+/// Binary logarithm (base 2)
+/// Returns log2(x) for x > 0
+sex extern fun log2(x: f64) -> f64
+
+/// Exponential function
+/// Returns e^x
+sex extern fun exp(x: f64) -> f64
+
+/// Power function
+/// Returns base^exponent
+sex extern fun pow(base: f64, exponent: f64) -> f64
+
+// ===========================================================================
+// Root Functions (libm bindings)
+// ===========================================================================
+
+/// Square root
+/// Returns sqrt(x) for x >= 0
+sex extern fun sqrt(x: f64) -> f64
+
+/// Cube root
+/// Returns cbrt(x) for any x (handles negative values)
+sex extern fun cbrt(x: f64) -> f64
+
+// ===========================================================================
+// Trigonometric Functions (libm bindings)
+// ===========================================================================
+
+/// Sine (argument in radians)
+sex extern fun sin(x: f64) -> f64
+
+/// Cosine (argument in radians)
+sex extern fun cos(x: f64) -> f64
+
+/// Tangent (argument in radians)
+sex extern fun tan(x: f64) -> f64
+
+/// Arcsine - returns radians in [-pi/2, pi/2]
+sex extern fun asin(x: f64) -> f64
+
+/// Arccosine - returns radians in [0, pi]
+sex extern fun acos(x: f64) -> f64
+
+/// Arctangent - returns radians in [-pi/2, pi/2]
+sex extern fun atan(x: f64) -> f64
+
+/// Two-argument arctangent
+/// Returns angle in radians from origin to point (x, y)
+sex extern fun atan2(y: f64, x: f64) -> f64
+
+// ===========================================================================
+// Hyperbolic Functions (libm bindings)
+// ===========================================================================
+
+/// Hyperbolic sine
+sex extern fun sinh(x: f64) -> f64
+
+/// Hyperbolic cosine
+sex extern fun cosh(x: f64) -> f64
+
+/// Hyperbolic tangent
+sex extern fun tanh(x: f64) -> f64
+
+// ===========================================================================
+// Utility Functions (libm bindings)
+// ===========================================================================
+
+/// Absolute value
+sex extern fun abs(x: f64) -> f64
+
+/// Floor - largest integer not greater than x
+sex extern fun floor(x: f64) -> f64
+
+/// Ceiling - smallest integer not less than x
+sex extern fun ceil(x: f64) -> f64
+
+/// Round to nearest integer (ties go to even)
+sex extern fun round(x: f64) -> f64
+
+/// Truncate toward zero
+sex extern fun trunc(x: f64) -> f64
+
+/// Minimum of two values
+sex extern fun fmin(a: f64, b: f64) -> f64
+
+/// Maximum of two values
+sex extern fun fmax(a: f64, b: f64) -> f64
+
+/// Floating-point modulo (remainder)
+sex extern fun fmod(x: f64, y: f64) -> f64
+
+// ===========================================================================
+// Derived Functions (pure DOL implementations)
+// ===========================================================================
+
+/// Logarithm with arbitrary base
+/// Returns log_base(x) = ln(x) / ln(base)
+pub fun log_base(x: f64, base: f64) -> f64 {
+    return ln(x) / ln(base)
+}
+
+/// Hypotenuse - length of vector (x, y)
+/// Returns sqrt(x^2 + y^2) computed to avoid overflow
+pub fun hypot(x: f64, y: f64) -> f64 {
+    return sqrt(x * x + y * y)
+}
+
+/// Convert degrees to radians
+pub fun deg_to_rad(deg: f64) -> f64 {
+    return deg * PI / 180.0
+}
+
+/// Convert radians to degrees
+pub fun rad_to_deg(rad: f64) -> f64 {
+    return rad * 180.0 / PI
+}
+
+/// Clamp a value between min and max
+pub fun clamp(x: f64, min_val: f64, max_val: f64) -> f64 {
+    if x < min_val {
+        return min_val
+    }
+    if x > max_val {
+        return max_val
+    }
+    return x
+}
+
+/// Linear interpolation between a and b
+/// Returns a + t * (b - a), where t is typically in [0, 1]
+pub fun lerp(a: f64, b: f64, t: f64) -> f64 {
+    return a + t * (b - a)
+}
+
+/// Sign function: returns -1, 0, or 1
+pub fun sign(x: f64) -> f64 {
+    if x < 0.0 {
+        return -1.0
+    }
+    if x > 0.0 {
+        return 1.0
+    }
+    return 0.0
+}
+
+// ===========================================================================
+// Thermodynamic / EROEI Utilities
+// ===========================================================================
+
+exegesis {
+    Functions useful for thermodynamic calculations and Energy Return
+    On Energy Invested (EROEI) analysis in the Univrs.io ecosystem.
+}
+
+/// Calculate EROEI (Energy Return On Energy Invested)
+/// Returns the ratio of energy output to energy input
+pub fun eroei(energy_out: f64, energy_in: f64) -> f64 {
+    if energy_in <= 0.0 {
+        return 0.0
+    }
+    return energy_out / energy_in
+}
+
+/// Net energy calculation
+/// Returns the usable energy after subtracting investment
+pub fun net_energy(energy_out: f64, energy_in: f64) -> f64 {
+    return energy_out - energy_in
+}
+
+/// Energy efficiency (as percentage 0-100)
+pub fun efficiency(useful_output: f64, total_input: f64) -> f64 {
+    if total_input <= 0.0 {
+        return 0.0
+    }
+    return (useful_output / total_input) * 100.0
+}
+
+/// Exponential decay: returns initial * e^(-decay_rate * time)
+/// Useful for modeling energy dissipation
+pub fun exponential_decay(initial: f64, decay_rate: f64, time: f64) -> f64 {
+    return initial * exp(-decay_rate * time)
+}
+
+/// Logistic growth function (S-curve)
+/// Useful for modeling bounded growth in complex systems
+pub fun logistic(x: f64, L: f64, k: f64, x0: f64) -> f64 {
+    return L / (1.0 + exp(-k * (x - x0)))
+}

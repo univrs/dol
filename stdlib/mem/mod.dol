@@ -1,0 +1,165 @@
+/// Memory Module
+/// ==============
+/// Public API for memory management operations.
+/// Provides safe memory allocation and manipulation for Spirit programs.
+
+module mem @0.1.0
+
+exegesis {
+    Memory management module for Spirit programs. Provides allocation (alloc,
+    try_alloc, alloc_zeroed), deallocation (free), reallocation (realloc),
+    and memory manipulation (copy, set, zero, compare). Operates on raw
+    pointers backed by the WASM linear memory or native heap. Essential for
+    building higher-level data structures and managing string buffers.
+}
+
+use mem._internal
+
+/// Result of an allocation operation
+pub type AllocResult = enum {
+    /// Allocation succeeded with pointer
+    Ok(Int),
+    /// Allocation failed (out of memory)
+    OutOfMemory
+}
+
+/// Allocate memory of the specified size.
+/// Returns a pointer to the allocated memory.
+///
+/// Example:
+///   let ptr = mem.alloc(1024)  // Allocate 1KB
+///   if ptr == 0 {
+///       io.error("Out of memory!")
+///   }
+pub fun alloc(size: Int) -> Int {
+    _internal._host_alloc(size)
+}
+
+/// Allocate memory with error handling.
+///
+/// Example:
+///   match mem.try_alloc(1024) {
+///       AllocResult.Ok(ptr) => // use ptr,
+///       AllocResult.OutOfMemory => io.error("OOM!")
+///   }
+pub fun try_alloc(size: Int) -> AllocResult {
+    let ptr = _internal._host_alloc(size)
+    if ptr == 0 {
+        AllocResult.OutOfMemory
+    } else {
+        AllocResult.Ok(ptr)
+    }
+}
+
+/// Free previously allocated memory.
+///
+/// Example:
+///   let ptr = mem.alloc(1024)
+///   // ... use memory ...
+///   mem.free(ptr)  // Release memory
+pub fun free(ptr: Int) {
+    _internal._host_free(ptr)
+}
+
+/// Reallocate memory to a new size.
+/// May move the memory to a new location.
+///
+/// Example:
+///   let ptr = mem.alloc(100)
+///   ptr = mem.realloc(ptr, 200)  // Grow to 200 bytes
+pub fun realloc(ptr: Int, new_size: Int) -> Int {
+    _internal._host_realloc(ptr, new_size)
+}
+
+/// Allocate zeroed memory.
+/// All bytes are initialized to zero.
+///
+/// Example:
+///   let ptr = mem.alloc_zeroed(1024)  // 1KB of zeros
+pub fun alloc_zeroed(size: Int) -> Int {
+    let ptr = _internal._host_alloc(size)
+    if ptr != 0 {
+        _internal._host_memset(ptr, 0, size)
+    }
+    ptr
+}
+
+/// Copy memory from source to destination.
+/// Regions must not overlap.
+///
+/// Example:
+///   mem.copy(dst_ptr, src_ptr, 100)  // Copy 100 bytes
+pub fun copy(dst: Int, src: Int, len: Int) {
+    _internal._host_memcpy(dst, src, len)
+}
+
+/// Fill memory with a byte value.
+///
+/// Example:
+///   mem.set(ptr, 0, 1024)  // Zero out 1KB
+///   mem.set(ptr, 0xFF, 256)  // Fill with 0xFF
+pub fun set(ptr: Int, value: Int, len: Int) {
+    _internal._host_memset(ptr, value, len)
+}
+
+/// Zero out a memory region.
+///
+/// Example:
+///   mem.zero(ptr, 1024)  // Clear 1KB
+pub fun zero(ptr: Int, len: Int) {
+    _internal._host_memset(ptr, 0, len)
+}
+
+/// Compare two memory regions.
+/// Returns true if they are equal.
+///
+/// Example:
+///   if mem.equal(ptr1, ptr2, 100) {
+///       io.println("Memory regions are identical")
+///   }
+pub fun equal(ptr1: Int, ptr2: Int, len: Int) -> Bool {
+    _internal._host_memcmp(ptr1, ptr2, len) == 0
+}
+
+/// Compare two memory regions (with ordering).
+/// Returns: 0 if equal, negative if ptr1 < ptr2, positive if ptr1 > ptr2
+pub fun compare(ptr1: Int, ptr2: Int, len: Int) -> Int {
+    _internal._host_memcmp(ptr1, ptr2, len)
+}
+
+/// Get total available memory size in bytes.
+///
+/// Example:
+///   let total = mem.size()
+///   io.println("Total memory: " + total + " bytes")
+pub fun size() -> Int {
+    _internal._host_memory_size()
+}
+
+/// Grow memory by specified number of 64KB pages.
+/// Returns the previous size in pages, or -1 on failure.
+///
+/// Example:
+///   let old_pages = mem.grow(10)  // Add 640KB
+///   if old_pages < 0 {
+///       io.error("Failed to grow memory")
+///   }
+pub fun grow(pages: Int) -> Int {
+    _internal._host_memory_grow(pages)
+}
+
+/// Read an integer from memory.
+///
+/// Example:
+///   let value = mem.read_int(ptr)
+pub fun read_int(ptr: Int) -> Int {
+    _internal._host_read_int(ptr)
+}
+
+/// Write an integer to memory.
+///
+/// Example:
+///   mem.write_int(ptr, 42)
+pub fun write_int(ptr: Int, value: Int) {
+    _internal._host_write_int(ptr, value)
+}

@@ -1,0 +1,198 @@
+/// DOL Standard Library Prelude
+/// =============================
+/// This module is automatically imported into every DOL program.
+/// It provides the most commonly used types and functions.
+
+module prelude @0.1.0
+
+exegesis {
+    The DOL Standard Library Prelude is automatically imported into every
+    DOL program. It provides foundational types (Option, Result, Bool, String),
+    common operations (panic, assert), and re-exports essential functions from
+    io, msg, time, and mem modules. This forms the minimal runtime environment
+    for Spirit programs in the Univrs.io ecosystem.
+}
+
+// Re-export core IO functions
+pub use io.{print, println, error}
+pub use io.Level
+
+// Re-export core messaging types and functions
+pub use msg.{send, recv, pending, self_id, broadcast}
+pub use msg.{SpiritId, Message, SendResult}
+
+// Re-export core time types and functions
+pub use time.{now, sleep}
+pub use time.{Time, Duration}
+
+// Re-export core memory functions
+pub use mem.{alloc, free}
+
+/// The unit type - represents no value
+pub type Unit = ()
+
+/// Optional value type - either Some(value) or None
+pub type Option<T> = enum {
+    /// Contains a value
+    Some(T),
+    /// Contains no value
+    None
+}
+
+/// Result type for operations that may fail
+pub type Result<T, E> = enum {
+    /// Operation succeeded with value
+    Ok(T),
+    /// Operation failed with error
+    Err(E)
+}
+
+/// Boolean type
+pub type Bool = enum {
+    True,
+    False
+}
+
+/// String type - UTF-8 encoded text
+pub type String = struct {
+    /// Pointer to string data in memory
+    ptr: Int,
+    /// Length in bytes
+    len: Int
+}
+
+/// String operations
+impl String {
+    /// Create an empty string
+    pub fun empty() -> String {
+        String { ptr: 0, len: 0 }
+    }
+
+    /// Check if string is empty
+    pub fun is_empty(self) -> Bool {
+        self.len == 0
+    }
+
+    /// Get string length in bytes
+    pub fun length(self) -> Int {
+        self.len
+    }
+}
+
+/// Option operations
+impl Option<T> {
+    /// Check if option contains a value
+    pub fun is_some(self) -> Bool {
+        match self {
+            Some(_) => true,
+            None => false
+        }
+    }
+
+    /// Check if option is empty
+    pub fun is_none(self) -> Bool {
+        match self {
+            Some(_) => false,
+            None => true
+        }
+    }
+
+    /// Get value or default
+    pub fun unwrap_or(self, default: T) -> T {
+        match self {
+            Some(v) => v,
+            None => default
+        }
+    }
+
+    /// Get value, panics if None
+    pub fun unwrap(self) -> T {
+        match self {
+            Some(v) => v,
+            None => panic("called unwrap on None")
+        }
+    }
+
+    /// Map a function over the option
+    pub fun map<U>(self, f: fun(T) -> U) -> Option<U> {
+        match self {
+            Some(v) => Some(f(v)),
+            None => None
+        }
+    }
+}
+
+/// Result operations
+impl Result<T, E> {
+    /// Check if result is Ok
+    pub fun is_ok(self) -> Bool {
+        match self {
+            Ok(_) => true,
+            Err(_) => false
+        }
+    }
+
+    /// Check if result is Err
+    pub fun is_err(self) -> Bool {
+        match self {
+            Ok(_) => false,
+            Err(_) => true
+        }
+    }
+
+    /// Get value or default
+    pub fun unwrap_or(self, default: T) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => default
+        }
+    }
+
+    /// Get value, panics if Err
+    pub fun unwrap(self) -> T {
+        match self {
+            Ok(v) => v,
+            Err(e) => panic("called unwrap on Err")
+        }
+    }
+
+    /// Map a function over Ok value
+    pub fun map<U>(self, f: fun(T) -> U) -> Result<U, E> {
+        match self {
+            Ok(v) => Ok(f(v)),
+            Err(e) => Err(e)
+        }
+    }
+
+    /// Map a function over Err value
+    pub fun map_err<F>(self, f: fun(E) -> F) -> Result<T, F> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(f(e))
+        }
+    }
+}
+
+/// Panic - abort program with message
+pub fun panic(msg: String) -> ! {
+    error("PANIC: " + msg)
+    _abort()
+}
+
+/// Assertion - panic if condition is false
+pub fun assert(cond: Bool, msg: String) {
+    if !cond {
+        panic("assertion failed: " + msg)
+    }
+}
+
+/// Debug assertion - only checked in debug builds
+pub fun debug_assert(cond: Bool, msg: String) {
+    #[cfg(debug)]
+    if !cond {
+        panic("debug assertion failed: " + msg)
+    }
+}
+
+// Re-export core internal functions (implementation detail)
+use core._internal._abort

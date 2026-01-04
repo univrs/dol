@@ -1,0 +1,84 @@
+/// IO Module
+/// ==========
+/// Public API for input/output operations.
+/// Provides safe, high-level IO primitives for Spirit programs.
+
+module io @0.1.0
+
+exegesis {
+    Input/Output module for Spirit programs. Provides safe, high-level
+    primitives for console output (print, println), structured logging
+    with severity levels (Debug, Info, Warn, Error), and stdin reading.
+    All IO operations are routed through the host's logging infrastructure
+    for consistent handling across different runtime environments.
+}
+
+use io._internal
+
+/// Log level enumeration
+pub type Level = enum {
+    /// Debug-level messages (verbose development output)
+    Debug,
+    /// Informational messages (normal operation)
+    Info,
+    /// Warning messages (potential issues)
+    Warn,
+    /// Error messages (failures and problems)
+    Error
+}
+
+/// Print a string to stdout without a trailing newline.
+///
+/// Example:
+///   io.print("Hello, ")
+///   io.print("World!")  // Output: "Hello, World!"
+pub fun print(s: String) {
+    _internal._host_print(s.ptr, s.len)
+}
+
+/// Print a string to stdout with a trailing newline.
+///
+/// Example:
+///   io.println("Hello, World!")  // Output: "Hello, World!\n"
+pub fun println(s: String) {
+    _internal._host_println(s.ptr, s.len)
+}
+
+/// Log a message at the specified level.
+/// Messages are routed to the host's logging infrastructure.
+///
+/// Example:
+///   io.log(Level.Info, "Server started on port 8080")
+///   io.log(Level.Warn, "Connection timeout, retrying...")
+pub fun log(level: Level, s: String) {
+    let level_int = match level {
+        Level.Debug => 0,
+        Level.Info => 1,
+        Level.Warn => 2,
+        Level.Error => 3
+    }
+    _internal._host_log(level_int, s.ptr, s.len)
+}
+
+/// Print an error message to stderr.
+///
+/// Example:
+///   io.error("Failed to open file: config.json")
+pub fun error(s: String) {
+    _internal._host_error(s.ptr, s.len)
+}
+
+/// Read input from stdin into a string.
+/// Returns the data read, or an empty string on EOF/error.
+///
+/// Example:
+///   let input = io.read(1024)  // Read up to 1024 bytes
+pub fun read(max: Int) -> String {
+    let buf = mem.alloc(max)
+    let len = _internal._host_read(buf, max)
+    if len < 0 {
+        mem.free(buf)
+        return ""
+    }
+    String { ptr: buf, len: len }
+}

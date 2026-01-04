@@ -1,0 +1,49 @@
+/// Time Internal Module
+/// =====================
+/// INTERNAL: Host function bindings for time operations.
+/// These are low-level primitives that should not be used directly.
+/// Use the public API in mod.dol instead.
+
+module time._internal @0.1.0
+
+exegesis {
+    Host function bindings for time operations. These primitives interface
+    with the host's clock sources including wall-clock time (UTC), monotonic
+    clocks for duration measurement, and timer scheduling. Provides precision
+    from milliseconds to nanoseconds. User code should use time.now, time.sleep, etc.
+}
+
+/// Get current time in milliseconds since Unix epoch
+/// returns: milliseconds since 1970-01-01 00:00:00 UTC
+sex fun _host_now_millis() -> Int
+
+/// Get current time in microseconds since Unix epoch
+/// returns: microseconds since 1970-01-01 00:00:00 UTC
+sex fun _host_now_micros() -> Int
+
+/// Get monotonic clock in nanoseconds (for measuring durations)
+/// returns: nanoseconds from arbitrary epoch, monotonically increasing
+sex fun _host_monotonic_nanos() -> Int
+
+/// Sleep for specified milliseconds
+/// millis: number of milliseconds to sleep
+sex fun _host_sleep_millis(millis: Int)
+
+/// Sleep for specified microseconds
+/// micros: number of microseconds to sleep
+sex fun _host_sleep_micros(micros: Int)
+
+/// Set a timer callback
+/// millis: milliseconds until timer fires
+/// callback_ptr: function pointer for callback
+/// returns: timer ID, or -1 on failure
+sex fun _host_set_timer(millis: Int, callback_ptr: Int) -> Int
+
+/// Cancel a timer
+/// timer_id: ID of timer to cancel
+/// returns: 0 on success, -1 if timer not found
+sex fun _host_cancel_timer(timer_id: Int) -> Int
+
+/// Get current timezone offset in minutes from UTC
+/// returns: offset in minutes (e.g., -480 for PST)
+sex fun _host_timezone_offset() -> Int

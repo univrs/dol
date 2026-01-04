@@ -1,0 +1,62 @@
+/// Messaging Internal Module
+/// ==========================
+/// INTERNAL: Host function bindings for inter-Spirit messaging.
+/// These are low-level primitives that should not be used directly.
+/// Use the public API in mod.dol instead.
+
+module msg._internal @0.1.0
+
+exegesis {
+    Host function bindings for inter-Spirit messaging. These primitives
+    interface with the Spirit runtime to send/receive messages between
+    isolated Spirit instances. Supports direct messaging, broadcast, and
+    publish/subscribe patterns. User code should use msg.send, msg.recv, etc.
+}
+
+/// Send a message to another Spirit
+/// target_id: ID of the target Spirit
+/// ptr: pointer to message data in linear memory
+/// len: length of message in bytes
+/// returns: 0 on success, negative error code on failure
+sex fun _host_send(target_id: Int, ptr: Int, len: Int) -> Int
+
+/// Receive a pending message
+/// buf: pointer to buffer in linear memory
+/// max: maximum bytes to receive
+/// sender_out: pointer to write sender ID
+/// returns: number of bytes received, 0 if no message, -1 on error
+sex fun _host_recv(buf: Int, max: Int, sender_out: Int) -> Int
+
+/// Check number of pending messages
+/// returns: count of messages in queue
+sex fun _host_pending() -> Int
+
+/// Get the current Spirit's ID
+/// returns: this Spirit's unique identifier
+sex fun _host_self_id() -> Int
+
+/// Broadcast a message to all Spirits in the system
+/// ptr: pointer to message data in linear memory
+/// len: length of message in bytes
+/// returns: number of Spirits that received the message
+sex fun _host_broadcast(ptr: Int, len: Int) -> Int
+
+/// Subscribe to a named channel
+/// ptr: pointer to channel name in linear memory
+/// len: length of channel name in bytes
+/// returns: 0 on success, negative error code on failure
+sex fun _host_subscribe(ptr: Int, len: Int) -> Int
+
+/// Unsubscribe from a named channel
+/// ptr: pointer to channel name in linear memory
+/// len: length of channel name in bytes
+/// returns: 0 on success, negative error code on failure
+sex fun _host_unsubscribe(ptr: Int, len: Int) -> Int
+
+/// Publish to a named channel
+/// channel_ptr: pointer to channel name in linear memory
+/// channel_len: length of channel name in bytes
+/// msg_ptr: pointer to message data in linear memory
+/// msg_len: length of message in bytes
+/// returns: number of subscribers that received the message
+sex fun _host_publish(channel_ptr: Int, channel_len: Int, msg_ptr: Int, msg_len: Int) -> Int

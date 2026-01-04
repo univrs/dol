@@ -1,0 +1,142 @@
+/// Messaging Module
+/// =================
+/// Public API for inter-Spirit communication.
+/// Provides typed, safe message passing between Spirits.
+
+module msg @0.1.0
+
+exegesis {
+    Inter-Spirit messaging module for concurrent communication. Provides
+    typed, safe message passing between Spirit instances including direct
+    send/recv, broadcast to all Spirits, and publish/subscribe channels.
+    Messages are queued and delivered asynchronously, enabling loosely
+    coupled Spirit coordination in the Univrs.io runtime.
+}
+
+use msg._internal
+
+/// Unique identifier for a Spirit instance
+pub type SpiritId = Int
+
+/// Result of a send operation
+pub type SendResult = enum {
+    /// Message sent successfully
+    Ok,
+    /// Target Spirit not found
+    NotFound,
+    /// Target's message queue is full
+    QueueFull,
+    /// Message too large
+    TooLarge,
+    /// Unknown error
+    Error
+}
+
+/// A received message with sender information
+pub type Message = struct {
+    /// The Spirit that sent this message
+    sender: SpiritId,
+    /// The message content
+    data: String
+}
+
+/// Send a message to another Spirit.
+///
+/// Example:
+///   let target = SpiritId(42)
+///   match msg.send(target, "Hello!") {
+///       SendResult.Ok => io.println("Sent!"),
+///       SendResult.NotFound => io.error("Spirit not found")
+///   }
+pub fun send(target: SpiritId, data: String) -> SendResult {
+    let result = _internal._host_send(target, data.ptr, data.len)
+    match result {
+        0 => SendResult.Ok,
+        -1 => SendResult.NotFound,
+        -2 => SendResult.QueueFull,
+        -3 => SendResult.TooLarge,
+        _ => SendResult.Error
+    }
+}
+
+/// Receive the next pending message, if any.
+/// Returns None if no messages are waiting.
+///
+/// Example:
+///   match msg.recv() {
+///       Some(m) => io.println("From " + m.sender + ": " + m.data),
+///       None => io.println("No messages")
+///   }
+pub fun recv() -> Option<Message> {
+    let buf = mem.alloc(65536)  // 64KB max message
+    let sender_buf = mem.alloc(8)
+    let len = _internal._host_recv(buf, 65536, sender_buf)
+
+    if len <= 0 {
+        mem.free(buf)
+        mem.free(sender_buf)
+        return None
+    }
+
+    let sender = mem.read_int(sender_buf)
+    mem.free(sender_buf)
+
+    Some(Message {
+        sender: sender,
+        data: String { ptr: buf, len: len }
+    })
+}
+
+/// Get the number of pending messages in the queue.
+///
+/// Example:
+///   if msg.pending() > 0 {
+///       io.println("You have mail!")
+///   }
+pub fun pending() -> Int {
+    _internal._host_pending()
+}
+
+/// Get the current Spirit's unique identifier.
+///
+/// Example:
+///   let my_id = msg.self_id()
+///   io.println("I am Spirit #" + my_id)
+pub fun self_id() -> SpiritId {
+    _internal._host_self_id()
+}
+
+/// Broadcast a message to all Spirits in the system.
+/// Returns the number of Spirits that received the message.
+///
+/// Example:
+///   let count = msg.broadcast("System shutting down")
+///   io.println("Notified " + count + " Spirits")
+pub fun broadcast(data: String) -> Int {
+    _internal._host_broadcast(data.ptr, data.len)
+}
+
+/// Subscribe to a named publish/subscribe channel.
+///
+/// Example:
+///   msg.subscribe("events.user.login")
+pub fun subscribe(channel: String) -> Bool {
+    _internal._host_subscribe(channel.ptr, channel.len) == 0
+}
+
+/// Unsubscribe from a named channel.
+///
+/// Example:
+///   msg.unsubscribe("events.user.login")
+pub fun unsubscribe(channel: String) -> Bool {
+    _internal._host_unsubscribe(channel.ptr, channel.len) == 0
+}
+
+/// Publish a message to a named channel.
+/// Returns the number of subscribers that received the message.
+///
+/// Example:
+///   msg.publish("events.user.login", "user_id=42")
+pub fun publish(channel: String, data: String) -> Int {
+    _internal._host_publish(channel.ptr, channel.len, data.ptr, data.len)
+}

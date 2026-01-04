@@ -1,0 +1,67 @@
+/// Memory Internal Module
+/// =======================
+/// INTERNAL: Host function bindings for memory management.
+/// These are low-level primitives that should not be used directly.
+/// Use the public API in mod.dol instead.
+
+module mem._internal @0.1.0
+
+exegesis {
+    Host function bindings for memory management. These primitives interface
+    with the WASM linear memory or native heap for allocation, deallocation,
+    and memory manipulation. Provides the foundation for all dynamic memory
+    in Spirit programs. User code should use mem.alloc, mem.free, etc.
+}
+
+/// Allocate memory in linear memory
+/// size: number of bytes to allocate
+/// returns: pointer to allocated memory, or 0 on failure
+sex fun _host_alloc(size: Int) -> Int
+
+/// Free previously allocated memory
+/// ptr: pointer returned by _host_alloc
+sex fun _host_free(ptr: Int)
+
+/// Reallocate memory to new size
+/// ptr: pointer to existing allocation
+/// new_size: desired new size in bytes
+/// returns: pointer to reallocated memory (may differ from ptr), or 0 on failure
+sex fun _host_realloc(ptr: Int, new_size: Int) -> Int
+
+/// Copy memory from source to destination
+/// dst: destination pointer
+/// src: source pointer
+/// len: number of bytes to copy
+sex fun _host_memcpy(dst: Int, src: Int, len: Int)
+
+/// Set memory to a value
+/// ptr: destination pointer
+/// value: byte value to set (0-255)
+/// len: number of bytes to set
+sex fun _host_memset(ptr: Int, value: Int, len: Int)
+
+/// Compare two memory regions
+/// ptr1: first memory region
+/// ptr2: second memory region
+/// len: number of bytes to compare
+/// returns: 0 if equal, negative if ptr1 < ptr2, positive if ptr1 > ptr2
+sex fun _host_memcmp(ptr1: Int, ptr2: Int, len: Int) -> Int
+
+/// Get total memory size
+/// returns: total linear memory size in bytes
+sex fun _host_memory_size() -> Int
+
+/// Grow memory by specified pages (each page is 64KB)
+/// pages: number of 64KB pages to add
+/// returns: previous memory size in pages, or -1 on failure
+sex fun _host_memory_grow(pages: Int) -> Int
+
+/// Read an integer from memory (host byte order)
+/// ptr: pointer to read from
+/// returns: integer value at pointer
+sex fun _host_read_int(ptr: Int) -> Int
+
+/// Write an integer to memory (host byte order)
+/// ptr: pointer to write to
+/// value: integer value to write
+sex fun _host_write_int(ptr: Int, value: Int)

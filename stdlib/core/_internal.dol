@@ -1,0 +1,59 @@
+/// DOL Core Module - Internal Host Bindings
+/// =========================================
+/// This module contains the internal host bindings for core runtime operations.
+/// These are implementation details and should NOT be imported by user code.
+///
+/// The functions here use the `sex` keyword to mark them as effectful host bindings.
+/// User code should use the clean public API in prelude.dol instead.
+
+module core._internal @0.1.0
+
+exegesis {
+    Internal host bindings for the DOL runtime. These low-level functions
+    provide the bridge between DOL code and the host environment (WASM/native).
+    All functions use the `sex` keyword to mark them as effectful host calls.
+
+    WARNING: This module is an implementation detail. User code should use
+    the public APIs in prelude.dol and other stdlib modules instead.
+}
+
+// ===========================================================================
+// Abort / Panic Runtime Support
+// ===========================================================================
+
+/// Internal: abort execution immediately
+/// This is a host binding that terminates the program.
+sex fun _abort() -> !
+
+/// Internal: abort with error code
+sex fun _abort_with_code(code: Int) -> !
+
+/// Internal: unreachable code marker
+/// Used by compiler for exhaustive match checking
+sex fun _unreachable() -> !
+
+// ===========================================================================
+// Memory Runtime Support
+// ===========================================================================
+
+/// Internal: raw memory allocation
+sex fun _raw_alloc(size: Int) -> Int
+
+/// Internal: raw memory deallocation
+sex fun _raw_free(ptr: Int)
+
+/// Internal: raw memory copy
+sex fun _raw_copy(src: Int, dst: Int, size: Int)
+
+// ===========================================================================
+// Debug / Introspection Support
+// ===========================================================================
+
+/// Internal: trigger debugger breakpoint
+sex fun _debug_break()
+
+/// Internal: dump stack trace
+sex fun _dump_stack()
+
+/// Internal: get current stack depth
+sex fun _stack_depth() -> Int

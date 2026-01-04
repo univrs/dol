@@ -1,0 +1,151 @@
+/// Time Module
+/// ============
+/// Public API for time and duration operations.
+/// Provides safe, ergonomic time handling for Spirit programs.
+
+module time @0.1.0
+
+exegesis {
+    Time and duration operations for Spirit programs. Provides Time (point
+    in time as milliseconds since Unix epoch) and Duration (time interval)
+    types with ergonomic constructors and arithmetic. Includes monotonic
+    clocks for precise benchmarking and sleep functions for controlled delays.
+}
+
+use time._internal
+
+/// A point in time (milliseconds since Unix epoch)
+pub type Time = struct {
+    /// Milliseconds since 1970-01-01 00:00:00 UTC
+    millis: Int
+}
+
+/// A duration of time
+pub type Duration = struct {
+    /// Duration in milliseconds
+    millis: Int
+}
+
+/// Duration constructors
+impl Duration {
+    /// Create a duration from milliseconds
+    pub fun from_millis(ms: Int) -> Duration {
+        Duration { millis: ms }
+    }
+
+    /// Create a duration from seconds
+    pub fun from_secs(s: Int) -> Duration {
+        Duration { millis: s * 1000 }
+    }
+
+    /// Create a duration from minutes
+    pub fun from_mins(m: Int) -> Duration {
+        Duration { millis: m * 60 * 1000 }
+    }
+
+    /// Create a duration from hours
+    pub fun from_hours(h: Int) -> Duration {
+        Duration { millis: h * 60 * 60 * 1000 }
+    }
+
+    /// Get duration in milliseconds
+    pub fun as_millis(self) -> Int {
+        self.millis
+    }
+
+    /// Get duration in seconds (truncated)
+    pub fun as_secs(self) -> Int {
+        self.millis / 1000
+    }
+}
+
+/// Time operations
+impl Time {
+    /// Create a Time from milliseconds since epoch
+    pub fun from_millis(ms: Int) -> Time {
+        Time { millis: ms }
+    }
+
+    /// Get milliseconds since epoch
+    pub fun as_millis(self) -> Int {
+        self.millis
+    }
+
+    /// Calculate duration between two times
+    pub fun duration_since(self, earlier: Time) -> Duration {
+        Duration { millis: self.millis - earlier.millis }
+    }
+
+    /// Add a duration to this time
+    pub fun add(self, d: Duration) -> Time {
+        Time { millis: self.millis + d.millis }
+    }
+
+    /// Subtract a duration from this time
+    pub fun sub(self, d: Duration) -> Time {
+        Time { millis: self.millis - d.millis }
+    }
+}
+
+/// Get the current time.
+///
+/// Example:
+///   let start = time.now()
+///   // ... do work ...
+///   let elapsed = time.now().duration_since(start)
+pub fun now() -> Time {
+    Time { millis: _internal._host_now_millis() }
+}
+
+/// Get high-precision monotonic time in microseconds.
+/// Use for precise duration measurements.
+///
+/// Example:
+///   let t1 = time.now_micros()
+///   // ... fast operation ...
+///   let t2 = time.now_micros()
+///   let elapsed_us = t2 - t1
+pub fun now_micros() -> Int {
+    _internal._host_now_micros()
+}
+
+/// Get monotonic nanoseconds (for benchmarking).
+/// This clock only goes forward and is not affected by system time changes.
+pub fun monotonic_nanos() -> Int {
+    _internal._host_monotonic_nanos()
+}
+
+/// Sleep for the specified duration.
+///
+/// Example:
+///   time.sleep(Duration.from_secs(1))  // Sleep for 1 second
+///   time.sleep(Duration.from_millis(500))  // Sleep for 500ms
+pub fun sleep(d: Duration) {
+    _internal._host_sleep_millis(d.millis)
+}
+
+/// Sleep for specified milliseconds (convenience function).
+///
+/// Example:
+///   time.sleep_ms(100)  // Sleep for 100 milliseconds
+pub fun sleep_ms(ms: Int) {
+    _internal._host_sleep_millis(ms)
+}
+
+/// Sleep for specified seconds (convenience function).
+///
+/// Example:
+///   time.sleep_secs(5)  // Sleep for 5 seconds
+pub fun sleep_secs(s: Int) {
+    _internal._host_sleep_millis(s * 1000)
+}
+
+/// Get current timezone offset from UTC in minutes.
+/// Negative values are west of UTC, positive are east.
+///
+/// Example:
+///   let offset = time.timezone_offset()
+///   // PST would be -480 (8 hours * 60 minutes)
+pub fun timezone_offset() -> Int {
+    _internal._host_timezone_offset()
+}
