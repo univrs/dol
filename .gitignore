@@ -50,6 +50,14 @@ stage3/
 
 # Node.js
 node_modules/
+**/node_modules/
 pnpm-lock.yaml
 package-lock.json
 .pnpm-store/
+
+# Development artifacts (not part of crate)
+compiler-progress/
+effect-v2-results/
+identity-progress/
+vm-progress/
+docs/tutorials/

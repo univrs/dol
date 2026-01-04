@@ -1453,3 +1453,424 @@ exegesis { Process different request types. }
         .expect("Call failed");
     assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
 }
+
+// ============================================
+// F64 Field Type Coverage Tests
+// ============================================
+
+/// Test member access with F64 field type
+#[test]
+fn test_member_access_f64_field() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let source = r#"
+fun get_temperature() -> f64 {
+    let sensor = Sensor { temperature: 98.6, humidity: 0.65 }
+    return sensor.temperature
+}
+exegesis { Gets the temperature from a sensor. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Create Sensor layout with F64 fields
+    let sensor_layout = GeneLayout {
+        name: "Sensor".to_string(),
+        fields: vec![
+            FieldLayout::primitive("temperature", 0, WasmFieldType::F64),
+            FieldLayout::primitive("humidity", 8, WasmFieldType::F64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+
+    // Create compiler and register the layout
+    let mut compiler = WasmCompiler::new();
+    compiler.register_gene_layout(sensor_layout);
+
+    // Compile to WASM
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    // Validate by loading into runtime
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Call the function
+    let result = wasm_module
+        .call("get_temperature", &[])
+        .expect("Call failed");
+
+    // Verify F64 result - should be 98.6
+    let temp = result
+        .first()
+        .and_then(|v| v.f64())
+        .expect("Expected f64 result");
+    assert!((temp - 98.6).abs() < 0.001, "Expected 98.6, got {}", temp);
+}
+
+/// Test struct literal with F64 fields and member access
+#[test]
+fn test_struct_literal_f64_field() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let source = r#"
+fun get_humidity() -> f64 {
+    let sensor = Sensor { temperature: 72.5, humidity: 0.45 }
+    return sensor.humidity
+}
+exegesis { Gets humidity from a sensor. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Create Sensor layout with F64 fields
+    let sensor_layout = GeneLayout {
+        name: "Sensor".to_string(),
+        fields: vec![
+            FieldLayout::primitive("temperature", 0, WasmFieldType::F64),
+            FieldLayout::primitive("humidity", 8, WasmFieldType::F64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+
+    let mut compiler = WasmCompiler::new();
+    compiler.register_gene_layout(sensor_layout);
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_humidity", &[]).expect("Call failed");
+
+    // Verify F64 result - should be 0.45
+    let humidity = result
+        .first()
+        .and_then(|v| v.f64())
+        .expect("Expected f64 result");
+    assert!(
+        (humidity - 0.45).abs() < 0.001,
+        "Expected 0.45, got {}",
+        humidity
+    );
+}
+
+/// Test struct literal with mixed I64 and F64 fields
+#[test]
+fn test_struct_literal_mixed_i64_f64() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let source = r#"
+fun get_average_temp() -> f64 {
+    let reading = WeatherReading { timestamp: 1704312000, temperature: 72.5, pressure: 1013.25 }
+    return reading.pressure
+}
+exegesis { Gets pressure from a weather reading with mixed field types. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Create WeatherReading layout with mixed I64 and F64 fields
+    let reading_layout = GeneLayout {
+        name: "WeatherReading".to_string(),
+        fields: vec![
+            FieldLayout::primitive("timestamp", 0, WasmFieldType::I64),
+            FieldLayout::primitive("temperature", 8, WasmFieldType::F64),
+            FieldLayout::primitive("pressure", 16, WasmFieldType::F64),
+        ],
+        total_size: 24,
+        alignment: 8,
+    };
+
+    let mut compiler = WasmCompiler::new();
+    compiler.register_gene_layout(reading_layout);
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module
+        .call("get_average_temp", &[])
+        .expect("Call failed");
+
+    // Verify F64 result - should be 1013.25
+    let pressure = result
+        .first()
+        .and_then(|v| v.f64())
+        .expect("Expected f64 result");
+    assert!(
+        (pressure - 1013.25).abs() < 0.001,
+        "Expected 1013.25, got {}",
+        pressure
+    );
+}
+
+// ============================================
+// Unary Operator Coverage Tests
+// ============================================
+
+/// Test unary negation operator
+#[test]
+fn test_unary_negation() {
+    let source = r#"
+fun negate(x: i64) -> i64 {
+    return -x
+}
+exegesis { Negates an integer. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Test negating positive number
+    let result = wasm_module
+        .call("negate", &[42i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(-42));
+
+    // Test negating negative number (double negation)
+    let result = wasm_module
+        .call("negate", &[(-100i64).into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(100));
+
+    // Test negating zero
+    let result = wasm_module
+        .call("negate", &[0i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+/// Test unary negation in expressions
+#[test]
+fn test_unary_negation_in_expression() {
+    let source = r#"
+fun subtract_via_negation(a: i64, b: i64) -> i64 {
+    return a + -b
+}
+exegesis { Subtracts b from a using negation. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // 10 + (-3) = 7
+    let result = wasm_module
+        .call("subtract_via_negation", &[10i64.into(), 3i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(7));
+}
+
+/// Test unary not operator (boolean negation)
+#[test]
+fn test_unary_not() {
+    let source = r#"
+fun invert(x: i64) -> i64 {
+    if !x {
+        return 1
+    }
+    return 0
+}
+exegesis { Returns 1 if x is falsy (0), 0 otherwise. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // !0 is true, so return 1
+    let result = wasm_module
+        .call("invert", &[0i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
+
+    // !42 is false (42 != 0), so return 0
+    let result = wasm_module
+        .call("invert", &[42i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+
+    // !1 is false, so return 0
+    let result = wasm_module
+        .call("invert", &[1i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(0));
+}
+
+// ============================================
+// F32 Field Type Coverage Tests
+// ============================================
+
+/// Test member access with F32 field type
+#[test]
+fn test_member_access_f32_field() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let source = r#"
+fun get_x_coord() -> f32 {
+    let point = Point3D { x: 1.5, y: 2.5, z: 3.5 }
+    return point.x
+}
+exegesis { Gets the x coordinate from a 3D point. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Create Point3D layout with F32 fields
+    let point_layout = GeneLayout {
+        name: "Point3D".to_string(),
+        fields: vec![
+            FieldLayout::primitive("x", 0, WasmFieldType::F32),
+            FieldLayout::primitive("y", 4, WasmFieldType::F32),
+            FieldLayout::primitive("z", 8, WasmFieldType::F32),
+        ],
+        total_size: 12,
+        alignment: 4,
+    };
+
+    let mut compiler = WasmCompiler::new();
+    compiler.register_gene_layout(point_layout);
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_x_coord", &[]).expect("Call failed");
+
+    // Verify F32 result - should be 1.5
+    let x = result
+        .first()
+        .and_then(|v| v.f32())
+        .expect("Expected f32 result");
+    assert!((x - 1.5).abs() < 0.001, "Expected 1.5, got {}", x);
+}
+
+/// Test struct literal with F32 fields - accessing different field
+#[test]
+fn test_struct_literal_f32_field() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let source = r#"
+fun get_z_coord() -> f32 {
+    let point = Point3D { x: 10.0, y: 20.0, z: 30.0 }
+    return point.z
+}
+exegesis { Gets the z coordinate from a 3D point. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let point_layout = GeneLayout {
+        name: "Point3D".to_string(),
+        fields: vec![
+            FieldLayout::primitive("x", 0, WasmFieldType::F32),
+            FieldLayout::primitive("y", 4, WasmFieldType::F32),
+            FieldLayout::primitive("z", 8, WasmFieldType::F32),
+        ],
+        total_size: 12,
+        alignment: 4,
+    };
+
+    let mut compiler = WasmCompiler::new();
+    compiler.register_gene_layout(point_layout);
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_z_coord", &[]).expect("Call failed");
+
+    // Verify F32 result - should be 30.0
+    let z = result
+        .first()
+        .and_then(|v| v.f32())
+        .expect("Expected f32 result");
+    assert!((z - 30.0).abs() < 0.001, "Expected 30.0, got {}", z);
+}
+
+/// Test struct with mixed I32, F32, and I64 fields
+#[test]
+fn test_struct_literal_mixed_with_f32() {
+    use metadol::wasm::layout::{FieldLayout, GeneLayout, WasmFieldType};
+
+    let source = r#"
+fun get_velocity() -> f32 {
+    let particle = Particle { id: 42, velocity: 9.8, mass: 100 }
+    return particle.velocity
+}
+exegesis { Gets velocity from a particle with mixed field types. }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    // Create Particle layout with mixed I32, F32, I64 fields
+    let particle_layout = GeneLayout {
+        name: "Particle".to_string(),
+        fields: vec![
+            FieldLayout::primitive("id", 0, WasmFieldType::I32),
+            FieldLayout::primitive("velocity", 4, WasmFieldType::F32),
+            FieldLayout::primitive("mass", 8, WasmFieldType::I64),
+        ],
+        total_size: 16,
+        alignment: 8,
+    };
+
+    let mut compiler = WasmCompiler::new();
+    compiler.register_gene_layout(particle_layout);
+
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    let result = wasm_module.call("get_velocity", &[]).expect("Call failed");
+
+    // Verify F32 result - should be 9.8
+    let velocity = result
+        .first()
+        .and_then(|v| v.f32())
+        .expect("Expected f32 result");
+    assert!(
+        (velocity - 9.8).abs() < 0.01,
+        "Expected 9.8, got {}",
+        velocity
+    );
+}
+
+/// Test double negation
+#[test]
+fn test_double_negation() {
+    let source = r#"
+fun double_negate(x: i64) -> i64 {
+    return -(-x)
+}
+exegesis { Double negates a number (returns original). }
+"#;
+    let module = parse_file(source).expect("Failed to parse");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile(&module).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load module");
+
+    // Double negation should return original value
+    let result = wasm_module
+        .call("double_negate", &[42i64.into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(42));
+
+    let result = wasm_module
+        .call("double_negate", &[(-17i64).into()])
+        .expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(-17));
+}
