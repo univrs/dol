@@ -1,0 +1,125 @@
+gene TranslationGroup<D: UInt64> {
+  has offset: Array<Float64>
+  has dim: UInt64 = D
+
+  constraint valid_dimension {
+    this.offset.length == D
+  }
+
+  fun identity() -> Array<Float64> {
+    return (0..D).map(|i| 0.0).collect()
+  }
+
+  fun compose(other: TranslationGroup<D>) -> Array<Float64> {
+    return (0..D).map(|i| this.offset[i] + other.offset[i]).collect()
+  }
+
+  fun inverse() -> Array<Float64> {
+    return this.offset.map(|x| -x).collect()
+  }
+
+  fun act(point: Array<Float64>) -> Array<Float64> {
+    return (0..D).map(|i| point[i] + this.offset[i]).collect()
+  }
+
+  fun magnitude() -> Float64 {
+    let sum_sq = this.offset.map(|x| x * x).sum()
+    return sum_sq.sqrt()
+  }
+
+  fun normalize() -> Array<Float64> {
+    let mag = this.magnitude()
+    if mag == 0.0 {
+      return this.offset
+    }
+    return this.offset.map(|x| x / mag).collect()
+  }
+
+  fun scale(factor: Float64) -> Array<Float64> {
+    return this.offset.map(|x| x * factor).collect()
+  }
+
+  fun dot(other: TranslationGroup<D>) -> Float64 {
+    return (0..D).map(|i| this.offset[i] * other.offset[i]).sum()
+  }
+
+  fun is_identity() -> Bool {
+    return !(0..D).any(|i| this.offset[i] != 0.0)
+  }
+}
+
+exegesis {
+  TranslationGroup<D> represents the translation group T(D) in D-dimensional
+  Euclidean space. This is a continuous Lie group consisting of all translations
+  (shifts) in R^D space.
+
+  In the GDL (Geometric Deep Learning) three-pillar ontology, TranslationGroup
+  is the inherent symmetry group for Grid domains:
+  - Grid1D: T(1) - translations along a single axis (audio, sequences)
+  - Grid2D: T(2) - translations in 2D plane (images, feature maps)
+  - Grid3D: T(3) - translations in 3D space (volumes, point clouds)
+
+  Type Parameter:
+  - D: UInt64 - The dimension of the space (compile-time constant)
+    D=1 for sequences, D=2 for images, D=3 for volumetric data
+
+  Properties:
+  - offset: Array<Float64> - The translation vector with D components
+  - dim: UInt64 = D - The dimension (stored for runtime convenience)
+
+  Constraint:
+  - valid_dimension: Ensures offset array has exactly D elements
+
+  Group Operations (implementing SymmetryGroup interface):
+  - identity(): Returns the zero vector [0, 0, ..., 0] (D zeros)
+  - compose(other): Vector addition - this.offset + other.offset
+  - inverse(): Negation of the translation vector -this.offset
+  - act(point): Translates a point by adding offset: point + this.offset
+
+  Utility Functions:
+  - magnitude(): Euclidean norm (L2 length) of translation vector
+  - normalize(): Unit translation vector (direction only, magnitude 1)
+  - scale(factor): Scales the translation by a scalar factor
+  - dot(other): Dot product (inner product) of two translation vectors
+  - is_identity(): Returns true if this is the zero translation
+
+  Mathematical Background:
+  The translation group T(D) is an Abelian (commutative) Lie group:
+  - Abelian: compose(a, b) == compose(b, a) for all translations a, b
+  - Lie group: Continuous symmetry group with smooth manifold structure
+  - Isomorphic to (R^D, +): The group operation is vector addition
+
+  Translation Equivariance in CNNs:
+  A function f is translation-equivariant if f(T_t(x)) = T_t(f(x)) for all
+  translations t in T(D). In the language of CNNs:
+  - For a convolutional layer and shift s: conv(shift(x, s)) = shift(conv(x), s)
+  - This means: "translating the input translates the output by the same amount"
+
+  Weight sharing in convolutional layers achieves translation equivariance:
+  - The same filter kernel is applied at every spatial location
+  - No positional information is encoded in the weights
+  - This is why CNNs generalize to translated versions of training images
+
+  Pooling and Global Aggregation:
+  - Max/average pooling with stride creates translation invariance (not equivariance)
+  - Global pooling creates complete translation invariance for classification
+
+  Connection to Fourier Analysis:
+  Translation equivariance is deeply connected to the convolution theorem:
+  - Convolution in spatial domain equals multiplication in frequency domain
+  - This is why CNNs are efficient: FFT-based convolution exploits T(D) symmetry
+
+  Related Genes:
+  - Grid2D<T>: The domain type with inherent T(2) symmetry
+  - Grid1D<T>: Sequence domain with T(1) symmetry
+  - Grid3D<T>: Volumetric domain with T(3) symmetry
+  - RotationGroup (SO(D)): Rotation symmetry, often composed with translation
+  - EuclideanGroup (E(D)): Product group SE(D) = T(D) x SO(D)
+
+  GDL Blueprint Reference:
+  Symmetry group in the three-pillar ontology:
+  Group (G) -> Continuous (Lie) -> TranslationGroup T(D)
+
+  Domain-symmetry pairing:
+  Grid1D <-> T(1), Grid2D <-> T(2), Grid3D <-> T(3)
+}

@@ -1,0 +1,203 @@
+gene PermutationGroup<N: UInt64> {
+  has perm: Array<UInt64>
+  has size: UInt64 = N
+
+  constraint valid_size {
+    this.perm.length == N
+  }
+
+  constraint valid_indices {
+    forall i: UInt64.
+      i < this.perm.length implies this.perm[i] < N
+  }
+
+  constraint is_bijection {
+    forall i: UInt64. forall j: UInt64.
+      i < N && j < N && i != j implies this.perm[i] != this.perm[j]
+  }
+
+  fun identity() -> Array<UInt64> {
+    return (0..N).collect()
+  }
+
+  fun compose(other: PermutationGroup<N>) -> Array<UInt64> {
+    return (0..N).map(|i| this.perm[other.perm[i]]).collect()
+  }
+
+  fun inverse() -> Array<UInt64> {
+    return (0..N)
+      .map(|i| (0..N).find(|j| this.perm[j] == i))
+      .collect()
+  }
+
+  fun act(indices: Array<UInt64>) -> Array<UInt64> {
+    return indices.map(|i| this.perm[i])
+  }
+
+  fun apply_to(arr: Array<Float64>) -> Array<Float64> {
+    return (0..N).map(|i| arr[this.inverse_at(i)]).collect()
+  }
+
+  fun inverse_at(target: UInt64) -> UInt64 {
+    return (0..N).find(|j| this.perm[j] == target).unwrap()
+  }
+
+  fun cycle_lengths() -> List<UInt64> {
+    return this.compute_cycle_lengths()
+  }
+
+  fun compute_cycle_lengths() -> List<UInt64> {
+    return this.perm
+      .indices()
+      .filter(|i| this.is_cycle_start(i))
+      .map(|i| this.cycle_length_at(i))
+      .filter(|len| len > 1)
+      .collect()
+  }
+
+  fun is_cycle_start(idx: UInt64) -> Bool {
+    return !(0..idx).any(|j| this.in_same_cycle(j, idx))
+  }
+
+  fun in_same_cycle(i: UInt64, j: UInt64) -> Bool {
+    return this.reaches(i, j)
+  }
+
+  fun reaches(start: UInt64, target: UInt64) -> Bool {
+    return (0..N).any(|steps| this.apply_n_times(start, steps) == target)
+  }
+
+  fun apply_n_times(idx: UInt64, steps: UInt64) -> UInt64 {
+    if steps == 0 {
+      return idx
+    }
+    return this.apply_n_times(this.perm[idx], steps - 1)
+  }
+
+  fun cycle_length_at(start: UInt64) -> UInt64 {
+    return (1..N).find(|k| this.apply_n_times(start, k) == start).unwrap()
+  }
+
+  fun sign() -> Int64 {
+    let lengths = this.cycle_lengths()
+    let transpositions = lengths.map(|len| len - 1).sum()
+    if transpositions % 2 == 0 {
+      return 1
+    } else {
+      return -1
+    }
+  }
+
+  fun is_identity() -> Bool {
+    return !(0..N).any(|i| this.perm[i] != i)
+  }
+
+  fun order() -> UInt64 {
+    // Order of permutation = LCM of all cycle lengths
+    // This avoids iterating up to N! which overflows
+    let lengths = this.cycle_lengths()
+    if lengths.length == 0 {
+      return 1
+    }
+    return lengths.fold(1, |acc, len| this.lcm(acc, len))
+  }
+
+  fun pow(k: UInt64) -> PermutationGroup<N> {
+    if k == 0 {
+      return PermutationGroup { perm: this.identity(), size: N }
+    }
+    if k == 1 {
+      return this
+    }
+    let half = this.pow(k / 2)
+    if k % 2 == 0 {
+      return PermutationGroup { perm: half.compose(half), size: N }
+    }
+    return PermutationGroup { perm: this.compose(half.compose(half)), size: N }
+  }
+
+  fun gcd(a: UInt64, b: UInt64) -> UInt64 {
+    if b == 0 {
+      return a
+    }
+    return this.gcd(b, a % b)
+  }
+
+  fun lcm(a: UInt64, b: UInt64) -> UInt64 {
+    if a == 0 || b == 0 {
+      return 0
+    }
+    return (a / this.gcd(a, b)) * b
+  }
+}
+
+exegesis {
+  PermutationGroup<N> represents the symmetric group S_n, the group of all
+  permutations of N elements. This is a fundamental algebraic structure that
+  extends the abstract SymmetryGroup interface with concrete implementations
+  for permutation operations.
+
+  In the GDL (Geometric Deep Learning) three-pillar ontology, PermutationGroup
+  is the inherent symmetry group for Graph domains. Any neural network
+  architecture operating on graphs must respect permutation equivariance:
+  for a GNN layer f and permutation matrix P, f(PX, PAP^T) = Pf(X, A).
+
+  Type Parameter:
+  - N: UInt64 - The number of elements being permuted (compile-time constant)
+
+  Properties:
+  - perm: Index array where perm[i] indicates where element i maps to
+  - size: The permutation size N (redundant but useful for runtime checks)
+
+  Constraints:
+  - valid_size: The permutation array must have exactly N elements
+  - valid_indices: All target indices must be in range [0, N)
+  - is_bijection: Each index appears exactly once (no duplicates)
+
+  Group Operations (implementing SymmetryGroup interface):
+  - identity(): Returns the identity permutation [0, 1, 2, ..., N-1]
+  - compose(other): Group multiplication - result[i] = this.perm[other.perm[i]]
+  - inverse(): Computes the inverse permutation
+
+  Group Action:
+  - act(indices): Applies permutation to reorder an index array
+  - apply_to(arr): Applies permutation to reorder a data array
+
+  Utility Functions:
+  - cycle_lengths(): Returns the lengths of all non-trivial cycles
+  - sign(): Returns +1 for even permutation, -1 for odd (the signature)
+  - is_identity(): Checks if this is the identity element
+  - order(): Computes the order of this permutation (lcm of cycle lengths)
+  - pow(k): Computes this permutation raised to the k-th power
+
+  Mathematical Background:
+  The symmetric group S_n has n! elements. Every permutation can be uniquely
+  decomposed into disjoint cycles. The sign (parity) of a permutation is
+  determined by the number of transpositions needed to express it:
+  - Even permutations (sign = +1) form the alternating group A_n
+  - Odd permutations (sign = -1) form the other coset
+
+  Permutation Equivariance in GNNs:
+  A function f is permutation-equivariant if f(P * x) = P * f(x) for all
+  permutations P in S_n. This property is essential for graph neural networks
+  because node ordering is arbitrary - the same graph can be represented with
+  any permutation of node indices. GNN architectures achieve equivariance through:
+  - Aggregation functions (sum, mean, max) that are permutation-invariant
+  - Message passing that respects edge structure
+  - Attention mechanisms with symmetric scoring
+
+  Connection to Graph Isomorphism:
+  Two graphs G1 and G2 are isomorphic if there exists a permutation P such
+  that P * A1 * P^T = A2, where A1 and A2 are adjacency matrices. The graph
+  isomorphism problem is fundamentally about finding such permutations.
+  More expressive GNNs can distinguish more non-isomorphic graphs.
+
+  Related Genes:
+  - Graph<N, E>: The domain type with inherent PermutationGroup symmetry
+  - PointCloud<F>: Has both SE(3) and S_n symmetry for unordered point sets
+  - SymmetryGroup: Abstract interface that PermutationGroup implements
+
+  GDL Blueprint Reference:
+  Symmetry group in the three-pillar ontology: Group (G) -> Discrete -> S_n
+  Domain-symmetry pairing: Graph <-> PermutationGroup
+}
