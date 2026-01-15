@@ -309,12 +309,12 @@ pub trait NetworkGrowth {
 
   law connectivity_preserved {
     forall self: Self, threshold: Float64.
-      self.prune(threshold).is_connected() implies self.is_connected()
+      this.prune(threshold).is_connected() implies this.is_connected()
   }
 
   law growth_follows_gradient {
     forall self: Self, gradient: ResourceGradient.
-      self.grow(gradient).active_tips.len() >= self.active_tips.len()
+      this.grow(gradient).active_tips.len() >= this.active_tips.len()
         when gradient.max_intensity() > 0.1
   }
 

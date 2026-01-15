@@ -1082,6 +1082,9 @@ pub enum Expr {
     /// Try expression (error propagation)
     /// Syntax: `expr?`
     Try(Box<Expr>),
+    /// Self-reference to current instance
+    /// Syntax: `this`
+    This,
 }
 
 /// Literal value.

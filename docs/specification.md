@@ -72,6 +72,10 @@ DOL reserves the following keywords:
 | Evolution | `adds`, `deprecates`, `removes`, `because` |
 | Tests | `test`, `given`, `when`, `then`, `always` |
 | Quantifiers | `each`, `all`, `no` |
+| Instance | `this` |
+| Functions (DOL 2.0) | `fun`, `let`, `return` |
+| Control Flow (DOL 2.0) | `if`, `else`, `match`, `for`, `while`, `in` |
+| Logic (DOL 2.0) | `forall`, `exists`, `law` |
 
 ### 2.5 Operators and Delimiters
 
@@ -423,36 +427,152 @@ Use qualified identifiers with meaningful hierarchy:
 - Evolutions must include at least one change (adds/deprecates/removes)
 - The `because` rationale is recommended but optional
 
-## 9. Error Handling
+## 9. DOL 2.0 Features (v0.7.1+)
 
-### 9.1 Lexical Errors
+DOL 2.0 extends the declarative ontology language with computational capabilities, enabling genes to contain executable methods while preserving the ontology-first philosophy.
+
+### 9.1 The `this` Keyword
+
+The `this` keyword provides instance self-reference within genes and spirits. It refers to the current instance, enabling access to instance fields and methods.
+
+**Semantics:**
+- `this` is only valid within gene method bodies
+- `this.field` accesses an instance field
+- `this.method()` calls an instance method
+- `this` cannot be reassigned
+
+**Example:**
+```dol
+gene Counter {
+    has value: Int
+
+    fun get() -> Int {
+        return this.value
+    }
+
+    fun increment() {
+        this.value = this.value + 1
+    }
+
+    fun add(n: Int) -> Int {
+        this.value = this.value + n
+        return this.value
+    }
+}
+```
+
+**Design Rationale:**
+DOL uses `this` rather than `self` to:
+1. Differentiate DOL's semantics from Rust's `self` conventions
+2. Provide broader familiarity (JavaScript, Java, C++, C#, TypeScript)
+3. Emphasize that DOL genes are domain objects, not implementation structs
+
+### 9.2 Functions and Methods
+
+Genes can define methods using the `fun` keyword:
+
+```dol
+fun method_name(param: Type) -> ReturnType {
+    // method body
+}
+```
+
+**Components:**
+- `fun` - Function declaration keyword
+- Parameters with type annotations
+- Optional return type (void if omitted)
+- Body with statements and expressions
+
+### 9.3 Variables and Bindings
+
+The `let` keyword introduces local variable bindings:
+
+```dol
+fun example() {
+    let x = 42
+    let name = "DOL"
+    let result = this.compute(x)
+}
+```
+
+### 9.4 Control Flow
+
+DOL 2.0 supports structured control flow:
+
+**Conditionals:**
+```dol
+if condition {
+    // then branch
+} else {
+    // else branch
+}
+```
+
+**Pattern Matching:**
+```dol
+match value {
+    Pattern1 => result1,
+    Pattern2 => result2,
+    _ => default
+}
+```
+
+**Loops:**
+```dol
+for item in collection {
+    // loop body
+}
+
+while condition {
+    // loop body
+}
+```
+
+### 9.5 Logic Keywords
+
+For formal specification and verification:
+
+- `forall` - Universal quantification
+- `exists` - Existential quantification
+- `law` - Invariant declarations
+
+```dol
+law equivariance {
+    forall g in G, forall x in X:
+        G.act(g, this.forward(x)) == this.forward(G.act(g, x))
+}
+```
+
+## 10. Error Handling
+
+### 10.1 Lexical Errors
 
 - Unexpected character in source
 - Unterminated string literal
 - Invalid version number format
 - Invalid escape sequence
 
-### 9.2 Parse Errors
+### 10.2 Parse Errors
 
 - Missing required exegesis block
 - Unexpected token
 - Invalid statement structure
 - Missing delimiters
 
-### 9.3 Validation Errors
+### 10.3 Validation Errors
 
 - Empty exegesis
 - Invalid identifier format
 - Duplicate `uses` statements
 - Invalid version numbers
 
-### 9.4 Validation Warnings
+### 10.4 Validation Warnings
 
 - Exegesis too short (< 20 chars)
 - Non-standard naming convention
 - Missing recommended statements
 
-## 10. Grammar Summary
+## 11. Grammar Summary
 
 See `docs/grammar.ebnf` for the complete formal grammar in EBNF notation.
 
@@ -503,3 +623,5 @@ exegesis {
 | **Exegesis** | Required documentation block |
 | **Predicate** | Statement type (has, is, uses, etc.) |
 | **Qualified Identifier** | Dot-separated hierarchical name |
+| **this** | Instance self-reference keyword (DOL 2.0) |
+| **Spirit** | Reactive computation unit with versioning (DOL 2.0) |

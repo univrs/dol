@@ -10,10 +10,10 @@ gene ChatRoom {
             let msg = recv()
             let from = sender()
 
-            println("[" + self.name + "] " + from.to_string() + ": " + msg)
+            println("[" + this.name + "] " + from.to_string() + ": " + msg)
             broadcast(msg)
 
-            self.message_count = self.message_count + 1
+            this.message_count = this.message_count + 1
         }
     }
 }
@@ -23,13 +23,13 @@ gene ChatUser {
     has room: SpiritId
 
     fun say(msg: String) {
-        send(self.room, self.name + ": " + msg)
+        send(this.room, this.name + ": " + msg)
     }
 
     fun tick() {
         if pending() > 0 {
             let msg = recv()
-            println("[" + self.name + " sees] " + msg)
+            println("[" + this.name + " sees] " + msg)
         }
     }
 }

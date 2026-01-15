@@ -86,6 +86,26 @@ kw_each = 'each' ;
 kw_all = 'all' ;
 kw_no = 'no' ;
 
+(* DOL 2.0 Instance Reference (v0.7.1) *)
+(* The 'this' keyword refers to the current instance within genes and spirits *)
+kw_this = 'this' ;
+
+(* DOL 2.0 Function and Control Flow *)
+kw_fun = 'fun' ;
+kw_let = 'let' ;
+kw_return = 'return' ;
+kw_if = 'if' ;
+kw_else = 'else' ;
+kw_match = 'match' ;
+kw_for = 'for' ;
+kw_while = 'while' ;
+kw_in = 'in' ;
+
+(* DOL 2.0 Logic Keywords *)
+kw_forall = 'forall' ;
+kw_exists = 'exists' ;
+kw_law = 'law' ;
+
 (* ============================================ *)
 (* 4. Operators and Delimiters                  *)
 (* ============================================ *)

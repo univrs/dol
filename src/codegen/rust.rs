@@ -1730,6 +1730,8 @@ impl RustCodegen {
             Expr::Try(inner) => {
                 format!("{}?", self.gen_expr(inner))
             }
+            // This - reference to current instance (maps to Rust 'self')
+            Expr::This => "self".to_string(),
         }
     }
 

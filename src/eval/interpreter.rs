@@ -291,6 +291,12 @@ impl Interpreter {
 
             // Try expression - evaluate the inner expression
             Expr::Try(inner) => self.eval_in_env(inner, env),
+
+            // This - reference to current instance
+            Expr::This => env
+                .lookup("this")
+                .cloned()
+                .ok_or_else(|| EvalError::undefined_variable("this")),
         }
     }
 

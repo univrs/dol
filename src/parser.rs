@@ -2129,6 +2129,12 @@ impl<'a> Parser<'a> {
 
         // Parse atoms
         match self.current.kind {
+            // Self-reference: this
+            TokenKind::This => {
+                self.advance();
+                Ok(Expr::This)
+            }
+
             // Literals
             TokenKind::String => {
                 let value = self.current.lexeme.clone();

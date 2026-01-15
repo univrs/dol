@@ -276,6 +276,9 @@ impl LoweringContext {
                     args: vec![inner_expr],
                 }))
             }
+
+            // This - lower to special 'this' variable
+            ast::Expr::This => HirExpr::Var(self.intern("this")),
         }
     }
 

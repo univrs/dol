@@ -2921,6 +2921,11 @@ impl WasmCompiler {
                     "Implies expressions not yet supported in WASM compilation",
                 ))
             }
+            Expr::This => {
+                return Err(WasmError::new(
+                    "'this' self-reference not yet supported in WASM compilation",
+                ))
+            }
             Expr::StructLiteral { type_name, fields } => {
                 // Check if we have a layout for this gene
                 if let Some(layout) = self.gene_layouts.get(type_name) {

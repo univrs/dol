@@ -107,7 +107,7 @@ pub trait Evolvable {
 
   law speciation_requires_isolation {
     forall population: List<Self>.
-      self.should_speciate(population) implies
+      this.should_speciate(population) implies
         (reproductive_isolation(self, population) > threshold)
   }
 

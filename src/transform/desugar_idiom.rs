@@ -314,6 +314,9 @@ impl IdiomDesugar {
 
             // Try - transform inner expression
             Expr::Try(inner) => Expr::Try(Box::new(self.desugar_expr(*inner))),
+
+            // This - pass through unchanged
+            Expr::This => Expr::This,
         }
     }
 }

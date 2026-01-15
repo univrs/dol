@@ -290,6 +290,8 @@ pub enum TokenKind {
     Extends,
     /// The `type` keyword - type declaration (v0.3.0)
     Type,
+    /// The `this` keyword - instance self-reference (v0.7.1)
+    This,
 
     // === Boolean and Null Literals (DOL 2.0) ===
     /// The `true` literal
@@ -468,6 +470,7 @@ impl TokenKind {
                 | TokenKind::Migrate
                 | TokenKind::Extends
                 | TokenKind::Type
+                | TokenKind::This
                 // DOL 2.0 Boolean and Null Literals
                 | TokenKind::True
                 | TokenKind::False
@@ -594,6 +597,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Migrate => write!(f, "migrate"),
             TokenKind::Extends => write!(f, "extends"),
             TokenKind::Type => write!(f, "type"),
+            TokenKind::This => write!(f, "this"),
             // DOL 2.0 Boolean and Null Literals
             TokenKind::True => write!(f, "true"),
             TokenKind::False => write!(f, "false"),
@@ -1265,6 +1269,7 @@ impl<'a> Lexer<'a> {
             "migrate" => Some(TokenKind::Migrate),
             "extends" => Some(TokenKind::Extends),
             "type" => Some(TokenKind::Type),
+            "this" => Some(TokenKind::This),
             // DOL 2.0 boolean and null literals
             "true" => Some(TokenKind::True),
             "false" => Some(TokenKind::False),
