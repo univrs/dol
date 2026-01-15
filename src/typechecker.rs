@@ -665,6 +665,14 @@ impl TypeChecker {
                 // For now, just return the inner type (proper Result handling would be more complex)
                 Ok(inner_type)
             }
+
+            // This - reference to current instance
+            Expr::This => {
+                // Look up 'this' type in the environment
+                self.env.lookup("this").cloned().ok_or_else(|| {
+                    TypeError::new("'this' used outside of method context".to_string())
+                })
+            }
         }
     }
 

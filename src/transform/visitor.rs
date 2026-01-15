@@ -341,6 +341,8 @@ fn walk_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
         Expr::Try(inner) => {
             v.visit_expr(inner);
         }
+        // This - atomic, no children to visit
+        Expr::This => {}
     }
 }
 
@@ -549,6 +551,8 @@ fn walk_expr_mut<V: MutVisitor + ?Sized>(v: &mut V, expr: &mut Expr) {
         Expr::Try(inner) => {
             v.visit_expr(inner);
         }
+        // This - atomic, no children to visit
+        Expr::This => {}
     }
 }
 

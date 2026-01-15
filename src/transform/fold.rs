@@ -225,6 +225,8 @@ pub trait Fold {
                     .map(|(name, expr)| (name, self.fold_expr(expr)))
                     .collect(),
             },
+            // This - atomic, no subexpressions to fold
+            Expr::This => Expr::This,
         }
     }
 

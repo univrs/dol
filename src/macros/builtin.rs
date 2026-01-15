@@ -1437,6 +1437,8 @@ fn stringify_expr(expr: &Expr) -> String {
         Expr::Try(inner) => {
             format!("{}?", stringify_expr(inner))
         }
+        // This - reference to current instance
+        Expr::This => "this".to_string(),
     }
 }
 
