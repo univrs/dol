@@ -1,0 +1,106 @@
+trait gdl.equivariant_layer {
+  // Type parameters: G (SymmetryGroup), X (input space), Y (output space)
+  uses gdl.symmetry_group
+
+  // Core layer operations
+  equivariant_layer has forward
+  equivariant_layer has parameters
+  equivariant_layer has set_parameters
+
+  // Operation signatures
+  forward is unary
+  parameters is nullary
+  set_parameters is unary
+
+  // Symmetry properties
+  equivariant_layer has input_symmetry
+  equivariant_layer has output_symmetry
+  input_symmetry is symmetry_group
+  output_symmetry is symmetry_group
+
+  // Layer characteristics
+  layer is differentiable
+  layer is composable
+
+  // The fundamental equivariance law
+  // G.act(g, self.forward(x)) == self.forward(G.act(g, x))
+  all transformations preserve symmetry
+  each output transforms with input
+}
+
+exegesis {
+  The gdl.equivariant_layer trait defines the interface for neural network
+  layers that respect symmetry transformations. This is the foundation of
+  Geometric Deep Learning (GDL) architectures.
+
+  TYPE PARAMETERS:
+  - G: SymmetryGroup - The symmetry group the layer respects (e.g., SO(3), S_n)
+  - X: The input space type (e.g., feature vectors, node embeddings)
+  - Y: The output space type (may equal X for equivariant, or scalar for invariant)
+
+  OPERATIONS:
+  - forward(x: X) -> Y: The forward pass of the layer, transforming input to output
+  - parameters() -> List<Tensor>: Returns trainable parameters of the layer
+  - set_parameters(params: List<Tensor>) -> Void: Sets the trainable parameters
+
+  PROPERTIES:
+  - input_symmetry: SymmetryGroup - The symmetry group acting on the input space
+  - output_symmetry: SymmetryGroup - The symmetry group acting on the output space
+    (For invariant layers, output_symmetry is the trivial group)
+
+  THE EQUIVARIANCE LAW:
+  For all group elements g in G and all inputs x in X:
+    G.act(g, self.forward(x)) == self.forward(G.act(g, x))
+
+  This fundamental constraint states: "transforming the output equals forwarding
+  the transformed input." The neural network must commute with the group action.
+
+  EQUIVARIANT vs INVARIANT LAYERS:
+  - Equivariant: Output transforms according to a representation of G
+    Example: Conv2D is T(2)-equivariant - translating input translates output
+  - Invariant: Output is unchanged by group action (trivial representation)
+    Example: Global pooling is T(2)-invariant - output is a single scalar
+
+  COMMON EQUIVARIANT ARCHITECTURES:
+  - CNNs: Translation-equivariant (T(2) or T(3))
+  - GNNs: Permutation-equivariant (S_n)
+  - Spherical CNNs: Rotation-equivariant (SO(3))
+  - E(n)-GNNs: Euclidean-equivariant (SE(3) or E(3))
+  - Transformers: Permutation-equivariant (with positional encoding breaks this)
+
+  WEIGHT SHARING AND PARAMETER EFFICIENCY:
+  Equivariance constraints dramatically reduce the number of learnable parameters.
+  Instead of learning separate weights for each transformed input, equivariant
+  layers use weight sharing patterns dictated by the symmetry group. This provides:
+  - Better generalization from fewer samples
+  - Built-in data augmentation
+  - Physically meaningful inductive bias
+
+  EXAMPLES:
+  1. Conv2D (T(2)-equivariant):
+     - Input: Image features on a 2D grid
+     - Output: Transformed features on same grid
+     - Shifting input shifts output by same amount
+
+  2. GNN Message Passing (S_n-equivariant):
+     - Input: Node features h_i for nodes i = 1..n
+     - Output: Updated node features h'_i
+     - Permuting node indices permutes output accordingly
+
+  3. Global Mean Pooling (S_n-invariant):
+     - Input: Node features h_i for nodes i = 1..n
+     - Output: Single feature vector (mean over all nodes)
+     - Permuting nodes does not change the mean
+
+  COMPOSITION PROPERTY:
+  The composition of equivariant layers is equivariant. If f and g are both
+  G-equivariant, then (f . g) is also G-equivariant. This allows building
+  deep architectures by stacking equivariant layers.
+
+  REFERENCES:
+  - GDL Blueprint "The Architecture Pillar"
+  - Bronstein et al., "Geometric Deep Learning: Grids, Groups, Graphs,
+    Geodesics, and Gauges" (2021)
+  - Cohen & Welling, "Group Equivariant Convolutional Networks" (2016)
+  - Kondor & Trivedi, "On the Generalization of Equivariance" (2018)
+}
