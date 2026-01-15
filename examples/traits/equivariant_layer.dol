@@ -23,7 +23,7 @@ trait gdl.equivariant_layer {
   layer is composable
 
   // The fundamental equivariance law
-  // G.act(g, self.forward(x)) == self.forward(G.act(g, x))
+  // G.act(g, this.forward(x)) == this.forward(G.act(g, x))
   all transformations preserve symmetry
   each output transforms with input
 }
@@ -50,7 +50,7 @@ exegesis {
 
   THE EQUIVARIANCE LAW:
   For all group elements g in G and all inputs x in X:
-    G.act(g, self.forward(x)) == self.forward(G.act(g, x))
+    G.act(g, this.forward(x)) == this.forward(G.act(g, x))
 
   This fundamental constraint states: "transforming the output equals forwarding
   the transformed input." The neural network must commute with the group action.

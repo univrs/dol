@@ -77,14 +77,14 @@ pub trait Hyphal {
 
   law conservation_of_mass {
     forall self: Self.
-      self.absorbed_mass() ==
-        self.transported_mass() + self.stored_mass()
+      this.absorbed_mass() ==
+        this.transported_mass() + this.stored_mass()
   }
 
   law branching_conserves_potential {
     forall self: Self, factor: Float64.
-      sum(self.branch(factor).map(|b| b.branching_potential))
-        <= self.branching_potential
+      sum(this.branch(factor).map(|b| b.branching_potential))
+        <= this.branching_potential
   }
 
   law fusion_requires_compatibility {

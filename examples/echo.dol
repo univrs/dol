@@ -12,7 +12,7 @@ gene EchoSpirit {
             println("Echo received: " + msg)
             send(sender_id, msg)
 
-            self.messages_handled = self.messages_handled + 1
+            this.messages_handled = this.messages_handled + 1
         }
     }
 }

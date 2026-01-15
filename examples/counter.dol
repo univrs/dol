@@ -5,17 +5,17 @@ gene Counter {
     has value: Int
 
     fun get() -> Int {
-        return self.value
+        return this.value
     }
 
     fun increment() {
-        self.value = self.value + 1
-        println("Counter: " + self.value.to_string())
+        this.value = this.value + 1
+        println("Counter: " + this.value.to_string())
     }
 
     fun add(n: Int) -> Int {
-        self.value = self.value + n
-        return self.value
+        this.value = this.value + n
+        return this.value
     }
 }
 

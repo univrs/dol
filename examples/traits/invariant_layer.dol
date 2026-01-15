@@ -27,7 +27,7 @@ trait gdl.invariant_layer {
   layer is composable
 
   // The fundamental invariance law
-  // self.forward(G.act(g, x)) == self.forward(x)
+  // this.forward(G.act(g, x)) == this.forward(x)
   all transformations preserve output
   output is constant under symmetry
   transformations produce identical results
@@ -50,7 +50,7 @@ exegesis {
 
   THE INVARIANCE LAW:
   For all group elements g in G and all inputs x in X:
-    self.forward(G.act(g, x)) == self.forward(x)
+    this.forward(G.act(g, x)) == this.forward(x)
 
   This fundamental constraint states: "transforming the input does not change
   the output." Unlike equivariant layers where output transforms with input,
