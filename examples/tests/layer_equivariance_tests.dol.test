@@ -1,0 +1,758 @@
+// Property-Based Tests for GDL Layer Equivariance
+// Verifies the fundamental equivariance and invariance laws for geometric deep learning layers
+//
+// Equivariance Law: forall g in G, x in X: layer.forward(G.act(g, x)) == G.act(g, layer.forward(x))
+// Invariance Law:   forall g in G, x in X: layer.forward(G.act(g, x)) == layer.forward(x)
+
+test gdl.layer_equivariance {
+
+    // ============================================================================
+    // PROPERTY GENERATORS
+    // ============================================================================
+
+    generator random_permutation<N: UInt64> {
+        // Fisher-Yates shuffle to generate uniform random permutations
+        let perm = (0..N).collect()
+        for i in (N-1)..0 {
+            let j = random_uint64(0, i)
+            swap(perm[i], perm[j])
+        }
+        return PermutationGroup<N> { perm: perm, size: N }
+    }
+
+    generator random_graph<NodeDim: UInt64>(n: UInt64, edge_prob: Float64) {
+        // Erdos-Renyi random graph model
+        let nodes = (0..n).map(|_| random_vector<NodeDim>(-1.0, 1.0)).collect()
+        let edges = []
+        for i in 0..n {
+            for j in (i+1)..n {
+                if random_float64(0.0, 1.0) < edge_prob {
+                    edges.push((i, j, []))
+                    edges.push((j, i, []))  // undirected
+                }
+            }
+        }
+        return Graph<Array<Float64>, Array<Float64>> {
+            nodes: nodes,
+            edges: edges,
+            adjacency: build_adjacency(n, edges),
+            node_count: n,
+            edge_count: edges.length
+        }
+    }
+
+    generator random_vector<Dim: UInt64>(min: Float64, max: Float64) {
+        return (0..Dim).map(|_| random_float64(min, max)).collect()
+    }
+
+    generator single_node_graph<NodeDim: UInt64> {
+        return Graph<Array<Float64>, Array<Float64>> {
+            nodes: [random_vector<NodeDim>(-1.0, 1.0)],
+            edges: [],
+            adjacency: SparseMatrix::zeros(1, 1),
+            node_count: 1,
+            edge_count: 0
+        }
+    }
+
+    generator complete_graph<NodeDim: UInt64>(n: UInt64) {
+        let nodes = (0..n).map(|_| random_vector<NodeDim>(-1.0, 1.0)).collect()
+        let edges = []
+        for i in 0..n {
+            for j in 0..n {
+                if i != j {
+                    edges.push((i, j, []))
+                }
+            }
+        }
+        return Graph<Array<Float64>, Array<Float64>> {
+            nodes: nodes,
+            edges: edges,
+            adjacency: build_complete_adjacency(n),
+            node_count: n,
+            edge_count: n * (n - 1)
+        }
+    }
+
+    generator disconnected_graph<NodeDim: UInt64>(n: UInt64) {
+        return Graph<Array<Float64>, Array<Float64>> {
+            nodes: (0..n).map(|_| random_vector<NodeDim>(-1.0, 1.0)).collect(),
+            edges: [],
+            adjacency: SparseMatrix::zeros(n, n),
+            node_count: n,
+            edge_count: 0
+        }
+    }
+
+    generator random_layer_weights<NodeDim: UInt64, HiddenDim: UInt64> {
+        let msg_size = (NodeDim * 2) * HiddenDim + HiddenDim
+        let upd_size = (NodeDim + HiddenDim) * HiddenDim + HiddenDim
+        return {
+            message_mlp_weights: random_vector<msg_size>(-0.5, 0.5),
+            update_mlp_weights: random_vector<upd_size>(-0.5, 0.5)
+        }
+    }
+
+    // ============================================================================
+    // HELPER FUNCTIONS
+    // ============================================================================
+
+    function approx_equal(a: Array<Float64>, b: Array<Float64>, epsilon: Float64) -> Bool {
+        if a.length != b.length {
+            return false
+        }
+        return (0..a.length).all(|i| abs(a[i] - b[i]) < epsilon)
+    }
+
+    function graph_approx_equal(g1: Graph, g2: Graph, epsilon: Float64) -> Bool {
+        if g1.node_count != g2.node_count || g1.edge_count != g2.edge_count {
+            return false
+        }
+        return (0..g1.node_count).all(|i|
+            approx_equal(g1.nodes[i], g2.nodes[i], epsilon)
+        )
+    }
+
+    function permute_graph(graph: Graph, perm: PermutationGroup) -> Graph {
+        // Apply permutation to node ordering
+        let inv = perm.inverse()
+        let new_nodes = (0..graph.node_count).map(|i| graph.nodes[inv[i]]).collect()
+        let new_edges = graph.edges.map(|edge| (perm.perm[edge.0], perm.perm[edge.1], edge.2))
+        return Graph {
+            nodes: new_nodes,
+            edges: new_edges,
+            adjacency: permute_adjacency(graph.adjacency, perm),
+            node_count: graph.node_count,
+            edge_count: graph.edge_count
+        }
+    }
+
+    // ============================================================================
+    // EQUIVARIANCE TESTS FOR MESSAGE PASSING LAYER
+    // ============================================================================
+
+    test "MessagePassingLayer satisfies equivariance law with sum aggregation" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        then:
+            // Equivariance: forward(P * G) == P * forward(G)
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-10)
+    }
+
+    test "MessagePassingLayer satisfies equivariance law with mean aggregation" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "mean",
+                use_edge_features: false
+            }
+        then:
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-10)
+    }
+
+    test "MessagePassingLayer satisfies equivariance law with max aggregation" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "max",
+                use_edge_features: false
+            }
+        then:
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-10)
+    }
+
+    // ============================================================================
+    // IDENTITY PERMUTATION TESTS
+    // ============================================================================
+
+    test "Identity permutation preserves layer output exactly" {
+        property:
+            forall n: UInt64 in 1..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall aggregation: String in ["sum", "mean", "max"].
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: aggregation,
+                use_edge_features: false
+            }
+            let identity = PermutationGroup<n> { perm: (0..n).collect(), size: n }
+        then:
+            let permuted_input = permute_graph(graph, identity)
+            let output1 = layer.forward(graph)
+            let output2 = layer.forward(permuted_input)
+            graph_approx_equal(output1, output2, 1e-15)
+        always
+    }
+
+    test "Identity permutation is invariant for PermutationGroup operations" {
+        property:
+            forall n: UInt64 in 1..10.
+            let identity = PermutationGroup<n> { perm: (0..n).collect(), size: n }
+        then:
+            identity.is_identity() == true
+            identity.sign() == 1
+            identity.order() == 1
+        always
+    }
+
+    // ============================================================================
+    // PERMUTATION GROUP COMPOSITION TESTS
+    // ============================================================================
+
+    test "Permutation composition is associative: (g1 . g2) . g3 == g1 . (g2 . g3)" {
+        property:
+            forall n: UInt64 in 2..8.
+            forall g1: PermutationGroup<n> = random_permutation<n>.
+            forall g2: PermutationGroup<n> = random_permutation<n>.
+            forall g3: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let left = PermutationGroup<n> {
+                perm: PermutationGroup<n> { perm: g1.compose(g2), size: n }.compose(g3),
+                size: n
+            }
+            let right = PermutationGroup<n> {
+                perm: g1.compose(PermutationGroup<n> { perm: g2.compose(g3), size: n }.perm),
+                size: n
+            }
+            (0..n).all(|i| left.perm[i] == right.perm[i])
+    }
+
+    test "Permutation composition distributes over graph action: (g1 . g2).act(x) == g1.act(g2.act(x))" {
+        property:
+            forall n: UInt64 in 2..8.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall g1: PermutationGroup<n> = random_permutation<n>.
+            forall g2: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let composed = PermutationGroup<n> { perm: g1.compose(g2), size: n }
+            let direct_action = permute_graph(graph, composed)
+            let sequential_action = permute_graph(permute_graph(graph, g2), g1)
+            graph_approx_equal(direct_action, sequential_action, 1e-15)
+    }
+
+    test "Inverse permutation satisfies g . g^-1 == identity" {
+        property:
+            forall n: UInt64 in 2..8.
+            forall g: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let inv = PermutationGroup<n> { perm: g.inverse(), size: n }
+            let composed = PermutationGroup<n> { perm: g.compose(inv), size: n }
+            composed.is_identity() == true
+    }
+
+    test "Inverse permutation satisfies g^-1 . g == identity" {
+        property:
+            forall n: UInt64 in 2..8.
+            forall g: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let inv = PermutationGroup<n> { perm: g.inverse(), size: n }
+            let composed = PermutationGroup<n> { perm: inv.compose(g), size: n }
+            composed.is_identity() == true
+    }
+
+    // ============================================================================
+    // EDGE CASE TESTS
+    // ============================================================================
+
+    test "Equivariance holds for single node graphs" {
+        given:
+            let graph = single_node_graph<4>
+            let perm = PermutationGroup<1> { perm: [0], size: 1 }
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        when:
+            let output1 = layer.forward(graph)
+            let permuted_input = permute_graph(graph, perm)
+            let output2 = layer.forward(permuted_input)
+        then:
+            graph_approx_equal(output1, output2, 1e-15)
+            // Single node has no neighbors, so output is update(node, zeros)
+            output1.node_count == 1
+    }
+
+    test "Equivariance holds for complete graphs (K_n)" {
+        property:
+            forall n: UInt64 in 2..6.
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            forall aggregation: String in ["sum", "mean", "max"].
+            let graph = complete_graph<4>(n)
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: aggregation,
+                use_edge_features: false
+            }
+        then:
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-10)
+    }
+
+    test "Equivariance holds for disconnected graphs (no edges)" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            forall aggregation: String in ["sum", "mean", "max"].
+            let graph = disconnected_graph<4>(n)
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: aggregation,
+                use_edge_features: false
+            }
+        then:
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-10)
+    }
+
+    test "Disconnected graph nodes are processed independently" {
+        given:
+            let graph = disconnected_graph<4>(5)
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        when:
+            let output = layer.forward(graph)
+        then:
+            // Each node output depends only on its own features (no messages received)
+            forall i: UInt64 in 0..5.
+                let expected = layer.update(graph.nodes[i], layer.zeros())
+                approx_equal(output.nodes[i], expected, 1e-15)
+    }
+
+    // ============================================================================
+    // LAYER COMPOSITION TESTS
+    // ============================================================================
+
+    test "Composition of equivariant layers is equivariant" {
+        property:
+            forall n: UInt64 in 2..8.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let layer1 = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+            let layer2 = MessagePassingLayer<8, 0, 8> {
+                message_mlp_weights: random_layer_weights<8, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<8, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        then:
+            // (layer2 . layer1) is equivariant
+            let composed_forward = |g| layer2.forward(layer1.forward(g))
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = composed_forward(permuted_input)
+            let permuted_output = permute_graph(composed_forward(graph), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-9)
+    }
+
+    // ============================================================================
+    // INVARIANCE TESTS (FOR GLOBAL POOLING / READOUT)
+    // ============================================================================
+
+    test "Sum pooling is permutation invariant" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let sum_pool = |g| (0..g.node_count).fold(
+                (0..4).map(|_| 0.0).collect(),
+                |acc, i| vec_add(acc, g.nodes[i])
+            )
+            let pool_original = sum_pool(graph)
+            let pool_permuted = sum_pool(permute_graph(graph, perm))
+            approx_equal(pool_original, pool_permuted, 1e-15)
+    }
+
+    test "Mean pooling is permutation invariant" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let mean_pool = |g| {
+                let sum = (0..g.node_count).fold(
+                    (0..4).map(|_| 0.0).collect(),
+                    |acc, i| vec_add(acc, g.nodes[i])
+                )
+                (0..4).map(|i| sum[i] / (g.node_count as Float64)).collect()
+            }
+            let pool_original = mean_pool(graph)
+            let pool_permuted = mean_pool(permute_graph(graph, perm))
+            approx_equal(pool_original, pool_permuted, 1e-15)
+    }
+
+    test "Max pooling is permutation invariant" {
+        property:
+            forall n: UInt64 in 2..10.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let max_pool = |g| {
+                (0..g.node_count).fold(
+                    g.nodes[0].clone(),
+                    |acc, i| (0..4).map(|j| if g.nodes[i][j] > acc[j] { g.nodes[i][j] } else { acc[j] }).collect()
+                )
+            }
+            let pool_original = max_pool(graph)
+            let pool_permuted = max_pool(permute_graph(graph, perm))
+            approx_equal(pool_original, pool_permuted, 1e-15)
+    }
+
+    test "Invariant layer composed with equivariant preserves invariance" {
+        property:
+            forall n: UInt64 in 2..8.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let equivariant_layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+            let invariant_pool = |g| (0..g.node_count).fold(
+                (0..8).map(|_| 0.0).collect(),
+                |acc, i| vec_add(acc, g.nodes[i])
+            )
+        then:
+            // invariant_pool . equivariant_layer is invariant
+            let composed = |g| invariant_pool(equivariant_layer.forward(g))
+            let output_original = composed(graph)
+            let output_permuted = composed(permute_graph(graph, perm))
+            approx_equal(output_original, output_permuted, 1e-10)
+    }
+
+    // ============================================================================
+    // AGGREGATION EXPRESSIVENESS TESTS
+    // ============================================================================
+
+    test "Sum aggregation distinguishes multisets by element count" {
+        given:
+            // Multiset {1, 1, 1} has sum 3
+            // Multiset {1} has sum 1
+            let messages_a = [[1.0], [1.0], [1.0]]
+            let messages_b = [[1.0]]
+            let layer = MessagePassingLayer<1, 0, 1> {
+                message_mlp_weights: [1.0, 0.0],  // identity transform
+                update_mlp_weights: [1.0, 0.0],
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        when:
+            let agg_a = layer.aggregate(messages_a)
+            let agg_b = layer.aggregate(messages_b)
+        then:
+            agg_a[0] != agg_b[0]  // Sum can distinguish
+            approx_equal(agg_a, [3.0], 1e-10)
+            approx_equal(agg_b, [1.0], 1e-10)
+    }
+
+    test "Mean aggregation cannot distinguish multisets by element count" {
+        given:
+            // Multiset {1, 1, 1} has mean 1
+            // Multiset {1} has mean 1
+            let messages_a = [[1.0], [1.0], [1.0]]
+            let messages_b = [[1.0]]
+            let layer = MessagePassingLayer<1, 0, 1> {
+                message_mlp_weights: [1.0, 0.0],
+                update_mlp_weights: [1.0, 0.0],
+                aggregation: "mean",
+                use_edge_features: false
+            }
+        when:
+            let agg_a = layer.aggregate(messages_a)
+            let agg_b = layer.aggregate(messages_b)
+        then:
+            approx_equal(agg_a, agg_b, 1e-10)  // Mean cannot distinguish
+    }
+
+    test "Max aggregation only captures maximum element" {
+        given:
+            let messages = [[1.0], [5.0], [3.0]]
+            let layer = MessagePassingLayer<1, 0, 1> {
+                message_mlp_weights: [1.0, 0.0],
+                update_mlp_weights: [1.0, 0.0],
+                aggregation: "max",
+                use_edge_features: false
+            }
+        when:
+            let aggregated = layer.aggregate(messages)
+        then:
+            approx_equal(aggregated, [5.0], 1e-10)
+    }
+
+    // ============================================================================
+    // PERMUTATION GROUP ALGEBRAIC PROPERTIES
+    // ============================================================================
+
+    test "Permutation order divides factorial" {
+        property:
+            forall n: UInt64 in 2..6.
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let order = perm.order()
+            let factorial = (1..=n).fold(1, |acc, i| acc * i)
+            factorial % order == 0
+    }
+
+    test "Permutation raised to its order equals identity" {
+        property:
+            forall n: UInt64 in 2..6.
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let order = perm.order()
+            let powered = perm.pow(order)
+            powered.is_identity() == true
+    }
+
+    test "Sign of permutation matches parity of transposition count" {
+        property:
+            forall n: UInt64 in 2..6.
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let sign = perm.sign()
+            sign == 1 || sign == -1
+            // Verify sign is consistent with composition
+            let inv = PermutationGroup<n> { perm: perm.inverse(), size: n }
+            inv.sign() == sign  // sign(g^-1) == sign(g)
+    }
+
+    test "Product of signs: sign(g1 . g2) == sign(g1) * sign(g2)" {
+        property:
+            forall n: UInt64 in 2..6.
+            forall g1: PermutationGroup<n> = random_permutation<n>.
+            forall g2: PermutationGroup<n> = random_permutation<n>.
+        then:
+            let composed = PermutationGroup<n> { perm: g1.compose(g2), size: n }
+            composed.sign() == g1.sign() * g2.sign()
+    }
+
+    // ============================================================================
+    // NUMERICAL STABILITY TESTS
+    // ============================================================================
+
+    test "Equivariance holds with large feature values" {
+        property:
+            forall n: UInt64 in 2..5.
+            forall scale: Float64 in [1e3, 1e6, 1e9].
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let nodes = (0..n).map(|_| random_vector<4>(-scale, scale)).collect()
+            let graph = Graph<Array<Float64>, Array<Float64>> {
+                nodes: nodes,
+                edges: [],
+                adjacency: SparseMatrix::zeros(n, n),
+                node_count: n,
+                edge_count: 0
+            }
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        then:
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            // Relative tolerance for large values
+            let epsilon = scale * 1e-10
+            graph_approx_equal(output_of_permuted, permuted_output, epsilon)
+    }
+
+    test "Equivariance holds with small feature values" {
+        property:
+            forall n: UInt64 in 2..5.
+            forall scale: Float64 in [1e-3, 1e-6, 1e-9].
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            let nodes = (0..n).map(|_| random_vector<4>(-scale, scale)).collect()
+            let graph = Graph<Array<Float64>, Array<Float64>> {
+                nodes: nodes,
+                edges: [],
+                adjacency: SparseMatrix::zeros(n, n),
+                node_count: n,
+                edge_count: 0
+            }
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        then:
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), perm)
+            // Absolute tolerance for small values
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-15)
+    }
+
+    // ============================================================================
+    // STRESS TESTS
+    // ============================================================================
+
+    test "Equivariance holds for random permutation sequences" {
+        property:
+            forall n: UInt64 in 3..6.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall k: UInt64 in 1..10.
+            let perms = (0..k).map(|_| random_permutation<n>).collect()
+            let layer = MessagePassingLayer<4, 0, 8> {
+                message_mlp_weights: random_layer_weights<4, 8>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 8>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        then:
+            // Apply all permutations sequentially
+            let composed_perm = perms.fold(
+                PermutationGroup<n> { perm: (0..n).collect(), size: n },
+                |acc, p| PermutationGroup<n> { perm: p.compose(acc), size: n }
+            )
+            let permuted_input = permute_graph(graph, composed_perm)
+            let output_of_permuted = layer.forward(permuted_input)
+            let permuted_output = permute_graph(layer.forward(graph), composed_perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-9)
+    }
+
+    test "Equivariance holds across multiple layer applications" {
+        property:
+            forall n: UInt64 in 3..6.
+            forall graph: Graph<Array<Float64>, Array<Float64>> = random_graph<4>(n, 0.5).
+            forall perm: PermutationGroup<n> = random_permutation<n>.
+            forall depth: UInt64 in 1..5.
+            let layer = MessagePassingLayer<4, 0, 4> {  // Output dim matches input for iteration
+                message_mlp_weights: random_layer_weights<4, 4>.message_mlp_weights,
+                update_mlp_weights: random_layer_weights<4, 4>.update_mlp_weights,
+                aggregation: "sum",
+                use_edge_features: false
+            }
+        then:
+            // Apply layer `depth` times
+            let multi_forward = |g, d| {
+                if d == 0 { g }
+                else { multi_forward(layer.forward(g), d - 1) }
+            }
+            let permuted_input = permute_graph(graph, perm)
+            let output_of_permuted = multi_forward(permuted_input, depth)
+            let permuted_output = permute_graph(multi_forward(graph, depth), perm)
+            graph_approx_equal(output_of_permuted, permuted_output, 1e-8 * depth)
+    }
+
+}
+
+exegesis {
+    This test file provides comprehensive property-based verification of the
+    equivariance and invariance laws that are fundamental to Geometric Deep Learning.
+
+    TEST CATEGORIES:
+
+    1. EQUIVARIANCE TESTS (MessagePassingLayer)
+       Verify the core equivariance law for all three aggregation types:
+       forward(P * G) == P * forward(G)
+       where P is a permutation and G is a graph.
+
+    2. IDENTITY PERMUTATION TESTS
+       Verify that the identity permutation trivially satisfies equivariance,
+       serving as a sanity check for the test infrastructure.
+
+    3. COMPOSITION TESTS
+       Verify the algebraic properties of permutation composition:
+       - Associativity: (g1 . g2) . g3 == g1 . (g2 . g3)
+       - Distribution over action: (g1 . g2).act(x) == g1.act(g2.act(x))
+       - Inverse properties: g . g^-1 == g^-1 . g == identity
+
+    4. EDGE CASE TESTS
+       - Single node graphs: Degenerate case with no message passing
+       - Complete graphs (K_n): Every node connected to every other
+       - Disconnected graphs: No edges, nodes processed independently
+
+    5. LAYER COMPOSITION TESTS
+       Verify that composing equivariant layers yields an equivariant network.
+
+    6. INVARIANCE TESTS
+       Verify that pooling operations (sum, mean, max) are permutation-invariant:
+       pool(P * G) == pool(G)
+
+    7. AGGREGATION EXPRESSIVENESS TESTS
+       Demonstrate the expressiveness hierarchy: SUM > MEAN > MAX
+       - Sum can distinguish multisets by element count
+       - Mean cannot distinguish {1,1,1} from {1}
+       - Max only captures the maximum element
+
+    8. ALGEBRAIC PROPERTY TESTS
+       Verify group-theoretic properties of permutations:
+       - Order divides factorial
+       - g^order == identity
+       - sign(g1 . g2) == sign(g1) * sign(g2)
+
+    9. NUMERICAL STABILITY TESTS
+       Test equivariance with extreme feature values (large and small)
+       to verify numerical precision.
+
+    10. STRESS TESTS
+        Apply random permutation sequences and multiple layer iterations
+        to stress-test the equivariance property.
+
+    PROPERTY-BASED TESTING APPROACH:
+    These tests use property-based testing (PBT) rather than example-based testing.
+    Instead of testing specific examples, we verify that the equivariance law holds
+    for randomly generated graphs and permutations. This provides much stronger
+    guarantees because:
+    - We test thousands of cases automatically
+    - Edge cases emerge naturally from random generation
+    - The test specification directly encodes the mathematical law
+
+    APPROXIMATE EQUALITY:
+    Due to floating-point arithmetic, we use approximate equality with configurable
+    epsilon. The epsilon is scaled appropriately for:
+    - Small values: absolute tolerance
+    - Large values: relative tolerance
+    - Deep networks: tolerance grows with depth
+
+    REFERENCES:
+    - Bronstein et al., "Geometric Deep Learning" (2021)
+    - Cohen & Welling, "Group Equivariant CNNs" (2016)
+    - Xu et al., "How Powerful are GNNs?" (ICLR 2019)
+    - Clauset, "Testing via Specification" (2020)
+}

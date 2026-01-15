@@ -287,12 +287,48 @@ let output = layer3.forward(h2)
 | `equivariant_layer.dol` | trait | 14 behaviors | Foundation layer interface |
 | `invariant_layer.dol` | trait | 14 behaviors | Trivial output specialization |
 | `message_passing_layer.dol` | gene | 19 statements | GNN implementation |
+| `graph.dol` | gene | 16 statements | Graph domain with permute_nodes |
+| `layer_equivariance_tests.dol.test` | test | 758 lines | Property-based equivariance tests |
+
+---
+
+## Graph Gene Integration
+
+The `Graph<N, E>` gene now includes `permute_nodes(perm)` for S_n group action:
+
+```dol
+fun permute_nodes(perm: PermutationGroup<node_count>) -> Graph<N, E>
+```
+
+**Group Action Semantics:**
+- Node reordering: `new_nodes[π(i)] = old_nodes[i]`
+- Edge remapping: `(a, b, e) → (π(a), π(b), e)`
+
+This enables verification of the equivariance law:
+```
+layer.forward(graph.permute_nodes(perm)) == layer.forward(graph).permute_nodes(perm)
+```
+
+---
+
+## Property-Based Tests
+
+**File:** `examples/tests/layer_equivariance_tests.dol.test`
+
+| Category | Tests | Coverage |
+|----------|-------|----------|
+| Equivariance | 3 | sum/mean/max aggregation |
+| Identity | 2 | Permutation identity preservation |
+| Composition | 3 | Group operation properties |
+| Edge Cases | 4 | Single node, K_n, disconnected |
+| Invariance | 4 | Pooling layer tests |
+| Numerical | 2 | Stability with extreme values |
 
 ---
 
 ## Next Steps
 
-1. **Unit Tests:** Test each layer function in isolation
+1. ~~**Unit Tests:** Test each layer function in isolation~~ ✓ Property tests added
 2. **Integration Tests:** End-to-end GNN pipeline with Graph gene
 3. **Additional Layers:**
    - `AttentionLayer<NodeDim, HiddenDim>` - GAT-style attention

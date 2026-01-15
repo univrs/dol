@@ -43,6 +43,50 @@ gene Graph<N, E> {
       .find(|edge| edge.0 == src && edge.1 == dst)
       .map(|edge| edge.2)
   }
+
+  // Apply permutation to node ordering (S_n group action)
+  // For permutation π: new_graph = π · graph
+  // - Node features are reordered: new_nodes[π(i)] = old_nodes[i]
+  // - Edge indices are remapped: (a, b) -> (π(a), π(b))
+  fun permute_nodes(perm: PermutationGroup<node_count>) -> Graph<N, E> {
+    // Reorder nodes: position π(i) gets the feature from position i
+    let new_nodes = (0..this.node_count).map(|i| {
+      let source_idx = perm.inverse_at(i)
+      this.nodes[source_idx]
+    }).collect()
+
+    // Remap edge indices through the permutation
+    let new_edges = this.edges.map(|edge| {
+      let new_src = perm.perm[edge.0]
+      let new_dst = perm.perm[edge.1]
+      (new_src, new_dst, edge.2)
+    }).collect()
+
+    // Rebuild adjacency matrix with permuted indices
+    let new_adjacency = this.build_adjacency(new_edges)
+
+    return Graph {
+      nodes: new_nodes,
+      edges: new_edges,
+      adjacency: new_adjacency,
+      node_count: this.node_count,
+      edge_count: this.edge_count
+    }
+  }
+
+  // Build adjacency matrix from edge list
+  fun build_adjacency(edges: List<Tuple<UInt64, UInt64, E>>) -> SparseMatrix<Float64> {
+    let adj = SparseMatrix::zeros(this.node_count, this.node_count)
+    for edge in edges {
+      adj.set(edge.0, edge.1, 1.0)
+    }
+    return adj
+  }
+
+  // Check if two graphs have same structure
+  fun same_structure(other: Graph<N, E>) -> Bool {
+    return this.node_count == other.node_count && this.edge_count == other.edge_count
+  }
 }
 
 exegesis {
@@ -82,6 +126,19 @@ exegesis {
   Any reordering of node indices that preserves edge connectivity
   represents the same graph. Architectures must be permutation-equivariant
   to respect this structure.
+
+  Permutation Group Action (permute_nodes):
+  The permute_nodes(perm) method implements the S_n group action on graphs.
+  For a permutation π and graph G = (V, E):
+  - Node reordering: new_nodes[π(i)] = old_nodes[i]
+  - Edge remapping: (a, b, e) → (π(a), π(b), e)
+
+  This action satisfies the group action axioms:
+  - Identity: permute_nodes(identity) = this
+  - Compatibility: permute_nodes(π₁ ∘ π₂) = permute_nodes(π₁).permute_nodes(π₂)
+
+  The permute_nodes method enables verification of the equivariance law
+  for GNN architectures: f(π · G) = π · f(G)
 
   Common Use Cases:
   - Molecular graphs: Graph<AtomFeatures, BondFeatures>
