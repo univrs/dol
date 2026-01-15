@@ -1,0 +1,74 @@
+trait gdl.symmetry_group {
+  // Type parameters: G (group element), X (space acted upon)
+  uses gdl.algebraic_structure
+
+  // Core group operations
+  symmetry_group has identity
+  symmetry_group has compose
+  symmetry_group has inverse
+  symmetry_group has act
+
+  // Operation signatures
+  identity is nullary
+  compose is binary
+  inverse is unary
+  act is binary
+
+  // Algebraic properties (group laws)
+  composition is associative
+  identity is left_neutral
+  identity is right_neutral
+  inverse is left_inverse
+  inverse is right_inverse
+
+  // Group action properties
+  action is equivariant
+}
+
+exegesis {
+  The gdl.symmetry_group trait represents mathematical groups in the
+  Geometric Deep Learning (GDL) Blueprint. Groups are the fundamental
+  algebraic structures that encode symmetries in machine learning.
+
+  TYPE PARAMETERS:
+  - G: The group element type (e.g., rotation matrices, permutations)
+  - X: The space on which the group acts (e.g., feature vectors, graphs)
+
+  OPERATIONS:
+  - identity() -> G: Returns the identity element e such that e * g = g * e = g
+  - compose(a: G, b: G) -> G: Group composition (a * b), combining transformations
+  - inverse(g: G) -> G: Group inverse (g^-1) satisfying g * g^-1 = g^-1 * g = e
+  - act(g: G, x: X) -> X: Group action on space element, transforming x by g
+
+  LAWS (algebraic properties that must hold):
+  1. associativity: compose(compose(a, b), c) == compose(a, compose(b, c))
+     - Group composition is associative
+  2. identity_left: compose(identity(), g) == g
+     - Left multiplication by identity preserves element
+  3. identity_right: compose(g, identity()) == g
+     - Right multiplication by identity preserves element
+  4. inverse_left: compose(inverse(g), g) == identity()
+     - Left inverse yields identity
+  5. inverse_right: compose(g, inverse(g)) == identity()
+     - Right inverse yields identity
+
+  COMMON SYMMETRY GROUPS:
+  - T(n): Translation group - shifts in n-dimensional space
+  - SO(n): Special orthogonal group - rotations in n-dimensional space
+  - S_n: Symmetric group - permutations of n elements (used in GNNs)
+  - SE(n): Special Euclidean group - rigid motions (rotation + translation)
+  - O(n): Orthogonal group - rotations and reflections
+  - GL(n): General linear group - invertible linear transformations
+  - E(n): Euclidean group - isometries of Euclidean space
+
+  EQUIVARIANCE CONSTRAINT:
+  The act operation defines how symmetries transform domain elements.
+  Equivariant architectures must respect: f(act(g, x)) = act(g, f(x))
+  This is the fundamental constraint of geometric deep learning: neural
+  network functions f must commute with group actions.
+
+  REFERENCES:
+  - GDL Blueprint Section 2: "The Symmetry Pillar"
+  - Bronstein et al., "Geometric Deep Learning: Grids, Groups, Graphs,
+    Geodesics, and Gauges" (2021)
+}
