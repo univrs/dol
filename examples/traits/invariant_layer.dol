@@ -1,0 +1,168 @@
+trait gdl.invariant_layer {
+  // Type parameters: G (SymmetryGroup), X (input space), Y (output space - trivial action)
+  uses gdl.symmetry_group
+  uses gdl.equivariant_layer
+
+  // Core layer operations
+  invariant_layer has forward
+  invariant_layer has parameters
+  invariant_layer has set_parameters
+
+  // Operation signatures
+  forward is unary
+  parameters is nullary
+  set_parameters is unary
+
+  // Input symmetry property
+  invariant_layer has input_symmetry
+  input_symmetry is symmetry_group
+
+  // Output has trivial (identity) action
+  invariant_layer has output_action
+  output_action is trivial
+  output_action is identity
+
+  // Layer characteristics
+  layer is differentiable
+  layer is composable
+
+  // The fundamental invariance law
+  // self.forward(G.act(g, x)) == self.forward(x)
+  all transformations preserve output
+  output is constant under symmetry
+  transformations produce identical results
+}
+
+exegesis {
+  The gdl.invariant_layer trait defines the interface for neural network layers
+  that produce outputs unchanged by symmetry transformations. This is a special
+  case of EquivariantLayer where the output representation is trivial.
+
+  TYPE PARAMETERS:
+  - G: SymmetryGroup - The symmetry group the layer is invariant to
+  - X: The input space type that has a G-action (e.g., images, graphs, point clouds)
+  - Y: The output space type with no G-action or trivial action (e.g., scalars, labels)
+
+  OPERATIONS:
+  - forward(x: X) -> Y: The forward pass producing invariant output
+  - parameters() -> List<Tensor>: Returns trainable parameters of the layer
+  - set_parameters(params: List<Tensor>) -> Void: Sets the trainable parameters
+
+  THE INVARIANCE LAW:
+  For all group elements g in G and all inputs x in X:
+    self.forward(G.act(g, x)) == self.forward(x)
+
+  This fundamental constraint states: "transforming the input does not change
+  the output." Unlike equivariant layers where output transforms with input,
+  invariant layers produce identical output regardless of symmetry transformation.
+
+  RELATION TO EQUIVARIANT LAYERS:
+  InvariantLayer is a special case of EquivariantLayer where the output
+  representation is trivial. In representation theory terms:
+  - EquivariantLayer: rho_out(g) . f(x) = f(rho_in(g) . x)
+  - InvariantLayer: f(rho_in(g) . x) = f(x) (rho_out = trivial representation)
+
+  The trivial representation maps every group element to the identity matrix,
+  so the output is unchanged by any transformation.
+
+  USE CASES - WHEN INVARIANCE IS NEEDED:
+  1. Classification: Class label should not change when input is transformed
+     - Rotating a cat image should still classify as "cat"
+     - Permuting graph nodes should not change graph-level class
+  2. Regression: Predicted value should be independent of pose/orientation
+     - Energy of a molecule is invariant to rotation
+     - Graph property prediction is permutation-invariant
+  3. Pooling: Aggregating local features into global representations
+     - Global average/max pooling eliminates spatial structure
+     - Graph readout produces single graph-level embedding
+
+  COMMON INVARIANT OPERATIONS:
+  1. Global Pooling (Mean, Max, Sum):
+     - f(x) = mean(x) is invariant to permutations
+     - Aggregates over all positions/nodes
+  2. Norm-based operations:
+     - f(x) = ||x|| is SO(n)-invariant
+     - Magnitude is preserved under rotations
+  3. Inner products:
+     - f(x, y) = <x, y> is O(n)-invariant
+     - Angle/similarity preserved under orthogonal transforms
+  4. Graph-level readout:
+     - Aggregate node features: sum, mean, attention pooling
+     - Deep Sets: sum(phi(x_i)) for set invariance
+
+  HOW TO ACHIEVE INVARIANCE:
+  The standard approach is: apply equivariant layers, then aggregate.
+
+  Architecture pattern:
+    Input -> [Equivariant Layer] -> [Equivariant Layer] -> [Invariant Pooling] -> Output
+            ^-- preserves symmetry --^                    ^-- removes symmetry --^
+
+  1. Build equivariant feature extractor (preserves structure)
+  2. Apply symmetric aggregation function (global pooling)
+  3. Optional: post-pooling MLP (acts on invariant features)
+
+  This decomposition ensures that:
+  - Early layers can learn rich, structured representations
+  - Final pooling captures all relevant information invariantly
+  - Information is not lost prematurely
+
+  CONNECTION TO ORBITS AND QUOTIENT SPACES:
+  Invariant functions can be understood through orbit theory:
+  - Orbit(x) = {g.x : g in G} - all transformed versions of x
+  - Invariant function: constant on each orbit
+  - Effectively maps to quotient space X/G
+
+  An invariant layer learns to:
+  1. Identify which orbit an input belongs to
+  2. Map entire orbits to the same output
+  3. Distinguish between different orbits
+
+  EXAMPLES BY DOMAIN:
+
+  1. Image Classification (T(2)-invariant):
+     - Input: 2D image with translation group action
+     - Architecture: Conv layers -> Global Average Pool -> FC layers
+     - Invariance: Translating object in image gives same class
+
+  2. Graph Classification (S_n-invariant):
+     - Input: Graph with permutation group action on nodes
+     - Architecture: GNN layers -> Readout (sum/mean) -> MLP
+     - Invariance: Reordering nodes gives same graph-level output
+
+  3. Molecular Property Prediction (SE(3)-invariant):
+     - Input: 3D point cloud with rotation+translation group action
+     - Architecture: E(n)-GNN -> Global pooling -> Property head
+     - Invariance: Rotating/translating molecule gives same energy
+
+  4. Point Cloud Classification (SO(3)-invariant):
+     - Input: 3D point set with rotation group action
+     - Architecture: Spherical conv -> Invariant pooling -> Classifier
+     - Invariance: Rotating object gives same class prediction
+
+  THEORETICAL PROPERTIES:
+
+  1. Composition with equivariant:
+     - If f is G-equivariant and g is G-invariant, then (g . f) is G-invariant
+     - Invariance "absorbs" equivariance from composed layers
+
+  2. Universality:
+     - Deep Sets theorem: sum(phi(x_i)) can approximate any continuous
+       permutation-invariant function
+     - Similar results for other groups with appropriate architectures
+
+  3. Information loss:
+     - Invariance necessarily discards transformation information
+     - Choose aggregation wisely: mean vs max vs attention
+
+  REFERENCES:
+  - GDL Blueprint "The Architecture Pillar" - Invariant vs Equivariant
+  - Bronstein et al., "Geometric Deep Learning: Grids, Groups, Graphs,
+    Geodesics, and Gauges" (2021)
+  - Zaheer et al., "Deep Sets" (2017) - Permutation invariance theory
+  - Qi et al., "PointNet" (2017) - Point cloud invariance
+  - Maron et al., "Invariant and Equivariant Graph Networks" (2018)
+
+  SEE ALSO:
+  - gdl.symmetry_group: Defines the group structure and action
+  - gdl.equivariant_layer: The more general equivariant case
+}
