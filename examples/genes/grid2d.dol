@@ -1,0 +1,67 @@
+gene Grid2D<T> {
+  has height: UInt64
+  has width: UInt64
+  has channels: UInt64
+  has data: Array<T>
+  has stride: UInt64 = width * channels
+
+  constraint valid_shape {
+    this.data.length == this.height * this.width * this.channels
+  }
+
+  constraint positive_dimensions {
+    this.height > 0 && this.width > 0 && this.channels > 0
+  }
+
+  fun at(row: UInt64, col: UInt64, channel: UInt64) -> T {
+    let idx = row * this.stride + col * this.channels + channel
+    return this.data[idx]
+  }
+
+  fun shape() -> Tuple<UInt64, UInt64, UInt64> {
+    return (this.height, this.width, this.channels)
+  }
+
+  fun flatten() -> Array<T> {
+    return this.data
+  }
+
+}
+
+exegesis {
+  Grid2D<T> models a regular 2-dimensional grid domain for structured data
+  such as images, spectrograms, and dense feature maps.
+
+  This gene is fundamental to Geometric Deep Learning (GDL) as grids are
+  the most common domain for translation-equivariant architectures like
+  Convolutional Neural Networks (CNNs).
+
+  Properties:
+  - height: Number of rows in the grid (H dimension)
+  - width: Number of columns in the grid (W dimension)
+  - channels: Feature dimensions per cell (C dimension, e.g., RGB=3)
+  - data: Row-major flattened tensor of type T (H*W*C elements)
+  - stride: Pre-computed row stride for efficient indexing
+
+  Shape Constraint:
+  The valid_shape constraint ensures data integrity by verifying that
+  the flattened data array has exactly height * width * channels elements.
+  This is critical for memory safety and tensor operations.
+
+  Inherent Symmetry:
+  Grid2D domains have inherent Translation Group T(2) symmetry.
+  Architectures operating on Grid2D should be translation-equivariant
+  to respect this structure (e.g., convolutional layers with weight sharing).
+
+  Common Use Cases:
+  - Images: Grid2D<Float32> with channels=3 (RGB) or channels=1 (grayscale)
+  - Feature maps: Grid2D<Float32> with channels=hidden_dim
+  - Spectrograms: Grid2D<Float32> with height=frequency_bins, width=time_steps
+
+  Related Genes:
+  - Grid1D<T>: Sequences and time series (1D translation symmetry)
+  - Grid3D<T>: Volumetric data like CT scans (3D translation symmetry)
+
+  GDL Blueprint Reference:
+  Domain type in the three-pillar ontology: Domain (Omega) -> Grid -> Grid2D
+}

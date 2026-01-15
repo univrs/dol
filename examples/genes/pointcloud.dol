@@ -1,0 +1,108 @@
+gene PointCloud<F: UInt64> {
+  has points: List<Vec3>
+  has features: Array<Float64>
+  has num_points: UInt64 = points.length
+  has feature_dim: UInt64 = F
+  has bounds_min: Vec3
+  has bounds_max: Vec3
+
+  constraint feature_alignment {
+    this.features.length == this.points.length * F
+  }
+
+  constraint non_empty {
+    this.points.length > 0
+  }
+
+  constraint valid_bounds {
+    this.bounds_min.x <= this.bounds_max.x &&
+    this.bounds_min.y <= this.bounds_max.y &&
+    this.bounds_min.z <= this.bounds_max.z
+  }
+
+  fun get_point(idx: UInt64) -> Vec3 {
+    return this.points[idx]
+  }
+
+  fun get_features(idx: UInt64) -> Array<Float64> {
+    let start = idx * F
+    let end = start + F
+    return this.features.slice(start, end)
+  }
+
+  fun centroid() -> Vec3 {
+    let sum_x = this.points.map(|p| p.x).sum()
+    let sum_y = this.points.map(|p| p.y).sum()
+    let sum_z = this.points.map(|p| p.z).sum()
+    let n = this.points.length
+    return Vec3 { x: sum_x / n, y: sum_y / n, z: sum_z / n }
+  }
+
+  fun distance_to(idx: UInt64, other_idx: UInt64) -> Float64 {
+    let p1 = this.points[idx]
+    let p2 = this.points[other_idx]
+    let dx = p1.x - p2.x
+    let dy = p1.y - p2.y
+    let dz = p1.z - p2.z
+    return sqrt(dx*dx + dy*dy + dz*dz)
+  }
+
+  fun within_radius(center_idx: UInt64, radius: Float64) -> List<UInt64> {
+    return this.points
+      .indices()
+      .filter(|i| this.distance_to(center_idx, i) <= radius)
+  }
+}
+
+exegesis {
+  PointCloud<F> models an unordered set of 3D points with per-point features,
+  where F is the feature dimensionality (a compile-time constant). This is
+  a fundamental domain for Geometric Deep Learning on 3D spatial data.
+
+  This gene represents the PointCloud domain in the GDL three-pillar ontology,
+  enabling SE(3) or E(3) equivariant neural network architectures like
+  PointNet, PointNet++, DGCNN, and equivariant graph neural networks.
+
+  Properties:
+  - points: List of 3D coordinates (x, y, z) as Vec3
+  - features: Flattened array of per-point features (num_points * F elements)
+  - num_points: Number of points in the cloud (derived)
+  - feature_dim: Feature dimensionality F (compile-time constant)
+  - bounds_min/bounds_max: Axis-aligned bounding box
+
+  Feature Alignment Constraint:
+  The feature_alignment constraint ensures the features array has exactly
+  num_points * F elements, guaranteeing one F-dimensional feature vector
+  per point. This is critical for batched operations and memory safety.
+
+  Non-Empty Constraint:
+  The non_empty constraint ensures at least one point exists, preventing
+  degenerate cases in centroid computation and normalization.
+
+  Valid Bounds Constraint:
+  The valid_bounds constraint ensures the bounding box is well-formed
+  with min <= max for all dimensions.
+
+  Inherent Symmetry:
+  PointCloud domains have inherent SE(3) or E(3) symmetry depending on
+  the task. SE(3) includes rotations and translations; E(3) adds reflections.
+  Additionally, point clouds have S_n permutation symmetry since points
+  are unordered. Architectures must be:
+  - SE(3)/E(3) equivariant for geometric consistency
+  - Permutation invariant/equivariant for set processing
+
+  Common Use Cases:
+  - LiDAR scans: PointCloud<4> with (x, y, z, intensity)
+  - RGB-D fusion: PointCloud<6> with (r, g, b, nx, ny, nz)
+  - Molecular surfaces: PointCloud<32> with learned embeddings
+  - 3D object detection: PointCloud<1> with occupancy
+
+  Related Genes:
+  - Mesh<V, F>: Points with face connectivity (manifold domain)
+  - VoxelGrid<T>: Discretized 3D volume (Grid3D domain)
+  - Graph<N, E>: Points with explicit edge structure
+
+  GDL Blueprint Reference:
+  Domain type in the three-pillar ontology: Domain (Omega) -> PointCloud
+  Inherent symmetry groups: SE(3) or E(3), combined with S_n
+}
