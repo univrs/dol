@@ -1,0 +1,25 @@
+// Test: Spirit with dependencies
+// Expected: Valid Spirit with requires statements
+
+spirit HttpService {
+    has name: "http-service"
+    has version: "0.1.0"
+    has authors: ["Your Name <you@example.com>"]
+    has license: "Apache-2.0"
+
+    requires @univrs/std: "^1.0"
+    requires @univrs/http: "^2.0"
+    requires @univrs/json: "^1.0"
+
+    has lib: "src/lib.dol"
+    has bin: "src/main.dol"
+
+    constraint valid_port {
+        this.default_port > 0 && this.default_port < 65536
+    }
+
+    exegesis {
+        HTTP service framework for building web APIs.
+        Demonstrates Spirit dependencies and constraints.
+    }
+}

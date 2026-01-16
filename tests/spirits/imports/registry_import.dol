@@ -1,0 +1,17 @@
+// Test: Registry package imports
+// Expected: @org/package syntax resolves to registry
+
+use @univrs/std
+use @univrs/std.io
+use @univrs/std.io.println
+
+pub fun main() -> Int32 {
+    // Uses registry imports
+    return 0
+}
+
+exegesis {
+    Test case for registry package imports.
+    @org/package syntax looks up packages in the registry.
+    Submodules can be accessed with dot notation.
+}

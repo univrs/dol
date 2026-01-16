@@ -1,0 +1,17 @@
+// Test: Nested module path resolution
+// File: tests/spirits/modules/nested_path.dol
+// Expected module path: spirits.modules.nested_path
+
+pub gene NestedType {
+    has value: Int64
+
+    pub fun new(v: Int64) -> NestedType {
+        return NestedType { value: v }
+    }
+}
+
+exegesis {
+    Test case for nested module path resolution.
+    Directory separators become dots in the module path.
+    File extension is stripped.
+}

@@ -1,0 +1,26 @@
+// Test: System composition declaration
+// Expected: Valid System composing multiple Spirits
+
+system ProductionCluster {
+    uses @univrs/containers: "^2.0"
+    uses @univrs/scheduler: "^1.5"
+    uses @univrs/monitoring: "^1.0"
+
+    has config: ClusterConfig
+    has clusters: List<Cluster>
+
+    constraint max_containers_per_cluster {
+        forall cluster in this.clusters {
+            cluster.containers.len <= this.config.max_containers
+        }
+    }
+
+    pub sex fun deploy(task: Task) -> Result<Container, DeployError> {
+        // Deploy logic
+    }
+
+    exegesis {
+        ProductionCluster orchestrates a multi-cluster container deployment.
+        Demonstrates System composition of multiple Spirits.
+    }
+}

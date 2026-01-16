@@ -1,0 +1,19 @@
+// Test: Local module imports
+// Expected: use statements for local modules resolve correctly
+
+use container
+use container.state
+use internal.helpers
+
+pub gene ServiceHandler {
+    has container: container.Container
+
+    pub fun handle() -> Void {
+        // Uses local imports
+    }
+}
+
+exegesis {
+    Test case for local module imports.
+    Local imports resolve to src/[path].dol files.
+}
