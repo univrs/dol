@@ -3721,6 +3721,7 @@ mod tests {
     #[test]
     fn test_generate_gene_struct() {
         let gene = Gene {
+            visibility: crate::ast::Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
             statements: vec![
@@ -3750,6 +3751,7 @@ mod tests {
     #[test]
     fn test_generate_trait() {
         let trait_decl = Trait {
+            visibility: crate::ast::Visibility::default(),
             name: "container.lifecycle".to_string(),
             statements: vec![
                 Statement::Uses {
@@ -3834,6 +3836,7 @@ mod tests {
     #[test]
     fn test_generate_constraint() {
         let constraint = Constraint {
+            visibility: crate::ast::Visibility::default(),
             name: "container.integrity".to_string(),
             statements: vec![
                 Statement::Matches {
@@ -3861,6 +3864,7 @@ mod tests {
     #[test]
     fn test_generate_system() {
         let system = System {
+            visibility: crate::ast::Visibility::default(),
             name: "univrs.orchestrator".to_string(),
             version: "0.1.0".to_string(),
             requirements: vec![crate::ast::Requirement {
@@ -4839,6 +4843,7 @@ mod tests {
     fn test_gen_file() {
         let gen = RustCodegen::new();
         let gene = Gene {
+            visibility: crate::ast::Visibility::default(),
             name: "TestStruct".to_string(),
             extends: None,
             statements: vec![],
@@ -4854,6 +4859,7 @@ mod tests {
     fn test_gen_file_with_hashmap() {
         let gen = RustCodegen::new();
         let gene = Gene {
+            visibility: crate::ast::Visibility::default(),
             name: "TestStruct".to_string(),
             extends: None,
             statements: vec![Statement::HasField(Box::new(crate::ast::HasField {
@@ -4882,6 +4888,7 @@ mod tests {
     fn test_gen_imports() {
         let gen = RustCodegen::new();
         let gene = Gene {
+            visibility: crate::ast::Visibility::default(),
             name: "TestStruct".to_string(),
             extends: None,
             statements: vec![Statement::HasField(Box::new(crate::ast::HasField {

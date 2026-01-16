@@ -288,6 +288,7 @@ pub trait Fold {
     /// Fold a gene.
     fn fold_gene(&mut self, gene: Gene) -> Gene {
         Gene {
+            visibility: gene.visibility,
             name: gene.name,
             extends: gene.extends,
             statements: gene

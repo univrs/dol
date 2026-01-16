@@ -13,6 +13,7 @@ use metadol::codegen::{RustCodegen, TypeMapper};
 #[test]
 fn test_codegen_simple_gene() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Point".to_string(),
         statements: vec![
@@ -54,6 +55,7 @@ fn test_codegen_simple_gene() {
 #[test]
 fn test_codegen_gene_with_constraint() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "PositiveNumber".to_string(),
         statements: vec![Statement::HasField(Box::new(HasField {
@@ -94,6 +96,7 @@ fn test_codegen_gene_with_constraint() {
 #[test]
 fn test_codegen_gene_with_multiple_types() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "User".to_string(),
         statements: vec![
@@ -156,6 +159,7 @@ fn test_codegen_gene_with_multiple_types() {
 #[test]
 fn test_codegen_gene_with_legacy_has_statement() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Legacy".to_string(),
         statements: vec![
@@ -194,6 +198,7 @@ fn test_codegen_gene_with_legacy_has_statement() {
 #[test]
 fn test_codegen_simple_trait() {
     let trait_decl = Trait {
+        visibility: Visibility::default(),
         name: "Lifecycle".to_string(),
         statements: vec![
             Statement::Is {
@@ -243,6 +248,7 @@ fn test_codegen_simple_trait() {
 #[test]
 fn test_codegen_trait_with_supertraits() {
     let trait_decl = Trait {
+        visibility: Visibility::default(),
         name: "Advanced".to_string(),
         statements: vec![
             Statement::Uses {
@@ -278,6 +284,7 @@ fn test_codegen_trait_with_supertraits() {
 #[test]
 fn test_codegen_trait_no_supertraits() {
     let trait_decl = Trait {
+        visibility: Visibility::default(),
         name: "Simple".to_string(),
         statements: vec![Statement::Is {
             subject: "entity".to_string(),
@@ -304,6 +311,7 @@ fn test_codegen_trait_no_supertraits() {
 #[test]
 fn test_codegen_system_module() {
     let system = System {
+        visibility: Visibility::default(),
         name: "orchestrator.core".to_string(),
         version: "1.0.0".to_string(),
         requirements: vec![
@@ -356,6 +364,7 @@ fn test_codegen_system_module() {
 #[test]
 fn test_codegen_system_no_requirements() {
     let system = System {
+        visibility: Visibility::default(),
         name: "simple".to_string(),
         version: "1.0.0".to_string(),
         requirements: vec![],
@@ -380,6 +389,7 @@ fn test_codegen_system_no_requirements() {
 #[test]
 fn test_codegen_constraint() {
     let constraint = Constraint {
+        visibility: Visibility::default(),
         name: "data.integrity".to_string(),
         statements: vec![
             Statement::Matches {
@@ -420,6 +430,7 @@ fn test_codegen_constraint() {
 #[test]
 fn test_codegen_constraint_empty() {
     let constraint = Constraint {
+        visibility: Visibility::default(),
         name: "empty".to_string(),
         statements: vec![],
         exegesis: "Empty constraint".to_string(),
@@ -800,6 +811,7 @@ fn test_codegen_type_mapping_nested_generics() {
 #[test]
 fn test_codegen_generate_all() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Point".to_string(),
         statements: vec![Statement::HasField(Box::new(HasField {
@@ -814,6 +826,7 @@ fn test_codegen_generate_all() {
     };
 
     let trait_decl = Trait {
+        visibility: Visibility::default(),
         name: "Drawable".to_string(),
         statements: vec![Statement::Is {
             subject: "entity".to_string(),
@@ -853,6 +866,7 @@ fn test_codegen_gen_visibility() {
 fn test_codegen_type_info() {
     let gen = RustCodegen::new();
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "User".to_string(),
         statements: vec![
@@ -882,6 +896,7 @@ fn test_codegen_type_info() {
 fn test_codegen_type_registry() {
     let gen = RustCodegen::new();
     let gene1 = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Point".to_string(),
         statements: vec![],
@@ -890,6 +905,7 @@ fn test_codegen_type_registry() {
     };
 
     let gene2 = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Line".to_string(),
         statements: vec![],
@@ -947,6 +963,7 @@ fn test_codegen_gen_param_complex_type() {
 fn test_codegen_naming_snake_to_pascal() {
     // Test that gene names are converted to PascalCase
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "my.special.gene".to_string(),
         statements: vec![],
@@ -965,6 +982,7 @@ fn test_codegen_naming_snake_to_pascal() {
 fn test_codegen_naming_field_snake_case() {
     // Test that field names are converted to snake_case
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Test".to_string(),
         statements: vec![Statement::HasField(Box::new(HasField {
@@ -992,6 +1010,7 @@ fn test_codegen_naming_field_snake_case() {
 #[test]
 fn test_codegen_empty_gene() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Empty".to_string(),
         statements: vec![],
@@ -1007,6 +1026,7 @@ fn test_codegen_empty_gene() {
 #[test]
 fn test_codegen_empty_trait() {
     let trait_decl = Trait {
+        visibility: Visibility::default(),
         name: "Empty".to_string(),
         statements: vec![],
         exegesis: "Empty trait".to_string(),
@@ -1020,6 +1040,7 @@ fn test_codegen_empty_trait() {
 #[test]
 fn test_codegen_multiline_exegesis() {
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "Test".to_string(),
         statements: vec![],

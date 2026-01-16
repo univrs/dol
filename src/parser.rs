@@ -332,6 +332,7 @@ impl<'a> Parser<'a> {
             if self.current.kind == TokenKind::Eof {
                 // Return a placeholder for files that only have tests after the main content
                 return Ok(Declaration::Gene(Gene {
+                    visibility: Visibility::default(),
                     name: "_test_skipped".to_string(),
                     extends: None,
                     statements: vec![],
@@ -389,6 +390,7 @@ impl<'a> Parser<'a> {
                 // Try to parse next declaration, or return placeholder if EOF
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gene {
+                        visibility: Visibility::default(),
                         name: "_module_doc".to_string(),
                         extends: None,
                         statements: vec![],
@@ -422,6 +424,7 @@ impl<'a> Parser<'a> {
                 // Parse next declaration
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gene {
+                        visibility: Visibility::default(),
                         name: "_use_only".to_string(),
                         extends: None,
                         statements: vec![],
@@ -456,6 +459,7 @@ impl<'a> Parser<'a> {
                 // Parse next declaration
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gene {
+                        visibility: Visibility::default(),
                         name: "_module_decl".to_string(),
                         extends: None,
                         statements: vec![],
@@ -674,6 +678,7 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         Ok(Declaration::Gene(Gene {
+            visibility: Visibility::default(),
             name,
             extends,
             statements,
@@ -726,6 +731,7 @@ impl<'a> Parser<'a> {
 
         // Type declarations are represented as Gene in the AST
         Ok(Declaration::Gene(Gene {
+            visibility: Visibility::default(),
             name,
             extends,
             statements,
@@ -777,6 +783,7 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         Ok(Declaration::Trait(Trait {
+            visibility: Visibility::default(),
             name,
             statements,
             exegesis,
@@ -813,6 +820,7 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         Ok(Declaration::Constraint(Constraint {
+            visibility: Visibility::default(),
             name,
             statements,
             exegesis,
@@ -878,6 +886,7 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         Ok(Declaration::System(System {
+            visibility: Visibility::default(),
             name,
             version,
             requirements,
@@ -1684,6 +1693,7 @@ impl<'a> Parser<'a> {
         self.consume_optional_semicolon();
 
         Ok(Declaration::Const(ConstDecl {
+            visibility: Visibility::default(),
             name,
             type_ann,
             value,
@@ -1769,6 +1779,7 @@ impl<'a> Parser<'a> {
                 let extern_decl = self.parse_sex_extern()?;
                 // Keep extern functions as Gene placeholder (FFI stubs need special handling)
                 Ok(Declaration::Gene(Gene {
+                    visibility: Visibility::default(),
                     name: extern_decl.name.clone(),
                     extends: None,
                     statements: vec![],

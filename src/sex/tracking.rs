@@ -110,7 +110,7 @@ impl Effect {
 ///
 /// ```rust
 /// use metadol::sex::tracking::EffectTracker;
-/// use metadol::ast::{Declaration, Gene, Span};
+/// use metadol::ast::{Declaration, Gene, Span, Visibility};
 ///
 /// let mut tracker = EffectTracker::new();
 ///
@@ -120,6 +120,7 @@ impl Effect {
 ///     statements: vec![],
 ///     exegesis: "Test".to_string(),
 ///     span: Span::default(),
+///     visibility: Visibility::default(),
 /// };
 ///
 /// tracker.track_declaration(&Declaration::Gene(gene));
@@ -385,6 +386,7 @@ impl EffectTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Visibility;
 
     #[test]
     fn test_effect_kind_display() {
@@ -432,6 +434,7 @@ mod tests {
         let mut tracker = EffectTracker::new();
 
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "io.gene".to_string(),
             extends: None,
             statements: vec![Statement::Has {
