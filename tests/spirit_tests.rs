@@ -561,6 +561,7 @@ exegesis {
 mod fixture_tests {
     use super::*;
 
+    #[allow(dead_code)]
     fn test_fixture(category: &str, name: &str) -> bool {
         let path = format!("tests/spirits/{}/{}", category, name);
         if !Path::new(&path).exists() {
