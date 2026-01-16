@@ -39,26 +39,26 @@
 //! let alloc_instrs = BumpAllocator::emit_alloc_function();
 //! ```
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use wasm_encoder::{
     BlockType, ConstExpr, Function, GlobalSection, GlobalType, Instruction, MemorySection,
     MemoryType, Module, ValType,
 };
 
 /// Default number of memory pages (1 page = 64KB).
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub const DEFAULT_MEMORY_PAGES: u32 = 1;
 
 /// Maximum number of memory pages (256 pages = 16MB).
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub const MAX_MEMORY_PAGES: u32 = 256;
 
 /// Size of one WASM memory page in bytes.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub const PAGE_SIZE: u32 = 65536;
 
 /// Default initial heap address (after static data area).
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub const DEFAULT_HEAP_START: u32 = 1024;
 
 /// Bump allocator state stored in WASM globals.
@@ -82,7 +82,7 @@ pub const DEFAULT_HEAP_START: u32 = 1024;
 /// assert_eq!(allocator.heap_base_global(), 0);
 /// assert_eq!(allocator.heap_end_global(), 1);
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone, Copy)]
 pub struct BumpAllocator {
     /// Index of HEAP_BASE global (next free address)
@@ -91,7 +91,7 @@ pub struct BumpAllocator {
     heap_end_global: u32,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl BumpAllocator {
     /// Create a new bump allocator configuration.
     ///
@@ -385,7 +385,7 @@ impl BumpAllocator {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl Default for BumpAllocator {
     fn default() -> Self {
         Self::new(0, 1)
@@ -413,13 +413,13 @@ impl Default for BumpAllocator {
 /// assert_eq!(align_up(4, 4), 4);
 /// assert_eq!(align_up(5, 8), 8);
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub fn align_up(offset: u32, alignment: u32) -> u32 {
     (offset + alignment - 1) & !(alignment - 1)
 }
 
 #[cfg(test)]
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 mod tests {
     use super::*;
 

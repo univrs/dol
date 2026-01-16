@@ -34,19 +34,19 @@
 //! let wasm_bytes = compiler.compile(&module)?;
 //! ```
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use crate::ast::Declaration;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use crate::wasm::alloc::BumpAllocator;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use crate::wasm::layout::{EnumRegistry, GeneLayout, GeneLayoutRegistry};
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use crate::wasm::WasmError;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use std::collections::HashMap;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use std::path::Path;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use wasm_encoder;
 
 /// WASM compiler for Metal DOL modules.
@@ -63,7 +63,7 @@ use wasm_encoder;
 ///     .with_optimization(true)
 ///     .with_debug_info(false);
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone)]
 pub struct WasmCompiler {
     /// Enable LLVM optimizations
@@ -79,7 +79,7 @@ pub struct WasmCompiler {
 /// Represents a WASM import declaration.
 ///
 /// Used for sex functions without bodies, which are treated as host function imports.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone)]
 struct WasmImport {
     /// Module name for the import (e.g., "loa")
@@ -98,7 +98,7 @@ struct WasmImport {
 ///
 /// WASM uses relative block depths for `br` (break) instructions. When control
 /// flow is nested inside if/match/block expressions, the depths need to be adjusted.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone, Copy, Default)]
 struct LoopContext {
     /// Depth to break target (outer block surrounding loop)
@@ -109,7 +109,7 @@ struct LoopContext {
     continue_depth: Option<u32>,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl LoopContext {
     /// Create a new context for entering a loop.
     /// break_depth=1 (outer block), continue_depth=0 (loop header)
@@ -133,7 +133,7 @@ impl LoopContext {
 ///
 /// Collects and deduplicates string literals, returning (offset, length) pairs.
 /// Strings are stored in the WASM data section starting at a configurable base offset.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Default, Clone)]
 struct StringTable {
     /// Strings stored as (offset, content)
@@ -144,7 +144,7 @@ struct StringTable {
     base_offset: u32,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl StringTable {
     /// Create a new string table with a base offset.
     ///
@@ -215,7 +215,7 @@ impl StringTable {
 ///
 /// This tracks both function parameters (which are the first locals in WASM)
 /// and declared local variables from let bindings.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Default)]
 struct LocalsTable {
     /// Number of function parameters
@@ -238,7 +238,7 @@ struct LocalsTable {
     func_return_types: HashMap<String, wasm_encoder::ValType>,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl LocalsTable {
     /// Create a new LocalsTable from function parameters.
     ///
@@ -456,7 +456,7 @@ impl LocalsTable {
 }
 
 /// A function extracted from a DOL module with its export name.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 struct ExtractedFunction<'a> {
     /// The function declaration
     func: &'a crate::ast::FunctionDecl,
@@ -467,7 +467,7 @@ struct ExtractedFunction<'a> {
 }
 
 /// Context for a gene method, providing field information for implicit self access.
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone)]
 struct GeneContext {
     /// The gene name
@@ -488,7 +488,7 @@ struct GeneContext {
 ///
 /// The string value returned by the compiler is a single i32 pointer
 /// to the start of this structure (the length prefix).
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone, Default)]
 struct StringPool {
     /// Maps string content to (offset, length) in data section
@@ -499,7 +499,7 @@ struct StringPool {
     current_offset: u32,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl StringPool {
     /// Create a new empty string pool.
     fn new() -> Self {
@@ -553,7 +553,7 @@ impl StringPool {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl WasmCompiler {
     /// Create a new WASM compiler with default settings.
     ///
@@ -3611,7 +3611,7 @@ impl WasmCompiler {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 impl Default for WasmCompiler {
     fn default() -> Self {
         Self::new()
@@ -3619,7 +3619,7 @@ impl Default for WasmCompiler {
 }
 
 #[cfg(test)]
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 mod tests {
     use super::*;
     use crate::ast::{
@@ -3735,11 +3735,12 @@ mod tests {
 
     #[test]
     fn test_compile_non_function_declaration_fails() {
-        use crate::ast::Gene;
+        use crate::ast::{Gene, Visibility};
 
         // Try to compile a Gene (not supported)
         let gene = Gene {
             name: "test.gene".to_string(),
+            visibility: Visibility::Private,
             extends: None,
             statements: vec![],
             exegesis: "Test gene".to_string(),

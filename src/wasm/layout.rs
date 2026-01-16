@@ -76,7 +76,7 @@ impl WasmFieldType {
     /// Convert to wasm_encoder ValType.
     ///
     /// This is used when generating WASM function signatures and locals.
-    #[cfg(feature = "wasm")]
+    #[cfg(feature = "wasm-compile")]
     pub fn to_val_type(self) -> wasm_encoder::ValType {
         match self {
             WasmFieldType::I32 | WasmFieldType::Ptr => wasm_encoder::ValType::I32,
@@ -928,7 +928,7 @@ impl GeneLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Gene, HasField, Span, Statement, TypeExpr};
+    use crate::ast::{Gene, HasField, Span, Statement, TypeExpr, Visibility};
 
     fn make_field(name: &str, type_name: &str) -> Statement {
         Statement::HasField(Box::new(HasField {
@@ -943,6 +943,7 @@ mod tests {
     fn make_gene(name: &str, statements: Vec<Statement>) -> Gene {
         Gene {
             name: name.to_string(),
+            visibility: Visibility::Private,
             extends: None,
             statements,
             exegesis: "Test gene".to_string(),
@@ -1112,6 +1113,7 @@ mod tests {
         // }
         let gene = Gene {
             name: "Node".to_string(),
+            visibility: Visibility::Private,
             extends: None,
             statements: vec![
                 make_field("value", "Int64"),
@@ -1230,6 +1232,7 @@ mod tests {
         // gene Dog extends Animal { has breed_id: Int64 }
         let dog_gene = Gene {
             name: "Dog".to_string(),
+            visibility: Visibility::Private,
             extends: Some("Animal".to_string()),
             statements: vec![make_field("breed_id", "Int64")],
             exegesis: "Test gene".to_string(),
@@ -1258,6 +1261,7 @@ mod tests {
         // But Animal is not in the registry
         let dog_gene = Gene {
             name: "Dog".to_string(),
+            visibility: Visibility::Private,
             extends: Some("Animal".to_string()),
             statements: vec![make_field("breed_id", "Int64")],
             exegesis: "Test gene".to_string(),

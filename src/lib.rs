@@ -94,12 +94,12 @@ pub mod mcp;
 // MLIR backend (requires mlir feature)
 pub mod mlir;
 
-// WASM backend (requires wasm feature)
-#[cfg(feature = "wasm")]
+// WASM backend (requires wasm-compile or wasm-runtime feature)
+#[cfg(any(feature = "wasm-compile", feature = "wasm-runtime"))]
 pub mod wasm;
 
-// Spirit compiler (requires wasm feature)
-#[cfg(feature = "wasm")]
+// Spirit compiler (requires wasm-compile for bytecode generation)
+#[cfg(feature = "wasm-compile")]
 pub mod compiler;
 
 // Test file parser for .dol.test files
@@ -158,12 +158,18 @@ pub use mlir::{CodegenError, CodegenResult, MlirCodegen, MlirContext};
 // Always export MlirError since it doesn't require the mlir feature
 pub use mlir::MlirError;
 
-// WASM backend re-exports (requires wasm feature)
-#[cfg(feature = "wasm")]
-pub use wasm::{WasmCompiler, WasmError, WasmModule, WasmRuntime};
+// WASM backend re-exports
+#[cfg(any(feature = "wasm-compile", feature = "wasm-runtime"))]
+pub use wasm::WasmError;
 
-// Spirit compiler re-exports (requires wasm feature)
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
+pub use wasm::WasmCompiler;
+
+#[cfg(feature = "wasm-runtime")]
+pub use wasm::{WasmModule, WasmRuntime};
+
+// Spirit compiler re-exports (requires wasm-compile feature)
+#[cfg(feature = "wasm-compile")]
 pub use compiler::spirit::{
     compile_file, compile_source, compile_spirit_project, CompiledSpirit, CompilerError,
     CompilerWarning, SourceMap, SourceMapEntry,
