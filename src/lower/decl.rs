@@ -45,7 +45,7 @@ impl LoweringContext {
         HirDecl::Type(HirTypeDecl {
             id: self.fresh_id(),
             name,
-            visibility: gene.visibility.clone(),
+            visibility: gene.visibility,
             type_params: vec![],
             body: HirTypeDef::Gene(statements),
         })
@@ -71,7 +71,7 @@ impl LoweringContext {
         HirDecl::Trait(HirTraitDecl {
             id: self.fresh_id(),
             name,
-            visibility: trait_decl.visibility.clone(),
+            visibility: trait_decl.visibility,
             type_params: vec![],
             bounds: vec![],
             items,
@@ -129,7 +129,7 @@ impl LoweringContext {
         HirFunctionDecl {
             id: self.fresh_id(),
             name,
-            visibility: func.visibility.clone(),
+            visibility: func.visibility,
             type_params,
             params,
             return_type,
@@ -175,7 +175,7 @@ impl LoweringContext {
                 HirDecl::Trait(HirTraitDecl {
                     id: self.fresh_id(),
                     name,
-                    visibility: constraint.visibility.clone(),
+                    visibility: constraint.visibility,
                     type_params: vec![],
                     bounds: vec![],
                     items: vec![],
@@ -187,7 +187,7 @@ impl LoweringContext {
                 HirDecl::Module(HirModuleDecl {
                     id: self.fresh_id(),
                     name,
-                    visibility: system.visibility.clone(),
+                    visibility: system.visibility,
                     decls: vec![],
                 })
             }
@@ -207,7 +207,7 @@ impl LoweringContext {
                 HirDecl::Module(HirModuleDecl {
                     id: self.fresh_id(),
                     name,
-                    visibility: c.visibility.clone(),
+                    visibility: c.visibility,
                     decls: vec![],
                 })
             }
