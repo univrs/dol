@@ -10,6 +10,7 @@
 
 use super::span::HirId;
 use super::symbol::Symbol;
+use crate::ast::Visibility;
 
 /// Top-level compilation unit.
 ///
@@ -50,6 +51,8 @@ pub struct HirTypeDecl {
     pub id: HirId,
     /// Type name
     pub name: Symbol,
+    /// Visibility modifier
+    pub visibility: Visibility,
     /// Type parameters
     pub type_params: Vec<HirTypeParam>,
     /// Type body/definition
@@ -63,6 +66,8 @@ pub struct HirTraitDecl {
     pub id: HirId,
     /// Trait name
     pub name: Symbol,
+    /// Visibility modifier
+    pub visibility: Visibility,
     /// Type parameters
     pub type_params: Vec<HirTypeParam>,
     /// Super traits (bounds)
@@ -78,6 +83,8 @@ pub struct HirFunctionDecl {
     pub id: HirId,
     /// Function name
     pub name: Symbol,
+    /// Visibility modifier
+    pub visibility: Visibility,
     /// Type parameters
     pub type_params: Vec<HirTypeParam>,
     /// Function parameters
@@ -95,6 +102,8 @@ pub struct HirModuleDecl {
     pub id: HirId,
     /// Module name
     pub name: Symbol,
+    /// Visibility modifier
+    pub visibility: Visibility,
     /// Module contents
     pub decls: Vec<HirDecl>,
 }
@@ -128,6 +137,8 @@ pub struct HirField {
     pub name: Symbol,
     /// Field type
     pub ty: HirType,
+    /// Visibility modifier
+    pub visibility: Visibility,
 }
 
 /// Enum variant definition.

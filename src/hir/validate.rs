@@ -1095,6 +1095,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Function(HirFunctionDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: func_name,
             type_params: vec![],
@@ -1124,6 +1125,7 @@ mod tests {
         // Add two functions with the same name
         for _ in 0..2 {
             module.decls.push(HirDecl::Function(HirFunctionDecl {
+                visibility: crate::ast::Visibility::default(),
                 id: HirId::new(),
                 name: func_name,
                 type_params: vec![],
@@ -1154,6 +1156,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Function(HirFunctionDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: func_name,
             type_params: vec![],
@@ -1185,10 +1188,12 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Type(HirTypeDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: type_name,
             type_params: vec![],
             body: HirTypeDef::Struct(vec![HirField {
+                visibility: crate::ast::Visibility::default(),
                 name: field_name,
                 ty: HirType::Named(HirNamedType {
                     name: int_type,
@@ -1213,6 +1218,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Type(HirTypeDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: type_name,
             type_params: vec![],
@@ -1223,6 +1229,7 @@ mod tests {
                         name: int_type,
                         args: vec![],
                     }),
+                    visibility: crate::ast::Visibility::default(),
                 },
                 HirField {
                     name: field_name,
@@ -1230,6 +1237,7 @@ mod tests {
                         name: int_type,
                         args: vec![],
                     }),
+                    visibility: crate::ast::Visibility::default(),
                 },
             ]),
         }));
@@ -1252,6 +1260,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Type(HirTypeDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: gene_name,
             type_params: vec![],
@@ -1276,6 +1285,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Type(HirTypeDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: gene_name,
             type_params: vec![],
@@ -1304,6 +1314,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Function(HirFunctionDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: func_name,
             type_params: vec![],
@@ -1375,6 +1386,7 @@ mod tests {
 
         let mut module = HirModule::new(module_name);
         module.decls.push(HirDecl::Function(HirFunctionDecl {
+            visibility: crate::ast::Visibility::default(),
             id: HirId::new(),
             name: func_name,
             type_params: vec![],

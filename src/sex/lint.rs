@@ -293,7 +293,7 @@ impl LintResult {
 /// ```rust
 /// use metadol::sex::lint::SexLinter;
 /// use metadol::sex::context::SexContext;
-/// use metadol::ast::{Declaration, Gene, Span};
+/// use metadol::ast::{Declaration, Gene, Span, Visibility};
 ///
 /// let linter = SexLinter::new(SexContext::Pure);
 ///
@@ -303,6 +303,7 @@ impl LintResult {
 ///     statements: vec![],
 ///     exegesis: "Test gene".to_string(),
 ///     span: Span::default(),
+///     visibility: Visibility::default(),
 /// };
 ///
 /// let result = linter.lint_declaration(&Declaration::Gene(gene));
@@ -456,6 +457,7 @@ impl SexLinter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Visibility;
 
     #[test]
     fn test_lint_error_codes() {
@@ -528,6 +530,7 @@ mod tests {
         let linter = SexLinter::new(SexContext::Pure);
 
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "test.gene".to_string(),
             extends: None,
             statements: vec![Statement::Has {
@@ -548,6 +551,7 @@ mod tests {
         let linter = SexLinter::new(SexContext::Pure);
 
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "io.gene".to_string(),
             extends: None,
             statements: vec![Statement::Has {
@@ -578,6 +582,7 @@ mod tests {
             .collect();
 
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "test.gene".to_string(),
             extends: None,
             statements,
@@ -596,6 +601,7 @@ mod tests {
         let linter = SexLinter::new(SexContext::Sex);
 
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "test.gene".to_string(),
             extends: None,
             statements: vec![],

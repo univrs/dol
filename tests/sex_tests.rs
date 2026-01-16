@@ -153,6 +153,7 @@ fn test_effect_tracker_gene_with_io() {
     let mut tracker = EffectTracker::new();
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "io.gene".to_string(),
         statements: vec![Statement::Has {
@@ -177,6 +178,7 @@ fn test_effect_tracker_gene_with_ffi() {
     let mut tracker = EffectTracker::new();
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "ffi.gene".to_string(),
         statements: vec![Statement::Has {
@@ -201,6 +203,7 @@ fn test_effect_tracker_gene_with_global() {
     let mut tracker = EffectTracker::new();
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "global.gene".to_string(),
         statements: vec![Statement::Has {
@@ -225,6 +228,7 @@ fn test_effect_tracker_pure_gene() {
     let mut tracker = EffectTracker::new();
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "pure.gene".to_string(),
         statements: vec![Statement::Has {
@@ -286,6 +290,7 @@ fn test_linter_pure_gene_no_effects() {
     let linter = SexLinter::new(SexContext::Pure);
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "test.gene".to_string(),
         statements: vec![Statement::Has {
@@ -306,6 +311,7 @@ fn test_linter_io_in_pure_context() {
     let linter = SexLinter::new(SexContext::Pure);
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "io.gene".to_string(),
         statements: vec![Statement::Has {
@@ -328,6 +334,7 @@ fn test_linter_ffi_in_pure_context() {
     let linter = SexLinter::new(SexContext::Pure);
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "ffi.gene".to_string(),
         statements: vec![Statement::Has {
@@ -350,6 +357,7 @@ fn test_linter_mutable_global_in_pure_context() {
     let linter = SexLinter::new(SexContext::Pure);
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "global.gene".to_string(),
         statements: vec![Statement::Has {
@@ -380,6 +388,7 @@ fn test_linter_large_block_warning() {
         .collect();
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "test.gene".to_string(),
         statements,
@@ -398,6 +407,7 @@ fn test_linter_sex_without_documentation() {
     let linter = SexLinter::new(SexContext::Sex);
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "test.gene".to_string(),
         statements: vec![],
@@ -415,6 +425,7 @@ fn test_linter_sex_context_allows_effects() {
     let linter = SexLinter::new(SexContext::Sex);
 
     let gene = Gene {
+        visibility: Visibility::default(),
         extends: None,
         name: "io.gene".to_string(),
         statements: vec![Statement::Has {

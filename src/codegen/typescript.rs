@@ -558,11 +558,12 @@ impl TypeMapper for TypeScriptCodegen {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Span;
+    use crate::ast::{Span, Visibility};
 
     #[test]
     fn test_generate_gene_interface() {
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
             statements: vec![
@@ -591,6 +592,7 @@ mod tests {
     #[test]
     fn test_generate_trait_interface() {
         let trait_decl = Trait {
+            visibility: Visibility::default(),
             name: "container.lifecycle".to_string(),
             statements: vec![
                 Statement::Uses {
@@ -669,6 +671,7 @@ mod tests {
     #[test]
     fn test_generate_constraint_type_guard() {
         let constraint = Constraint {
+            visibility: Visibility::default(),
             name: "container.integrity".to_string(),
             statements: vec![Statement::Matches {
                 subject: "state".to_string(),
@@ -689,6 +692,7 @@ mod tests {
     #[test]
     fn test_generate_system_namespace() {
         let system = System {
+            visibility: Visibility::default(),
             name: "container.runtime".to_string(),
             version: "1.0.0".to_string(),
             requirements: vec![],

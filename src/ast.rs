@@ -20,9 +20,10 @@
 //! # Example
 //!
 //! ```rust
-//! use metadol::ast::{Declaration, Gene, Statement, Span};
+//! use metadol::ast::{Declaration, Gene, Statement, Span, Visibility};
 //!
 //! let gene = Gene {
+//!     visibility: Visibility::default(),
 //!     name: "container.exists".to_string(),
 //!     extends: None,
 //!     statements: vec![
@@ -411,6 +412,9 @@ impl Declaration {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Gene {
+    /// Visibility modifier for this gene
+    pub visibility: Visibility,
+
     /// The fully qualified name using dot notation
     pub name: String,
 
@@ -458,6 +462,9 @@ pub struct Gene {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Trait {
+    /// Visibility modifier for this trait
+    pub visibility: Visibility,
+
     /// The fully qualified name using dot notation
     pub name: String,
 
@@ -496,6 +503,9 @@ pub struct Trait {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Constraint {
+    /// Visibility modifier for this constraint
+    pub visibility: Visibility,
+
     /// The fully qualified name
     pub name: String,
 
@@ -536,6 +546,9 @@ pub struct Constraint {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct System {
+    /// Visibility modifier for this system
+    pub visibility: Visibility,
+
     /// The fully qualified name
     pub name: String,
 
@@ -1438,6 +1451,8 @@ pub struct VarDecl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConstDecl {
+    /// Visibility modifier for this constant
+    pub visibility: Visibility,
     /// Constant name
     pub name: String,
     /// Optional type annotation
@@ -1585,6 +1600,7 @@ mod tests {
     #[test]
     fn test_declaration_name() {
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
             statements: vec![],
@@ -1599,6 +1615,7 @@ mod tests {
     #[test]
     fn test_collect_dependencies() {
         let trait_decl = Trait {
+            visibility: Visibility::default(),
             name: "test.trait".to_string(),
             statements: vec![
                 Statement::Uses {

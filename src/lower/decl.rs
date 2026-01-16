@@ -27,6 +27,7 @@ impl LoweringContext {
         HirDecl::Type(HirTypeDecl {
             id: self.fresh_id(),
             name,
+            visibility: ast::Visibility::default(),
             type_params: vec![],
             body: HirTypeDef::Struct(vec![]),
         })
@@ -44,6 +45,7 @@ impl LoweringContext {
         HirDecl::Type(HirTypeDecl {
             id: self.fresh_id(),
             name,
+            visibility: gene.visibility,
             type_params: vec![],
             body: HirTypeDef::Gene(statements),
         })
@@ -69,6 +71,7 @@ impl LoweringContext {
         HirDecl::Trait(HirTraitDecl {
             id: self.fresh_id(),
             name,
+            visibility: trait_decl.visibility,
             type_params: vec![],
             bounds: vec![],
             items,
@@ -126,6 +129,7 @@ impl LoweringContext {
         HirFunctionDecl {
             id: self.fresh_id(),
             name,
+            visibility: func.visibility,
             type_params,
             params,
             return_type,
@@ -171,6 +175,7 @@ impl LoweringContext {
                 HirDecl::Trait(HirTraitDecl {
                     id: self.fresh_id(),
                     name,
+                    visibility: constraint.visibility,
                     type_params: vec![],
                     bounds: vec![],
                     items: vec![],
@@ -182,6 +187,7 @@ impl LoweringContext {
                 HirDecl::Module(HirModuleDecl {
                     id: self.fresh_id(),
                     name,
+                    visibility: system.visibility,
                     decls: vec![],
                 })
             }
@@ -191,6 +197,7 @@ impl LoweringContext {
                 HirDecl::Module(HirModuleDecl {
                     id: self.fresh_id(),
                     name,
+                    visibility: ast::Visibility::default(),
                     decls: vec![],
                 })
             }
@@ -200,6 +207,7 @@ impl LoweringContext {
                 HirDecl::Module(HirModuleDecl {
                     id: self.fresh_id(),
                     name,
+                    visibility: c.visibility,
                     decls: vec![],
                 })
             }
@@ -209,6 +217,7 @@ impl LoweringContext {
                 HirDecl::Module(HirModuleDecl {
                     id: self.fresh_id(),
                     name,
+                    visibility: ast::Visibility::default(),
                     decls: vec![],
                 })
             }
@@ -224,6 +233,7 @@ mod tests {
     fn test_lower_gene() {
         let mut ctx = LoweringContext::new();
         let gene = ast::Gene {
+            visibility: ast::Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
             statements: vec![ast::Statement::Has {

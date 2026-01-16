@@ -186,9 +186,10 @@ mod tests {
 
     #[test]
     fn test_pipeline_runs_passes() {
-        use crate::ast::{Gene, Span};
+        use crate::ast::{Gene, Span, Visibility};
 
         let gene = Gene {
+            visibility: Visibility::default(),
             name: "test".to_string(),
             extends: None,
             statements: vec![],

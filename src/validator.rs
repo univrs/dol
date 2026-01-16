@@ -637,6 +637,7 @@ mod tests {
 
     fn make_gene(name: &str, exegesis: &str) -> Declaration {
         Declaration::Gene(Gene {
+            visibility: Visibility::default(),
             name: name.to_string(),
             extends: None,
             statements: vec![Statement::Has {

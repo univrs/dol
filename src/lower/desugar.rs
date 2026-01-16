@@ -216,6 +216,7 @@ exegesis {
             uses: vec![],
             declarations: vec![
                 crate::ast::Declaration::Gene(crate::ast::Gene {
+                    visibility: crate::ast::Visibility::default(),
                     name: "gene.one".to_string(),
                     extends: None,
                     statements: vec![],
@@ -223,6 +224,7 @@ exegesis {
                     span: crate::ast::Span::default(),
                 }),
                 crate::ast::Declaration::Gene(crate::ast::Gene {
+                    visibility: crate::ast::Visibility::default(),
                     name: "gene.two".to_string(),
                     extends: None,
                     statements: vec![],
@@ -260,6 +262,7 @@ exegesis {
             module: None,
             uses: vec![],
             declarations: vec![crate::ast::Declaration::Gene(crate::ast::Gene {
+                visibility: crate::ast::Visibility::default(),
                 name: "test.comprehensive".to_string(),
                 extends: None,
                 statements: vec![
