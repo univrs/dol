@@ -1,0 +1,15 @@
+// Test: Git repository imports
+// Expected: @git: prefix resolves to git clone
+
+use @git:github.com/univrs/containers
+use @git:github.com/univrs/containers.runtime
+
+pub gene GitDependency {
+    has data: String
+}
+
+exegesis {
+    Test case for Git repository imports.
+    @git: prefix clones the repository and caches it.
+    Useful for private or experimental packages.
+}

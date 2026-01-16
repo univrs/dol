@@ -1,0 +1,20 @@
+// Test: Spirit manifest declaration
+// Expected: Valid Spirit package manifest
+
+spirit MathLib {
+    has name: "math-lib"
+    has version: "1.0.0"
+    has authors: ["VUDO Team <team@univrs.io>"]
+    has license: "MIT"
+
+    has lib: "src/lib.dol"
+
+    exegesis {
+        Pure mathematical functions for DOL.
+        No side effects, no dependencies.
+
+        Quick start:
+            use @univrs/math.{ add, sin, cos }
+            result = add(1, 2)
+    }
+}

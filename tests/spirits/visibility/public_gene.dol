@@ -1,0 +1,16 @@
+// Test: Public visibility modifier
+// Expected: pub gene should be accessible everywhere
+
+pub gene PublicContainer {
+    has id: UInt64
+    has name: String
+
+    pub fun new(name: String) -> PublicContainer {
+        return PublicContainer { id: 0, name: name }
+    }
+}
+
+exegesis {
+    Test case for public visibility.
+    pub items are accessible from any module, including other Spirits.
+}

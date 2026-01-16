@@ -1,0 +1,11 @@
+// Test: Invalid visibility modifier
+// Expected: Should fail - pub(invalid) is not valid
+
+pub(invalid) gene BadVisibility {
+    has id: UInt64
+}
+
+exegesis {
+    Test case for invalid visibility modifier.
+    Only pub, pub(spirit), and pub(parent) are valid.
+}

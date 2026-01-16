@@ -1,0 +1,16 @@
+// Test: Duplicate uses statements
+// Expected: Should warn or error on duplicate imports
+
+use container
+use container
+use container.state
+use container.state
+
+pub gene DuplicateImports {
+    has data: String
+}
+
+exegesis {
+    Test case for duplicate uses statements.
+    Duplicates should be detected and reported.
+}

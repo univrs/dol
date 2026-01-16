@@ -1,0 +1,24 @@
+// Test: Private (default) visibility
+// Expected: Items without pub are private to their module
+
+gene PrivateHelper {
+    has internal_state: String
+}
+
+fun internal_function() -> Int64 {
+    return 100
+}
+
+pub gene PublicApi {
+    has exposed_field: Int64
+
+    pub fun use_private() -> Int64 {
+        return internal_function()
+    }
+}
+
+exegesis {
+    Test case for private (default) visibility.
+    Items without visibility modifier are private to their module.
+    This is the default and provides encapsulation.
+}

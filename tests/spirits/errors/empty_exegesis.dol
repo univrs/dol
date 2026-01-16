@@ -1,0 +1,9 @@
+// Test: Empty exegesis block
+// Expected: Should warn - exegesis should not be empty
+
+pub gene EmptyExegesis {
+    has id: UInt64
+}
+
+exegesis {
+}

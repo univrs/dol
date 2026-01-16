@@ -1,0 +1,9 @@
+// Test: Missing exegesis block
+// Expected: Should fail - exegesis is mandatory
+
+pub gene MissingExegesis {
+    has id: UInt64
+    has name: String
+}
+
+// ERROR: No exegesis block!

@@ -1,0 +1,23 @@
+// Test: Parent-level visibility
+// Expected: pub(parent) items accessible from direct parent module
+
+pub gene ParentType {
+    has value: Int64
+}
+
+mod child {
+    // Accessible to parent module only
+    pub(parent) gene ChildHelper {
+        has data: String
+    }
+
+    pub(parent) fun helper_function() -> Int64 {
+        return 42
+    }
+}
+
+exegesis {
+    Test case for parent-level visibility.
+    pub(parent) is equivalent to Rust's pub(super).
+    Items are only accessible from the direct parent module.
+}

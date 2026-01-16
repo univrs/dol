@@ -1,0 +1,16 @@
+// Test: Basic module with gene and function
+// Expected: Should parse as module with two declarations
+
+pub gene Container {
+    has id: UInt64
+    has name: String
+}
+
+pub fun create(name: String) -> Container {
+    return Container { id: 0, name: name }
+}
+
+exegesis {
+    Basic module test case demonstrating a gene and function
+    in a single module file.
+}
