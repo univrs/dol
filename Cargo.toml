@@ -72,8 +72,13 @@ required-features = ["vudo"]
 default = []
 cli = ["dep:clap", "dep:anyhow", "dep:colored", "dep:regex", "serde"]
 serde = ["dep:serde", "dep:serde_json"]
-mlir = ["melior"]
-wasm = ["wasmtime", "wasm-encoder"]
+mlir = ["melior", "dep:home"]
+# WASM compilation only (browser-compatible, uses wasm-encoder)
+wasm-compile = ["wasm-encoder"]
+# WASM runtime only (native-only, uses wasmtime)
+wasm-runtime = ["wasmtime"]
+# Full WASM support (compilation + runtime, native only)
+wasm = ["wasm-compile", "wasm-runtime"]
 wasm-mlir = ["wasm", "mlir"]
 vudo = ["cli", "wasm"]
 
@@ -83,7 +88,8 @@ thiserror = "1.0"
 logos = "0.14"  # Fast lexer generator
 
 # Pin home to avoid edition 2024 requirement (melior dependency)
-home = "=0.5.9"
+# Only needed for MLIR builds (doesn't work on WASM)
+home = { version = "=0.5.9", optional = true }
 
 # Optional: CLI support
 clap = { version = "4.4", features = ["derive"], optional = true }

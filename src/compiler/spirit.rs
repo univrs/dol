@@ -65,7 +65,7 @@ use std::path::Path;
 use crate::error::ParseError;
 use crate::parser::Parser;
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 use crate::lower;
 
 /// Result of Spirit compilation.
@@ -259,7 +259,7 @@ pub fn compile_file(path: &Path) -> Result<CompiledSpirit, CompilerError> {
 /// let compiled = compile_source(source, "math.dol")?;
 /// assert!(!compiled.wasm.is_empty());
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub fn compile_source(source: &str, filename: &str) -> Result<CompiledSpirit, CompilerError> {
     let mut warnings = Vec::new();
 
@@ -371,7 +371,7 @@ pub fn compile_source(source: &str, filename: &str) -> Result<CompiledSpirit, Co
 /// let project = Path::new("examples/hello-spirit");
 /// let compiled = compile_spirit_project(project)?;
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub fn compile_spirit_project(project_dir: &Path) -> Result<CompiledSpirit, CompilerError> {
     // Validate project structure
     let manifest_path = project_dir.join("manifest.toml");
@@ -423,7 +423,7 @@ pub fn compile_spirit_project(project_dir: &Path) -> Result<CompiledSpirit, Comp
 /// # Returns
 ///
 /// A valid WASM bytecode module
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 fn generate_placeholder_wasm(
     _hir_module: &crate::hir::HirModule,
 ) -> Result<Vec<u8>, CompilerError> {
@@ -453,14 +453,14 @@ fn generate_placeholder_wasm(
 }
 
 // Stub implementation for when wasm feature is not enabled
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(feature = "wasm-compile"))]
 pub fn compile_source(_source: &str, _filename: &str) -> Result<CompiledSpirit, CompilerError> {
     Err(CompilerError::WasmError(
         "WASM compilation requires the 'wasm' feature flag".to_string(),
     ))
 }
 
-#[cfg(not(feature = "wasm"))]
+#[cfg(not(feature = "wasm-compile"))]
 pub fn compile_spirit_project(_project_dir: &Path) -> Result<CompiledSpirit, CompilerError> {
     Err(CompilerError::WasmError(
         "WASM compilation requires the 'wasm' feature flag".to_string(),
@@ -472,7 +472,7 @@ pub fn compile_spirit_project(_project_dir: &Path) -> Result<CompiledSpirit, Com
 // ============================================================================
 
 #[cfg(test)]
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 mod tests {
     use super::*;
 

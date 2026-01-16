@@ -84,10 +84,12 @@ pub mod compiler;
 pub mod layout;
 pub mod runtime;
 
-// Re-export public types when wasm feature is enabled
-#[cfg(feature = "wasm")]
+// Re-export compiler when wasm-compile feature is enabled (browser-compatible)
+#[cfg(feature = "wasm-compile")]
 pub use compiler::WasmCompiler;
-#[cfg(feature = "wasm")]
+
+// Re-export runtime when wasm-runtime feature is enabled (native only)
+#[cfg(feature = "wasm-runtime")]
 pub use runtime::{WasmModule, WasmRuntime};
 
 /// Error type for WASM backend operations.
@@ -148,7 +150,7 @@ impl From<std::io::Error> for WasmError {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 impl From<wasmtime::Error> for WasmError {
     fn from(err: wasmtime::Error) -> Self {
         WasmError::new(format!("Wasmtime error: {}", err))

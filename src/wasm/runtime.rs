@@ -22,11 +22,11 @@
 //! let result = wasm_module.call("validate", &[])?;
 //! ```
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 use crate::wasm::WasmError;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 use std::path::Path;
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 use wasmtime::{Engine, Instance, Linker, Module, Store, Val};
 
 /// WASM runtime for executing Metal DOL modules.
@@ -41,12 +41,12 @@ use wasmtime::{Engine, Instance, Linker, Module, Store, Val};
 ///
 /// let runtime = WasmRuntime::new()?;
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 pub struct WasmRuntime {
     engine: Engine,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 impl WasmRuntime {
     /// Create a new WASM runtime.
     ///
@@ -131,7 +131,7 @@ impl WasmRuntime {
     }
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 impl Default for WasmRuntime {
     fn default() -> Self {
         Self::new().expect("Failed to create default WasmRuntime")
@@ -152,13 +152,13 @@ impl Default for WasmRuntime {
 /// let wasm_module = runtime.load(&wasm_bytes)?;
 /// let result = wasm_module.call("validate", &[])?;
 /// ```
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 pub struct WasmModule {
     instance: Instance,
     store: Store<()>,
 }
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 impl WasmModule {
     /// Call an exported function in the WASM module.
     ///
@@ -238,7 +238,7 @@ impl WasmModule {
 }
 
 #[cfg(test)]
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-runtime")]
 mod tests {
     use super::*;
 

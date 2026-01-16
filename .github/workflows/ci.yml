@@ -332,6 +332,72 @@ jobs:
 
 
 
+  wasm-target:
+
+    name: WASM Target Build
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+
+
+      - name: Install Rust toolchain
+
+        uses: dtolnay/rust-toolchain@stable
+
+        with:
+
+          targets: wasm32-unknown-unknown
+
+
+
+      - name: Cache cargo registry
+
+        uses: actions/cache@v4
+
+        with:
+
+          path: |
+
+            ~/.cargo/registry
+
+            ~/.cargo/git
+
+            target
+
+          key: ${{ runner.os }}-wasm-target-${{ hashFiles('**/Cargo.lock') }}
+
+          restore-keys: |
+
+            ${{ runner.os }}-wasm-target-
+
+
+
+      - name: Build for wasm32 target (serde only)
+
+        run: cargo build --target wasm32-unknown-unknown --no-default-features --features serde --lib
+
+
+
+      - name: Check WASM binary size
+
+        run: |
+
+          size=$(stat -c%s target/wasm32-unknown-unknown/debug/libmetadol.rlib 2>/dev/null || echo "0")
+
+          echo "WASM library size: $size bytes"
+
+          if [ "$size" -gt 5000000 ]; then
+
+            echo "::warning::WASM binary exceeds 5MB threshold"
+
+          fi
+
+
+
   coverage:
 
     name: Code Coverage
@@ -382,7 +448,7 @@ jobs:
 
     name: Release
 
-    needs: [check, test, build, docs, wasm-test]
+    needs: [check, test, build, docs, wasm-test, wasm-target]
 
     if: startsWith(github.ref, 'refs/tags/v')
 

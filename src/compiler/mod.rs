@@ -68,10 +68,11 @@
 //! let compiled = compile_spirit_project(project_dir)?;
 //! ```
 
-#[cfg(feature = "wasm")]
+// Spirit compiler requires both wasm-compile (for bytecode emission) and lower/hir modules
+#[cfg(feature = "wasm-compile")]
 pub mod spirit;
 
-#[cfg(feature = "wasm")]
+#[cfg(feature = "wasm-compile")]
 pub use spirit::{
     compile_file, compile_source, compile_spirit_project, CompiledSpirit, CompilerError,
     CompilerWarning, SourceMap, SourceMapEntry,
