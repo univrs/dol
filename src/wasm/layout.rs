@@ -820,7 +820,7 @@ fn type_to_wasm_info(
 /// assert_eq!(layout.get_field("y").unwrap().offset, 8);
 /// ```
 pub fn compute_gene_layout(
-    gene: &crate::ast::Gene,
+    gene: &crate::ast::Gen,
     registry: &GeneLayoutRegistry,
 ) -> Result<GeneLayout, WasmError> {
     use crate::ast::Statement;
@@ -928,7 +928,7 @@ impl GeneLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Gene, HasField, Span, Statement, TypeExpr, Visibility};
+    use crate::ast::{Gen, HasField, Span, Statement, TypeExpr, Visibility};
 
     fn make_field(name: &str, type_name: &str) -> Statement {
         Statement::HasField(Box::new(HasField {

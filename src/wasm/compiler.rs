@@ -135,6 +135,7 @@ impl LoopContext {
 /// Strings are stored in the WASM data section starting at a configurable base offset.
 #[cfg(feature = "wasm-compile")]
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 struct StringTable {
     /// Strings stored as (offset, content)
     strings: Vec<(u32, String)>,
@@ -145,6 +146,7 @@ struct StringTable {
 }
 
 #[cfg(feature = "wasm-compile")]
+#[allow(dead_code)]
 impl StringTable {
     /// Create a new string table with a base offset.
     ///
@@ -358,6 +360,7 @@ impl LocalsTable {
     }
 
     /// Register a function with its return type.
+    #[allow(dead_code)]
     fn register_function_with_type(
         &mut self,
         name: &str,
@@ -1000,7 +1003,7 @@ impl WasmCompiler {
         let needs_memory = !self.gene_layouts.is_empty() || !string_pool.is_empty();
 
         // Calculate heap start after string data (aligned to 8 bytes)
-        let heap_start = if !string_pool.is_empty() {
+        let _heap_start = if !string_pool.is_empty() {
             crate::wasm::alloc::align_up(string_pool.data_size(), 8).max(1024)
         } else {
             1024
@@ -1078,7 +1081,7 @@ impl WasmCompiler {
         // Function indices: imports get 0..n-1, then alloc (if needed), then local functions
         // Note: imports already occupy indices 0..import_count-1
         let import_count = imports.len() as u32;
-        let alloc_func_idx = if needs_memory {
+        let _alloc_func_idx = if needs_memory {
             Some(import_count) // alloc comes right after imports
         } else {
             None
@@ -1274,7 +1277,7 @@ impl WasmCompiler {
         use crate::wasm::layout::compute_gene_layout;
 
         // Collect all genes with their dependencies
-        let mut genes: Vec<&crate::ast::Gene> = Vec::new();
+        let mut genes: Vec<&crate::ast::Gen> = Vec::new();
         for decl in declarations {
             if let Declaration::Gene(gene) = decl {
                 genes.push(gene);
@@ -1283,7 +1286,7 @@ impl WasmCompiler {
 
         // Simple topological sort: keep processing until all genes are registered
         // This handles the case where parent genes come after children in the source
-        let mut remaining: Vec<&crate::ast::Gene> = genes;
+        let mut remaining: Vec<&crate::ast::Gen> = genes;
         let mut max_iterations = remaining.len() + 1;
 
         while !remaining.is_empty() && max_iterations > 0 {
@@ -1482,6 +1485,7 @@ impl WasmCompiler {
     /// Extract const declarations from DOL modules.
     ///
     /// Returns a vector of (name, ConstDecl) pairs for all Const declarations.
+    #[allow(dead_code)]
     fn extract_consts<'a>(
         &self,
         declarations: &'a [Declaration],
@@ -1498,6 +1502,7 @@ impl WasmCompiler {
     }
 
     /// Get the WASM type and initialization expression for a const declaration.
+    #[allow(dead_code)]
     fn get_const_type_and_init(
         &self,
         const_decl: &crate::ast::ConstDecl,
@@ -1777,10 +1782,11 @@ impl WasmCompiler {
                     self.collect_locals_from_expr(else_expr, locals)?;
                 }
             }
-            Expr::Block {
+            Expr::Block(crate::ast::Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 for stmt in statements {
                     match stmt {
                         crate::ast::Stmt::Expr(e) | crate::ast::Stmt::Return(Some(e)) => {
@@ -1909,10 +1915,11 @@ impl WasmCompiler {
                     self.collect_strings_from_expr(&arm.body, pool);
                 }
             }
-            Expr::Block {
+            Expr::Block(crate::ast::Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 for stmt in statements {
                     self.collect_strings_from_stmt(stmt, pool);
                 }
@@ -2716,10 +2723,11 @@ impl WasmCompiler {
 
                 function.instruction(&Instruction::End);
             }
-            Expr::Block {
+            Expr::Block(crate::ast::Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 // Block expressions might contain statements with break/continue
                 // Note: A pure block expression doesn't add WASM block structure,
                 // so we don't increment the loop context here
@@ -3161,6 +3169,7 @@ impl WasmCompiler {
     /// Note: For identifiers that will be widened (e.g., i32 enum params),
     /// this returns the widened type (i64) to match the actual stack type
     /// after emit_expression.
+    #[allow(clippy::only_used_in_recursion)]
     fn infer_expression_type(
         &self,
         expr: &crate::ast::Expr,
@@ -3432,6 +3441,7 @@ impl WasmCompiler {
     /// Some expressions like `if` without `else` produce no value.
     /// Function calls are conservatively assumed to not produce values
     /// since we don't have return type info at this point.
+    #[allow(clippy::only_used_in_recursion)]
     fn expression_produces_value(&self, expr: &crate::ast::Expr) -> bool {
         use crate::ast::Expr;
 
@@ -3450,15 +3460,16 @@ impl WasmCompiler {
             } => self.expression_produces_value(then_branch),
 
             // Block without final expression produces no value
-            Expr::Block {
+            Expr::Block(crate::ast::Block {
                 final_expr: None, ..
-            } => false,
+            }) => false,
 
             // Block with statements that are assignments produces no value
-            Expr::Block {
+            Expr::Block(crate::ast::Block {
                 statements,
                 final_expr: Some(final_expr),
-            } => {
+                ..
+            }) => {
                 // Check if the final_expr is an assignment (produces no value)
                 // or if it's a value-producing expression
                 if statements.is_empty() {
@@ -3517,6 +3528,7 @@ impl WasmCompiler {
     /// Check if any declarations contain string literals.
     ///
     /// This is used to determine if memory needs to be allocated for the data section.
+    #[allow(dead_code)]
     fn has_string_literals(declarations: &[crate::ast::Declaration]) -> bool {
         use crate::ast::{Declaration, Expr, Literal, Statement, Stmt};
 
@@ -3535,14 +3547,15 @@ impl WasmCompiler {
                 } => {
                     check_expr(condition)
                         || check_expr(then_branch)
-                        || else_branch.as_ref().map_or(false, |e| check_expr(e))
+                        || else_branch.as_ref().is_some_and(|e| check_expr(e))
                 }
-                Expr::Block {
+                Expr::Block(crate::ast::Block {
                     statements,
                     final_expr,
-                } => {
+                    ..
+                }) => {
                     statements.iter().any(check_stmt)
-                        || final_expr.as_ref().map_or(false, |e| check_expr(e))
+                        || final_expr.as_ref().is_some_and(|e| check_expr(e))
                 }
                 Expr::Member { object, .. } => check_expr(object),
                 Expr::StructLiteral { fields, .. } => fields.iter().any(|(_, e)| check_expr(e)),
@@ -3550,7 +3563,7 @@ impl WasmCompiler {
                     check_expr(scrutinee)
                         || arms.iter().any(|arm| {
                             check_expr(&arm.body)
-                                || arm.guard.as_ref().map_or(false, |g| check_expr(g))
+                                || arm.guard.as_ref().is_some_and(|g| check_expr(g))
                         })
                 }
                 Expr::Lambda { body, .. } => check_expr(body),
@@ -3562,7 +3575,9 @@ impl WasmCompiler {
                     check_expr(e)
                 }
                 Expr::Implies { left, right, .. } => check_expr(left) || check_expr(right),
-                Expr::SexBlock { statements, .. } => statements.iter().any(check_stmt),
+                Expr::SexBlock(crate::ast::Block { statements, .. }) => {
+                    statements.iter().any(check_stmt)
+                }
                 _ => false,
             }
         }
