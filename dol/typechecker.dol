@@ -21,7 +21,7 @@ docs {
 }
 
 /// Main type checker state
-pub genTypeChecker {
+pub gen TypeChecker {
     has env: TypeEnv
     has errors: List<TypeError> = []
     has var_counter: u64 = 0

@@ -23,7 +23,7 @@ docs {
     Higher values bind tighter.
 }
 
-pub genPrecedence {
+pub gen Precedence {
     type: enum {
         None      = 0,
         Or        = 10,     // ||
@@ -48,7 +48,7 @@ docs {
     Represents a parsing error with location information.
 }
 
-pub genParseError {
+pub gen ParseError {
     has message: string
     has span: Span
     has kind: ParseErrorKind = ParseErrorKind.Generic
@@ -59,7 +59,7 @@ pub genParseError {
     }
 }
 
-pub genParseErrorKind {
+pub gen ParseErrorKind {
     type: enum {
         Generic,
         UnexpectedToken,
@@ -83,7 +83,7 @@ docs {
     Parser state maintaining position in token stream and accumulated errors.
 }
 
-pub genParser {
+pub gen Parser {
     has tokens: List<Token>
     has pos: u64 = 0
     has errors: List<ParseError> = []

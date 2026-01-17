@@ -41,7 +41,7 @@ docs {
 }
 
 /// Complete type representation for DOL
-pub genType {
+pub gen Type {
     type: enum {
         // ─────────────────────────────────────────────────────────
         // Primitive Types
@@ -257,7 +257,7 @@ docs {
 }
 
 /// Scoped type environment for name resolution
-pub genTypeEnv {
+pub gen TypeEnv {
     /// Map from names to their types in this scope
     has bindings: Map<string, Type>
 
@@ -362,7 +362,7 @@ docs {
 }
 
 /// Type error with message and source location
-pub genTypeError {
+pub gen TypeError {
     /// Human-readable error description
     has message: string
 

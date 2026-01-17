@@ -28,7 +28,7 @@ docs {
 }
 
 /// Top-level AST node representing an entire DOL source file
-pub genDolFile {
+pub gen DolFile {
     has declarations: List<Decl>
     has span: Span
 }
@@ -43,7 +43,7 @@ docs {
 }
 
 /// Enumeration of all declaration types
-pub genDecl {
+pub gen Decl {
     type: enum {
         /// Module declaration: `module foo.bar @ 1.0.0`
         Module { name: string, version: Option<string> },
@@ -82,7 +82,7 @@ docs {
 }
 
 /// Gene declaration with fields, methods, constraints, and exegesis
-pub genGeneDecl {
+pub gen GeneDecl {
     has name: string
     has is_pub: bool = false
     has type_params: List<TypeParam> = []
@@ -99,7 +99,7 @@ docs {
 }
 
 /// Field within a gene
-pub genField {
+pub gen Field {
     has name: string
     has ty: TypeExpr
     has default_value: Option<Expr>
@@ -112,7 +112,7 @@ docs {
 }
 
 /// Type parameter with optional bounds
-pub genTypeParam {
+pub gen TypeParam {
     has name: string
     has bounds: List<string> = []
     has span: Span
@@ -128,7 +128,7 @@ docs {
 }
 
 /// Trait declaration with methods and laws
-pub genTraitDecl {
+pub gen TraitDecl {
     has name: string
     has is_pub: bool = false
     has type_params: List<TypeParam> = []
@@ -145,7 +145,7 @@ docs {
 }
 
 /// Method signature (declaration without body)
-pub genMethodSig {
+pub gen MethodSig {
     has name: string
     has type_params: List<TypeParam> = []
     has params: List<Param>
@@ -158,7 +158,7 @@ docs {
 }
 
 /// Law declaration expressing invariants
-pub genLawDecl {
+pub gen LawDecl {
     has name: string
     has type_params: List<TypeParam> = []
     has params: List<Param> = []
@@ -177,7 +177,7 @@ docs {
 }
 
 /// System declaration with state and side-effectful functions
-pub genSystemDecl {
+pub gen SystemDecl {
     has name: string
     has is_pub: bool = false
     has type_params: List<TypeParam> = []
@@ -199,7 +199,7 @@ docs {
 }
 
 /// Constraint declaration
-pub genConstraintDecl {
+pub gen ConstraintDecl {
     has name: string
     has params: List<Param> = []
     has body: Expr
@@ -212,7 +212,7 @@ docs {
 }
 
 /// Evolution declaration for schema migrations
-pub genEvolvesDecl {
+pub gen EvolvesDecl {
     has from_type: string
     has from_version: string
     has to_type: string
@@ -228,7 +228,7 @@ docs {
 }
 
 /// Change specification in evolution
-pub genChange {
+pub gen Change {
     type: enum {
         /// Field added
         Added { name: string, ty: TypeExpr, default_value: Option<Expr> },
@@ -252,7 +252,7 @@ docs {
 }
 
 /// Function declaration
-pub genFunctionDecl {
+pub gen FunctionDecl {
     has name: string
     has is_pub: bool = false
     has is_sex: bool = false
@@ -271,7 +271,7 @@ docs {
 }
 
 /// Function parameter
-pub genParam {
+pub gen Param {
     has name: string
     has ty: TypeExpr
     has default_value: Option<Expr>
@@ -284,7 +284,7 @@ docs {
 }
 
 /// Where clause predicate
-pub genWherePredicate {
+pub gen WherePredicate {
     has type_name: string
     has bounds: List<string>
     has span: Span
@@ -300,7 +300,7 @@ docs {
 }
 
 /// Type expression enumeration
-pub genTypeExpr {
+pub gen TypeExpr {
     type: enum {
         // ═══════════════════════════════════════════════════════════════
         // Primitive Types
@@ -396,7 +396,7 @@ docs {
 }
 
 /// Enum variant
-pub genEnumVariant {
+pub gen EnumVariant {
     has name: string
     has fields: List<Field> = []
     has span: Span
@@ -419,7 +419,7 @@ docs {
 // ═══════════════════════════════════════════════════════════════════
 
 /// This expression - self-reference in method context
-pub genThisExpr {
+pub gen ThisExpr {
     has span: Span
 
     docs {
@@ -429,7 +429,7 @@ pub genThisExpr {
 }
 
 /// Binary expression - two operands with an operator
-pub genBinaryExpr {
+pub gen BinaryExpr {
     has op: BinOp
     has left: Box<Expr>
     has right: Box<Expr>
@@ -442,7 +442,7 @@ pub genBinaryExpr {
 }
 
 /// Unary expression - single operand with prefix/postfix operator
-pub genUnaryExpr {
+pub gen UnaryExpr {
     has op: UnaryOp
     has operand: Box<Expr>
     has span: Span
@@ -453,7 +453,7 @@ pub genUnaryExpr {
 }
 
 /// Function call expression
-pub genCallExpr {
+pub gen CallExpr {
     has callee: Box<Expr>
     has args: List<CallArg>
     has span: Span
@@ -465,7 +465,7 @@ pub genCallExpr {
 }
 
 /// Method call expression - receiver.method(args)
-pub genMethodCallExpr {
+pub gen MethodCallExpr {
     has receiver: Box<Expr>
     has method: string
     has args: List<CallArg>
@@ -477,7 +477,7 @@ pub genMethodCallExpr {
 }
 
 /// Field access expression - expr.field
-pub genFieldExpr {
+pub gen FieldExpr {
     has object: Box<Expr>
     has field: string
     has span: Span
@@ -488,7 +488,7 @@ pub genFieldExpr {
 }
 
 /// Index expression - expr[index]
-pub genIndexExpr {
+pub gen IndexExpr {
     has object: Box<Expr>
     has index: Box<Expr>
     has span: Span
@@ -499,7 +499,7 @@ pub genIndexExpr {
 }
 
 /// Struct literal expression - TypeName { field: value, ... }
-pub genStructExpr {
+pub gen StructExpr {
     has name: string
     has fields: List<FieldInit>
     has span: Span
@@ -510,7 +510,7 @@ pub genStructExpr {
 }
 
 /// Array literal expression - [a, b, c]
-pub genArrayExpr {
+pub gen ArrayExpr {
     has elements: List<Expr>
     has span: Span
 
@@ -520,7 +520,7 @@ pub genArrayExpr {
 }
 
 /// Lambda/closure expression - |params| body or |params| { block }
-pub genLambdaExpr {
+pub gen LambdaExpr {
     has params: List<LambdaParam>
     has body: Box<Expr>
     has return_type: Option<TypeExpr>
@@ -532,7 +532,7 @@ pub genLambdaExpr {
 }
 
 /// If expression - if cond { then } else { else }
-pub genIfExpr {
+pub gen IfExpr {
     has condition: Box<Expr>
     has then_branch: Box<Block>
     has else_branch: Option<Box<Expr>>
@@ -544,7 +544,7 @@ pub genIfExpr {
 }
 
 /// Match expression - match expr { arms }
-pub genMatchExpr {
+pub gen MatchExpr {
     has scrutinee: Box<Expr>
     has arms: List<MatchArm>
     has span: Span
@@ -555,7 +555,7 @@ pub genMatchExpr {
 }
 
 /// Quote expression - 'expr for AST capture
-pub genQuoteExpr {
+pub gen QuoteExpr {
     has expr: Box<Expr>
     has span: Span
 
@@ -570,7 +570,7 @@ pub genQuoteExpr {
 // ═══════════════════════════════════════════════════════════════════
 
 /// Let binding statement - let name: Type = value
-pub genLetStmt {
+pub gen LetStmt {
     has name: string
     has ty: Option<TypeExpr>
     has value: Option<Expr>
@@ -582,7 +582,7 @@ pub genLetStmt {
 }
 
 /// Var statement - var name: Type = value
-pub genVarStmt {
+pub gen VarStmt {
     has name: string
     has ty: Option<TypeExpr>
     has value: Option<Expr>
@@ -594,7 +594,7 @@ pub genVarStmt {
 }
 
 /// Const statement - const NAME: Type = value
-pub genConstStmt {
+pub gen ConstStmt {
     has name: string
     has ty: Option<TypeExpr>
     has value: Expr
@@ -606,7 +606,7 @@ pub genConstStmt {
 }
 
 /// Assignment statement - target = value
-pub genAssignStmt {
+pub gen AssignStmt {
     has target: Expr
     has value: Expr
     has span: Span
@@ -617,7 +617,7 @@ pub genAssignStmt {
 }
 
 /// Expression statement - expr;
-pub genExprStmt {
+pub gen ExprStmt {
     has expr: Expr
     has span: Span
 
@@ -627,7 +627,7 @@ pub genExprStmt {
 }
 
 /// Return statement - return expr
-pub genReturnStmt {
+pub gen ReturnStmt {
     has value: Option<Expr>
     has span: Span
 
@@ -637,7 +637,7 @@ pub genReturnStmt {
 }
 
 /// Break statement - break or break value
-pub genBreakStmt {
+pub gen BreakStmt {
     has value: Option<Expr>
     has label: Option<string>
     has span: Span
@@ -648,7 +648,7 @@ pub genBreakStmt {
 }
 
 /// Continue statement - continue or continue 'label
-pub genContinueStmt {
+pub gen ContinueStmt {
     has label: Option<string>
     has span: Span
 
@@ -658,7 +658,7 @@ pub genContinueStmt {
 }
 
 /// For statement - for item in iter { body }
-pub genForStmt {
+pub gen ForStmt {
     has binding: string
     has iter: Expr
     has body: Block
@@ -670,7 +670,7 @@ pub genForStmt {
 }
 
 /// While statement - while cond { body }
-pub genWhileStmt {
+pub gen WhileStmt {
     has condition: Expr
     has body: Block
     has span: Span
@@ -681,7 +681,7 @@ pub genWhileStmt {
 }
 
 /// Loop statement - loop { body }
-pub genLoopStmt {
+pub gen LoopStmt {
     has body: Block
     has label: Option<string>
     has span: Span
@@ -692,7 +692,7 @@ pub genLoopStmt {
 }
 
 /// Match statement (non-expression form)
-pub genMatchStmt {
+pub gen MatchStmt {
     has scrutinee: Expr
     has arms: List<MatchArm>
     has span: Span
@@ -705,7 +705,7 @@ pub genMatchStmt {
 
 
 /// Expression enumeration
-pub genExpr {
+pub gen Expr {
     type: enum {
         // ═══════════════════════════════════════════════════════════════
         // Literals
@@ -866,7 +866,7 @@ docs {
 }
 
 /// Function call argument
-pub genCallArg {
+pub gen CallArg {
     has name: Option<string>
     has value: Expr
     has span: Span
@@ -877,7 +877,7 @@ docs {
 }
 
 /// Field initialization in struct literal
-pub genFieldInit {
+pub gen FieldInit {
     has name: string
     has value: Expr
     has span: Span
@@ -888,7 +888,7 @@ docs {
 }
 
 /// Lambda parameter
-pub genLambdaParam {
+pub gen LambdaParam {
     has name: string
     has ty: Option<TypeExpr>
     has span: Span
@@ -899,7 +899,7 @@ docs {
 }
 
 /// Else branch in if expression
-pub genElseBranch {
+pub gen ElseBranch {
     type: enum {
         /// Else if: `else if cond { ... }`
         ElseIf { cond: Expr, then_block: Block, else_branch: Option<Box<ElseBranch>> },
@@ -918,7 +918,7 @@ docs {
 }
 
 /// Binary operator enumeration
-pub genBinOp {
+pub gen BinOp {
     type: enum {
         // Arithmetic
         Add,        // +
@@ -970,7 +970,7 @@ docs {
 }
 
 /// Unary operator enumeration
-pub genUnaryOp {
+pub gen UnaryOp {
     type: enum {
         Neg,        // -x  (numeric negation)
         Not,        // !x  (logical/bitwise not)
@@ -994,7 +994,7 @@ docs {
 }
 
 /// Match arm: `pattern [if guard] => body`
-pub genMatchArm {
+pub gen MatchArm {
     has pattern: Pattern
     has guard: Option<Expr>
     has body: Expr
@@ -1006,7 +1006,7 @@ docs {
 }
 
 /// Pattern enumeration
-pub genPattern {
+pub gen Pattern {
     type: enum {
         /// Wildcard pattern: `_`
         Wildcard,
@@ -1052,7 +1052,7 @@ docs {
 }
 
 /// Field pattern in struct matching
-pub genFieldPattern {
+pub gen FieldPattern {
     has name: string
     has pattern: Option<Pattern>
     has span: Span
@@ -1063,7 +1063,7 @@ docs {
 }
 
 /// Binding mode for pattern variables
-pub genBindingMode {
+pub gen BindingMode {
     type: enum {
         ByValue,
         ByRef,
@@ -1081,7 +1081,7 @@ docs {
 }
 
 /// Statement enumeration - uses wrapper types for parser compatibility
-pub genStmt {
+pub gen Stmt {
     type: enum {
         /// Let binding: `let x = expr`, `let x: T = expr`
         Let(LetStmt),
@@ -1141,7 +1141,7 @@ docs {
 }
 
 /// Block with statements and optional final expression
-pub genBlock {
+pub gen Block {
     has stmts: List<Stmt>
     has expr: Option<Expr>
     has span: Span
@@ -1156,7 +1156,7 @@ docs {
 }
 
 /// Visibility specifier
-pub genVisibility {
+pub gen Visibility {
     type: enum {
         /// Private (default)
         Private,
@@ -1179,7 +1179,7 @@ docs {
 }
 
 /// Attribute on a declaration
-pub genAttribute {
+pub gen Attribute {
     has name: string
     has args: List<AttrArg>
     has span: Span
@@ -1190,7 +1190,7 @@ docs {
 }
 
 /// Attribute argument
-pub genAttrArg {
+pub gen AttrArg {
     type: enum {
         /// Simple value: `#[attr(value)]`
         Value { value: Expr },

@@ -79,7 +79,7 @@ sex extern fun exit(code: i32) -> !
 // RESULT TYPE FOR COMPILER OPERATIONS
 // ═══════════════════════════════════════════════════════════════
 
-genCompileResult<T> {
+gen CompileResult<T> {
     type: enum {
         Ok(T),
         FileError(String),

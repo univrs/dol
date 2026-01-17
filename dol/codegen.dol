@@ -29,7 +29,7 @@ docs {
 }
 
 /// Rust code generator state
-pub genRustCodegen {
+pub gen RustCodegen {
     has output: string = ""
     has indent: i32 = 0
 

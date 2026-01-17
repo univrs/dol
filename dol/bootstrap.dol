@@ -5,21 +5,21 @@ docs {
 }
 
 // Module declaration wrapper
-pub genModuleDecl {
+pub gen ModuleDecl {
     name: string
     version: Option<string>
     span: Span
 }
 
 // Use statement wrapper
-pub genUseStmt {
+pub gen UseStmt {
     path: string
     items: List<string>
     span: Span
 }
 
 // Gene member enum
-pub genGeneMember {
+pub gen GeneMember {
     type: enum {
         Field { decl: FieldDecl }
         Method { decl: MethodDecl }
@@ -28,7 +28,7 @@ pub genGeneMember {
 }
 
 // Field declaration wrapper
-pub genFieldDecl {
+pub gen FieldDecl {
     name: string
     ty: TypeExpr
     default: Option<Expr>
@@ -37,7 +37,7 @@ pub genFieldDecl {
 }
 
 // Trait member enum
-pub genTraitMember {
+pub gen TraitMember {
     type: enum {
         Required { decl: MethodDecl }
         Provided { decl: MethodDecl }
@@ -46,7 +46,7 @@ pub genTraitMember {
 }
 
 // Method declaration wrapper
-pub genMethodDecl {
+pub gen MethodDecl {
     name: string
     params: List<Param>
     return_type: Option<TypeExpr>
@@ -57,21 +57,21 @@ pub genMethodDecl {
 }
 
 // Type alias
-pub genTypeAlias {
+pub gen TypeAlias {
     name: string
     ty: TypeExpr
     span: Span
 }
 
 // Associated type
-pub genAssociatedType {
+pub gen AssociatedType {
     name: string
     bounds: List<TypeExpr>
     span: Span
 }
 
 // Variable declaration statement wrapper
-pub genVarDecl {
+pub gen VarDecl {
     name: string
     ty: Option<TypeExpr>
     value: Option<Expr>
@@ -81,7 +81,7 @@ pub genVarDecl {
 }
 
 // Extern declaration wrapper
-pub genExternDecl {
+pub gen ExternDecl {
     name: string
     ty: TypeExpr
     is_pub: bool
@@ -89,20 +89,20 @@ pub genExternDecl {
 }
 
 // Version constraint
-pub genVersionConstraint {
+pub gen VersionConstraint {
     op: string
     version: string
 }
 
 // Requires statement
-pub genRequiresStmt {
+pub gen RequiresStmt {
     module_name: string
     version: Option<VersionConstraint>
     span: Span
 }
 
 // System statement enum
-pub genSystemStmt {
+pub gen SystemStmt {
     type: enum {
         Requires { stmt: RequiresStmt }
         Uses { name: string }
@@ -111,7 +111,7 @@ pub genSystemStmt {
 }
 
 // Migration kind enum
-pub genMigrationKind {
+pub gen MigrationKind {
     type: enum {
         Added
         Removed
@@ -121,26 +121,26 @@ pub genMigrationKind {
 }
 
 // Migration statement
-pub genMigrationStmt {
+pub gen MigrationStmt {
     field_name: string
     kind: MigrationKind
     span: Span
 }
 
 // Exegesis block
-pub genExegesisBlock {
+pub gen ExegesisBlock {
     content: string
     span: Span
 }
 
 // Where clause
-pub genWhereClause {
+pub gen WhereClause {
     predicates: List<WherePredicate>
     span: Span
 }
 
 // Statement wrappers for parser results
-pub genLetStmt {
+pub gen LetStmt {
     pattern: string
     ty: Option<TypeExpr>
     value: Expr
@@ -148,7 +148,7 @@ pub genLetStmt {
     span: Span
 }
 
-pub genVarStmt {
+pub gen VarStmt {
     name: string
     ty: Option<TypeExpr>
     value: Option<Expr>
@@ -156,39 +156,39 @@ pub genVarStmt {
     span: Span
 }
 
-pub genConstStmt {
+pub gen ConstStmt {
     name: string
     ty: Option<TypeExpr>
     value: Expr
     span: Span
 }
 
-pub genReturnStmt {
+pub gen ReturnStmt {
     value: Option<Expr>
     span: Span
 }
 
-pub genIfStmt {
+pub gen IfStmt {
     condition: Expr
     then_block: Block
     else_branch: Option<ElseBranch>
     span: Span
 }
 
-pub genMatchStmt {
+pub gen MatchStmt {
     scrutinee: Expr
     arms: List<MatchArm>
     span: Span
 }
 
-pub genArmBody {
+pub gen ArmBody {
     type: enum {
         Block { block: Box<Block> }
         Expr { expr: Expr }
     }
 }
 
-pub genLiteralPattern {
+pub gen LiteralPattern {
     type: enum {
         Int { value: i64 }
         Float { value: f64 }
@@ -197,164 +197,164 @@ pub genLiteralPattern {
     }
 }
 
-pub genForStmt {
+pub gen ForStmt {
     pattern: string
     iter: Expr
     body: Block
     span: Span
 }
 
-pub genWhileStmt {
+pub gen WhileStmt {
     cond: Expr
     body: Block
     span: Span
 }
 
-pub genLoopStmt {
+pub gen LoopStmt {
     label: Option<string>
     body: Block
     span: Span
 }
 
-pub genBreakStmt {
+pub gen BreakStmt {
     label: Option<string>
     value: Option<Expr>
     span: Span
 }
 
-pub genContinueStmt {
+pub gen ContinueStmt {
     label: Option<string>
     span: Span
 }
 
-pub genSexBlock {
+pub gen SexBlock {
     body: Block
     span: Span
 }
 
 // Additional statement types
-pub genAssignStmt {
+pub gen AssignStmt {
     target: Expr
     value: Expr
     span: Span
 }
 
-pub genExprStmt {
+pub gen ExprStmt {
     expr: Expr
     span: Span
 }
 
 // Expression wrappers for parser results
-pub genBinaryExpr {
+pub gen BinaryExpr {
     left: Box<Expr>
     op: BinOp
     right: Box<Expr>
     span: Span
 }
 
-pub genUnaryExpr {
+pub gen UnaryExpr {
     op: UnaryOp
     operand: Box<Expr>
     span: Span
 }
 
-pub genQuoteExpr {
+pub gen QuoteExpr {
     inner: Box<Expr>
     span: Span
 }
 
-pub genIdiomExpr {
+pub gen IdiomExpr {
     operand: Box<Expr>
     idiom: string
     span: Span
 }
 
-pub genArrayExpr {
+pub gen ArrayExpr {
     elements: List<Expr>
     span: Span
 }
 
-pub genThisExpr {
+pub gen ThisExpr {
     span: Span
 }
 
-pub genIdentExpr {
+pub gen IdentExpr {
     name: string
     span: Span
 }
 
-pub genCallExpr {
+pub gen CallExpr {
     callee: Box<Expr>
     args: List<CallArg>
     span: Span
 }
 
-pub genMethodCallExpr {
+pub gen MethodCallExpr {
     receiver: Box<Expr>
     method: string
     args: List<CallArg>
     span: Span
 }
 
-pub genFieldExpr {
+pub gen FieldExpr {
     object: Box<Expr>
     field: string
     span: Span
 }
 
-pub genIndexExpr {
+pub gen IndexExpr {
     object: Box<Expr>
     index: Box<Expr>
     span: Span
 }
 
-pub genStructExpr {
+pub gen StructExpr {
     name: string
     fields: List<StructField>
     span: Span
 }
 
-pub genArg {
+pub gen Arg {
     name: Option<string>
     value: Expr
     span: Span
 }
 
-pub genStructField {
+pub gen StructField {
     name: string
     value: Expr
     span: Span
 }
 
-pub genLambdaBody {
+pub gen LambdaBody {
     type: enum {
         Block { block: Box<Block> }
         Expr { expr: Box<Expr> }
     }
 }
 
-pub genLambdaExpr {
+pub gen LambdaExpr {
     params: List<LambdaParam>
     body: Box<LambdaBody>
     return_type: Option<TypeExpr>
     span: Span
 }
 
-pub genIfExpr {
+pub gen IfExpr {
     cond: Box<Expr>
     then_block: Box<Expr>
     else_branch: Option<Box<Expr>>
     span: Span
 }
 
-pub genMatchExpr {
+pub gen MatchExpr {
     scrutinee: Box<Expr>
     arms: List<MatchArm>
     span: Span
 }
 
 // Expression type discriminator
-pub genExprType {
+pub gen ExprType {
     type: enum {
         Binary
         Unary
@@ -377,7 +377,7 @@ pub genExprType {
 
 // Wrapper-based Stmt enum for parser compatibility
 // This shadows the ast.dol Stmt to allow Stmt::Let(LetStmt::new(...)) pattern
-pub genStmtWrapper {
+pub gen StmtWrapper {
     type: enum {
         Let { stmt: LetStmt }
         Var { stmt: VarStmt }
@@ -397,7 +397,7 @@ pub genStmtWrapper {
 }
 
 // Wrapper-based Expr enum for parser compatibility
-pub genExprWrapper {
+pub gen ExprWrapper {
     type: enum {
         Binary { expr: BinaryExpr }
         Unary { expr: UnaryExpr }

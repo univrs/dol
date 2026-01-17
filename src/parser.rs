@@ -189,6 +189,7 @@ impl<'a> Parser<'a> {
             self.advance(); // use
                             // Skip path (identifiers, ::, ., *, etc.)
             while self.current.kind != TokenKind::Eof
+                && self.current.kind != TokenKind::Gen
                 && self.current.kind != TokenKind::Gene
                 && self.current.kind != TokenKind::Type
                 && self.current.kind != TokenKind::Trait
@@ -200,6 +201,7 @@ impl<'a> Parser<'a> {
                 && self.current.kind != TokenKind::Use
                 && self.current.kind != TokenKind::Module
                 && self.current.kind != TokenKind::Exegesis
+                && self.current.kind != TokenKind::Docs
             {
                 self.advance();
             }
@@ -407,6 +409,7 @@ impl<'a> Parser<'a> {
                 self.advance(); // consume 'use'
                                 // Skip path (identifiers, ::, ., *, { }, etc.)
                 while self.current.kind != TokenKind::Eof
+                    && self.current.kind != TokenKind::Gen
                     && self.current.kind != TokenKind::Gene
                     && self.current.kind != TokenKind::Type
                     && self.current.kind != TokenKind::Trait
@@ -417,6 +420,7 @@ impl<'a> Parser<'a> {
                     && self.current.kind != TokenKind::Pub
                     && self.current.kind != TokenKind::Use
                     && self.current.kind != TokenKind::Exegesis
+                    && self.current.kind != TokenKind::Docs
                     && self.current.kind != TokenKind::Sex
                     && self.current.kind != TokenKind::Function
                     && self.current.kind != TokenKind::Module

@@ -9,7 +9,7 @@ docs {
 // TOKEN TYPE
 // ═══════════════════════════════════════════════════════════════
 
-pub genTokenKind {
+pub gen TokenKind {
     type: enum {
         // Keywords
         Module, Use, Pub, Gene, Trait, System,
@@ -91,7 +91,7 @@ pub genTokenKind {
 // SPAN (Source Location)
 // ═══════════════════════════════════════════════════════════════
 
-pub genSpan {
+pub gen Span {
     has start: u64
     has end: u64
     has line: u32
@@ -106,7 +106,7 @@ pub genSpan {
 // TOKEN (with value and span)
 // ═══════════════════════════════════════════════════════════════
 
-pub genToken {
+pub gen Token {
     has kind: TokenKind
     has span: Span
     has text: string
