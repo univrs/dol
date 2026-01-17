@@ -1,6 +1,6 @@
-module dol.codegen @ 0.4.0
+module dol.codegen @ 0.8.0
 
-exegesis {
+docs {
     Rust code generator for the DOL self-hosting compiler.
     Transforms DOL AST into valid Rust source code.
 
@@ -23,35 +23,35 @@ use dol.types.Type
 // CODE GENERATOR STATE
 // ============================================================================
 
-exegesis {
+docs {
     The RustCodegen gene maintains state during code generation.
     It tracks the output buffer and current indentation level.
 }
 
 /// Rust code generator state
-pub gene RustCodegen {
-    has output: String = ""
-    has indent: Int32 = 0
+pub genRustCodegen {
+    has output: string = ""
+    has indent: i32 = 0
 
     // ========================================================================
     // LOW-LEVEL EMIT HELPERS
     // ========================================================================
 
-    exegesis {
+    docs {
         Append raw string to the output buffer.
     }
 
     /// Emit raw string without indentation
-    fun emit(s: String) {
+    fun emit(s: string) {
         this.output = this.output + s
     }
 
-    exegesis {
+    docs {
         Emit a line with proper indentation and newline.
     }
 
     /// Emit string with indentation and newline
-    fun emit_line(s: String) {
+    fun emit_line(s: string) {
         let indent_str = ""
         let i = 0
         while i < this.indent {
@@ -61,7 +61,7 @@ pub gene RustCodegen {
         this.output = this.output + indent_str + s + "\n"
     }
 
-    exegesis {
+    docs {
         Emit an empty line for spacing.
     }
 
@@ -70,7 +70,7 @@ pub gene RustCodegen {
         this.output = this.output + "\n"
     }
 
-    exegesis {
+    docs {
         Increase indentation level.
     }
 
@@ -79,7 +79,7 @@ pub gene RustCodegen {
         this.indent = this.indent + 1
     }
 
-    exegesis {
+    docs {
         Decrease indentation level.
     }
 
@@ -94,13 +94,13 @@ pub gene RustCodegen {
     // TOP-LEVEL CODE GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate Rust source code from a complete DOL file.
         Returns the generated Rust code as a string.
     }
 
     /// Generate complete Rust file from DOL file
-    pub fun gen_file(file: DolFile) -> String {
+    pub fun gen_file(file: DolFile) -> string {
         this.output = ""
         this.indent = 0
 
@@ -143,7 +143,7 @@ pub gene RustCodegen {
         return this.output
     }
 
-    exegesis {
+    docs {
         Generate a use/import statement.
     }
 
@@ -185,7 +185,7 @@ pub gene RustCodegen {
     // DECLARATION GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Dispatch to the appropriate generator based on declaration type.
     }
 
@@ -221,7 +221,7 @@ pub gene RustCodegen {
     // GENE GENERATION (STRUCTS + IMPL)
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a Rust struct and impl block from a DOL gene.
         Includes derive macros and all field/method definitions.
     }
@@ -295,7 +295,7 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate a struct field from a HasField statement.
     }
 
@@ -316,12 +316,12 @@ pub gene RustCodegen {
     // ENUM GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a Rust enum from DOL enum declaration.
     }
 
     /// Generate enum definition
-    pub fun gen_enum(name: String, variants: List<EnumVariant>) {
+    pub fun gen_enum(name: string, variants: List<EnumVariant>) {
         let enum_name = this.pascal_case(name)
 
         this.emit_line("#[derive(Debug, Clone, PartialEq)]")
@@ -372,7 +372,7 @@ pub gene RustCodegen {
     // TRAIT GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a Rust trait from DOL trait declaration.
     }
 
@@ -436,7 +436,7 @@ pub gene RustCodegen {
         this.emit_line("}")
     }
 
-    exegesis {
+    docs {
         Generate a trait method signature (without body).
     }
 
@@ -470,7 +470,7 @@ pub gene RustCodegen {
     // FUNCTION GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a standalone Rust function from DOL function declaration.
     }
 
@@ -502,7 +502,7 @@ pub gene RustCodegen {
         this.emit_line("}")
     }
 
-    exegesis {
+    docs {
         Generate a method inside an impl block (adds &self or &mut self).
     }
 
@@ -552,7 +552,7 @@ pub gene RustCodegen {
     // CONSTRAINT GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a validator function from a DOL constraint.
         Constraints become validation functions that return Result<(), Error>.
     }
@@ -605,7 +605,7 @@ pub gene RustCodegen {
         this.emit_line("}")
     }
 
-    exegesis {
+    docs {
         Generate a function that runs all constraint validators.
     }
 
@@ -646,7 +646,7 @@ pub gene RustCodegen {
     // SYSTEM GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a Rust struct and impl for a DOL system.
     }
 
@@ -719,7 +719,7 @@ pub gene RustCodegen {
     // EVOLUTION GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate migration code from an evolution declaration.
     }
 
@@ -746,13 +746,13 @@ pub gene RustCodegen {
     // TYPE GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Map DOL types to Rust types.
         Handles primitives, generics, function types, and tuples.
     }
 
     /// Generate Rust type from DOL type expression
-    pub fun gen_type(ty: TypeExpr) -> String {
+    pub fun gen_type(ty: TypeExpr) -> string {
         match ty {
             TypeExpr.Named(name) {
                 return this.map_primitive_type(name)
@@ -786,12 +786,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Map DOL primitive type names to Rust type names.
     }
 
     /// Map primitive type names
-    fun map_primitive_type(name: String) -> String {
+    fun map_primitive_type(name: string) -> string {
         match name {
             "Int8" { return "i8" }
             "Int16" { return "i16" }
@@ -812,12 +812,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Map DOL generic type names to Rust type names.
     }
 
     /// Map generic container types
-    fun map_generic_type(name: String) -> String {
+    fun map_generic_type(name: string) -> string {
         match name {
             "List" { return "Vec" }
             "Option" { return "Option" }
@@ -837,12 +837,12 @@ pub gene RustCodegen {
     // TYPE PARAMETER GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate type parameters with bounds.
     }
 
     /// Generate type parameters
-    fun gen_type_params(type_params: TypeParams) -> String {
+    fun gen_type_params(type_params: TypeParams) -> string {
         if type_params.params.length() == 0 {
             return ""
         }
@@ -867,12 +867,12 @@ pub gene RustCodegen {
     // PARAMETER GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate function parameter list.
     }
 
     /// Generate function parameters
-    pub fun gen_params(params: List<Param>) -> String {
+    pub fun gen_params(params: List<Param>) -> string {
         let param_strs = []
         for param in params {
             let param_name = this.snake_case(param.name)
@@ -886,7 +886,7 @@ pub gene RustCodegen {
     // BLOCK AND STATEMENT GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate a block of statements.
     }
 
@@ -904,7 +904,7 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate a single statement.
     }
 
@@ -1027,13 +1027,13 @@ pub gene RustCodegen {
     // EXPRESSION GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate Rust code for any DOL expression.
         Handles all expression types including operators, calls, and lambdas.
     }
 
     /// Generate expression
-    pub fun gen_expr(expr: Expr) -> String {
+    pub fun gen_expr(expr: Expr) -> string {
         match expr {
             Expr.Literal(lit) {
                 return this.gen_literal(lit)
@@ -1134,12 +1134,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate literal values.
     }
 
     /// Generate literal
-    fun gen_literal(lit: Literal) -> String {
+    fun gen_literal(lit: Literal) -> string {
         match lit {
             Literal.Int(value) {
                 return value.to_string()
@@ -1170,13 +1170,13 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate binary operator expressions.
         Special handling for pipe and compose operators.
     }
 
     /// Generate binary expression
-    fun gen_binary(left: Expr, op: BinaryOp, right: Expr) -> String {
+    fun gen_binary(left: Expr, op: BinaryOp, right: Expr) -> string {
         let left_str = this.gen_expr(left)
         let right_str = this.gen_expr(right)
 
@@ -1228,12 +1228,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate unary operator expressions.
     }
 
     /// Generate unary expression
-    fun gen_unary(op: UnaryOp, operand: Expr) -> String {
+    fun gen_unary(op: UnaryOp, operand: Expr) -> string {
         let operand_str = this.gen_expr(operand)
 
         match op {
@@ -1244,12 +1244,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate lambda/closure expressions.
     }
 
     /// Generate lambda expression
-    fun gen_lambda(params: List<LambdaParam>, return_type: Option<TypeExpr>, body: Expr) -> String {
+    fun gen_lambda(params: List<LambdaParam>, return_type: Option<TypeExpr>, body: Expr) -> string {
         let param_strs = []
         for param in params {
             match param.type_ {
@@ -1273,12 +1273,12 @@ pub gene RustCodegen {
         return "|" + param_strs.join(", ") + "|" + return_str + " " + this.gen_expr(body)
     }
 
-    exegesis {
+    docs {
         Generate if expression (not statement).
     }
 
     /// Generate if expression
-    fun gen_if_expr(condition: Expr, then_branch: Expr, else_branch: Option<Expr>) -> String {
+    fun gen_if_expr(condition: Expr, then_branch: Expr, else_branch: Option<Expr>) -> string {
         let cond_str = this.gen_expr(condition)
         let then_str = this.gen_expr(then_branch)
 
@@ -1293,12 +1293,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate match expression.
     }
 
     /// Generate match expression
-    fun gen_match_expr(scrutinee: Expr, arms: List<MatchArm>) -> String {
+    fun gen_match_expr(scrutinee: Expr, arms: List<MatchArm>) -> string {
         let scrutinee_str = this.gen_expr(scrutinee)
         let result = "match " + scrutinee_str + " {\n"
 
@@ -1319,7 +1319,7 @@ pub gene RustCodegen {
         return result
     }
 
-    exegesis {
+    docs {
         Generate match arm for statement-level match.
     }
 
@@ -1337,12 +1337,12 @@ pub gene RustCodegen {
         this.emit_line(pattern_str + guard_str + " => " + body_str + ",")
     }
 
-    exegesis {
+    docs {
         Generate pattern for match expressions.
     }
 
     /// Generate pattern
-    fun gen_pattern(pattern: Pattern) -> String {
+    fun gen_pattern(pattern: Pattern) -> string {
         match pattern {
             Pattern.Wildcard {
                 return "_"
@@ -1382,12 +1382,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate block expression.
     }
 
     /// Generate block expression
-    fun gen_block_expr(statements: List<Stmt>, final_expr: Option<Expr>) -> String {
+    fun gen_block_expr(statements: List<Stmt>, final_expr: Option<Expr>) -> string {
         let result = "{\n"
 
         for stmt in statements {
@@ -1406,12 +1406,12 @@ pub gene RustCodegen {
         return result
     }
 
-    exegesis {
+    docs {
         Generate statement as inline string (for block expressions).
     }
 
     /// Generate statement inline
-    fun gen_stmt_inline(stmt: Stmt) -> String {
+    fun gen_stmt_inline(stmt: Stmt) -> string {
         match stmt {
             Stmt.Let { name, type_ann, value } {
                 let var_name = this.snake_case(name)
@@ -1449,12 +1449,12 @@ pub gene RustCodegen {
         }
     }
 
-    exegesis {
+    docs {
         Generate idiom bracket expression.
     }
 
     /// Generate idiom bracket [| f a b |] -> f <$> a <*> b
-    fun gen_idiom_bracket(func: Expr, args: List<Expr>) -> String {
+    fun gen_idiom_bracket(func: Expr, args: List<Expr>) -> string {
         if args.length() == 0 {
             return this.gen_expr(func)
         }
@@ -1470,45 +1470,45 @@ pub gene RustCodegen {
         return result
     }
 
-    exegesis {
+    docs {
         Generate forall quantifier expression.
     }
 
     /// Generate forall expression
-    fun gen_forall(forall_expr: ForallExpr) -> String {
+    fun gen_forall(forall_expr: ForallExpr) -> string {
         let var_name = this.snake_case(forall_expr.var)
         let type_str = this.gen_type(forall_expr.type_)
         let body_str = this.gen_expr(forall_expr.body)
         return "forall::<" + type_str + ">(|" + var_name + "| " + body_str + ")"
     }
 
-    exegesis {
+    docs {
         Generate exists quantifier expression.
     }
 
     /// Generate exists expression
-    fun gen_exists(exists_expr: ExistsExpr) -> String {
+    fun gen_exists(exists_expr: ExistsExpr) -> string {
         let var_name = this.snake_case(exists_expr.var)
         let type_str = this.gen_type(exists_expr.type_)
         let body_str = this.gen_expr(exists_expr.body)
         return "exists::<" + type_str + ">(|" + var_name + "| " + body_str + ")"
     }
 
-    exegesis {
+    docs {
         Generate sex block (side-effecting block).
     }
 
     /// Generate sex block
-    fun gen_sex_block(statements: List<Stmt>, final_expr: Option<Expr>) -> String {
+    fun gen_sex_block(statements: List<Stmt>, final_expr: Option<Expr>) -> string {
         return this.gen_block_expr(statements, final_expr)
     }
 
-    exegesis {
+    docs {
         Generate struct literal expression.
     }
 
     /// Generate struct literal
-    fun gen_struct_literal(name: String, fields: List<FieldInit>) -> String {
+    fun gen_struct_literal(name: string, fields: List<FieldInit>) -> string {
         let name_str = this.pascal_case(name)
         let field_strs = []
         for field in fields {
@@ -1528,12 +1528,12 @@ pub gene RustCodegen {
     // VISIBILITY GENERATION
     // ========================================================================
 
-    exegesis {
+    docs {
         Generate visibility modifier.
     }
 
     /// Generate visibility
-    fun gen_visibility(vis: Visibility) -> String {
+    fun gen_visibility(vis: Visibility) -> string {
         match vis {
             Visibility.Private { return "" }
             Visibility.Public { return "pub " }
@@ -1546,12 +1546,12 @@ pub gene RustCodegen {
     // UTILITY FUNCTIONS
     // ========================================================================
 
-    exegesis {
+    docs {
         Convert identifier to snake_case for Rust.
     }
 
     /// Convert to snake_case
-    fun snake_case(name: String) -> String {
+    fun snake_case(name: string) -> string {
         // Replace dots with underscores
         let result = name.replace(".", "_")
 
@@ -1574,12 +1574,12 @@ pub gene RustCodegen {
         return output
     }
 
-    exegesis {
+    docs {
         Convert identifier to PascalCase for Rust types.
     }
 
     /// Convert to PascalCase
-    fun pascal_case(name: String) -> String {
+    fun pascal_case(name: string) -> string {
         // Split on dots and underscores
         let parts = name.replace(".", "_").split("_")
         let result = ""
@@ -1595,12 +1595,12 @@ pub gene RustCodegen {
         return result
     }
 
-    exegesis {
+    docs {
         Escape special characters in strings.
     }
 
     /// Escape string for Rust
-    fun escape_string(s: String) -> String {
+    fun escape_string(s: string) -> string {
         let result = ""
         let i = 0
         while i < s.length() {
@@ -1623,34 +1623,34 @@ pub gene RustCodegen {
 // PUBLIC API
 // ============================================================================
 
-exegesis {
+docs {
     Main entry point for code generation.
     Takes a parsed DOL file and returns generated Rust source code.
 }
 
 /// Generate Rust code from a DOL file
-pub fun codegen(file: DolFile) -> String {
+pub fun codegen(file: DolFile) -> string {
     let generator = RustCodegen {}
     return generator.gen_file(file)
 }
 
-exegesis {
+docs {
     Generate Rust code for a single declaration.
 }
 
 /// Generate Rust code for a single declaration
-pub fun codegen_decl(decl: Decl) -> String {
+pub fun codegen_decl(decl: Decl) -> string {
     let generator = RustCodegen {}
     generator.gen_decl(decl)
     return generator.output
 }
 
-exegesis {
+docs {
     Generate Rust type string from DOL type expression.
 }
 
 /// Generate Rust type from DOL type
-pub fun codegen_type(ty: TypeExpr) -> String {
+pub fun codegen_type(ty: TypeExpr) -> string {
     let generator = RustCodegen {}
     return generator.gen_type(ty)
 }

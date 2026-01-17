@@ -2,9 +2,9 @@
 // DOL Self-Hosting Compiler - Module Index
 // ═══════════════════════════════════════════════════════════════
 
-module dol @ 0.4.0
+module dol @ 0.8.0
 
-exegesis {
+docs {
     The DOL Self-Hosting Compiler Module.
 
     This is the root module for the DOL compiler written in DOL itself.
@@ -212,7 +212,7 @@ pub use dol.codegen.{ codegen, RustCodegen, Backend }
 // PRELUDE
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Convenience re-exports for common usage patterns.
 
     Import the prelude to get started quickly:

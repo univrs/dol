@@ -1,6 +1,6 @@
-module dol.parser @ 0.4.0
+module dol.parser @ 0.8.0
 
-exegesis {
+docs {
     Recursive descent parser with Pratt expression parsing for DOL.
     Transforms a token stream into an Abstract Syntax Tree (AST).
 
@@ -18,12 +18,12 @@ use dol.lexer.lex
 // PRECEDENCE LEVELS (for Pratt parsing)
 // =======================================================================
 
-exegesis {
+docs {
     Operator precedence levels for Pratt parsing.
     Higher values bind tighter.
 }
 
-pub gene Precedence {
+pub genPrecedence {
     type: enum {
         None      = 0,
         Or        = 10,     // ||
@@ -44,22 +44,22 @@ pub gene Precedence {
 // PARSE ERROR
 // =======================================================================
 
-exegesis {
+docs {
     Represents a parsing error with location information.
 }
 
-pub gene ParseError {
-    has message: String
+pub genParseError {
+    has message: string
     has span: Span
     has kind: ParseErrorKind = ParseErrorKind.Generic
 
-    fun to_string() -> String {
+    fun to_string() -> string {
         return this.message + " at line " + this.span.line.to_string() +
                ", column " + this.span.column.to_string()
     }
 }
 
-pub gene ParseErrorKind {
+pub genParseErrorKind {
     type: enum {
         Generic,
         UnexpectedToken,
@@ -79,20 +79,20 @@ pub gene ParseErrorKind {
 // PARSER STATE
 // =======================================================================
 
-exegesis {
+docs {
     Parser state maintaining position in token stream and accumulated errors.
 }
 
-pub gene Parser {
+pub genParser {
     has tokens: List<Token>
-    has pos: UInt64 = 0
+    has pos: u64 = 0
     has errors: List<ParseError> = []
 
     // ===================================================================
     // HELPER METHODS
     // ===================================================================
 
-    exegesis {
+    docs {
         Returns the current token without advancing.
     }
 
@@ -107,11 +107,11 @@ pub gene Parser {
         return this.tokens[this.pos]
     }
 
-    exegesis {
+    docs {
         Peeks at a token at the given offset from current position.
     }
 
-    fun peek(offset: UInt64) -> Token {
+    fun peek(offset: u64) -> Token {
         let idx = this.pos + offset
         if idx >= this.tokens.length() {
             return Token {
@@ -123,7 +123,7 @@ pub gene Parser {
         return this.tokens[idx]
     }
 
-    exegesis {
+    docs {
         Returns current token and advances position.
     }
 
@@ -135,19 +135,19 @@ pub gene Parser {
         return token
     }
 
-    exegesis {
+    docs {
         Checks if current token matches the given kind.
     }
 
-    fun check(kind: TokenKind) -> Bool {
+    fun check(kind: TokenKind) -> bool {
         return this.current().kind == kind
     }
 
-    exegesis {
+    docs {
         Checks if current token matches any of the given kinds.
     }
 
-    fun check_any(kinds: List<TokenKind>) -> Bool {
+    fun check_any(kinds: List<TokenKind>) -> bool {
         let current_kind = this.current().kind
         for kind in kinds {
             if current_kind == kind {
@@ -157,11 +157,11 @@ pub gene Parser {
         return false
     }
 
-    exegesis {
+    docs {
         Consumes current token if it matches, otherwise returns error.
     }
 
-    fun consume(kind: TokenKind, msg: String) -> Result<Token, ParseError> {
+    fun consume(kind: TokenKind, msg: string) -> Result<Token, ParseError> {
         if this.check(kind) {
             return Ok(this.advance())
         }
@@ -174,12 +174,12 @@ pub gene Parser {
         return Err(err)
     }
 
-    exegesis {
+    docs {
         Tries to match and consume any of the given token kinds.
         Returns true and advances if matched, false otherwise.
     }
 
-    fun match_any(kinds: List<TokenKind>) -> Bool {
+    fun match_any(kinds: List<TokenKind>) -> bool {
         if this.check_any(kinds) {
             this.advance()
             return true
@@ -187,11 +187,11 @@ pub gene Parser {
         return false
     }
 
-    exegesis {
+    docs {
         Matches a specific kind and advances if found.
     }
 
-    fun match_kind(kind: TokenKind) -> Bool {
+    fun match_kind(kind: TokenKind) -> bool {
         if this.check(kind) {
             this.advance()
             return true
@@ -199,7 +199,7 @@ pub gene Parser {
         return false
     }
 
-    exegesis {
+    docs {
         Error recovery: skip tokens until we find a synchronization point.
     }
 
@@ -226,11 +226,11 @@ pub gene Parser {
         }
     }
 
-    exegesis {
+    docs {
         Reports an error and adds it to the error list.
     }
 
-    fun report_error(message: String, span: Span, kind: ParseErrorKind) {
+    fun report_error(message: string, span: Span, kind: ParseErrorKind) {
         let err = ParseError {
             message: message,
             span: span,
@@ -239,11 +239,11 @@ pub gene Parser {
         this.errors.push(err)
     }
 
-    exegesis {
+    docs {
         Checks if we're at the end of the token stream.
     }
 
-    fun is_at_end() -> Bool {
+    fun is_at_end() -> bool {
         return this.check(TokenKind.Eof)
     }
 
@@ -251,7 +251,7 @@ pub gene Parser {
     // FILE-LEVEL PARSING
     // ===================================================================
 
-    exegesis {
+    docs {
         Parses a complete DOL source file.
     }
 
@@ -303,7 +303,7 @@ pub gene Parser {
     // MODULE AND USE STATEMENTS
     // ===================================================================
 
-    exegesis {
+    docs {
         Parses a module declaration: `module name.path @ version`
     }
 
@@ -335,7 +335,7 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a use statement: `use path.to.module` or `use path.{ item1, item2 }`
     }
 
@@ -377,7 +377,7 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a qualified name like `foo.bar.baz`
     }
 
@@ -398,7 +398,7 @@ pub gene Parser {
     // DECLARATION PARSING
     // ===================================================================
 
-    exegesis {
+    docs {
         Parses any top-level declaration.
     }
 
@@ -431,11 +431,11 @@ pub gene Parser {
         }
     }
 
-    exegesis {
+    docs {
         Parses a gene declaration.
     }
 
-    fun parse_gene(is_pub: Bool) -> Result<Decl, ParseError> {
+    fun parse_gene(is_pub: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Gene, "Expected 'gene'")?
 
@@ -522,7 +522,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a field declaration: `has name: Type = default`
     }
 
@@ -558,11 +558,11 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a trait declaration.
     }
 
-    fun parse_trait(is_pub: Bool) -> Result<Decl, ParseError> {
+    fun parse_trait(is_pub: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Trait, "Expected 'trait'")?
 
@@ -641,7 +641,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a trait method declaration: `is method_name(params) -> ReturnType`
     }
 
@@ -672,11 +672,11 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a system declaration.
     }
 
-    fun parse_system(is_pub: Bool) -> Result<Decl, ParseError> {
+    fun parse_system(is_pub: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.System, "Expected 'system'")?
 
@@ -747,7 +747,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a requires statement: `requires name >= version`
     }
 
@@ -782,7 +782,7 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a system statement like: `component has property`
     }
 
@@ -808,11 +808,11 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a constraint declaration.
     }
 
-    fun parse_constraint(is_pub: Bool) -> Result<Decl, ParseError> {
+    fun parse_constraint(is_pub: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Constraint, "Expected 'constraint'")?
 
@@ -876,7 +876,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a law statement: `law name: expression`
     }
 
@@ -912,11 +912,11 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses an evolves declaration.
     }
 
-    fun parse_evolves(is_pub: Bool) -> Result<Decl, ParseError> {
+    fun parse_evolves(is_pub: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Evolves, "Expected 'evolves'")?
 
@@ -992,7 +992,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a migration statement: `field -> expression` or `field => renamed_field`
     }
 
@@ -1001,7 +1001,7 @@ pub gene Parser {
         let field = this.consume(TokenKind.Ident, "Expected field name")?
 
         let kind: MigrationKind
-        let target: String
+        let target: string
         let transform = None
 
         if this.match_kind(TokenKind.FatArrow) {
@@ -1040,11 +1040,11 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a function declaration.
     }
 
-    fun parse_function(is_pub: Bool, is_sex: Bool) -> Result<Decl, ParseError> {
+    fun parse_function(is_pub: bool, is_sex: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Fun, "Expected 'fun'")?
 
@@ -1091,11 +1091,11 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a method (function inside a gene/trait).
     }
 
-    fun parse_method(is_sex: Bool) -> Result<MethodDecl, ParseError> {
+    fun parse_method(is_sex: bool) -> Result<MethodDecl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Fun, "Expected 'fun'")?
 
@@ -1133,11 +1133,11 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a variable declaration: `var name: Type = value` or `sex var ...`
     }
 
-    fun parse_var_decl(is_pub: Bool, is_sex: Bool) -> Result<Decl, ParseError> {
+    fun parse_var_decl(is_pub: bool, is_sex: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Var, "Expected 'var'")?
 
@@ -1170,11 +1170,11 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses an extern declaration.
     }
 
-    fun parse_extern(is_pub: Bool, is_sex: Bool) -> Result<Decl, ParseError> {
+    fun parse_extern(is_pub: bool, is_sex: bool) -> Result<Decl, ParseError> {
         let start = this.current().span
         this.consume(TokenKind.Extern, "Expected 'extern'")?
 
@@ -1213,7 +1213,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a standalone exegesis block.
     }
 
@@ -1222,8 +1222,8 @@ pub gene Parser {
         return Ok(Decl.Exegesis(ex))
     }
 
-    exegesis {
-        Parses an exegesis block: `exegesis { ... }`
+    docs {
+        Parses an exegesis block: `docs { ... }`
     }
 
     fun parse_exegesis_block() -> Result<ExegesisBlock, ParseError> {
@@ -1266,7 +1266,7 @@ pub gene Parser {
     // TYPE PARSING
     // ===================================================================
 
-    exegesis {
+    docs {
         Parses a type expression.
     }
 
@@ -1286,7 +1286,7 @@ pub gene Parser {
         return Ok(base)
     }
 
-    exegesis {
+    docs {
         Parses a base type (without optional modifier).
     }
 
@@ -1314,7 +1314,7 @@ pub gene Parser {
         return Ok(TypeExpr.Named(name))
     }
 
-    exegesis {
+    docs {
         Parses an inline enum type.
     }
 
@@ -1358,7 +1358,7 @@ pub gene Parser {
         return Ok(TypeExpr.Enum(variants))
     }
 
-    exegesis {
+    docs {
         Parses type parameters for generics: `<T, U: Bound>`
     }
 
@@ -1392,11 +1392,11 @@ pub gene Parser {
         return Ok(params)
     }
 
-    exegesis {
+    docs {
         Parses trait bounds: `Trait1 + Trait2`
     }
 
-    fun parse_trait_bounds() -> Result<List<String>, ParseError> {
+    fun parse_trait_bounds() -> Result<List<string>, ParseError> {
         let bounds = []
 
         loop {
@@ -1411,7 +1411,7 @@ pub gene Parser {
         return Ok(bounds)
     }
 
-    exegesis {
+    docs {
         Parses type member in gene: `type Name = Type`
     }
 
@@ -1438,7 +1438,7 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses associated type in trait: `type Name`
     }
 
@@ -1471,7 +1471,7 @@ pub gene Parser {
     // PARAMETER PARSING
     // ===================================================================
 
-    exegesis {
+    docs {
         Parses function/method parameters: `(param1: Type1, param2: Type2)`
     }
 
@@ -1523,7 +1523,7 @@ pub gene Parser {
         return Ok(params)
     }
 
-    exegesis {
+    docs {
         Parses law parameters: `[forall x: T, y: U]`
     }
 
@@ -1553,7 +1553,7 @@ pub gene Parser {
         return Ok(params)
     }
 
-    exegesis {
+    docs {
         Parses a where clause: `where T: Bound, U: OtherBound`
     }
 
@@ -1585,7 +1585,7 @@ pub gene Parser {
     // STATEMENT PARSING
     // ===================================================================
 
-    exegesis {
+    docs {
         Parses a block of statements: `{ stmt1; stmt2; ... }`
     }
 
@@ -1622,7 +1622,7 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a single statement.
     }
 
@@ -1646,7 +1646,7 @@ pub gene Parser {
         }
     }
 
-    exegesis {
+    docs {
         Parses a let statement: `let name = expr` or `let name: Type = expr`
     }
 
@@ -1678,7 +1678,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a local var statement.
     }
 
@@ -1711,7 +1711,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a return statement.
     }
 
@@ -1735,7 +1735,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses an if statement.
     }
 
@@ -1773,7 +1773,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a match expression.
     }
 
@@ -1812,7 +1812,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a match arm: `pattern { body }` or `pattern => expr`
     }
 
@@ -1847,7 +1847,7 @@ pub gene Parser {
         })
     }
 
-    exegesis {
+    docs {
         Parses a pattern for match arms.
     }
 
@@ -1894,7 +1894,7 @@ pub gene Parser {
         return Ok(patterns[0])
     }
 
-    exegesis {
+    docs {
         Parses a simple pattern (identifier or constructor).
     }
 
@@ -1955,7 +1955,7 @@ pub gene Parser {
         return Ok(Pattern.Binding(name.text))
     }
 
-    exegesis {
+    docs {
         Parses a for loop: `for item in iterable { ... }`
     }
 
@@ -1983,7 +1983,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a while loop: `while condition { ... }`
     }
 
@@ -2006,7 +2006,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses an infinite loop: `loop { ... }`
     }
 
@@ -2027,7 +2027,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a break statement.
     }
 
@@ -2040,7 +2040,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a continue statement.
     }
 
@@ -2053,7 +2053,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a sex block for side effects.
     }
 
@@ -2074,7 +2074,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses an expression statement or assignment.
     }
 
@@ -2150,7 +2150,7 @@ pub gene Parser {
     // PRATT EXPRESSION PARSING
     // ===================================================================
 
-    exegesis {
+    docs {
         Entry point for expression parsing using Pratt algorithm.
     }
 
@@ -2158,11 +2158,11 @@ pub gene Parser {
         return this.parse_precedence(0)
     }
 
-    exegesis {
+    docs {
         Pratt parser: parse expression with minimum precedence level.
     }
 
-    fun parse_precedence(min_prec: Int32) -> Result<Expr, ParseError> {
+    fun parse_precedence(min_prec: i32) -> Result<Expr, ParseError> {
         // Parse prefix expression
         let left = this.parse_prefix()?
 
@@ -2200,7 +2200,7 @@ pub gene Parser {
         return Ok(left)
     }
 
-    exegesis {
+    docs {
         Parses a prefix expression (literals, identifiers, unary ops, etc.)
     }
 
@@ -2350,7 +2350,7 @@ pub gene Parser {
         return Err(err)
     }
 
-    exegesis {
+    docs {
         Returns the precedence of the current token as an operator.
     }
 
@@ -2371,18 +2371,18 @@ pub gene Parser {
         }
     }
 
-    exegesis {
+    docs {
         Checks if current operator is right-associative.
     }
 
-    fun is_right_associative() -> Bool {
+    fun is_right_associative() -> bool {
         match this.current().kind {
             StarStar { return true }
             _ { return false }
         }
     }
 
-    exegesis {
+    docs {
         Consumes and returns the current infix operator.
     }
 
@@ -2412,7 +2412,7 @@ pub gene Parser {
         }
     }
 
-    exegesis {
+    docs {
         Parses identifier expressions with optional postfix operations.
     }
 
@@ -2506,7 +2506,7 @@ pub gene Parser {
         return Ok(expr)
     }
 
-    exegesis {
+    docs {
         Parses call arguments.
     }
 
@@ -2541,7 +2541,7 @@ pub gene Parser {
         return Ok(args)
     }
 
-    exegesis {
+    docs {
         Parses struct literal fields.
     }
 
@@ -2574,7 +2574,7 @@ pub gene Parser {
         return Ok(fields)
     }
 
-    exegesis {
+    docs {
         Parses a lambda expression: |params| expr or |params| { body }
     }
 
@@ -2627,7 +2627,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses an if expression (returns a value).
     }
 
@@ -2658,7 +2658,7 @@ pub gene Parser {
         }))
     }
 
-    exegesis {
+    docs {
         Parses a match expression (returns a value).
     }
 
@@ -2701,12 +2701,12 @@ pub gene Parser {
 // PUBLIC API
 // =======================================================================
 
-exegesis {
+docs {
     Main entry point: parses DOL source code into an AST.
     Returns either the parsed file or a list of errors.
 }
 
-pub fun parse(source: String) -> Result<DolFile, List<ParseError>> {
+pub fun parse(source: string) -> Result<DolFile, List<ParseError>> {
     // Lex the source into tokens
     let tokens = lex(source)
 
@@ -2728,11 +2728,11 @@ pub fun parse(source: String) -> Result<DolFile, List<ParseError>> {
     return Ok(file)
 }
 
-exegesis {
+docs {
     Convenience function to parse and return errors as strings.
 }
 
-pub fun parse_with_diagnostics(source: String) -> Tuple<Option<DolFile>, List<String>> {
+pub fun parse_with_diagnostics(source: string) -> Tuple<Option<DolFile>, List<string>> {
     match parse(source) {
         Ok(file) {
             return (Some(file), [])
@@ -2747,11 +2747,11 @@ pub fun parse_with_diagnostics(source: String) -> Tuple<Option<DolFile>, List<St
     }
 }
 
-exegesis {
+docs {
     Parses a single expression from source (useful for REPL).
 }
 
-pub fun parse_expression_string(source: String) -> Result<Expr, ParseError> {
+pub fun parse_expression_string(source: string) -> Result<Expr, ParseError> {
     let tokens = lex(source)
 
     let parser = Parser {

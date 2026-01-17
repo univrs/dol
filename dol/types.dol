@@ -1,6 +1,6 @@
-module dol.types @ 0.4.0
+module dol.types @ 0.8.0
 
-exegesis {
+docs {
     Type system definitions for the DOL self-hosting compiler.
 
     This module provides:
@@ -19,7 +19,7 @@ use dol.token { Span }
 // TYPE
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     The Type gene represents all type expressions in DOL.
 
     Types are classified into several categories:
@@ -41,7 +41,7 @@ exegesis {
 }
 
 /// Complete type representation for DOL
-pub gene Type {
+pub genType {
     type: enum {
         // ─────────────────────────────────────────────────────────
         // Primitive Types
@@ -98,7 +98,7 @@ pub gene Type {
 
         /// Parameterized type: Name<Arg1, Arg2, ...>
         Generic {
-            name: String,
+            name: string,
             args: List<Type>
         },
 
@@ -108,7 +108,7 @@ pub gene Type {
 
         /// Reference to a user-defined type
         Named {
-            name: String
+            name: string
         },
 
         // ─────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ pub gene Type {
 
         /// Unification variable for type inference
         Var {
-            id: UInt64
+            id: u64
         },
 
         /// Unresolved type (placeholder during inference)
@@ -127,7 +127,7 @@ pub gene Type {
         Error
     }
 
-    exegesis {
+    docs {
         Type variants cover the full spectrum of DOL types:
         - Primitives for basic data
         - Compound for complex structures
@@ -141,12 +141,12 @@ pub gene Type {
 // TYPE PREDICATES
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Utility functions for type classification and comparison.
 }
 
 /// Check if a type is a primitive type
-pub fun is_primitive(ty: Type) -> Bool {
+pub fun is_primitive(ty: Type) -> bool {
     match ty {
         Int8 { return true }
         Int16 { return true }
@@ -166,7 +166,7 @@ pub fun is_primitive(ty: Type) -> Bool {
 }
 
 /// Check if a type is a numeric type
-pub fun is_numeric(ty: Type) -> Bool {
+pub fun is_numeric(ty: Type) -> bool {
     match ty {
         Int8 { return true }
         Int16 { return true }
@@ -183,7 +183,7 @@ pub fun is_numeric(ty: Type) -> Bool {
 }
 
 /// Check if a type is an integer type
-pub fun is_integer(ty: Type) -> Bool {
+pub fun is_integer(ty: Type) -> bool {
     match ty {
         Int8 { return true }
         Int16 { return true }
@@ -198,7 +198,7 @@ pub fun is_integer(ty: Type) -> Bool {
 }
 
 /// Check if a type is a floating point type
-pub fun is_float(ty: Type) -> Bool {
+pub fun is_float(ty: Type) -> bool {
     match ty {
         Float32 { return true }
         Float64 { return true }
@@ -207,7 +207,7 @@ pub fun is_float(ty: Type) -> Bool {
 }
 
 /// Check if a type contains unresolved inference variables
-pub fun has_inference_vars(ty: Type) -> Bool {
+pub fun has_inference_vars(ty: Type) -> bool {
     match ty {
         Var { return true }
         Unknown { return true }
@@ -243,7 +243,7 @@ pub fun has_inference_vars(ty: Type) -> Bool {
 // TYPE ENVIRONMENT
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     TypeEnv implements a scoped type environment using parent pointers.
 
     Type environments form a tree structure where each scope has access
@@ -257,14 +257,14 @@ exegesis {
 }
 
 /// Scoped type environment for name resolution
-pub gene TypeEnv {
+pub genTypeEnv {
     /// Map from names to their types in this scope
-    has bindings: Map<String, Type>
+    has bindings: Map<string, Type>
 
     /// Parent scope (None for global scope)
     has parent: Option<Box<TypeEnv>>
 
-    exegesis {
+    docs {
         Type environment maintains bindings in a scoped hierarchy.
         Lookups traverse the parent chain until a binding is found.
     }
@@ -278,12 +278,12 @@ pub gene TypeEnv {
     }
 
     /// Bind a name to a type in the current scope
-    pub fun bind(name: String, ty: Type) {
+    pub fun bind(name: string, ty: Type) {
         this.bindings.insert(name, ty)
     }
 
     /// Look up a type by name, searching parent scopes
-    pub fun lookup(name: String) -> Option<Type> {
+    pub fun lookup(name: string) -> Option<Type> {
         // Check current scope first
         match this.bindings.get(name) {
             Some(ty) { return Some(ty) }
@@ -298,12 +298,12 @@ pub gene TypeEnv {
     }
 
     /// Check if a name is bound in the current scope only
-    pub fun is_bound_locally(name: String) -> Bool {
+    pub fun is_bound_locally(name: string) -> bool {
         return this.bindings.contains_key(name)
     }
 
     /// Check if a name is bound anywhere in the scope chain
-    pub fun is_bound(name: String) -> Bool {
+    pub fun is_bound(name: string) -> bool {
         match this.lookup(name) {
             Some(_) { return true }
             None { return false }
@@ -350,7 +350,7 @@ pub fun prelude_env() -> TypeEnv {
 // TYPE ERROR
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     TypeError provides structured error reporting for type-related issues.
 
     Errors include:
@@ -362,20 +362,20 @@ exegesis {
 }
 
 /// Type error with message and source location
-pub gene TypeError {
+pub genTypeError {
     /// Human-readable error description
-    has message: String
+    has message: string
 
     /// Source location where the error occurred
     has span: Span
 
-    exegesis {
+    docs {
         TypeError carries both the error message and its source location
         for precise error reporting during type checking.
     }
 
     /// Create a new type error
-    pub fun new(message: String, span: Span) -> TypeError {
+    pub fun new(message: string, span: Span) -> TypeError {
         return TypeError {
             message: message,
             span: span
@@ -383,7 +383,7 @@ pub gene TypeError {
     }
 
     /// Format the error for display
-    pub fun format() -> String {
+    pub fun format() -> string {
         return "TypeError at line " + this.span.line.to_string() +
                ", column " + this.span.column.to_string() +
                ": " + this.message
@@ -400,7 +400,7 @@ pub fun mismatch_error(expected: Type, found: Type, span: Span) -> TypeError {
 }
 
 /// Create an undefined type error
-pub fun undefined_error(name: String, span: Span) -> TypeError {
+pub fun undefined_error(name: string, span: Span) -> TypeError {
     return TypeError {
         message: "Undefined type: " + name,
         span: span
@@ -408,7 +408,7 @@ pub fun undefined_error(name: String, span: Span) -> TypeError {
 }
 
 /// Create an arity mismatch error
-pub fun arity_error(expected: UInt32, found: UInt32, span: Span) -> TypeError {
+pub fun arity_error(expected: u32, found: u32, span: Span) -> TypeError {
     return TypeError {
         message: "Wrong number of type arguments: expected " +
                  expected.to_string() + ", found " + found.to_string(),
@@ -420,13 +420,13 @@ pub fun arity_error(expected: UInt32, found: UInt32, span: Span) -> TypeError {
 // TYPE DISPLAY
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Convert types to their string representation for error messages
     and debugging output.
 }
 
 /// Convert a type to its string representation
-pub fun type_to_string(ty: Type) -> String {
+pub fun type_to_string(ty: Type) -> string {
     match ty {
         Int8 { return "Int8" }
         Int16 { return "Int16" }

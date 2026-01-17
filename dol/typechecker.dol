@@ -1,6 +1,6 @@
-module dol.typechecker @ 0.4.0
+module dol.typechecker @ 0.8.0
 
-exegesis {
+docs {
     The DOL type checker implements bidirectional type inference.
     It performs type checking and inference on the DOL AST,
     collecting type errors for reporting.
@@ -13,7 +13,7 @@ use dol.types.{ Type, TypeEnv, TypeError }
 // TYPE CHECKER STATE
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     The TypeChecker gene maintains state during type checking:
     - env: The type environment mapping names to types
     - errors: Accumulated type errors
@@ -21,16 +21,16 @@ exegesis {
 }
 
 /// Main type checker state
-pub gene TypeChecker {
+pub genTypeChecker {
     has env: TypeEnv
     has errors: List<TypeError> = []
-    has var_counter: UInt64 = 0
+    has var_counter: u64 = 0
 
     // ═══════════════════════════════════════════════════════════════
     // FRESH TYPE VARIABLES
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Generate a fresh type variable for type inference.
         Each call produces a unique type variable like T0, T1, T2, etc.
     }
@@ -46,7 +46,7 @@ pub gene TypeChecker {
     // FILE-LEVEL CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Type check an entire DOL file.
         Returns all type errors found during checking.
     }
@@ -66,7 +66,7 @@ pub gene TypeChecker {
         return this.errors
     }
 
-    exegesis {
+    docs {
         Register a declaration in the type environment.
         This is the first pass before full type checking.
     }
@@ -102,7 +102,7 @@ pub gene TypeChecker {
     // DECLARATION CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Check a declaration for type correctness.
         Dispatches to specialized checkers based on declaration type.
     }
@@ -120,7 +120,7 @@ pub gene TypeChecker {
         }
     }
 
-    exegesis {
+    docs {
         Type check a gene declaration.
         Verifies field types, method signatures, and body expressions.
     }
@@ -152,7 +152,7 @@ pub gene TypeChecker {
         this.env = saved_env
     }
 
-    exegesis {
+    docs {
         Type check a trait declaration.
         Verifies method signatures and default implementations.
     }
@@ -174,7 +174,7 @@ pub gene TypeChecker {
         this.env = saved_env
     }
 
-    exegesis {
+    docs {
         Type check a function declaration.
         Verifies parameter types, return type, and body type.
     }
@@ -209,7 +209,7 @@ pub gene TypeChecker {
         this.env = saved_env
     }
 
-    exegesis {
+    docs {
         Type check a system declaration.
     }
 
@@ -225,7 +225,7 @@ pub gene TypeChecker {
         this.env = saved_env
     }
 
-    exegesis {
+    docs {
         Type check a constraint declaration.
     }
 
@@ -241,7 +241,7 @@ pub gene TypeChecker {
     // EXPRESSION CHECKING (Bidirectional)
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Check an expression against an expected type.
         This is the "checking" direction of bidirectional typing.
     }
@@ -303,7 +303,7 @@ pub gene TypeChecker {
         }
     }
 
-    exegesis {
+    docs {
         Infer the type of an expression.
         This is the "inference" direction of bidirectional typing.
     }
@@ -656,7 +656,7 @@ pub gene TypeChecker {
     // BINARY OPERATION TYPING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Infer the type of a binary operation.
         Handles arithmetic, comparison, logical, and composition operators.
     }
@@ -764,7 +764,7 @@ pub gene TypeChecker {
     // NUMERIC TYPE CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Check that both operands are numeric and return the common numeric type.
     }
 
@@ -799,12 +799,12 @@ pub gene TypeChecker {
         }
     }
 
-    exegesis {
+    docs {
         Check if a type is numeric.
     }
 
     /// Check if type is numeric
-    fun is_numeric(ty: Type) -> Bool {
+    fun is_numeric(ty: Type) -> bool {
         match ty {
             Type.Int8 { return true }
             Type.Int16 { return true }
@@ -821,12 +821,12 @@ pub gene TypeChecker {
         }
     }
 
-    exegesis {
+    docs {
         Check if a type supports comparison operators.
     }
 
     /// Check if type is comparable
-    fun is_comparable(ty: Type) -> Bool {
+    fun is_comparable(ty: Type) -> bool {
         match ty {
             Type.Int8 { return true }
             Type.Int16 { return true }
@@ -849,7 +849,7 @@ pub gene TypeChecker {
     // TYPE UNIFICATION
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Check that two types are the same, reporting an error if not.
     }
 
@@ -858,7 +858,7 @@ pub gene TypeChecker {
         this.unify(left, right, span)
     }
 
-    exegesis {
+    docs {
         Unify two types, binding type variables as needed.
         This is the core of Hindley-Milner type inference.
     }
@@ -984,12 +984,12 @@ pub gene TypeChecker {
         }
     }
 
-    exegesis {
+    docs {
         Occurs check for preventing infinite types.
     }
 
     /// Check if a type variable occurs in a type
-    fun occurs_in(var_id: UInt64, ty: Type) -> Bool {
+    fun occurs_in(var_id: u64, ty: Type) -> bool {
         match ty {
             Type.Var(id) { return id == var_id }
             Type.Function(params, ret) {
@@ -1025,7 +1025,7 @@ pub gene TypeChecker {
     // TYPE RESOLUTION
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Resolve a type expression from the AST to a concrete Type.
     }
 
@@ -1142,7 +1142,7 @@ pub gene TypeChecker {
     // BLOCK CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Infer the type of a block expression.
         The type is the type of the last expression, or Unit if empty.
     }
@@ -1165,7 +1165,7 @@ pub gene TypeChecker {
         return result_type
     }
 
-    exegesis {
+    docs {
         Check a block against an expected type.
     }
 
@@ -1190,7 +1190,7 @@ pub gene TypeChecker {
     // STATEMENT CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Type check a statement.
     }
 
@@ -1295,7 +1295,7 @@ pub gene TypeChecker {
     // PATTERN CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Check a pattern against an expected type and bind pattern variables.
     }
 
@@ -1427,7 +1427,7 @@ pub gene TypeChecker {
     // PREDICATE CHECKING
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Check a constraint predicate.
     }
 
@@ -1477,7 +1477,7 @@ pub gene TypeChecker {
     // HELPER FUNCTIONS
     // ═══════════════════════════════════════════════════════════════
 
-    exegesis {
+    docs {
         Get the span of an expression for error reporting.
     }
 
@@ -1514,7 +1514,7 @@ pub gene TypeChecker {
         }
     }
 
-    exegesis {
+    docs {
         Get the function signature type from a function declaration.
     }
 
@@ -1534,7 +1534,7 @@ pub gene TypeChecker {
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     The main entry point for type checking a DOL file.
     Creates a fresh TypeChecker and returns all type errors found.
 }

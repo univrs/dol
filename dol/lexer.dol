@@ -1,6 +1,6 @@
-module dol.lexer @ 0.4.0
+module dol.lexer @ 0.8.0
 
-exegesis {
+docs {
   The DOL lexer tokenizes DOL source code into a stream of tokens.
   This is the foundation of the DOL self-hosting compiler.
 
@@ -19,25 +19,25 @@ use dol.token.{ Token, TokenKind, Span, keyword_lookup }
 -- Lexer State
 -- =============================================================================
 
-exegesis {
+docs {
   The Lexer gene maintains the state needed during tokenization.
   It tracks position in the source, current line/column for error
   reporting, and accumulates the output token list.
 }
 
 /// Lexer state for tokenizing DOL source code
-pub gene Lexer {
+pub genLexer {
   /// The source code being tokenized
-  has source: String
+  has source: string
 
   /// Current byte position in source
-  has pos: UInt64 = 0
+  has pos: u64 = 0
 
   /// Current line number (1-indexed)
-  has line: UInt32 = 1
+  has line: u32 = 1
 
   /// Current column number (1-indexed)
-  has column: UInt32 = 1
+  has column: u32 = 1
 
   /// Accumulated tokens
   has tokens: List<Token> = []
@@ -47,24 +47,24 @@ pub gene Lexer {
 -- Character Access Methods
 -- =============================================================================
 
-exegesis {
+docs {
   Get the character at the current position, if any.
 }
 
 /// Returns the current character or None if at end
-fun current(self: Lexer) -> Option<Char> {
+fun current(self: Lexer) -> Option<char> {
   if self.pos >= self.source.length() {
     return None
   }
   return Some(self.source.char_at(self.pos))
 }
 
-exegesis {
+docs {
   Peek ahead by a given offset without consuming.
 }
 
 /// Look ahead by offset characters
-fun peek(self: Lexer, offset: UInt64) -> Option<Char> {
+fun peek(self: Lexer, offset: u64) -> Option<char> {
   let target = self.pos + offset
   if target >= self.source.length() {
     return None
@@ -72,13 +72,13 @@ fun peek(self: Lexer, offset: UInt64) -> Option<Char> {
   return Some(self.source.char_at(target))
 }
 
-exegesis {
+docs {
   Advance the lexer by one character, updating position and column.
   Handles newlines by incrementing line and resetting column.
 }
 
 /// Consume and return the current character
-fun advance(self: Lexer) -> Option<Char> {
+fun advance(self: Lexer) -> Option<char> {
   match self.current() {
     None => None
     Some(c) => {
@@ -98,12 +98,12 @@ fun advance(self: Lexer) -> Option<Char> {
 -- Token Construction
 -- =============================================================================
 
-exegesis {
+docs {
   Create a token with span information from start position to current.
 }
 
 /// Create a token spanning from start to current position
-fun make_token(self: Lexer, kind: TokenKind, start: UInt64) -> Token {
+fun make_token(self: Lexer, kind: TokenKind, start: u64) -> Token {
   let text = self.source.substring(start, self.pos)
   Token {
     kind: kind,
@@ -117,12 +117,12 @@ fun make_token(self: Lexer, kind: TokenKind, start: UInt64) -> Token {
   }
 }
 
-exegesis {
+docs {
   Create a token and add it to the token list.
 }
 
 /// Create and emit a token
-fun emit(self: Lexer, kind: TokenKind, start: UInt64) {
+fun emit(self: Lexer, kind: TokenKind, start: u64) {
   let token = self.make_token(kind, start)
   self.tokens.push(token)
 }
@@ -131,7 +131,7 @@ fun emit(self: Lexer, kind: TokenKind, start: UInt64) {
 -- Whitespace and Comments
 -- =============================================================================
 
-exegesis {
+docs {
   Skip whitespace characters (space, tab, carriage return, newline).
 }
 
@@ -152,7 +152,7 @@ fun skip_whitespace(self: Lexer) {
   }
 }
 
-exegesis {
+docs {
   Skip a line comment starting with --.
   Comments extend to the end of the line.
 }
@@ -182,23 +182,23 @@ fun skip_line_comment(self: Lexer) {
 -- Identifier and Keyword Scanning
 -- =============================================================================
 
-exegesis {
+docs {
   Check if a character can start an identifier.
 }
 
-fun is_ident_start(c: Char) -> Bool {
+fun is_ident_start(c: char) -> bool {
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
 }
 
-exegesis {
+docs {
   Check if a character can continue an identifier.
 }
 
-fun is_ident_continue(c: Char) -> Bool {
+fun is_ident_continue(c: char) -> bool {
   is_ident_start(c) || (c >= '0' && c <= '9')
 }
 
-exegesis {
+docs {
   Scan an identifier or keyword.
   Identifiers start with a letter or underscore and continue with
   letters, digits, or underscores. Keywords are checked via lookup.
@@ -234,15 +234,15 @@ fun scan_identifier(self: Lexer) -> Token {
 -- Number Scanning
 -- =============================================================================
 
-exegesis {
+docs {
   Check if a character is a digit.
 }
 
-fun is_digit(c: Char) -> Bool {
+fun is_digit(c: char) -> bool {
   c >= '0' && c <= '9'
 }
 
-exegesis {
+docs {
   Scan a numeric literal (integer or float).
   Supports:
   - Integer literals: 42, 0, 1234
@@ -339,7 +339,7 @@ fun scan_number(self: Lexer) -> Token {
 -- String Scanning
 -- =============================================================================
 
-exegesis {
+docs {
   Scan a string literal enclosed in double quotes.
   Supports escape sequences: \n, \t, \r, \\, \", \0
 }
@@ -394,7 +394,7 @@ fun scan_string(self: Lexer) -> Token {
 -- Main Token Scanner
 -- =============================================================================
 
-exegesis {
+docs {
   Scan the next token from the source.
   Handles all token types including multi-character operators.
 }
@@ -680,13 +680,13 @@ fun scan_token(self: Lexer) -> Option<Token> {
 -- Public API
 -- =============================================================================
 
-exegesis {
+docs {
   Tokenize DOL source code into a list of tokens.
   This is the main entry point for the lexer.
 }
 
 /// Tokenize source code into a list of tokens
-pub fun lex(source: String) -> List<Token> {
+pub fun lex(source: string) -> List<Token> {
   let lexer = Lexer { source: source }
 
   loop {

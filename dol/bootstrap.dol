@@ -1,25 +1,25 @@
-module dol.bootstrap @ 0.1.0
-exegesis {
+module dol.bootstrap @ 0.8.0
+docs {
     Bootstrap types for DOL self-hosting compiler.
     These types are used in parser/typechecker but not defined as genes.
 }
 
 // Module declaration wrapper
-pub gene ModuleDecl {
-    name: String
-    version: Option<String>
+pub genModuleDecl {
+    name: string
+    version: Option<string>
     span: Span
 }
 
 // Use statement wrapper
-pub gene UseStmt {
-    path: String
-    items: List<String>
+pub genUseStmt {
+    path: string
+    items: List<string>
     span: Span
 }
 
 // Gene member enum
-pub gene GeneMember {
+pub genGeneMember {
     type: enum {
         Field { decl: FieldDecl }
         Method { decl: MethodDecl }
@@ -28,16 +28,16 @@ pub gene GeneMember {
 }
 
 // Field declaration wrapper
-pub gene FieldDecl {
-    name: String
+pub genFieldDecl {
+    name: string
     ty: TypeExpr
     default: Option<Expr>
-    is_pub: Bool
+    is_pub: bool
     span: Span
 }
 
 // Trait member enum
-pub gene TraitMember {
+pub genTraitMember {
     type: enum {
         Required { decl: MethodDecl }
         Provided { decl: MethodDecl }
@@ -46,315 +46,315 @@ pub gene TraitMember {
 }
 
 // Method declaration wrapper
-pub gene MethodDecl {
-    name: String
+pub genMethodDecl {
+    name: string
     params: List<Param>
     return_type: Option<TypeExpr>
     body: Option<Block>
-    is_pub: Bool
-    is_sex: Bool
+    is_pub: bool
+    is_sex: bool
     span: Span
 }
 
 // Type alias
-pub gene TypeAlias {
-    name: String
+pub genTypeAlias {
+    name: string
     ty: TypeExpr
     span: Span
 }
 
 // Associated type
-pub gene AssociatedType {
-    name: String
+pub genAssociatedType {
+    name: string
     bounds: List<TypeExpr>
     span: Span
 }
 
 // Variable declaration statement wrapper
-pub gene VarDecl {
-    name: String
+pub genVarDecl {
+    name: string
     ty: Option<TypeExpr>
     value: Option<Expr>
-    is_pub: Bool
-    is_sex: Bool
+    is_pub: bool
+    is_sex: bool
     span: Span
 }
 
 // Extern declaration wrapper
-pub gene ExternDecl {
-    name: String
+pub genExternDecl {
+    name: string
     ty: TypeExpr
-    is_pub: Bool
+    is_pub: bool
     span: Span
 }
 
 // Version constraint
-pub gene VersionConstraint {
-    op: String
-    version: String
+pub genVersionConstraint {
+    op: string
+    version: string
 }
 
 // Requires statement
-pub gene RequiresStmt {
-    module_name: String
+pub genRequiresStmt {
+    module_name: string
     version: Option<VersionConstraint>
     span: Span
 }
 
 // System statement enum
-pub gene SystemStmt {
+pub genSystemStmt {
     type: enum {
         Requires { stmt: RequiresStmt }
-        Uses { name: String }
-        Manages { name: String }
+        Uses { name: string }
+        Manages { name: string }
     }
 }
 
 // Migration kind enum
-pub gene MigrationKind {
+pub genMigrationKind {
     type: enum {
         Added
         Removed
-        Renamed { new_name: String }
-        Changed { description: String }
+        Renamed { new_name: string }
+        Changed { description: string }
     }
 }
 
 // Migration statement
-pub gene MigrationStmt {
-    field_name: String
+pub genMigrationStmt {
+    field_name: string
     kind: MigrationKind
     span: Span
 }
 
 // Exegesis block
-pub gene ExegesisBlock {
-    content: String
+pub genExegesisBlock {
+    content: string
     span: Span
 }
 
 // Where clause
-pub gene WhereClause {
+pub genWhereClause {
     predicates: List<WherePredicate>
     span: Span
 }
 
 // Statement wrappers for parser results
-pub gene LetStmt {
-    pattern: String
+pub genLetStmt {
+    pattern: string
     ty: Option<TypeExpr>
     value: Expr
-    is_mut: Bool
+    is_mut: bool
     span: Span
 }
 
-pub gene VarStmt {
-    name: String
+pub genVarStmt {
+    name: string
     ty: Option<TypeExpr>
     value: Option<Expr>
-    is_mut: Bool
+    is_mut: bool
     span: Span
 }
 
-pub gene ConstStmt {
-    name: String
+pub genConstStmt {
+    name: string
     ty: Option<TypeExpr>
     value: Expr
     span: Span
 }
 
-pub gene ReturnStmt {
+pub genReturnStmt {
     value: Option<Expr>
     span: Span
 }
 
-pub gene IfStmt {
+pub genIfStmt {
     condition: Expr
     then_block: Block
     else_branch: Option<ElseBranch>
     span: Span
 }
 
-pub gene MatchStmt {
+pub genMatchStmt {
     scrutinee: Expr
     arms: List<MatchArm>
     span: Span
 }
 
-pub gene ArmBody {
+pub genArmBody {
     type: enum {
         Block { block: Box<Block> }
         Expr { expr: Expr }
     }
 }
 
-pub gene LiteralPattern {
+pub genLiteralPattern {
     type: enum {
-        Int { value: Int64 }
-        Float { value: Float64 }
-        String { value: String }
-        Bool { value: Bool }
+        Int { value: i64 }
+        Float { value: f64 }
+        String { value: string }
+        Bool { value: bool }
     }
 }
 
-pub gene ForStmt {
-    pattern: String
+pub genForStmt {
+    pattern: string
     iter: Expr
     body: Block
     span: Span
 }
 
-pub gene WhileStmt {
+pub genWhileStmt {
     cond: Expr
     body: Block
     span: Span
 }
 
-pub gene LoopStmt {
-    label: Option<String>
+pub genLoopStmt {
+    label: Option<string>
     body: Block
     span: Span
 }
 
-pub gene BreakStmt {
-    label: Option<String>
+pub genBreakStmt {
+    label: Option<string>
     value: Option<Expr>
     span: Span
 }
 
-pub gene ContinueStmt {
-    label: Option<String>
+pub genContinueStmt {
+    label: Option<string>
     span: Span
 }
 
-pub gene SexBlock {
+pub genSexBlock {
     body: Block
     span: Span
 }
 
 // Additional statement types
-pub gene AssignStmt {
+pub genAssignStmt {
     target: Expr
     value: Expr
     span: Span
 }
 
-pub gene ExprStmt {
+pub genExprStmt {
     expr: Expr
     span: Span
 }
 
 // Expression wrappers for parser results
-pub gene BinaryExpr {
+pub genBinaryExpr {
     left: Box<Expr>
     op: BinOp
     right: Box<Expr>
     span: Span
 }
 
-pub gene UnaryExpr {
+pub genUnaryExpr {
     op: UnaryOp
     operand: Box<Expr>
     span: Span
 }
 
-pub gene QuoteExpr {
+pub genQuoteExpr {
     inner: Box<Expr>
     span: Span
 }
 
-pub gene IdiomExpr {
+pub genIdiomExpr {
     operand: Box<Expr>
-    idiom: String
+    idiom: string
     span: Span
 }
 
-pub gene ArrayExpr {
+pub genArrayExpr {
     elements: List<Expr>
     span: Span
 }
 
-pub gene ThisExpr {
+pub genThisExpr {
     span: Span
 }
 
-pub gene IdentExpr {
-    name: String
+pub genIdentExpr {
+    name: string
     span: Span
 }
 
-pub gene CallExpr {
+pub genCallExpr {
     callee: Box<Expr>
     args: List<CallArg>
     span: Span
 }
 
-pub gene MethodCallExpr {
+pub genMethodCallExpr {
     receiver: Box<Expr>
-    method: String
+    method: string
     args: List<CallArg>
     span: Span
 }
 
-pub gene FieldExpr {
+pub genFieldExpr {
     object: Box<Expr>
-    field: String
+    field: string
     span: Span
 }
 
-pub gene IndexExpr {
+pub genIndexExpr {
     object: Box<Expr>
     index: Box<Expr>
     span: Span
 }
 
-pub gene StructExpr {
-    name: String
+pub genStructExpr {
+    name: string
     fields: List<StructField>
     span: Span
 }
 
-pub gene Arg {
-    name: Option<String>
+pub genArg {
+    name: Option<string>
     value: Expr
     span: Span
 }
 
-pub gene StructField {
-    name: String
+pub genStructField {
+    name: string
     value: Expr
     span: Span
 }
 
-pub gene LambdaBody {
+pub genLambdaBody {
     type: enum {
         Block { block: Box<Block> }
         Expr { expr: Box<Expr> }
     }
 }
 
-pub gene LambdaExpr {
+pub genLambdaExpr {
     params: List<LambdaParam>
     body: Box<LambdaBody>
     return_type: Option<TypeExpr>
     span: Span
 }
 
-pub gene IfExpr {
+pub genIfExpr {
     cond: Box<Expr>
     then_block: Box<Expr>
     else_branch: Option<Box<Expr>>
     span: Span
 }
 
-pub gene MatchExpr {
+pub genMatchExpr {
     scrutinee: Box<Expr>
     arms: List<MatchArm>
     span: Span
 }
 
 // Expression type discriminator
-pub gene ExprType {
+pub genExprType {
     type: enum {
         Binary
         Unary
@@ -377,7 +377,7 @@ pub gene ExprType {
 
 // Wrapper-based Stmt enum for parser compatibility
 // This shadows the ast.dol Stmt to allow Stmt::Let(LetStmt::new(...)) pattern
-pub gene StmtWrapper {
+pub genStmtWrapper {
     type: enum {
         Let { stmt: LetStmt }
         Var { stmt: VarStmt }
@@ -397,7 +397,7 @@ pub gene StmtWrapper {
 }
 
 // Wrapper-based Expr enum for parser compatibility
-pub gene ExprWrapper {
+pub genExprWrapper {
     type: enum {
         Binary { expr: BinaryExpr }
         Unary { expr: UnaryExpr }

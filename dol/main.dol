@@ -2,7 +2,7 @@
 // DOL Compiler - Main Entry Point
 // ═══════════════════════════════════════════════════════════════
 
-module dol.main @ 0.4.0
+module dol.main @ 0.8.0
 
 use dol.lexer.{ lex }
 use dol.parser.{ parse, ParseError }
@@ -11,7 +11,7 @@ use dol.codegen.{ codegen, RustCodegen }
 use dol.ast.{ Module }
 use dol.types.{ TypeEnv, TypeError }
 
-exegesis {
+docs {
     The DOL compiler CLI entry point.
 
     This module implements the command-line interface for the DOL compiler,
@@ -43,43 +43,43 @@ exegesis {
 // FFI STUBS (Platform-specific implementations)
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     External function to read a file's contents.
     Returns None if the file cannot be read.
 }
 
-sex extern fun read_file(path: String) -> Option<String>
+sex extern fun read_file(path: string) -> Option<string>
 
-exegesis {
+docs {
     External function to write content to a file.
     Returns true on success, false on failure.
 }
 
-sex extern fun write_file(path: String, content: String) -> Bool
+sex extern fun write_file(path: string, content: string) -> bool
 
-exegesis {
+docs {
     External function to print a line to stdout.
 }
 
-sex extern fun println(message: String)
+sex extern fun println(message: string)
 
-exegesis {
+docs {
     External function to print to stderr.
 }
 
-sex extern fun eprintln(message: String)
+sex extern fun eprintln(message: string)
 
-exegesis {
+docs {
     External function to exit with a status code.
 }
 
-sex extern fun exit(code: Int32) -> !
+sex extern fun exit(code: i32) -> !
 
 // ═══════════════════════════════════════════════════════════════
 // RESULT TYPE FOR COMPILER OPERATIONS
 // ═══════════════════════════════════════════════════════════════
 
-gene CompileResult<T> {
+genCompileResult<T> {
     type: enum {
         Ok(T),
         FileError(String),
@@ -93,14 +93,14 @@ gene CompileResult<T> {
 // MAIN ENTRY POINT
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Main entry point for the DOL compiler.
 
     Parses command-line arguments and dispatches to the appropriate
     command handler. All commands follow Unix conventions for exit codes.
 }
 
-sex fun main(args: List<String>) -> Int32 {
+sex fun main(args: List<string>) -> i32 {
     // Check for minimum arguments
     if args.length() < 2 {
         print_usage()
@@ -124,7 +124,7 @@ sex fun main(args: List<String>) -> Int32 {
             return 0
         }
         "version" | "--version" | "-v" {
-            println("dol 0.4.0")
+            println("dol 0.8.0")
             return 0
         }
         _ {
@@ -139,7 +139,7 @@ sex fun main(args: List<String>) -> Int32 {
 // COMMAND HANDLERS
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Handle the 'compile' command.
 
     Usage: dol compile <input> -o <output>
@@ -148,7 +148,7 @@ exegesis {
     to the specified output file.
 }
 
-fun handle_compile(args: List<String>) -> Int32 {
+fun handle_compile(args: List<string>) -> i32 {
     // Parse compile arguments
     if args.length() < 5 {
         eprintln("Error: compile requires <input> -o <output>")
@@ -191,7 +191,7 @@ fun handle_compile(args: List<String>) -> Int32 {
     }
 }
 
-exegesis {
+docs {
     Handle the 'check' command.
 
     Usage: dol check <input>
@@ -200,7 +200,7 @@ exegesis {
     Useful for CI validation and IDE integration.
 }
 
-fun handle_check(args: List<String>) -> Int32 {
+fun handle_check(args: List<string>) -> i32 {
     if args.length() < 3 {
         eprintln("Error: check requires <input>")
         eprintln("Usage: dol check <input.dol>")
@@ -235,7 +235,7 @@ fun handle_check(args: List<String>) -> Int32 {
     }
 }
 
-exegesis {
+docs {
     Handle the 'parse' command.
 
     Usage: dol parse <input>
@@ -244,7 +244,7 @@ exegesis {
     Useful for debugging and tooling development.
 }
 
-fun handle_parse(args: List<String>) -> Int32 {
+fun handle_parse(args: List<string>) -> i32 {
     if args.length() < 3 {
         eprintln("Error: parse requires <input>")
         eprintln("Usage: dol parse <input.dol>")
@@ -287,7 +287,7 @@ fun handle_parse(args: List<String>) -> Int32 {
 // CORE COMPILATION FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Full compilation pipeline.
 
     1. Read source file
@@ -298,7 +298,7 @@ exegesis {
     6. Write output file
 }
 
-fun compile_file(input_path: String, output_path: String) -> CompileResult<Unit> {
+fun compile_file(input_path: string, output_path: string) -> CompileResult<Unit> {
     // Read input file
     let source = match read_file(input_path) {
         Some(content) { content }
@@ -336,7 +336,7 @@ fun compile_file(input_path: String, output_path: String) -> CompileResult<Unit>
     }
 }
 
-exegesis {
+docs {
     Check a file for validity without code generation.
 
     1. Read source file
@@ -345,7 +345,7 @@ exegesis {
     4. Type check
 }
 
-fun check_file(input_path: String) -> CompileResult<Unit> {
+fun check_file(input_path: string) -> CompileResult<Unit> {
     // Read input file
     let source = match read_file(input_path) {
         Some(content) { content }
@@ -369,7 +369,7 @@ fun check_file(input_path: String) -> CompileResult<Unit> {
     }
 }
 
-exegesis {
+docs {
     Parse a file and return the AST.
 
     1. Read source file
@@ -377,7 +377,7 @@ exegesis {
     3. Parse into AST
 }
 
-fun parse_file_cmd(input_path: String) -> CompileResult<Module> {
+fun parse_file_cmd(input_path: string) -> CompileResult<Module> {
     // Read input file
     let source = match read_file(input_path) {
         Some(content) { content }
@@ -398,12 +398,12 @@ fun parse_file_cmd(input_path: String) -> CompileResult<Module> {
 // USAGE INFORMATION
 // ═══════════════════════════════════════════════════════════════
 
-exegesis {
+docs {
     Print usage information to stdout.
 }
 
 fun print_usage() {
-    println("DOL Compiler 0.4.0")
+    println("DOL Compiler 0.8.0")
     println("")
     println("USAGE:")
     println("    dol <command> [options]")

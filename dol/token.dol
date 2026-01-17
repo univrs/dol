@@ -1,6 +1,6 @@
-module dol.token @ 0.4.0
+module dol.token @ 0.8.0
 
-exegesis {
+docs {
     Token definitions for the DOL lexer.
     Each token represents a lexical unit in DOL source code.
 }
@@ -9,7 +9,7 @@ exegesis {
 // TOKEN TYPE
 // ═══════════════════════════════════════════════════════════════
 
-pub gene TokenKind {
+pub genTokenKind {
     type: enum {
         // Keywords
         Module, Use, Pub, Gene, Trait, System,
@@ -91,13 +91,13 @@ pub gene TokenKind {
 // SPAN (Source Location)
 // ═══════════════════════════════════════════════════════════════
 
-pub gene Span {
-    has start: UInt64
-    has end: UInt64
-    has line: UInt32
-    has column: UInt32
+pub genSpan {
+    has start: u64
+    has end: u64
+    has line: u32
+    has column: u32
 
-    exegesis {
+    docs {
         Tracks source location for error reporting.
     }
 }
@@ -106,12 +106,12 @@ pub gene Span {
 // TOKEN (with value and span)
 // ═══════════════════════════════════════════════════════════════
 
-pub gene Token {
+pub genToken {
     has kind: TokenKind
     has span: Span
-    has text: String
+    has text: string
 
-    fun is_keyword() -> Bool {
+    fun is_keyword() -> bool {
         match this.kind {
             Module { return true }
             Use { return true }
@@ -142,7 +142,7 @@ pub gene Token {
         }
     }
 
-    fun is_operator() -> Bool {
+    fun is_operator() -> bool {
         match this.kind {
             Plus { return true }
             Minus { return true }
@@ -158,7 +158,7 @@ pub gene Token {
         }
     }
 
-    exegesis {
+    docs {
         A token with its source text and location.
     }
 }
@@ -167,7 +167,7 @@ pub gene Token {
 // KEYWORD LOOKUP
 // ═══════════════════════════════════════════════════════════════
 
-pub fun keyword_lookup(text: String) -> Option<TokenKind> {
+pub fun keyword_lookup(text: string) -> Option<TokenKind> {
     match text {
         "module" { return Some(TokenKind.Module) }
         "use" { return Some(TokenKind.Use) }
