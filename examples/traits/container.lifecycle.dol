@@ -12,7 +12,7 @@ trait container.lifecycle {
   each transition emits event
 }
 
-exegesis {
+docs {
   The container lifecycle defines the state machine that governs
   container execution. Transitions between states are atomic and
   emit events for observability. The lifecycle ensures predictable

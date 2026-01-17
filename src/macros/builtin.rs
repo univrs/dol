@@ -30,7 +30,7 @@
 //! | `#option_env` | Optional env access | `#option_env("VAR")` |
 
 use super::{Macro, MacroContext, MacroError, MacroInput, MacroOutput};
-use crate::ast::{Expr, Literal};
+use crate::ast::{Block, Expr, Literal, Span};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -1121,7 +1121,7 @@ impl Macro for DbgMacro {
                 );
 
                 // Generate: { let __dbg_tmp = expr; print(location, expr_str, "=", __dbg_tmp); __dbg_tmp }
-                Ok(MacroOutput::expr(Expr::Block {
+                Ok(MacroOutput::expr(Expr::Block(Block {
                     statements: vec![
                         crate::ast::Stmt::Let {
                             name: "__dbg_tmp".to_string(),
@@ -1140,7 +1140,8 @@ impl Macro for DbgMacro {
                         }),
                     ],
                     final_expr: Some(Box::new(Expr::Identifier("__dbg_tmp".to_string()))),
-                }))
+                    span: Span::default(),
+                })))
             }
             MacroInput::ExprList(exprs) if exprs.len() == 1 => {
                 let expr = exprs[0].clone();
@@ -1151,7 +1152,7 @@ impl Macro for DbgMacro {
                     ctx.line
                 );
 
-                Ok(MacroOutput::expr(Expr::Block {
+                Ok(MacroOutput::expr(Expr::Block(Block {
                     statements: vec![
                         crate::ast::Stmt::Let {
                             name: "__dbg_tmp".to_string(),
@@ -1170,7 +1171,8 @@ impl Macro for DbgMacro {
                         }),
                     ],
                     final_expr: Some(Box::new(Expr::Identifier("__dbg_tmp".to_string()))),
-                }))
+                    span: Span::default(),
+                })))
             }
             _ => Err(MacroError::invalid_argument("dbg expects an expression")),
         }
@@ -1374,7 +1376,7 @@ fn stringify_expr(expr: &Expr) -> String {
         Expr::QuasiQuote(inner) => format!("''{}", stringify_expr(inner)),
         Expr::Eval(inner) => format!("!{{{}}}", stringify_expr(inner)),
         Expr::Match { scrutinee, .. } => format!("match {} {{ ... }}", stringify_expr(scrutinee)),
-        Expr::Block { final_expr, .. } => {
+        Expr::Block(Block { final_expr, .. }) => {
             if let Some(expr) = final_expr {
                 format!("{{ {} }}", stringify_expr(expr))
             } else {
@@ -1409,7 +1411,7 @@ fn stringify_expr(expr: &Expr) -> String {
         Expr::Implies { left, right, .. } => {
             format!("({} => {})", stringify_expr(left), stringify_expr(right))
         }
-        Expr::SexBlock { final_expr, .. } => {
+        Expr::SexBlock(Block { final_expr, .. }) => {
             if let Some(expr) = final_expr {
                 format!("sex {{ {} }}", stringify_expr(expr))
             } else {
@@ -1866,10 +1868,11 @@ mod tests {
         let output = macro_impl.expand(input, &ctx).unwrap();
 
         if let MacroOutput::Expr(expr) = output {
-            if let Expr::Block {
+            if let Expr::Block(Block {
                 statements,
                 final_expr,
-            } = *expr
+                ..
+            }) = *expr
             {
                 assert_eq!(statements.len(), 2); // let + eprintln
                 assert!(final_expr.is_some()); // returns __dbg_tmp

@@ -3,7 +3,7 @@
 //! This module implements the core evaluation logic for DOL expressions,
 //! handling arithmetic, control flow, functions, and metaprogramming features.
 
-use crate::ast::{BinaryOp, Expr, Literal, Pattern, Stmt, TypeExpr, UnaryOp};
+use crate::ast::{BinaryOp, Block, Expr, Literal, Pattern, Stmt, TypeExpr, UnaryOp};
 use crate::eval::builtins;
 use crate::eval::value::{Environment, EvalError, Value};
 
@@ -124,10 +124,11 @@ impl Interpreter {
             }
 
             // Block expressions
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 let mut block_env = env.child();
 
                 // Execute statements
@@ -236,10 +237,11 @@ impl Interpreter {
             }
 
             // Sex block - execute side-effecting code
-            Expr::SexBlock {
+            Expr::SexBlock(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 let mut block_env = env.child();
 
                 // Execute statements

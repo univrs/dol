@@ -7,22 +7,22 @@ module biology.transport @ 1.0.0
 use biology.types.{ Nutrient, Energy }
 
 /// A node in the transport network
-pub gene TransportNode<T> {
-  has id: UInt64
+pub gen TransportNode<T> {
+  has id: u64
   has content: T
-  has capacity: Float64
-  has is_source: Bool
-  has is_sink: Bool
+  has capacity: f64
+  has is_source: bool
+  has is_sink: bool
 
-  constraint valid_role {
+  rule valid_role {
     true
   }
 
-  constraint within_capacity {
+  rule within_capacity {
     this.content.total_mass() <= this.capacity
   }
 
-  exegesis {
+  docs {
     A node in the transport network.
     Sources produce resources, sinks consume them,
     relays just pass resources through.
@@ -30,17 +30,17 @@ pub gene TransportNode<T> {
 }
 
 /// Flow between nodes
-pub gene Flow<T> {
-  has from_id: UInt64
-  has to_id: UInt64
+pub gen Flow<T> {
+  has from_id: u64
+  has to_id: u64
   has amount: T
-  has rate: Float64
+  has rate: f64
 
-  constraint positive_rate {
+  rule positive_rate {
     this.rate > 0.0
   }
 
-  exegesis {
+  docs {
     Directed flow of resources between nodes.
     Rate determines transport speed.
   }
@@ -56,10 +56,10 @@ pub trait Transport<T> {
   ) -> Result<Flow<T>, TransportError>
 
   /// Calculate optimal flow distribution
-  is optimize_flow(nodes: List<TransportNode<T>>) -> List<Flow<T>>
+  is optimize_flow(nodes: Vec<TransportNode<T>>) -> Vec<Flow<T>>
 
   /// Check network connectivity
-  is is_connected(a: TransportNode<T>, b: TransportNode<T>) -> Bool
+  is is_connected(a: TransportNode<T>, b: TransportNode<T>) -> bool
 
   // ─────────────────────────────────────────────────────────────
   // Laws (Conservation Principles)
@@ -82,7 +82,7 @@ pub trait Transport<T> {
       flow.amount <= edge.capacity
   }
 
-  exegesis {
+  docs {
     Transport trait models resource flow in networks.
     Inspired by:
     - Mycorrhizal nutrient exchange
@@ -93,15 +93,15 @@ pub trait Transport<T> {
 }
 
 /// Transport error types
-pub gene TransportError {
+pub gen TransportError {
   type: enum {
-    NotConnected { from: UInt64, to: UInt64 },
-    InsufficientCapacity { available: Float64, requested: Float64 },
-    SourceEmpty { node_id: UInt64 },
-    SinkFull { node_id: UInt64 }
+    NotConnected { from: u64, to: u64 },
+    InsufficientCapacity { available: f64, requested: f64 },
+    SourceEmpty { node_id: u64 },
+    SinkFull { node_id: u64 }
   }
 
-  exegesis {
+  docs {
     Errors that can occur during transport operations.
   }
 }

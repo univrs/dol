@@ -1,13 +1,13 @@
 // DOL v0.0.1 - Evolution Example
 // evolutions/container.lifecycle.v0.0.2.dol
 
-evolves container.lifecycle @ 0.0.2 > 0.0.1 {
+evo container.lifecycle @ 0.0.2 > 0.0.1 {
   adds container is paused
   adds container is resumed
   because "workload migration requires state preservation during pause"
 }
 
-exegesis {
+docs {
   Version 0.0.2 of the container lifecycle trait adds pause and resume
   capabilities to support workload migration scenarios.
 

@@ -8,8 +8,8 @@
 //! - Rust code generation
 
 use metadol::ast::{
-    Declaration, Expr, ExternDecl, FunctionDecl, FunctionParam, Gene, Literal, Mutability, Purity,
-    Span, Statement, Stmt, TypeExpr, VarDecl, Visibility,
+    Block, Declaration, Expr, ExternDecl, FunctionDecl, FunctionParam, Gene, Literal, Mutability,
+    Purity, Span, Statement, Stmt, TypeExpr, VarDecl, Visibility,
 };
 use metadol::codegen::RustCodegen;
 use metadol::sex::context::SexContext;
@@ -491,10 +491,11 @@ fn test_typechecker_sex_block_inference() {
     let mut checker = TypeChecker::new();
 
     // Create a sex block with an integer literal
-    let sex_block = Expr::SexBlock {
+    let sex_block = Expr::SexBlock(Block {
         statements: vec![],
         final_expr: Some(Box::new(Expr::Literal(Literal::Int(42)))),
-    };
+        span: Span::default(),
+    });
 
     let ty = checker.infer(&sex_block).unwrap();
     assert_eq!(ty, metadol::typechecker::Type::Int64);
@@ -508,14 +509,15 @@ fn test_typechecker_sex_block_with_statements() {
     let mut checker = TypeChecker::new();
 
     // Create a sex block with statements and final expression
-    let sex_block = Expr::SexBlock {
+    let sex_block = Expr::SexBlock(Block {
         statements: vec![Stmt::Let {
             name: "x".to_string(),
             type_ann: None,
             value: Expr::Literal(Literal::Int(10)),
         }],
         final_expr: Some(Box::new(Expr::Literal(Literal::Bool(true)))),
-    };
+        span: Span::default(),
+    });
 
     let ty = checker.infer(&sex_block).unwrap();
     assert_eq!(ty, metadol::typechecker::Type::Bool);

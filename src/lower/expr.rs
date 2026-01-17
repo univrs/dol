@@ -114,10 +114,11 @@ impl LoweringContext {
                 }))
             }
 
-            ast::Expr::Block {
+            ast::Expr::Block(ast::Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 let stmts: Vec<HirStmt> = statements
                     .iter()
                     .map(|s| self.lower_block_stmt(s))
@@ -229,10 +230,11 @@ impl LoweringContext {
                 }))
             }
 
-            ast::Expr::SexBlock {
+            ast::Expr::SexBlock(ast::Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 // Sex blocks are like regular blocks but may have side effects
                 let stmts: Vec<HirStmt> = statements
                     .iter()
@@ -1059,14 +1061,15 @@ mod tests {
     #[test]
     fn test_lower_ast_expr_block() {
         let mut ctx = LoweringContext::new();
-        let expr = ast::Expr::Block {
+        let expr = ast::Expr::Block(ast::Block {
             statements: vec![ast::Stmt::Let {
                 name: "x".to_string(),
                 type_ann: None,
                 value: ast::Expr::Literal(ast::Literal::Int(1)),
             }],
             final_expr: Some(Box::new(ast::Expr::Identifier("x".to_string()))),
-        };
+            span: ast::Span::default(),
+        });
         let hir = ctx.lower_ast_expr(&expr);
         match hir {
             HirExpr::Block(block) => {

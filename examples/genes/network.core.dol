@@ -1,15 +1,15 @@
 // DOL v0.0.1 - Metal Primitives
 // genes/network.core.dol
 
-gene network.core {
+gen network.core {
   network has address
   network has port
   network has protocol
   network has encryption
 }
 
-exegesis {
-  The network.core gene defines the essential primitives for network
+docs {
+  The network.core gen defines the essential primitives for network
   communication in the Univrs platform. Network connectivity is not assumed
   to be safe; every aspect of network interaction must be explicit,
   authenticated, and encrypted by default.

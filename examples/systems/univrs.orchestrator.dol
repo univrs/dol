@@ -7,7 +7,7 @@ system univrs.orchestrator @ 0.1.0 {
   all errors is reported
 }
 
-exegesis {
+docs {
   The univrs.orchestrator system serves as the central coordination layer for distributed
   container management across the univrs platform. It ensures that all operational activities
   are properly authenticated before execution, preventing unauthorized access to sensitive

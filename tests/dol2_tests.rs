@@ -3,7 +3,7 @@
 //! End-to-end tests for new DOL 2.0 syntax including functional programming
 //! features, control flow, pattern matching, and meta-programming constructs.
 
-use metadol::ast::{BinaryOp, Declaration, Expr, Pattern, Stmt, TypeExpr};
+use metadol::ast::{BinaryOp, Block, Declaration, Expr, Pattern, Stmt, TypeExpr};
 use metadol::parser::Parser;
 
 // ============================================
@@ -559,10 +559,11 @@ fn test_block_with_statements_and_final_expr() {
     let expr = parser.parse_expr(0).unwrap();
 
     match expr {
-        Expr::Block {
+        Expr::Block(Block {
             statements,
             final_expr,
-        } => {
+            ..
+        }) => {
             assert_eq!(statements.len(), 2);
             assert!(final_expr.is_some());
         }
@@ -583,7 +584,7 @@ fn test_nested_blocks() {
     let expr = parser.parse_expr(0).unwrap();
 
     match expr {
-        Expr::Block { statements, .. } => {
+        Expr::Block(Block { statements, .. }) => {
             // First statement is let
             // Second statement should be expression containing nested block
             assert!(!statements.is_empty());

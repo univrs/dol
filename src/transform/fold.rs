@@ -4,8 +4,8 @@
 //! where each node is transformed and a new AST is produced.
 
 use crate::ast::{
-    BinaryOp, Declaration, Expr, Gene, Literal, MatchArm, Pattern, Statement, Stmt, TypeExpr,
-    UnaryOp,
+    BinaryOp, Block, Declaration, Expr, Gen, Literal, MatchArm, Pattern, Span, Statement, Stmt,
+    TypeExpr, UnaryOp,
 };
 
 /// Trait for transforming expressions by folding over the AST.
@@ -111,10 +111,11 @@ pub trait Fold {
 
     /// Fold a block expression.
     fn fold_block(&mut self, statements: Vec<Stmt>, final_expr: Option<Expr>) -> Expr {
-        Expr::Block {
+        Expr::Block(Block {
             statements: statements.into_iter().map(|s| self.fold_stmt(s)).collect(),
             final_expr: final_expr.map(|e| Box::new(self.fold_expr(e))),
-        }
+            span: Span::default(),
+        })
     }
 
     /// Fold a quote expression.
@@ -170,10 +171,11 @@ pub trait Fold {
                 else_branch,
             } => self.fold_if(*condition, *then_branch, else_branch.map(|e| *e)),
             Expr::Match { scrutinee, arms } => self.fold_match(*scrutinee, arms),
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => self.fold_block(statements, final_expr.map(|e| *e)),
+                ..
+            }) => self.fold_block(statements, final_expr.map(|e| *e)),
             Expr::Quote(inner) => self.fold_quote(*inner),
             Expr::Unquote(inner) => self.fold_unquote(*inner),
             Expr::QuasiQuote(inner) => self.fold_quasi_quote(*inner),
@@ -203,10 +205,11 @@ pub trait Fold {
                 right: Box::new(self.fold_expr(*right)),
                 span,
             },
-            Expr::SexBlock {
+            Expr::SexBlock(Block {
                 statements,
                 final_expr,
-            } => self.fold_sex_block(statements, final_expr.map(|e| *e)),
+                ..
+            }) => self.fold_sex_block(statements, final_expr.map(|e| *e)),
             Expr::List(elements) => {
                 Expr::List(elements.into_iter().map(|e| self.fold_expr(e)).collect())
             }
@@ -232,13 +235,14 @@ pub trait Fold {
 
     /// Fold a sex block expression.
     fn fold_sex_block(&mut self, statements: Vec<Stmt>, final_expr: Option<Expr>) -> Expr {
-        Expr::SexBlock {
+        Expr::SexBlock(Block {
             statements: statements
                 .into_iter()
                 .map(|stmt| self.fold_stmt(stmt))
                 .collect(),
             final_expr: final_expr.map(|e| Box::new(self.fold_expr(e))),
-        }
+            span: Span::default(),
+        })
     }
 
     /// Fold a DOL 2.0 statement.
@@ -286,8 +290,8 @@ pub trait Fold {
     }
 
     /// Fold a gene.
-    fn fold_gene(&mut self, gene: Gene) -> Gene {
-        Gene {
+    fn fold_gene(&mut self, gene: Gen) -> Gen {
+        Gen {
             visibility: gene.visibility,
             name: gene.name,
             extends: gene.extends,

@@ -19,7 +19,7 @@
 
 #[cfg(test)]
 use crate::ast::Statement;
-use crate::ast::{Declaration, Gene, Span, Trait};
+use crate::ast::{Declaration, Gen, Span, Trait};
 use crate::sex::context::SexContext;
 use crate::sex::tracking::{EffectKind, EffectTracker};
 
@@ -293,11 +293,11 @@ impl LintResult {
 /// ```rust
 /// use metadol::sex::lint::SexLinter;
 /// use metadol::sex::context::SexContext;
-/// use metadol::ast::{Declaration, Gene, Span, Visibility};
+/// use metadol::ast::{Declaration, Gen, Span, Visibility};
 ///
 /// let linter = SexLinter::new(SexContext::Pure);
 ///
-/// let gene = Gene {
+/// let gene = Gen {
 ///     name: "test.gene".to_string(),
 ///     extends: None,
 ///     statements: vec![],
@@ -424,7 +424,7 @@ impl SexLinter {
     /// Check if a declaration's block size exceeds the maximum.
     fn check_block_size(&self, decl: &Declaration, result: &mut LintResult) {
         let (size, span) = match decl {
-            Declaration::Gene(Gene {
+            Declaration::Gene(Gen {
                 statements, span, ..
             })
             | Declaration::Trait(Trait {
@@ -529,7 +529,7 @@ mod tests {
     fn test_pure_gene_no_effects() {
         let linter = SexLinter::new(SexContext::Pure);
 
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "test.gene".to_string(),
             extends: None,
@@ -550,7 +550,7 @@ mod tests {
     fn test_io_in_pure_context() {
         let linter = SexLinter::new(SexContext::Pure);
 
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "io.gene".to_string(),
             extends: None,
@@ -581,7 +581,7 @@ mod tests {
             })
             .collect();
 
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "test.gene".to_string(),
             extends: None,
@@ -600,7 +600,7 @@ mod tests {
     fn test_sex_without_documentation() {
         let linter = SexLinter::new(SexContext::Sex);
 
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "test.gene".to_string(),
             extends: None,

@@ -1,16 +1,16 @@
-gene MessagePassingLayer<NodeDim: UInt64, EdgeDim: UInt64, HiddenDim: UInt64> {
+gen MessagePassingLayer<NodeDim: u64, EdgeDim: u64, HiddenDim: u64> {
   // Learnable weight matrices for message and update functions
-  has message_mlp_weights: Array<Float64>
-  has update_mlp_weights: Array<Float64>
+  has message_mlp_weights: Array<f64>
+  has update_mlp_weights: Array<f64>
 
   // Aggregation strategy: "sum", "mean", or "max"
-  has aggregation: String
+  has aggregation: string
 
   // Whether to incorporate edge features in message computation
-  has use_edge_features: Bool
+  has use_edge_features: bool
 
   // Constraint: aggregation must be a valid type
-  constraint valid_aggregation {
+  rule valid_aggregation {
     this.aggregation == "sum" ||
     this.aggregation == "mean" ||
     this.aggregation == "max"
@@ -19,14 +19,14 @@ gene MessagePassingLayer<NodeDim: UInt64, EdgeDim: UInt64, HiddenDim: UInt64> {
   // Law: The layer is S_n equivariant (permutation equivariance)
   // For any permutation P in S_n: forward(P * G) = P * forward(G)
   law permutation_equivariance {
-    forall perm: PermutationGroup<N>. forall graph: Graph<Array<Float64>, Array<Float64>>.
+    forall perm: PermutationGroup<N>. forall graph: Graph<Array<f64>, Array<f64>>.
       let permuted_input = graph.permute_nodes(perm)
       let permuted_output = this.forward(graph).permute_nodes(perm)
       this.forward(permuted_input) == permuted_output
   }
 
   // Forward pass: implements EquivariantLayer<PermutationGroup>
-  fun forward(graph: Graph<Array<Float64>, Array<Float64>>) -> Graph<Array<Float64>, Array<Float64>> {
+  fun forward(graph: Graph<Array<f64>, Array<f64>>) -> Graph<Array<f64>, Array<f64>> {
     let n = graph.node_count
     let new_features = (0..n).map(|i| {
       let neighbors = graph.neighbors(i)
@@ -53,19 +53,19 @@ gene MessagePassingLayer<NodeDim: UInt64, EdgeDim: UInt64, HiddenDim: UInt64> {
   }
 
   // Return trainable parameters: implements EquivariantLayer<PermutationGroup>
-  fun parameters() -> List<Array<Float64>> {
+  fun parameters() -> Vec<Array<f64>> {
     return [this.message_mlp_weights, this.update_mlp_weights]
   }
 
   // Set trainable parameters: implements EquivariantLayer<PermutationGroup>
-  fun set_parameters(params: List<Array<Float64>>) -> Void {
+  fun set_parameters(params: Vec<Array<f64>>) -> () {
     this.message_mlp_weights = params[0]
     this.update_mlp_weights = params[1]
   }
 
   // Compute message from source node to destination node
   // M(h_src, h_dst, e_ij) = MLP_msg(concat(h_src, h_dst, e_ij))
-  fun message(src_features: Array<Float64>, dst_features: Array<Float64>, edge_features: Array<Float64>) -> Array<Float64> {
+  fun message(src_features: Array<f64>, dst_features: Array<f64>, edge_features: Array<f64>) -> Array<f64> {
     let input = if this.use_edge_features {
       src_features.concat(dst_features).concat(edge_features)
     } else {
@@ -76,7 +76,7 @@ gene MessagePassingLayer<NodeDim: UInt64, EdgeDim: UInt64, HiddenDim: UInt64> {
 
   // Aggregate incoming messages using sum, mean, or max
   // This is where permutation invariance is enforced
-  fun aggregate(messages: List<Array<Float64>>) -> Array<Float64> {
+  fun aggregate(messages: Vec<Array<f64>>) -> Array<f64> {
     if messages.length == 0 {
       return this.zeros()
     }
@@ -89,46 +89,46 @@ gene MessagePassingLayer<NodeDim: UInt64, EdgeDim: UInt64, HiddenDim: UInt64> {
   }
 
   // Sum aggregation: element-wise sum of all message vectors
-  fun aggregate_sum(messages: List<Array<Float64>>) -> Array<Float64> {
+  fun aggregate_sum(messages: Vec<Array<f64>>) -> Array<f64> {
     return messages.fold(this.zeros(), |acc, m| this.vec_add(acc, m))
   }
 
   // Mean aggregation: element-wise mean of all message vectors
-  fun aggregate_mean(messages: List<Array<Float64>>) -> Array<Float64> {
+  fun aggregate_mean(messages: Vec<Array<f64>>) -> Array<f64> {
     let sum = this.aggregate_sum(messages)
-    let count = messages.length as Float64
+    let count = messages.length as f64
     return (0..HiddenDim).map(|i| sum[i] / count).collect()
   }
 
   // Max aggregation: element-wise max of all message vectors
-  fun aggregate_max(messages: List<Array<Float64>>) -> Array<Float64> {
+  fun aggregate_max(messages: Vec<Array<f64>>) -> Array<f64> {
     return messages.fold(messages[0].clone(), |acc, m| this.vec_max(acc, m))
   }
 
   // Helper: Element-wise vector addition
-  fun vec_add(a: Array<Float64>, b: Array<Float64>) -> Array<Float64> {
+  fun vec_add(a: Array<f64>, b: Array<f64>) -> Array<f64> {
     return (0..HiddenDim).map(|i| a[i] + b[i]).collect()
   }
 
   // Helper: Element-wise vector max
-  fun vec_max(a: Array<Float64>, b: Array<Float64>) -> Array<Float64> {
+  fun vec_max(a: Array<f64>, b: Array<f64>) -> Array<f64> {
     return (0..HiddenDim).map(|i| if a[i] > b[i] { a[i] } else { b[i] }).collect()
   }
 
   // Helper: Create zero vector of HiddenDim size
-  fun zeros() -> Array<Float64> {
+  fun zeros() -> Array<f64> {
     return (0..HiddenDim).map(|i| 0.0).collect()
   }
 
   // Update node features using aggregated messages
   // h'_i = MLP_update(concat(h_i, aggregated_i))
-  fun update(node_features: Array<Float64>, aggregated: Array<Float64>) -> Array<Float64> {
+  fun update(node_features: Array<f64>, aggregated: Array<f64>) -> Array<f64> {
     let input = node_features.concat(aggregated)
     return this.mlp_forward(input, this.update_mlp_weights)
   }
 
   // Helper: Simple MLP forward pass (single layer with ReLU)
-  fun mlp_forward(input: Array<Float64>, weights: Array<Float64>) -> Array<Float64> {
+  fun mlp_forward(input: Array<f64>, weights: Array<f64>) -> Array<f64> {
     // Weights are flattened: [W11, W12, ..., b1, b2, ...]
     let input_dim = input.length
     let output = (0..HiddenDim).map(|i| {
@@ -144,7 +144,7 @@ gene MessagePassingLayer<NodeDim: UInt64, EdgeDim: UInt64, HiddenDim: UInt64> {
   }
 }
 
-exegesis {
+docs {
   MessagePassingLayer<NodeDim, EdgeDim, HiddenDim> implements a permutation-equivariant
   neural network layer for graph-structured data. This is the foundational building
   block of Graph Neural Networks (GNNs) and the Message Passing Neural Network (MPNN)
@@ -160,14 +160,14 @@ exegesis {
      produce updated node representations.
 
   TYPE PARAMETERS:
-  - NodeDim: UInt64 - The dimension of input node feature vectors
-  - EdgeDim: UInt64 - The dimension of edge feature vectors (0 if not using edges)
-  - HiddenDim: UInt64 - The dimension of output node feature vectors (hidden layer size)
+  - NodeDim: u64 - The dimension of input node feature vectors
+  - EdgeDim: u64 - The dimension of edge feature vectors (0 if not using edges)
+  - HiddenDim: u64 - The dimension of output node feature vectors (hidden layer size)
 
   FIELDS:
   - message_mlp_weights: Learnable parameters for the message function MLP
   - update_mlp_weights: Learnable parameters for the update function MLP
-  - aggregation: String specifying aggregation type ("sum", "mean", or "max")
+  - aggregation: string specifying aggregation type ("sum", "mean", or "max")
   - use_edge_features: Whether to incorporate edge features in message computation
 
   WHY AGGREGATION PROVIDES PERMUTATION EQUIVARIANCE:
@@ -205,7 +205,7 @@ exegesis {
   - MPNN (Gilmer 2017): General framework with customizable aggregation
 
   IMPLEMENTS EQUIVARIANTLAYER<PERMUTATIONGROUP>:
-  This gene satisfies the EquivariantLayer trait for the symmetric group S_n:
+  This gen satisfies the EquivariantLayer trait for the symmetric group S_n:
   - forward(graph): Applies one round of message passing
   - parameters(): Returns the learnable weight arrays
   - set_parameters(params): Updates the weight arrays

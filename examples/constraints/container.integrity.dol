@@ -1,11 +1,11 @@
-constraint container.integrity {
+rule container.integrity {
   state matches declared
   identity never changes
   boundaries never expand
   resources never exceeds
 }
 
-exegesis {
+docs {
   Container integrity constraints ensure that runtime behavior exactly matches
   the ontological declarations made at creation time. This prevents the common
   failure mode where containers drift from their intended specifications through

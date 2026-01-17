@@ -7,7 +7,7 @@ system greeting.service @0.1.0 {
   service has response.timeout
 }
 
-exegesis {
+docs {
   The greeting_service system provides a complete greeting capability.
 
   Composition:

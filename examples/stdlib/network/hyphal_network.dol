@@ -25,85 +25,85 @@ use collections.{ Map, List, Set }
 // ─────────────────────────────────────────────────────────────────────
 
 /// Node identifier in the hyphal network
-pub gene NodeId {
-  has value: UInt64
+pub gen NodeId {
+  has value: u64
 
-  constraint positive {
+  rule positive {
     this.value > 0
   }
 
-  fun to_string() -> String {
+  fun to_string() -> string {
     return this.value.to_hex()
   }
 
-  exegesis {
+  docs {
     Unique identifier for network nodes.
     Zero is reserved as null/invalid.
   }
 }
 
 /// Network address (endpoint identifier)
-pub gene Address {
-  has host: String
-  has port: UInt16
+pub gen Address {
+  has host: string
+  has port: u16
 
-  fun to_string() -> String {
+  fun to_string() -> string {
     return this.host + ":" + this.port.to_string()
   }
 
-  exegesis {
+  docs {
     Network endpoint address for connections.
     Analogous to hyphal tip position in space.
   }
 }
 
 /// Bandwidth measurement
-pub gene Bandwidth {
-  has bytes_per_second: UInt64
+pub gen Bandwidth {
+  has bytes_per_second: u64
 
-  fun to_mbps() -> Float64 {
-    return (this.bytes_per_second as Float64) / 125000.0
+  fun to_mbps() -> f64 {
+    return (this.bytes_per_second as f64) / 125000.0
   }
 
-  fun to_gbps() -> Float64 {
-    return (this.bytes_per_second as Float64) / 125000000.0
+  fun to_gbps() -> f64 {
+    return (this.bytes_per_second as f64) / 125000000.0
   }
 
-  exegesis {
+  docs {
     Network bandwidth capacity.
     Analogous to hyphal segment diameter.
   }
 }
 
 /// Edge in the hyphal network
-pub gene NetworkEdge {
+pub gen NetworkEdge {
   has source: NodeId
   has target: NodeId
-  has capacity: Float64
-  has latency: Float64
-  has health: Float64
+  has capacity: f64
+  has latency: f64
+  has health: f64
 
-  constraint positive_capacity {
+  rule positive_capacity {
     this.capacity > 0.0
   }
 
-  constraint non_negative_latency {
+  rule non_negative_latency {
     this.latency >= 0.0
   }
 
-  constraint valid_health {
+  rule valid_health {
     this.health >= 0.0 && this.health <= 1.0
   }
 
-  fun is_healthy() -> Bool {
+  fun is_healthy() -> bool {
     return this.health > 0.5
   }
 
-  fun is_congested() -> Bool {
+  fun is_congested() -> bool {
     return this.health < 0.3
   }
 
-  exegesis {
+  docs {
     Directed edge representing a hyphal segment.
     Capacity = transport bandwidth (like segment diameter).
     Latency = communication delay.
@@ -112,20 +112,20 @@ pub gene NetworkEdge {
 }
 
 /// Network resource availability (analogous to nutrients)
-pub gene Resources {
-  has cpu: Float64       // Carbon equivalent - compute energy
-  has memory: Float64    // Nitrogen equivalent - structural
-  has bandwidth: Float64 // Phosphorus equivalent - scarce, high-value
-  has storage: Float64   // Water equivalent - bulk transport
+pub gen Resources {
+  has cpu: f64       // Carbon equivalent - compute energy
+  has memory: f64    // Nitrogen equivalent - structural
+  has bandwidth: f64 // Phosphorus equivalent - scarce, high-value
+  has storage: f64   // Water equivalent - bulk transport
 
-  constraint valid_ranges {
+  rule valid_ranges {
     this.cpu >= 0.0 && this.cpu <= 1.0 &&
     this.memory >= 0.0 && this.memory <= 1.0 &&
     this.bandwidth >= 0.0 && this.bandwidth <= 1.0 &&
     this.storage >= 0.0 && this.storage <= 1.0
   }
 
-  fun total_pressure() -> Float64 {
+  fun total_pressure() -> f64 {
     return (this.cpu + this.memory + this.bandwidth + this.storage) / 4.0
   }
 
@@ -147,7 +147,7 @@ pub gene Resources {
     }
   }
 
-  exegesis {
+  docs {
     Resource availability at a network node.
     Maps to biological nutrients for chemotropic routing:
     - CPU = Carbon (primary energy)
@@ -162,7 +162,7 @@ pub gene Resources {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Resource type classification
-pub gene ResourceType {
+pub gen ResourceType {
   type: enum {
     Compute,    // CPU/GPU cycles
     Memory,     // RAM availability
@@ -171,20 +171,20 @@ pub gene ResourceType {
     Composite   // Weighted combination
   }
 
-  exegesis {
+  docs {
     Classification of network resources.
     Used for targeted chemotropic navigation.
   }
 }
 
 /// Resource gradient in network space
-pub gene ResourceGradient {
+pub gen ResourceGradient {
   has resource_type: ResourceType
-  has intensity: Map<NodeId, Float64>
+  has intensity: Map<NodeId, f64>
   has direction: Map<NodeId, Vec3>
-  has decay_rate: Float64
+  has decay_rate: f64
 
-  fun sample_at(node_id: NodeId) -> Float64 {
+  fun sample_at(node_id: NodeId) -> f64 {
     return this.intensity.get(node_id).unwrap_or(0.0)
   }
 
@@ -202,7 +202,7 @@ pub gene ResourceGradient {
     }
   }
 
-  exegesis {
+  docs {
     Resource distribution across network nodes.
     Intensity = amount at each node.
     Direction = gradient vector toward higher concentration.
@@ -215,30 +215,30 @@ pub gene ResourceGradient {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Complete hyphal network graph
-pub gene HyphalNetwork {
+pub gen HyphalNetwork {
   has nodes: Map<NodeId, HyphalTip>
-  has edges: List<NetworkEdge>
+  has edges: Vec<NetworkEdge>
   has active_tips: Set<NodeId>
-  has generation: UInt64
-  has next_node_id: UInt64
+  has generation: u64
+  has next_node_id: u64
 
-  constraint has_nodes {
+  rule has_nodes {
     this.nodes.len() > 0
   }
 
-  fun node_count() -> UInt64 {
-    return this.nodes.len() as UInt64
+  fun node_count() -> u64 {
+    return this.nodes.len() as u64
   }
 
-  fun edge_count() -> UInt64 {
-    return this.edges.len() as UInt64
+  fun edge_count() -> u64 {
+    return this.edges.len() as u64
   }
 
-  fun tip_count() -> UInt64 {
-    return this.active_tips.len() as UInt64
+  fun tip_count() -> u64 {
+    return this.active_tips.len() as u64
   }
 
-  fun next_id() -> UInt64 {
+  fun next_id() -> u64 {
     id = this.next_node_id
     this.next_node_id += 1
     return id
@@ -253,7 +253,7 @@ pub gene HyphalNetwork {
     return None
   }
 
-  fun is_connected() -> Bool {
+  fun is_connected() -> bool {
     if this.nodes.len() <= 1 {
       return true
     }
@@ -277,7 +277,7 @@ pub gene HyphalNetwork {
     return visited.len() == this.nodes.len()
   }
 
-  exegesis {
+  docs {
     The complete hyphal network graph.
     - Nodes: Network endpoints (analogous to hyphal tips)
     - Edges: Connections (analogous to hyphal segments)
@@ -296,19 +296,19 @@ pub trait NetworkGrowth {
   is grow(gradient: ResourceGradient) -> Self
 
   /// Prune low-value edges (resource optimization)
-  is prune(threshold: Float64) -> Self
+  is prune(threshold: f64) -> Self
 
   /// Find shortest path between nodes (routing)
-  is find_path(from: NodeId, to: NodeId) -> Option<List<NodeId>>
+  is find_path(from: NodeId, to: NodeId) -> Option<Vec<NodeId>>
 
   /// Route message through network
-  is route(message: Bytes, from: NodeId, to: NodeId) -> Result<Void, String>
+  is route(message: Bytes, from: NodeId, to: NodeId) -> Result<(), string>
 
   /// Check for anastomosis opportunities
-  is check_fusion(tips: List<NodeId>) -> List<Tuple<NodeId, NodeId>>
+  is check_fusion(tips: Vec<NodeId>) -> Vec<Tuple<NodeId, NodeId>>
 
   law connectivity_preserved {
-    forall self: Self, threshold: Float64.
+    forall self: Self, threshold: f64.
       this.prune(threshold).is_connected() implies this.is_connected()
   }
 
@@ -318,7 +318,7 @@ pub trait NetworkGrowth {
         when gradient.max_intensity() > 0.1
   }
 
-  exegesis {
+  docs {
     Network growth and maintenance operations.
     - Growing: Expands toward resources (chemotropism)
     - Pruning: Removes inefficient connections
@@ -399,7 +399,7 @@ impl NetworkGrowth for HyphalNetwork {
     }
   }
 
-  fun prune(threshold: Float64) -> HyphalNetwork {
+  fun prune(threshold: f64) -> HyphalNetwork {
     // Keep only edges above capacity threshold
     pruned_edges = this.edges.filter(|e| e.capacity >= threshold)
 
@@ -427,7 +427,7 @@ impl NetworkGrowth for HyphalNetwork {
     }
   }
 
-  fun find_path(from: NodeId, to: NodeId) -> Option<List<NodeId>> {
+  fun find_path(from: NodeId, to: NodeId) -> Option<Vec<NodeId>> {
     // Dijkstra's algorithm for shortest path
     distances = Map.new()
     previous = Map.new()
@@ -438,9 +438,9 @@ impl NetworkGrowth for HyphalNetwork {
     while !unvisited.is_empty() {
       // Find minimum distance unvisited node
       current = None
-      min_dist = Float64.MAX
+      min_dist = f64.MAX
       for node in unvisited {
-        d = distances.get(node).unwrap_or(Float64.MAX)
+        d = distances.get(node).unwrap_or(f64.MAX)
         if d < min_dist {
           min_dist = d
           current = Some(node)
@@ -468,7 +468,7 @@ impl NetworkGrowth for HyphalNetwork {
           for edge in this.edges {
             if edge.source == node && unvisited.contains(edge.target) {
               alt = min_dist + edge.latency
-              if alt < distances.get(edge.target).unwrap_or(Float64.MAX) {
+              if alt < distances.get(edge.target).unwrap_or(f64.MAX) {
                 distances.insert(edge.target, alt)
                 previous.insert(edge.target, node)
               }
@@ -481,7 +481,7 @@ impl NetworkGrowth for HyphalNetwork {
     return None
   }
 
-  fun route(message: Bytes, from: NodeId, to: NodeId) -> Result<Void, String> {
+  fun route(message: Bytes, from: NodeId, to: NodeId) -> Result<(), string> {
     match this.find_path(from, to) {
       None => Err("No path found between nodes")
       Some(path) => {
@@ -494,7 +494,7 @@ impl NetworkGrowth for HyphalNetwork {
               if !e.is_healthy() {
                 return Err("Edge unhealthy: " + e.source.to_string())
               }
-              if message.len() as Float64 > e.capacity {
+              if message.len() as f64 > e.capacity {
                 return Err("Message exceeds edge capacity")
               }
               // Transport message along edge
@@ -506,7 +506,7 @@ impl NetworkGrowth for HyphalNetwork {
     }
   }
 
-  fun check_fusion(tips: List<NodeId>) -> List<Tuple<NodeId, NodeId>> {
+  fun check_fusion(tips: Vec<NodeId>) -> Vec<Tuple<NodeId, NodeId>> {
     fusion_candidates = List.new()
 
     for i in 0..tips.len() {
@@ -540,47 +540,47 @@ impl NetworkGrowth for HyphalNetwork {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Health status for connections
-pub gene HealthStatus {
+pub gen HealthStatus {
   type: enum {
     Healthy,
-    Degraded { failure_count: UInt32 },
+    Degraded { failure_count: u32 },
     Failed { last_failure: Timestamp },
     Isolated { isolated_at: Timestamp }
   }
 
-  fun is_healthy() -> Bool {
+  fun is_healthy() -> bool {
     match this.type {
       Healthy => true,
       _ => false
     }
   }
 
-  fun is_isolated() -> Bool {
+  fun is_isolated() -> bool {
     match this.type {
       Isolated { .. } => true,
       _ => false
     }
   }
 
-  exegesis {
+  docs {
     Health status for network connections.
     Tracks failure history for circuit breaker decisions.
   }
 }
 
 /// Septal gate implements circuit breaker pattern
-pub gene SeptalGate {
+pub gen SeptalGate {
   has edge: NetworkEdge
   has status: HealthStatus
-  has failure_threshold: UInt32
+  has failure_threshold: u32
   has recovery_timeout: Duration
-  has half_open_attempts: UInt32
+  has half_open_attempts: u32
 
-  constraint positive_threshold {
+  rule positive_threshold {
     this.failure_threshold > 0
   }
 
-  fun should_isolate() -> Bool {
+  fun should_isolate() -> bool {
     match this.status.type {
       Degraded { failure_count } => failure_count >= this.failure_threshold,
       Failed { .. } => true,
@@ -588,7 +588,7 @@ pub gene SeptalGate {
     }
   }
 
-  fun should_attempt_recovery() -> Bool {
+  fun should_attempt_recovery() -> bool {
     match this.status.type {
       Isolated { isolated_at } =>
         Timestamp.now().since(isolated_at) >= this.recovery_timeout,
@@ -628,7 +628,7 @@ pub gene SeptalGate {
     }
   }
 
-  exegesis {
+  docs {
     Septal gate implements the circuit breaker pattern.
 
     Analogous to Woronin bodies in fungal hyphae:
@@ -646,10 +646,10 @@ pub gene SeptalGate {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Credit unit for market transactions
-pub gene Credits {
-  has amount: UInt64
+pub gen Credits {
+  has amount: u64
 
-  constraint non_negative {
+  rule non_negative {
     this.amount >= 0
   }
 
@@ -664,7 +664,7 @@ pub gene Credits {
     return Some(Credits { amount: this.amount - other.amount })
   }
 
-  exegesis {
+  docs {
     Credit unit for market-based resource trading.
     Based on Kiers' biological market theory:
     fungi are traders, not altruists.
@@ -672,66 +672,66 @@ pub gene Credits {
 }
 
 /// Resource offer from a seller node
-pub gene Offer {
+pub gen Offer {
   has id: UInt128
   has seller: NodeId
   has resource: ResourceType
-  has amount: Float64
+  has amount: f64
   has price: Credits
   has expires: Timestamp
 
-  fun is_valid() -> Bool {
+  fun is_valid() -> bool {
     return Timestamp.now() < this.expires && this.amount > 0.0
   }
 
-  fun unit_price() -> Float64 {
+  fun unit_price() -> f64 {
     if this.amount == 0.0 {
-      return Float64.infinity()
+      return f64.infinity()
     }
-    return (this.price.amount as Float64) / this.amount
+    return (this.price.amount as f64) / this.amount
   }
 
-  exegesis {
+  docs {
     A resource offer from a seller node.
     Expires after a set time to prevent stale offers.
   }
 }
 
 /// Resource bid from a buyer node
-pub gene Bid {
+pub gen Bid {
   has id: UInt128
   has buyer: NodeId
   has resource: ResourceType
-  has amount: Float64
+  has amount: f64
   has max_price: Credits
   has expires: Timestamp
 
-  fun is_valid() -> Bool {
+  fun is_valid() -> bool {
     return Timestamp.now() < this.expires && this.amount > 0.0
   }
 
-  fun max_unit_price() -> Float64 {
+  fun max_unit_price() -> f64 {
     if this.amount == 0.0 {
       return 0.0
     }
-    return (this.max_price.amount as Float64) / this.amount
+    return (this.max_price.amount as f64) / this.amount
   }
 
-  exegesis {
+  docs {
     A resource bid from a buyer node.
     Specifies maximum price buyer is willing to pay.
   }
 }
 
 /// Completed trade between nodes
-pub gene Trade {
+pub gen Trade {
   has id: UInt128
   has offer: Offer
   has bid: Bid
   has final_price: Credits
   has executed_at: Timestamp
 
-  exegesis {
+  docs {
     A completed trade between two nodes.
     Final price negotiated between offer and max bid.
   }
@@ -740,13 +740,13 @@ pub gene Trade {
 /// Market behavior trait for resource trading
 pub trait NetworkMarket {
   /// Create an offer to sell resources
-  is offer(resource: ResourceType, amount: Float64, price: Credits) -> Offer
+  is offer(resource: ResourceType, amount: f64, price: Credits) -> Offer
 
   /// Create a bid to buy resources
-  is bid(resource: ResourceType, amount: Float64, max_price: Credits) -> Bid
+  is bid(resource: ResourceType, amount: f64, max_price: Credits) -> Bid
 
   /// Match offers and bids, execute trades
-  is match_trades(offers: List<Offer>, bids: List<Bid>) -> List<Trade>
+  is match_trades(offers: Vec<Offer>, bids: Vec<Bid>) -> Vec<Trade>
 
   /// Get current market price for a resource type
   is get_price(resource: ResourceType) -> Option<Credits>
@@ -762,7 +762,7 @@ pub trait NetworkMarket {
   }
 
   law best_price_preferred {
-    forall buyer: Self, offers: List<Offer>.
+    forall buyer: Self, offers: Vec<Offer>.
       offers.len() > 1 implies
         buyer.selects(offers.min_by(|o| o.unit_price()))
   }
@@ -772,7 +772,7 @@ pub trait NetworkMarket {
       this.balance(node).amount >= 0
   }
 
-  exegesis {
+  docs {
     Network market behavior for resource trading.
 
     Based on Kiers' biological market theory:
@@ -789,15 +789,15 @@ pub trait NetworkMarket {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Message with routing metadata
-pub gene Message<T> {
+pub gen Message<T> {
   has id: UInt128
   has source: NodeId
   has destination: NodeId
   has payload: T
-  has ttl: UInt32
+  has ttl: u32
   has timestamp: Timestamp
 
-  fun is_expired() -> Bool {
+  fun is_expired() -> bool {
     return this.ttl == 0
   }
 
@@ -808,27 +808,27 @@ pub gene Message<T> {
     }
   }
 
-  exegesis {
+  docs {
     Network message with routing metadata.
     TTL prevents infinite loops in mesh networks.
   }
 }
 
 /// Routing path through network
-pub gene Path {
-  has hops: List<NodeId>
-  has total_latency: Float64
-  has min_capacity: Float64
+pub gen Path {
+  has hops: Vec<NodeId>
+  has total_latency: f64
+  has min_capacity: f64
 
-  fun hop_count() -> UInt64 {
-    return this.hops.len() as UInt64
+  fun hop_count() -> u64 {
+    return this.hops.len() as u64
   }
 
-  fun is_direct() -> Bool {
+  fun is_direct() -> bool {
     return this.hops.len() <= 2
   }
 
-  exegesis {
+  docs {
     A routing path through the network.
     Includes all intermediate hops and path metrics.
   }
@@ -859,7 +859,7 @@ pub trait NetworkTransport<T> {
       node.forward(msg) called_once_per(msg.id)
   }
 
-  exegesis {
+  docs {
     Network transport for message routing.
 
     Analogous to cytoplasmic streaming in hyphae:
@@ -874,29 +874,29 @@ pub trait NetworkTransport<T> {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Transport errors
-pub gene TransportError {
+pub gen TransportError {
   type: enum {
     NotConnected { destination: NodeId },
     Congested { edge: NetworkEdge },
-    MessageTooLarge { size: UInt64, max: UInt64 },
+    MessageTooLarge { size: u64, max: u64 },
     TTLExpired { message_id: UInt128 },
     Isolated { node: NodeId }
   }
 
-  exegesis {
+  docs {
     Errors during message transport.
   }
 }
 
 /// Routing errors
-pub gene RoutingError {
+pub gen RoutingError {
   type: enum {
     NoPath { from: NodeId, to: NodeId },
     AllPathsCongested { from: NodeId, to: NodeId },
     DestinationIsolated { node: NodeId }
   }
 
-  exegesis {
+  docs {
     Errors during route calculation.
   }
 }
@@ -906,11 +906,11 @@ pub gene RoutingError {
 // ─────────────────────────────────────────────────────────────────────
 
 /// Builder for creating hyphal networks
-pub gene HyphalNetworkBuilder {
+pub gen HyphalNetworkBuilder {
   has initial_position: Vec3
   has initial_direction: Vec3
-  has branching_threshold: Float64
-  has fusion_distance: Float64
+  has branching_threshold: f64
+  has fusion_distance: f64
 
   fun build() -> HyphalNetwork {
     initial_tip = HyphalTip {
@@ -932,7 +932,7 @@ pub gene HyphalNetworkBuilder {
     }
   }
 
-  exegesis {
+  docs {
     Builder pattern for creating new hyphal networks.
     Starts with a single tip at the specified position,
     growing in the specified direction.

@@ -1,0 +1,407 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL v0.8.0 Visibility Modifiers Example
+// Demonstrates pub and pub(crate) visibility at declaration level
+// ═══════════════════════════════════════════════════════════════
+
+module visibility.example @ 0.8.0
+
+docs {
+    Demonstrates visibility modifiers in DOL v0.8.0.
+
+    DOL supports visibility at the declaration level:
+    - (default): Private to the current module
+    - pub: Public, visible to all external consumers
+    - pub(crate): Visible within the crate but not externally
+
+    Visibility is applied to gen, fun, trait, rule, and other
+    top-level declarations. Fields within a gen inherit the
+    visibility of their containing gen.
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC TYPES
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    A public counter type - visible to all library consumers.
+    All fields are accessible because the gen itself is public.
+}
+
+pub gen Counter {
+    has value: i64
+    has step_size: i32
+    has overflow_count: u32
+}
+
+docs {
+    A public user profile type.
+}
+
+pub gen UserProfile {
+    has id: u64
+    has username: string
+    has email: string
+    has active: bool
+}
+
+docs {
+    A public result wrapper for operations that may fail.
+}
+
+pub gen OperationResult {
+    has success: bool
+    has message: string
+    has error_code: i32
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CRATE-INTERNAL TYPES (pub(crate))
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Internal configuration - visible within the crate but not externally.
+    Use pub(crate) for types that other modules in your crate need,
+    but external users should not access.
+}
+
+pub(crate) gen CounterConfig {
+    has max_value: i64
+    has min_value: i64
+    has wrap_on_overflow: bool
+}
+
+docs {
+    Internal audit record for tracking operations.
+}
+
+pub(crate) gen AuditRecord {
+    has timestamp: i64
+    has operation: string
+    has user_id: u64
+    has success: bool
+}
+
+docs {
+    Internal cache entry for performance optimization.
+}
+
+pub(crate) gen CacheEntry {
+    has key: string
+    has value: string
+    has expires_at: i64
+    has hit_count: u32
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRIVATE TYPES (default visibility)
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Private implementation type - only visible in this module.
+    No visibility modifier means private (default).
+}
+
+gen InternalState {
+    has last_operation: string
+    has operation_count: u64
+    has is_dirty: bool
+}
+
+docs {
+    Private helper type for intermediate calculations.
+}
+
+gen CalcIntermediate {
+    has partial_sum: f64
+    has factor: f64
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Public API for creating a new counter.
+}
+
+pub fun new_counter() -> Counter {
+    return Counter {
+        value: 0,
+        step_size: 1,
+        overflow_count: 0
+    }
+}
+
+docs {
+    Public API for creating a counter with custom step.
+}
+
+pub fun new_counter_with_step(step: i32) -> Counter {
+    return Counter {
+        value: 0,
+        step_size: step,
+        overflow_count: 0
+    }
+}
+
+docs {
+    Public function to increment a counter.
+}
+
+pub fun increment(counter: Counter) -> Counter {
+    let new_value = counter.value + counter.step_size as i64
+    return Counter {
+        value: new_value,
+        step_size: counter.step_size,
+        overflow_count: counter.overflow_count
+    }
+}
+
+docs {
+    Public function to decrement a counter.
+}
+
+pub fun decrement(counter: Counter) -> Counter {
+    let new_value = counter.value - counter.step_size as i64
+    return Counter {
+        value: new_value,
+        step_size: counter.step_size,
+        overflow_count: counter.overflow_count
+    }
+}
+
+docs {
+    Public function to get counter value.
+}
+
+pub fun get_value(counter: Counter) -> i64 {
+    return counter.value
+}
+
+docs {
+    Public function to reset counter to zero.
+}
+
+pub fun reset(counter: Counter) -> Counter {
+    return Counter {
+        value: 0,
+        step_size: counter.step_size,
+        overflow_count: counter.overflow_count
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CRATE-INTERNAL FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Create default counter configuration.
+    Only accessible within the crate.
+}
+
+pub(crate) fun default_config() -> CounterConfig {
+    return CounterConfig {
+        max_value: 9223372036854775807,
+        min_value: -9223372036854775808,
+        wrap_on_overflow: true
+    }
+}
+
+docs {
+    Check if a value is within configured bounds.
+    Internal validation function.
+}
+
+pub(crate) fun is_within_bounds(value: i64, config: CounterConfig) -> bool {
+    return value >= config.min_value && value <= config.max_value
+}
+
+docs {
+    Create an audit record for an operation.
+}
+
+pub(crate) fun create_audit(op: string, user: u64, success: bool, time: i64) -> AuditRecord {
+    return AuditRecord {
+        timestamp: time,
+        operation: op,
+        user_id: user,
+        success: success
+    }
+}
+
+docs {
+    Check if a cache entry has expired.
+}
+
+pub(crate) fun is_expired(entry: CacheEntry, now: i64) -> bool {
+    return now > entry.expires_at
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRIVATE FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Private helper - create initial internal state.
+}
+
+fun create_state() -> InternalState {
+    return InternalState {
+        last_operation: "init",
+        operation_count: 0,
+        is_dirty: false
+    }
+}
+
+docs {
+    Private helper - update internal state after operation.
+}
+
+fun update_state(state: InternalState, op: string) -> InternalState {
+    return InternalState {
+        last_operation: op,
+        operation_count: state.operation_count + 1,
+        is_dirty: true
+    }
+}
+
+docs {
+    Private calculation helper.
+}
+
+fun apply_factor(value: f64, factor: f64) -> f64 {
+    return value * factor
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC TRAITS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    A public trait for types that can be counted.
+    External users can implement this trait.
+}
+
+pub trait Countable {
+    has value: i64
+
+    docs {
+        Get the current count value.
+    }
+    fun get_value() -> i64
+
+    docs {
+        Increment and return new value.
+    }
+    fun increment_by(amount: i64) -> i64
+}
+
+docs {
+    A public trait for types that can be reset.
+}
+
+pub trait Resettable {
+    docs {
+        Reset to initial state.
+    }
+    fun reset()
+
+    docs {
+        Check if in initial state.
+    }
+    fun is_initial() -> bool
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CRATE-INTERNAL TRAITS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Internal trait for types that support debugging.
+    Not exposed to external users.
+}
+
+pub(crate) trait Debuggable {
+    docs {
+        Get debug string representation.
+    }
+    fun debug_string() -> string
+
+    docs {
+        Get detailed internal state as string.
+    }
+    fun dump_state() -> string
+}
+
+docs {
+    Internal trait for types that support auditing.
+}
+
+pub(crate) trait Auditable {
+    docs {
+        Record an audit entry for this object.
+    }
+    fun record_audit(operation: string, user_id: u64)
+
+    docs {
+        Get count of audit records.
+    }
+    fun audit_count() -> u32
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRIVATE TRAITS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Private trait for internal serialization.
+}
+
+trait Serializable {
+    fun to_bytes() -> Vec<u8>
+    fun from_bytes(data: Vec<u8>)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC RULES (constraints)
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Public invariant - counter value must be finite.
+}
+
+pub rule counter.value_finite {
+    each Counter {
+        this.value != 9223372036854775807 || this.overflow_count > 0
+    }
+}
+
+docs {
+    Public invariant - user profile must have valid email.
+}
+
+pub rule user.valid_email {
+    each UserProfile {
+        this.email != ""
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VISIBILITY SUMMARY
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Summary of visibility modifiers:
+
+    | Modifier     | Scope                          | Use Case                    |
+    |-------------|--------------------------------|----------------------------|
+    | (none)      | This module only               | Implementation details     |
+    | pub         | All consumers                  | Public API                 |
+    | pub(crate)  | Within the crate only          | Internal library helpers   |
+
+    Best practices:
+    1. Default to private (no modifier) - expose only what's needed
+    2. Use pub for your public API surface
+    3. Use pub(crate) for cross-module internal code
+    4. Document all public items with docs blocks
+}

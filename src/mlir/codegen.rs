@@ -846,7 +846,7 @@ mod tests {
         ctx.load_all_available_dialects();
 
         let mut codegen = MlirCodegen::new(&ctx);
-        let gene = Gene {
+        let gene = Gen {
             name: "test.gene".to_string(),
             statements: vec![],
             exegesis: "Test gene".to_string(),

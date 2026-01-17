@@ -193,6 +193,7 @@ impl<'a> Parser<'a> {
                 && self.current.kind != TokenKind::Type
                 && self.current.kind != TokenKind::Trait
                 && self.current.kind != TokenKind::Constraint
+                && self.current.kind != TokenKind::Rule
                 && self.current.kind != TokenKind::System
                 && self.current.kind != TokenKind::Evolves
                 && self.current.kind != TokenKind::Pub
@@ -331,7 +332,7 @@ impl<'a> Parser<'a> {
             // Check if we've reached end of file after skipping tests
             if self.current.kind == TokenKind::Eof {
                 // Return a placeholder for files that only have tests after the main content
-                return Ok(Declaration::Gene(Gene {
+                return Ok(Declaration::Gene(Gen {
                     visibility: Visibility::default(),
                     name: "_test_skipped".to_string(),
                     extends: None,
@@ -356,13 +357,13 @@ impl<'a> Parser<'a> {
         }
 
         match self.current.kind {
-            TokenKind::Gene => self.parse_gene(),
+            TokenKind::Gene | TokenKind::Gen => self.parse_gene(),
             // type is an alias for gene (v0.3.0)
             TokenKind::Type => self.parse_type_declaration(),
             TokenKind::Trait => self.parse_trait(),
-            TokenKind::Constraint => self.parse_constraint(),
+            TokenKind::Constraint | TokenKind::Rule => self.parse_constraint(),
             TokenKind::System => self.parse_system(),
-            TokenKind::Evolves => self.parse_evolution(),
+            TokenKind::Evolves | TokenKind::Evo => self.parse_evolution(),
             TokenKind::Sex => self.parse_sex_top_level(),
             TokenKind::Function => {
                 // Top-level pure function
@@ -373,9 +374,9 @@ impl<'a> Parser<'a> {
                 // Top-level constant declaration
                 self.parse_const_decl()
             }
-            TokenKind::Exegesis => {
-                // Skip file-level exegesis block
-                self.advance(); // consume 'exegesis'
+            TokenKind::Exegesis | TokenKind::Docs => {
+                // Skip file-level exegesis/docs block
+                self.advance(); // consume 'exegesis'/'docs'
                 self.expect(TokenKind::LeftBrace)?;
                 let mut depth = 1;
                 while depth > 0 && self.current.kind != TokenKind::Eof {
@@ -389,7 +390,7 @@ impl<'a> Parser<'a> {
                 }
                 // Try to parse next declaration, or return placeholder if EOF
                 if self.current.kind == TokenKind::Eof {
-                    Ok(Declaration::Gene(Gene {
+                    Ok(Declaration::Gene(Gen {
                         visibility: Visibility::default(),
                         name: "_module_doc".to_string(),
                         extends: None,
@@ -410,6 +411,7 @@ impl<'a> Parser<'a> {
                     && self.current.kind != TokenKind::Type
                     && self.current.kind != TokenKind::Trait
                     && self.current.kind != TokenKind::Constraint
+                    && self.current.kind != TokenKind::Rule
                     && self.current.kind != TokenKind::System
                     && self.current.kind != TokenKind::Evolves
                     && self.current.kind != TokenKind::Pub
@@ -423,7 +425,7 @@ impl<'a> Parser<'a> {
                 }
                 // Parse next declaration
                 if self.current.kind == TokenKind::Eof {
-                    Ok(Declaration::Gene(Gene {
+                    Ok(Declaration::Gene(Gen {
                         visibility: Visibility::default(),
                         name: "_use_only".to_string(),
                         extends: None,
@@ -458,7 +460,7 @@ impl<'a> Parser<'a> {
                 }
                 // Parse next declaration
                 if self.current.kind == TokenKind::Eof {
-                    Ok(Declaration::Gene(Gene {
+                    Ok(Declaration::Gene(Gen {
                         visibility: Visibility::default(),
                         name: "_module_decl".to_string(),
                         extends: None,
@@ -642,7 +644,21 @@ impl<'a> Parser<'a> {
     /// Parses a gene declaration.
     fn parse_gene(&mut self) -> Result<Declaration, ParseError> {
         let start_span = self.current.span;
-        self.expect(TokenKind::Gene)?;
+
+        // v0.8.0: Accept both "gen" (new) and "gene" (deprecated)
+        if self.current.kind == TokenKind::Gen {
+            self.advance();
+        } else if self.current.kind == TokenKind::Gene {
+            eprintln!("warning: 'gene' keyword is deprecated in v0.8.0, use 'gen' instead at line {}, column {}",
+                self.current.span.line, self.current.span.column);
+            self.advance();
+        } else {
+            return Err(ParseError::UnexpectedToken {
+                expected: "'gen' or 'gene'".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
+            });
+        }
 
         let name = self.expect_identifier()?;
         // Skip generic type parameters if present: <T, U: Bound>
@@ -669,7 +685,7 @@ impl<'a> Parser<'a> {
         // DOL 2.0: use inline or default to empty
         let exegesis = if let Some(ex) = inline_exegesis {
             ex
-        } else if self.current.kind == TokenKind::Exegesis {
+        } else if self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
             self.parse_exegesis()?
         } else {
             String::new() // DOL 2.0 tolerant: empty exegesis if none
@@ -677,7 +693,7 @@ impl<'a> Parser<'a> {
 
         let span = start_span.merge(&self.previous.span);
 
-        Ok(Declaration::Gene(Gene {
+        Ok(Declaration::Gene(Gen {
             visibility: Visibility::default(),
             name,
             extends,
@@ -721,7 +737,7 @@ impl<'a> Parser<'a> {
         // DOL 2.0: use inline or default to empty
         let exegesis = if let Some(ex) = inline_exegesis {
             ex
-        } else if self.current.kind == TokenKind::Exegesis {
+        } else if self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
             self.parse_exegesis()?
         } else {
             String::new() // DOL 2.0 tolerant: empty exegesis if none
@@ -730,7 +746,7 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         // Type declarations are represented as Gene in the AST
-        Ok(Declaration::Gene(Gene {
+        Ok(Declaration::Gene(Gen {
             visibility: Visibility::default(),
             name,
             extends,
@@ -756,6 +772,7 @@ impl<'a> Parser<'a> {
         while self.current.kind != TokenKind::RightBrace
             && self.current.kind != TokenKind::Eof
             && self.current.kind != TokenKind::Exegesis
+            && self.current.kind != TokenKind::Docs
         {
             // Check for law declarations
             if self.current.kind == TokenKind::Law {
@@ -774,7 +791,7 @@ impl<'a> Parser<'a> {
         // DOL 1.0: exegesis can be after braces
         let exegesis = if let Some(ex) = inline_exegesis {
             ex
-        } else if self.current.kind == TokenKind::Exegesis {
+        } else if self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
             self.parse_exegesis()?
         } else {
             String::new()
@@ -794,7 +811,21 @@ impl<'a> Parser<'a> {
     /// Parses a constraint declaration.
     fn parse_constraint(&mut self) -> Result<Declaration, ParseError> {
         let start_span = self.current.span;
-        self.expect(TokenKind::Constraint)?;
+
+        // v0.8.0: Accept both "rule" (new) and "constraint" (deprecated)
+        if self.current.kind == TokenKind::Rule {
+            self.advance();
+        } else if self.current.kind == TokenKind::Constraint {
+            eprintln!("warning: 'constraint' keyword is deprecated in v0.8.0, use 'rule' instead at line {}, column {}",
+                self.current.span.line, self.current.span.column);
+            self.advance();
+        } else {
+            return Err(ParseError::UnexpectedToken {
+                expected: "'rule' or 'constraint'".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
+            });
+        }
 
         let name = self.expect_identifier()?;
         // Skip generic type parameters if present
@@ -811,7 +842,7 @@ impl<'a> Parser<'a> {
         // DOL 1.0: exegesis can be after braces
         let exegesis = if let Some(ex) = inline_exegesis {
             ex
-        } else if self.current.kind == TokenKind::Exegesis {
+        } else if self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
             self.parse_exegesis()?
         } else {
             String::new()
@@ -819,7 +850,7 @@ impl<'a> Parser<'a> {
 
         let span = start_span.merge(&self.previous.span);
 
-        Ok(Declaration::Constraint(Constraint {
+        Ok(Declaration::Constraint(Rule {
             visibility: Visibility::default(),
             name,
             statements,
@@ -854,6 +885,7 @@ impl<'a> Parser<'a> {
         while self.current.kind != TokenKind::RightBrace
             && self.current.kind != TokenKind::Eof
             && self.current.kind != TokenKind::Exegesis
+            && self.current.kind != TokenKind::Docs
         {
             if self.current.kind == TokenKind::Requires
                 && self.peek_is_identifier()
@@ -877,7 +909,7 @@ impl<'a> Parser<'a> {
         // DOL 1.0: exegesis can be after braces
         let exegesis = if let Some(ex) = inline_exegesis {
             ex
-        } else if self.current.kind == TokenKind::Exegesis {
+        } else if self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
             self.parse_exegesis()?
         } else {
             String::new()
@@ -899,7 +931,21 @@ impl<'a> Parser<'a> {
     /// Parses an evolution declaration.
     fn parse_evolution(&mut self) -> Result<Declaration, ParseError> {
         let start_span = self.current.span;
-        self.expect(TokenKind::Evolves)?;
+
+        // v0.8.0: Accept both "evo" (new) and "evolves" (deprecated)
+        if self.current.kind == TokenKind::Evo {
+            self.advance();
+        } else if self.current.kind == TokenKind::Evolves {
+            eprintln!("warning: 'evolves' keyword is deprecated in v0.8.0, use 'evo' instead at line {}, column {}",
+                self.current.span.line, self.current.span.column);
+            self.advance();
+        } else {
+            return Err(ParseError::UnexpectedToken {
+                expected: "'evo' or 'evolves'".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
+            });
+        }
 
         let name = self.expect_identifier()?;
         self.expect(TokenKind::At)?;
@@ -917,6 +963,7 @@ impl<'a> Parser<'a> {
         while self.current.kind != TokenKind::RightBrace
             && self.current.kind != TokenKind::Eof
             && self.current.kind != TokenKind::Exegesis
+            && self.current.kind != TokenKind::Docs
         {
             match self.current.kind {
                 TokenKind::Adds => {
@@ -958,7 +1005,7 @@ impl<'a> Parser<'a> {
         // DOL 1.0: exegesis can be after braces
         let exegesis = if let Some(ex) = inline_exegesis {
             ex
-        } else if self.current.kind == TokenKind::Exegesis {
+        } else if self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
             self.parse_exegesis()?
         } else {
             String::new()
@@ -966,7 +1013,7 @@ impl<'a> Parser<'a> {
 
         let span = start_span.merge(&self.previous.span);
 
-        Ok(Declaration::Evolution(Evolution {
+        Ok(Declaration::Evolution(Evo {
             name,
             version,
             parent_version,
@@ -997,8 +1044,8 @@ impl<'a> Parser<'a> {
         let start_span = self.current.span;
 
         // Handle DOL 2.0/v0.4.0 inline exegesis blocks - skip them
-        while self.current.kind == TokenKind::Exegesis {
-            self.advance(); // consume 'exegesis'
+        while self.current.kind == TokenKind::Exegesis || self.current.kind == TokenKind::Docs {
+            self.advance(); // consume 'exegesis' or 'docs'
             if self.current.kind == TokenKind::LeftBrace {
                 self.advance();
                 let mut depth = 1;
@@ -1084,8 +1131,13 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Handle DOL 2.0 inline 'constraint' blocks inside declarations
-        if self.current.kind == TokenKind::Constraint {
+        // Handle DOL 2.0 inline 'constraint'/'rule' blocks inside declarations
+        if self.current.kind == TokenKind::Constraint || self.current.kind == TokenKind::Rule {
+            // Emit deprecation warning for old 'constraint' keyword
+            if self.current.kind == TokenKind::Constraint {
+                eprintln!("warning: 'constraint' keyword is deprecated in v0.8.0, use 'rule' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
+            }
             self.advance();
             let name = self.expect_identifier()?;
             // Skip constraint body: { ... }
@@ -1778,7 +1830,7 @@ impl<'a> Parser<'a> {
             TokenKind::Extern => {
                 let extern_decl = self.parse_sex_extern()?;
                 // Keep extern functions as Gene placeholder (FFI stubs need special handling)
-                Ok(Declaration::Gene(Gene {
+                Ok(Declaration::Gene(Gen {
                     visibility: Visibility::default(),
                     name: extern_decl.name.clone(),
                     extends: None,
@@ -1796,13 +1848,19 @@ impl<'a> Parser<'a> {
 
     /// Parses the exegesis block.
     fn parse_exegesis(&mut self) -> Result<String, ParseError> {
-        if self.current.kind != TokenKind::Exegesis {
+        // v0.8.0: Accept both "docs" (new) and "exegesis" (deprecated)
+        if self.current.kind == TokenKind::Docs {
+            self.advance(); // consume 'docs'
+        } else if self.current.kind == TokenKind::Exegesis {
+            eprintln!("warning: 'exegesis' keyword is deprecated in v0.8.0, use 'docs' instead at line {}, column {}",
+                self.current.span.line, self.current.span.column);
+            self.advance(); // consume 'exegesis'
+        } else {
             return Err(ParseError::MissingExegesis {
                 span: self.current.span,
             });
         }
 
-        self.advance(); // consume 'exegesis'
         self.expect(TokenKind::LeftBrace)?;
 
         // Collect all text until closing brace
@@ -1847,11 +1905,11 @@ impl<'a> Parser<'a> {
     /// Parses an optional inline exegesis block (DOL 2.0 style).
     /// Returns None if no exegesis is present.
     fn parse_inline_exegesis(&mut self) -> Result<Option<String>, ParseError> {
-        if self.current.kind != TokenKind::Exegesis {
+        if self.current.kind != TokenKind::Exegesis && self.current.kind != TokenKind::Docs {
             return Ok(None);
         }
 
-        self.advance(); // consume 'exegesis'
+        self.advance(); // consume 'exegesis' or 'docs'
         self.expect(TokenKind::LeftBrace)?;
 
         // Collect all text until closing brace
@@ -2196,6 +2254,7 @@ impl<'a> Parser<'a> {
             | TokenKind::Trait
             | TokenKind::System
             | TokenKind::Constraint
+            | TokenKind::Rule
             | TokenKind::Evolves
             | TokenKind::Exegesis
             | TokenKind::Test
@@ -2341,22 +2400,25 @@ impl<'a> Parser<'a> {
             // Control flow as expressions (for use in match arms)
             TokenKind::Break => {
                 self.advance();
-                Ok(Expr::Block {
+                Ok(Expr::Block(Block {
                     statements: vec![Stmt::Break],
                     final_expr: None,
-                })
+                    span: self.previous.span,
+                }))
             }
 
             TokenKind::Continue => {
                 self.advance();
-                Ok(Expr::Block {
+                Ok(Expr::Block(Block {
                     statements: vec![Stmt::Continue],
                     final_expr: None,
-                })
+                    span: self.previous.span,
+                }))
             }
 
             TokenKind::Return => {
                 self.advance();
+                let start_span = self.previous.span;
                 // Check if there's a return value
                 let value = if self.current.kind != TokenKind::RightBrace
                     && self.current.kind != TokenKind::Comma
@@ -2370,10 +2432,11 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
-                Ok(Expr::Block {
+                Ok(Expr::Block(Block {
                     statements: vec![Stmt::Return(value)],
                     final_expr: None,
-                })
+                    span: start_span,
+                }))
             }
 
             _ => Err(ParseError::UnexpectedToken {
@@ -2653,10 +2716,11 @@ impl<'a> Parser<'a> {
 
             // For iterator-style forall, wrap in a Block that represents the comprehension
             // Use a synthetic Inferred type since we don't know the element type statically
-            let body = Expr::Block {
+            let body = Expr::Block(Block {
                 statements,
                 final_expr: final_expr.map(Box::new),
-            };
+                span: Span::default(),
+            });
 
             // Create a ForallExpr using a placeholder type to indicate iterator-style
             // The underscore "_" indicates the type should be inferred from the iterator
@@ -2701,6 +2765,7 @@ impl<'a> Parser<'a> {
             | TokenKind::Trait
             | TokenKind::System
             | TokenKind::Constraint
+            | TokenKind::Rule
             | TokenKind::Evolves
             | TokenKind::Exegesis
             | TokenKind::Test
@@ -2879,10 +2944,11 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RightBrace)?;
 
-        Ok(Expr::SexBlock {
+        Ok(Expr::SexBlock(Block {
             statements,
             final_expr,
-        })
+            span: Span::default(),
+        }))
     }
 
     /// Parses the interior of a block expression (without braces).
@@ -2924,10 +2990,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Expr::Block {
+        Ok(Expr::Block(Block {
             statements,
             final_expr,
-        })
+            span: Span::default(),
+        }))
     }
 
     /// Checks if a token kind can be used as an identifier (for struct field names, etc.)
@@ -2939,6 +3006,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::Trait
                 | TokenKind::System
                 | TokenKind::Constraint
+                | TokenKind::Rule
                 | TokenKind::Evolves
                 | TokenKind::Exegesis
                 | TokenKind::Test
@@ -3266,57 +3334,142 @@ impl<'a> Parser<'a> {
     pub fn parse_type(&mut self) -> Result<TypeExpr, ParseError> {
         // Handle built-in type keywords
         let base_type = match self.current.kind {
-            TokenKind::Int8 => {
+            // v0.8.0 NEW type keywords (lowercase)
+            TokenKind::I8 => {
                 self.advance();
-                TypeExpr::Named("Int8".to_string())
+                TypeExpr::Named("i8".to_string())
+            }
+            TokenKind::I16 => {
+                self.advance();
+                TypeExpr::Named("i16".to_string())
+            }
+            TokenKind::I32 => {
+                self.advance();
+                TypeExpr::Named("i32".to_string())
+            }
+            TokenKind::I64 => {
+                self.advance();
+                TypeExpr::Named("i64".to_string())
+            }
+            TokenKind::I128 => {
+                self.advance();
+                TypeExpr::Named("i128".to_string())
+            }
+            TokenKind::U8 => {
+                self.advance();
+                TypeExpr::Named("u8".to_string())
+            }
+            TokenKind::U16 => {
+                self.advance();
+                TypeExpr::Named("u16".to_string())
+            }
+            TokenKind::U32 => {
+                self.advance();
+                TypeExpr::Named("u32".to_string())
+            }
+            TokenKind::U64 => {
+                self.advance();
+                TypeExpr::Named("u64".to_string())
+            }
+            TokenKind::U128 => {
+                self.advance();
+                TypeExpr::Named("u128".to_string())
+            }
+            TokenKind::F32 => {
+                self.advance();
+                TypeExpr::Named("f32".to_string())
+            }
+            TokenKind::F64 => {
+                self.advance();
+                TypeExpr::Named("f64".to_string())
+            }
+            TokenKind::Bool => {
+                self.advance();
+                TypeExpr::Named("bool".to_string())
+            }
+            TokenKind::Str => {
+                self.advance();
+                TypeExpr::Named("string".to_string())
+            }
+
+            // DEPRECATED type keywords (uppercase) - emit warnings
+            TokenKind::Int8 => {
+                eprintln!("warning: 'Int8' type is deprecated in v0.8.0, use 'i8' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
+                self.advance();
+                TypeExpr::Named("i8".to_string())
             }
             TokenKind::Int16 => {
+                eprintln!("warning: 'Int16' type is deprecated in v0.8.0, use 'i16' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Int16".to_string())
+                TypeExpr::Named("i16".to_string())
             }
             TokenKind::Int32 => {
+                eprintln!("warning: 'Int32' type is deprecated in v0.8.0, use 'i32' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Int32".to_string())
+                TypeExpr::Named("i32".to_string())
             }
             TokenKind::Int64 => {
+                eprintln!("warning: 'Int64' type is deprecated in v0.8.0, use 'i64' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Int64".to_string())
+                TypeExpr::Named("i64".to_string())
             }
             TokenKind::UInt8 => {
+                eprintln!("warning: 'UInt8' type is deprecated in v0.8.0, use 'u8' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("UInt8".to_string())
+                TypeExpr::Named("u8".to_string())
             }
             TokenKind::UInt16 => {
+                eprintln!("warning: 'UInt16' type is deprecated in v0.8.0, use 'u16' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("UInt16".to_string())
+                TypeExpr::Named("u16".to_string())
             }
             TokenKind::UInt32 => {
+                eprintln!("warning: 'UInt32' type is deprecated in v0.8.0, use 'u32' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("UInt32".to_string())
+                TypeExpr::Named("u32".to_string())
             }
             TokenKind::UInt64 => {
+                eprintln!("warning: 'UInt64' type is deprecated in v0.8.0, use 'u64' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("UInt64".to_string())
+                TypeExpr::Named("u64".to_string())
             }
             TokenKind::Float32 => {
+                eprintln!("warning: 'Float32' type is deprecated in v0.8.0, use 'f32' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Float32".to_string())
+                TypeExpr::Named("f32".to_string())
             }
             TokenKind::Float64 => {
+                eprintln!("warning: 'Float64' type is deprecated in v0.8.0, use 'f64' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Float64".to_string())
+                TypeExpr::Named("f64".to_string())
             }
             TokenKind::BoolType => {
+                eprintln!("warning: 'Bool' type is deprecated in v0.8.0, use 'bool' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Bool".to_string())
+                TypeExpr::Named("bool".to_string())
             }
             TokenKind::StringType => {
+                eprintln!("warning: 'String' type is deprecated in v0.8.0, use 'string' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("String".to_string())
+                TypeExpr::Named("string".to_string())
             }
             TokenKind::VoidType => {
+                eprintln!("warning: 'Void' type is deprecated in v0.8.0, use unit type '()' instead at line {}, column {}",
+                    self.current.span.line, self.current.span.column);
                 self.advance();
-                TypeExpr::Named("Void".to_string())
+                TypeExpr::Tuple(Vec::new()) // Void maps to unit type
             }
             TokenKind::Bang => {
                 self.advance();
@@ -3400,6 +3553,15 @@ impl<'a> Parser<'a> {
                     TypeExpr::Enum { variants }
                 // Check for generic type
                 } else if self.current.kind == TokenKind::Lt {
+                    // v0.8.0: Emit deprecation warnings for List and Optional
+                    if name == "List" {
+                        eprintln!("warning: 'List<T>' is deprecated in v0.8.0, use 'Vec<T>' instead at line {}, column {}",
+                            self.previous.span.line, self.previous.span.column);
+                    } else if name == "Optional" {
+                        eprintln!("warning: 'Optional<T>' is deprecated in v0.8.0, use 'Option<T>' instead at line {}, column {}",
+                            self.previous.span.line, self.previous.span.column);
+                    }
+
                     self.advance();
                     let mut args = Vec::new();
                     // Also check for Compose (>>) which can occur in nested generics
@@ -3416,7 +3578,20 @@ impl<'a> Parser<'a> {
                     }
                     // Use special method that handles >> splitting
                     self.expect_greater_in_type()?;
-                    TypeExpr::Generic { name, args }
+
+                    // Normalize deprecated type names in the AST
+                    let normalized_name = if name == "List" {
+                        "Vec"
+                    } else if name == "Optional" {
+                        "Option"
+                    } else {
+                        &name
+                    };
+
+                    TypeExpr::Generic {
+                        name: normalized_name.to_string(),
+                        args,
+                    }
                 } else {
                     TypeExpr::Named(name)
                 }
@@ -3878,6 +4053,7 @@ impl<'a> Parser<'a> {
             | TokenKind::Trait
             | TokenKind::System
             | TokenKind::Constraint
+            | TokenKind::Rule
             | TokenKind::Evolves
             | TokenKind::Exegesis
             | TokenKind::Test

@@ -5,7 +5,7 @@ trait entity.greetable {
   greeting is polite
 }
 
-exegesis {
+docs {
   The entity.greetable trait defines behavior for entities that can
   participate in greetings. This trait:
 

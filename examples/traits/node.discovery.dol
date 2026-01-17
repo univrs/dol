@@ -9,7 +9,7 @@ trait node.discovery {
   each discovery emits event
 }
 
-exegesis {
+docs {
   Node discovery is a fundamental capability in distributed systems that enables
   dynamic topology management and service coordination. When a new node joins a
   distributed cluster, it must be discovered by existing nodes through mechanisms

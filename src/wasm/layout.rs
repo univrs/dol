@@ -940,8 +940,8 @@ mod tests {
         }))
     }
 
-    fn make_gene(name: &str, statements: Vec<Statement>) -> Gene {
-        Gene {
+    fn make_gene(name: &str, statements: Vec<Statement>) -> Gen {
+        Gen {
             name: name.to_string(),
             visibility: Visibility::Private,
             extends: None,
@@ -1111,7 +1111,7 @@ mod tests {
         //   has value: Int64
         //   has next: &Node  (reference)
         // }
-        let gene = Gene {
+        let gene = Gen {
             name: "Node".to_string(),
             visibility: Visibility::Private,
             extends: None,
@@ -1230,7 +1230,7 @@ mod tests {
         registry.register(animal_layout);
 
         // gene Dog extends Animal { has breed_id: Int64 }
-        let dog_gene = Gene {
+        let dog_gene = Gen {
             name: "Dog".to_string(),
             visibility: Visibility::Private,
             extends: Some("Animal".to_string()),
@@ -1259,7 +1259,7 @@ mod tests {
     fn test_gene_inheritance_unknown_parent() {
         // gene Dog extends Animal { has breed_id: Int64 }
         // But Animal is not in the registry
-        let dog_gene = Gene {
+        let dog_gene = Gen {
             name: "Dog".to_string(),
             visibility: Visibility::Private,
             extends: Some("Animal".to_string()),

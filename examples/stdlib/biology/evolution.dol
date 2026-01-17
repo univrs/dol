@@ -7,21 +7,21 @@ module biology.evolution @ 1.0.0
 use biology.types.{ GeoTime, Generation }
 
 /// Genetic trait (simplified)
-pub gene Trait {
-  has name: String
-  has value: Float64
-  has heritability: Float64
-  has mutation_rate: Float64
+pub gen Trait {
+  has name: string
+  has value: f64
+  has heritability: f64
+  has mutation_rate: f64
 
-  constraint heritability_bounds {
+  rule heritability_bounds {
     this.heritability >= 0.0 && this.heritability <= 1.0
   }
 
-  constraint mutation_rate_bounds {
+  rule mutation_rate_bounds {
     this.mutation_rate >= 0.0 && this.mutation_rate <= 1.0
   }
 
-  fun inherit(parent_value: Float64) -> Trait {
+  fun inherit(parent_value: f64) -> Trait {
     inherited = parent_value * this.heritability
 
     mutation = if random() < this.mutation_rate {
@@ -38,29 +38,29 @@ pub gene Trait {
     }
   }
 
-  exegesis {
+  docs {
     A heritable trait subject to mutation.
     Heritability determines parent-offspring correlation.
   }
 }
 
 /// Genome (collection of traits)
-pub gene Genome {
-  has traits: Map<String, Trait>
-  has fitness: Float64
+pub gen Genome {
+  has traits: Map<string, Trait>
+  has fitness: f64
 
-  constraint positive_fitness {
+  rule positive_fitness {
     this.fitness >= 0.0
   }
 
-  fun calculate_fitness(environment: Environment) -> Float64 {
+  fun calculate_fitness(environment: Environment) -> f64 {
     total = 0.0
     for (name, trait) in this.traits {
       optimal = environment.optimal_values.get(name).unwrap_or(0.5)
       distance = (trait.value - optimal).abs()
       total += 1.0 - distance
     }
-    return total / this.traits.len() as Float64
+    return total / this.traits.len() as f64
   }
 
   fun recombine(other: Genome) -> Genome {
@@ -73,19 +73,19 @@ pub gene Genome {
     return Genome { traits: new_traits, fitness: 0.0 }
   }
 
-  exegesis {
+  docs {
     A genome as a collection of heritable traits.
     Fitness is calculated relative to environment.
   }
 }
 
 /// Species lineage for tracking evolution
-pub gene Lineage {
-  has ancestor_id: Option<UInt64>
+pub gen Lineage {
+  has ancestor_id: Option<u64>
   has divergence_time: GeoTime
-  has innovations: List<String>
+  has innovations: Vec<string>
 
-  exegesis {
+  docs {
     Tracks evolutionary lineage and innovations.
     Used for phylogenetic reconstruction.
   }
@@ -93,10 +93,10 @@ pub gene Lineage {
 
 /// Trait for entities that can evolve
 pub trait Evolvable {
-  is mutate(rate: Float64) -> Self
+  is mutate(rate: f64) -> Self
   is reproduce(other: Self) -> Self
-  is fitness(env: Environment) -> Float64
-  is should_speciate(population: List<Self>) -> Bool
+  is fitness(env: Environment) -> f64
+  is should_speciate(population: Vec<Self>) -> bool
 
   law fitness_inheritance {
     forall p1: Self, p2: Self.
@@ -106,39 +106,39 @@ pub trait Evolvable {
   }
 
   law speciation_requires_isolation {
-    forall population: List<Self>.
+    forall population: Vec<Self>.
       this.should_speciate(population) implies
         (reproductive_isolation(self, population) > threshold)
   }
 
-  exegesis {
+  docs {
     Evolvable trait for entities subject to evolution.
     Combines mutation, recombination, and selection.
   }
 }
 
-// Using DOL's evolves keyword for speciation
+// Using DOL's evo keyword for speciation
 
 /// Base organism
-pub gene Organism {
-  has species_id: UInt64
+pub gen Organism {
+  has species_id: u64
   has genome: Genome
   has lineage: Lineage
   has generation: Generation
 
-  exegesis {
+  docs {
     Base organism type from which species evolve.
   }
 }
 
 /// Prokaryote evolved from Organism
-evolves Organism > Prokaryote @ 3.5Gya {
+evo Organism > Prokaryote @ 3.5Gya {
   removed eukaryotic_features
 
   added cell_wall: CellWall
-  added circular_chromosome: Bool = true
+  added circular_chromosome: bool = true
 
-  constraint no_nucleus {
+  rule no_nucleus {
     not this.has_nucleus
   }
 
@@ -157,7 +157,7 @@ evolves Organism > Prokaryote @ 3.5Gya {
     }
   }
 
-  exegesis {
+  docs {
     Prokaryotes: first cellular life forms.
     Evolved ~3.5 billion years ago.
     Lack membrane-bound organelles.
@@ -165,16 +165,16 @@ evolves Organism > Prokaryote @ 3.5Gya {
 }
 
 /// Eukaryote evolved from Organism (via endosymbiosis)
-evolves Organism > Eukaryote @ 2.0Gya {
+evo Organism > Eukaryote @ 2.0Gya {
   added nucleus: Nucleus
-  added mitochondria: List<Mitochondrion>
-  added endomembrane_system: Bool = true
+  added mitochondria: Vec<Mitochondrion>
+  added endomembrane_system: bool = true
 
-  constraint has_nucleus {
+  rule has_nucleus {
     this.nucleus is not null
   }
 
-  constraint has_mitochondria {
+  rule has_mitochondria {
     this.mitochondria.len() >= 1
   }
 
@@ -194,7 +194,7 @@ evolves Organism > Eukaryote @ 2.0Gya {
     }
   }
 
-  exegesis {
+  docs {
     Eukaryotes: complex cells with membrane-bound organelles.
     Evolved ~2 billion years ago via endosymbiosis.
     Mitochondria were once free-living bacteria.
@@ -202,13 +202,13 @@ evolves Organism > Eukaryote @ 2.0Gya {
 }
 
 /// Fungi evolved from Eukaryote
-evolves Eukaryote > Fungus @ 1.0Gya {
-  added chitin_cell_wall: Bool = true
-  added hyphal_growth: Bool = true
+evo Eukaryote > Fungus @ 1.0Gya {
+  added chitin_cell_wall: bool = true
+  added hyphal_growth: bool = true
 
   removed chloroplasts
 
-  constraint heterotrophic {
+  rule heterotrophic {
     not this.can_photosynthesize
   }
 
@@ -225,7 +225,7 @@ evolves Eukaryote > Fungus @ 1.0Gya {
     }
   }
 
-  exegesis {
+  docs {
     Fungi: heterotrophic eukaryotes with chitin cell walls.
     Evolved ~1 billion years ago.
     Include yeasts, molds, and mushrooms.

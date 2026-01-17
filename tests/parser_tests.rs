@@ -1015,7 +1015,7 @@ fn test_parse_lambda() {
 fn test_parse_lambda_with_type() {
     use metadol::ast::{Expr, TypeExpr};
 
-    let input = "|x: Int32| -> Int32 { x }";
+    let input = "|x: i32| -> i32 { x }";
     let mut parser = Parser::new(input);
     let expr = parser.parse_expr(0).unwrap();
 
@@ -1028,12 +1028,12 @@ fn test_parse_lambda_with_type() {
             assert_eq!(params.len(), 1);
             assert_eq!(params[0].0, "x");
             match &params[0].1 {
-                Some(TypeExpr::Named(name)) => assert_eq!(name, "Int32"),
-                _ => panic!("Expected Int32 type annotation"),
+                Some(TypeExpr::Named(name)) => assert_eq!(name, "i32"),
+                _ => panic!("Expected i32 type annotation"),
             }
             match return_type {
-                Some(TypeExpr::Named(name)) => assert_eq!(name, "Int32"),
-                _ => panic!("Expected Int32 return type"),
+                Some(TypeExpr::Named(name)) => assert_eq!(name, "i32"),
+                _ => panic!("Expected i32 return type"),
             }
         }
         _ => panic!("Expected lambda expression"),
@@ -1141,7 +1141,7 @@ fn test_parse_let_statement() {
 fn test_parse_let_with_type() {
     use metadol::ast::{Stmt, TypeExpr};
 
-    let input = "let x: Int32 = value;";
+    let input = "let x: i32 = value;";
     let mut parser = Parser::new(input);
     let stmt = parser.parse_stmt().unwrap();
 
@@ -1153,8 +1153,8 @@ fn test_parse_let_with_type() {
         } => {
             assert_eq!(name, "x");
             match type_ann {
-                Some(TypeExpr::Named(t)) => assert_eq!(t, "Int32"),
-                _ => panic!("Expected Int32 type annotation"),
+                Some(TypeExpr::Named(t)) => assert_eq!(t, "i32"),
+                _ => panic!("Expected i32 type annotation"),
             }
         }
         _ => panic!("Expected let statement"),
@@ -1215,10 +1215,11 @@ fn test_parse_block_expression() {
     let expr = parser.parse_expr(0).unwrap();
 
     match expr {
-        Expr::Block {
+        Expr::Block(metadol::ast::Block {
             statements,
             final_expr,
-        } => {
+            ..
+        }) => {
             assert_eq!(statements.len(), 1);
             assert!(final_expr.is_some());
         }
@@ -1502,9 +1503,10 @@ fn test_parse_type_named() {
 fn test_parse_type_builtin() {
     use metadol::ast::TypeExpr;
 
+    // v0.8.0 uses Rust-aligned lowercase type names
     let types = vec![
-        "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float32",
-        "Float64", "Bool", "String", "Void",
+        "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f32", "f64", "bool",
+        "string",
     ];
 
     for type_name in types {
@@ -1516,22 +1518,30 @@ fn test_parse_type_builtin() {
             _ => panic!("Expected named type for {}", type_name),
         }
     }
+
+    // Test unit type separately - () parses as empty tuple
+    let mut parser = Parser::new("()");
+    let type_expr = parser.parse_type().unwrap();
+    match type_expr {
+        TypeExpr::Tuple(types) => assert!(types.is_empty(), "Expected empty tuple for unit type"),
+        _ => panic!("Expected tuple type for ()"),
+    }
 }
 
 #[test]
 fn test_parse_type_generic() {
     use metadol::ast::TypeExpr;
 
-    let mut parser = Parser::new("List<Int32>");
+    let mut parser = Parser::new("Vec<i32>");
     let type_expr = parser.parse_type().unwrap();
 
     match type_expr {
         TypeExpr::Generic { name, args } => {
-            assert_eq!(name, "List");
+            assert_eq!(name, "Vec");
             assert_eq!(args.len(), 1);
             match &args[0] {
-                TypeExpr::Named(n) => assert_eq!(n, "Int32"),
-                _ => panic!("Expected Int32 type argument"),
+                TypeExpr::Named(n) => assert_eq!(n, "i32"),
+                _ => panic!("Expected i32 type argument"),
             }
         }
         _ => panic!("Expected generic type"),
@@ -1542,7 +1552,7 @@ fn test_parse_type_generic() {
 fn test_parse_type_tuple() {
     use metadol::ast::TypeExpr;
 
-    let mut parser = Parser::new("(Int32, String)");
+    let mut parser = Parser::new("(i32, string)");
     let type_expr = parser.parse_type().unwrap();
 
     match type_expr {
@@ -1557,7 +1567,7 @@ fn test_parse_type_tuple() {
 fn test_parse_type_function() {
     use metadol::ast::TypeExpr;
 
-    let mut parser = Parser::new("(Int32, String) -> Bool");
+    let mut parser = Parser::new("(i32, string) -> bool");
     let type_expr = parser.parse_type().unwrap();
 
     match type_expr {
@@ -1567,8 +1577,8 @@ fn test_parse_type_function() {
         } => {
             assert_eq!(params.len(), 2);
             match *return_type {
-                TypeExpr::Named(ref name) => assert_eq!(name, "Bool"),
-                _ => panic!("Expected Bool return type"),
+                TypeExpr::Named(ref name) => assert_eq!(name, "bool"),
+                _ => panic!("Expected bool return type"),
             }
         }
         _ => panic!("Expected function type"),

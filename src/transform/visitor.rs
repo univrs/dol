@@ -4,8 +4,8 @@
 //! (for analysis) or mutably (for transformation).
 
 use crate::ast::{
-    BinaryOp, Constraint, Declaration, Evolution, Expr, Gene, Literal, MatchArm, Pattern,
-    Statement, Stmt, System, Trait, TypeExpr, UnaryOp,
+    BinaryOp, Block, Declaration, Evo, Expr, Gen, Literal, MatchArm, Pattern, Rule, Statement,
+    Stmt, System, Trait, TypeExpr, UnaryOp,
 };
 
 /// Immutable visitor for AST traversal.
@@ -18,7 +18,7 @@ pub trait Visitor {
     }
 
     /// Visit a gene.
-    fn visit_gene(&mut self, gene: &Gene) {
+    fn visit_gene(&mut self, gene: &Gen) {
         walk_gene(self, gene);
     }
 
@@ -28,7 +28,7 @@ pub trait Visitor {
     }
 
     /// Visit a constraint.
-    fn visit_constraint(&mut self, c: &Constraint) {
+    fn visit_constraint(&mut self, c: &Rule) {
         walk_constraint(self, c);
     }
 
@@ -38,7 +38,7 @@ pub trait Visitor {
     }
 
     /// Visit an evolution.
-    fn visit_evolution(&mut self, _evo: &Evolution) {}
+    fn visit_evolution(&mut self, _evo: &Evo) {}
 
     /// Visit a top-level function declaration.
     fn visit_function_decl(&mut self, func: &crate::ast::FunctionDecl) {
@@ -98,7 +98,7 @@ pub trait MutVisitor {
     }
 
     /// Transform a gene.
-    fn visit_gene(&mut self, gene: &mut Gene) {
+    fn visit_gene(&mut self, gene: &mut Gen) {
         walk_gene_mut(self, gene);
     }
 
@@ -108,7 +108,7 @@ pub trait MutVisitor {
     }
 
     /// Transform a constraint.
-    fn visit_constraint(&mut self, c: &mut Constraint) {
+    fn visit_constraint(&mut self, c: &mut Rule) {
         walk_constraint_mut(self, c);
     }
 
@@ -118,7 +118,7 @@ pub trait MutVisitor {
     }
 
     /// Transform an evolution.
-    fn visit_evolution(&mut self, _evo: &mut Evolution) {}
+    fn visit_evolution(&mut self, _evo: &mut Evo) {}
 
     /// Transform a top-level function declaration.
     fn visit_function_decl(&mut self, func: &mut crate::ast::FunctionDecl) {
@@ -177,7 +177,7 @@ fn walk_function_decl<V: Visitor + ?Sized>(v: &mut V, func: &crate::ast::Functio
     }
 }
 
-fn walk_gene<V: Visitor + ?Sized>(v: &mut V, gene: &Gene) {
+fn walk_gene<V: Visitor + ?Sized>(v: &mut V, gene: &Gen) {
     for stmt in &gene.statements {
         v.visit_statement(stmt);
     }
@@ -189,7 +189,7 @@ fn walk_trait<V: Visitor + ?Sized>(v: &mut V, tr: &Trait) {
     }
 }
 
-fn walk_constraint<V: Visitor + ?Sized>(v: &mut V, c: &Constraint) {
+fn walk_constraint<V: Visitor + ?Sized>(v: &mut V, c: &Rule) {
     for stmt in &c.statements {
         v.visit_statement(stmt);
     }
@@ -275,10 +275,11 @@ fn walk_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
                 v.visit_match_arm(arm);
             }
         }
-        Expr::Block {
+        Expr::Block(Block {
             statements,
             final_expr,
-        } => {
+            ..
+        }) => {
             for stmt in statements {
                 v.visit_stmt(stmt);
             }
@@ -309,10 +310,11 @@ fn walk_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
             v.visit_expr(left);
             v.visit_expr(right);
         }
-        Expr::SexBlock {
+        Expr::SexBlock(Block {
             statements,
             final_expr,
-        } => {
+            ..
+        }) => {
             for stmt in statements {
                 v.visit_stmt(stmt);
             }
@@ -390,7 +392,7 @@ fn walk_function_decl_mut<V: MutVisitor + ?Sized>(v: &mut V, func: &mut crate::a
     }
 }
 
-fn walk_gene_mut<V: MutVisitor + ?Sized>(v: &mut V, gene: &mut Gene) {
+fn walk_gene_mut<V: MutVisitor + ?Sized>(v: &mut V, gene: &mut Gen) {
     for stmt in &mut gene.statements {
         v.visit_statement(stmt);
     }
@@ -402,7 +404,7 @@ fn walk_trait_mut<V: MutVisitor + ?Sized>(v: &mut V, tr: &mut Trait) {
     }
 }
 
-fn walk_constraint_mut<V: MutVisitor + ?Sized>(v: &mut V, c: &mut Constraint) {
+fn walk_constraint_mut<V: MutVisitor + ?Sized>(v: &mut V, c: &mut Rule) {
     for stmt in &mut c.statements {
         v.visit_statement(stmt);
     }
@@ -484,10 +486,11 @@ fn walk_expr_mut<V: MutVisitor + ?Sized>(v: &mut V, expr: &mut Expr) {
                 v.visit_match_arm(arm);
             }
         }
-        Expr::Block {
+        Expr::Block(Block {
             statements,
             final_expr,
-        } => {
+            ..
+        }) => {
             for stmt in statements {
                 v.visit_stmt(stmt);
             }
@@ -518,10 +521,11 @@ fn walk_expr_mut<V: MutVisitor + ?Sized>(v: &mut V, expr: &mut Expr) {
             v.visit_expr(left);
             v.visit_expr(right);
         }
-        Expr::SexBlock {
+        Expr::SexBlock(Block {
             statements,
             final_expr,
-        } => {
+            ..
+        }) => {
             for stmt in statements {
                 v.visit_stmt(stmt);
             }

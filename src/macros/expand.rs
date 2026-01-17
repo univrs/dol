@@ -27,7 +27,7 @@ use super::{
     AttributeArg, BuiltinMacros, Macro, MacroAttribute, MacroContext, MacroError, MacroInput,
     MacroInvocation, MacroOutput,
 };
-use crate::ast::{Declaration, Expr, Literal, Span, Stmt};
+use crate::ast::{Block, Declaration, Expr, Literal, Span, Stmt};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -406,10 +406,11 @@ impl MacroExpander {
                 })
             }
 
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 let expanded_stmts: Result<Vec<Stmt>, MacroError> = statements
                     .into_iter()
                     .map(|s| self.expand_stmt_recursively(s, ctx, depth))
@@ -419,10 +420,11 @@ impl MacroExpander {
                     .transpose()?
                     .map(Box::new);
 
-                Ok(Expr::Block {
+                Ok(Expr::Block(Block {
                     statements: expanded_stmts?,
                     final_expr: expanded_final,
-                })
+                    span: Span::default(),
+                }))
             }
 
             Expr::Quote(inner) => {

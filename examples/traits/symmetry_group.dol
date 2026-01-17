@@ -25,7 +25,7 @@ trait gdl.symmetry_group {
   action is equivariant
 }
 
-exegesis {
+docs {
   The gdl.symmetry_group trait represents mathematical groups in the
   Geometric Deep Learning (GDL) Blueprint. Groups are the fundamental
   algebraic structures that encode symmetries in machine learning.
@@ -64,7 +64,7 @@ exegesis {
   EQUIVARIANCE CONSTRAINT:
   The act operation defines how symmetries transform domain elements.
   Equivariant architectures must respect: f(act(g, x)) = act(g, f(x))
-  This is the fundamental constraint of geometric deep learning: neural
+  This is the fundamental rule of geometric deep learning: neural
   network functions f must commute with group actions.
 
   REFERENCES:

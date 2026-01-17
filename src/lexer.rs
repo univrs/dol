@@ -80,18 +80,26 @@ impl Default for Token {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TokenKind {
     // === Declaration Keywords ===
-    /// The `gene` keyword
+    /// The `gene` keyword (DEPRECATED in v0.8.0, use `gen`)
     Gene,
+    /// The `gen` keyword (v0.8.0+)
+    Gen,
     /// The `trait` keyword
     Trait,
-    /// The `constraint` keyword
+    /// The `constraint` keyword (DEPRECATED in v0.8.0, use `rule`)
     Constraint,
+    /// The `rule` keyword (v0.8.0+)
+    Rule,
     /// The `system` keyword
     System,
-    /// The `evolves` keyword
+    /// The `evolves` keyword (DEPRECATED in v0.8.0, use `evo`)
     Evolves,
-    /// The `exegesis` keyword
+    /// The `evo` keyword (v0.8.0+)
+    Evo,
+    /// The `exegesis` keyword (DEPRECATED in v0.8.0, use `docs`)
     Exegesis,
+    /// The `docs` keyword (v0.8.0+)
+    Docs,
 
     // === Predicate Keywords ===
     /// The `has` predicate
@@ -210,32 +218,63 @@ pub enum TokenKind {
     Underscore,
 
     // === Type Keywords (DOL 2.0) ===
-    /// 8-bit signed integer type
+    // Legacy type names (DEPRECATED in v0.8.0)
+    /// 8-bit signed integer type (DEPRECATED: use `i8`)
     Int8,
-    /// 16-bit signed integer type
+    /// 16-bit signed integer type (DEPRECATED: use `i16`)
     Int16,
-    /// 32-bit signed integer type
+    /// 32-bit signed integer type (DEPRECATED: use `i32`)
     Int32,
-    /// 64-bit signed integer type
+    /// 64-bit signed integer type (DEPRECATED: use `i64`)
     Int64,
-    /// 8-bit unsigned integer type
+    /// 8-bit unsigned integer type (DEPRECATED: use `u8`)
     UInt8,
-    /// 16-bit unsigned integer type
+    /// 16-bit unsigned integer type (DEPRECATED: use `u16`)
     UInt16,
-    /// 32-bit unsigned integer type
+    /// 32-bit unsigned integer type (DEPRECATED: use `u32`)
     UInt32,
-    /// 64-bit unsigned integer type
+    /// 64-bit unsigned integer type (DEPRECATED: use `u64`)
     UInt64,
-    /// 32-bit floating point type
+    /// 32-bit floating point type (DEPRECATED: use `f32`)
     Float32,
-    /// 64-bit floating point type
+    /// 64-bit floating point type (DEPRECATED: use `f64`)
     Float64,
-    /// Boolean type
+    /// Boolean type (DEPRECATED: use `bool`)
     BoolType,
-    /// String type
+    /// String type (DEPRECATED: use `string`)
     StringType,
-    /// Void type
+    /// Void type (DEPRECATED: maps to unit type)
     VoidType,
+
+    // New shortened type names (v0.8.0+)
+    /// 8-bit signed integer type
+    I8,
+    /// 16-bit signed integer type
+    I16,
+    /// 32-bit signed integer type
+    I32,
+    /// 64-bit signed integer type
+    I64,
+    /// 128-bit signed integer type
+    I128,
+    /// 8-bit unsigned integer type
+    U8,
+    /// 16-bit unsigned integer type
+    U16,
+    /// 32-bit unsigned integer type
+    U32,
+    /// 64-bit unsigned integer type
+    U64,
+    /// 128-bit unsigned integer type
+    U128,
+    /// 32-bit floating point type
+    F32,
+    /// 64-bit floating point type
+    F64,
+    /// Boolean type
+    Bool,
+    /// String type
+    Str,
 
     // === Function Keyword (DOL 2.0) ===
     /// The `fun` keyword
@@ -390,11 +429,15 @@ impl TokenKind {
         matches!(
             self,
             TokenKind::Gene
+                | TokenKind::Gen
                 | TokenKind::Trait
                 | TokenKind::Constraint
+                | TokenKind::Rule
                 | TokenKind::System
                 | TokenKind::Evolves
+                | TokenKind::Evo
                 | TokenKind::Exegesis
+                | TokenKind::Docs
                 | TokenKind::Has
                 | TokenKind::Is
                 | TokenKind::Derives
@@ -429,7 +472,7 @@ impl TokenKind {
                 | TokenKind::Return
                 | TokenKind::In
                 | TokenKind::Where
-                // DOL 2.0 Type Keywords
+                // DOL 2.0 Type Keywords (Legacy)
                 | TokenKind::Int8
                 | TokenKind::Int16
                 | TokenKind::Int32
@@ -443,6 +486,21 @@ impl TokenKind {
                 | TokenKind::BoolType
                 | TokenKind::StringType
                 | TokenKind::VoidType
+                // DOL v0.8.0 Type Keywords (New)
+                | TokenKind::I8
+                | TokenKind::I16
+                | TokenKind::I32
+                | TokenKind::I64
+                | TokenKind::I128
+                | TokenKind::U8
+                | TokenKind::U16
+                | TokenKind::U32
+                | TokenKind::U64
+                | TokenKind::U128
+                | TokenKind::F32
+                | TokenKind::F64
+                | TokenKind::Bool
+                | TokenKind::Str
                 // DOL 2.0 Function Keyword
                 | TokenKind::Function
                 // DOL 2.0 Visibility Keywords
@@ -498,11 +556,15 @@ impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenKind::Gene => write!(f, "gene"),
+            TokenKind::Gen => write!(f, "gen"),
             TokenKind::Trait => write!(f, "trait"),
             TokenKind::Constraint => write!(f, "constraint"),
+            TokenKind::Rule => write!(f, "rule"),
             TokenKind::System => write!(f, "system"),
             TokenKind::Evolves => write!(f, "evolves"),
+            TokenKind::Evo => write!(f, "evo"),
             TokenKind::Exegesis => write!(f, "exegesis"),
+            TokenKind::Docs => write!(f, "docs"),
             TokenKind::Has => write!(f, "has"),
             TokenKind::Is => write!(f, "is"),
             TokenKind::Derives => write!(f, "derives"),
@@ -556,7 +618,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Bar => write!(f, "|"),
             TokenKind::Underscore => write!(f, "_"),
-            // DOL 2.0 Type Keywords
+            // DOL 2.0 Type Keywords (Legacy)
             TokenKind::Int8 => write!(f, "Int8"),
             TokenKind::Int16 => write!(f, "Int16"),
             TokenKind::Int32 => write!(f, "Int32"),
@@ -570,6 +632,21 @@ impl std::fmt::Display for TokenKind {
             TokenKind::BoolType => write!(f, "Bool"),
             TokenKind::StringType => write!(f, "String"),
             TokenKind::VoidType => write!(f, "Void"),
+            // DOL v0.8.0 Type Keywords (New)
+            TokenKind::I8 => write!(f, "i8"),
+            TokenKind::I16 => write!(f, "i16"),
+            TokenKind::I32 => write!(f, "i32"),
+            TokenKind::I64 => write!(f, "i64"),
+            TokenKind::I128 => write!(f, "i128"),
+            TokenKind::U8 => write!(f, "u8"),
+            TokenKind::U16 => write!(f, "u16"),
+            TokenKind::U32 => write!(f, "u32"),
+            TokenKind::U64 => write!(f, "u64"),
+            TokenKind::U128 => write!(f, "u128"),
+            TokenKind::F32 => write!(f, "f32"),
+            TokenKind::F64 => write!(f, "f64"),
+            TokenKind::Bool => write!(f, "bool"),
+            TokenKind::Str => write!(f, "string"),
             // DOL 2.0 Function Keyword
             TokenKind::Function => write!(f, "fun"),
             // DOL 2.0 Visibility Keywords
@@ -1186,13 +1263,17 @@ impl<'a> Lexer<'a> {
     /// Returns the keyword kind for a lexeme, if it's a keyword.
     fn keyword_kind(&self, lexeme: &str) -> Option<TokenKind> {
         match lexeme {
-            // DOL 1.x keywords
+            // DOL 1.x keywords (with v0.8.0 deprecations)
             "gene" => Some(TokenKind::Gene),
+            "gen" => Some(TokenKind::Gen),
             "trait" => Some(TokenKind::Trait),
             "constraint" => Some(TokenKind::Constraint),
+            "rule" => Some(TokenKind::Rule),
             "system" => Some(TokenKind::System),
             "evolves" => Some(TokenKind::Evolves),
+            "evo" => Some(TokenKind::Evo),
             "exegesis" => Some(TokenKind::Exegesis),
+            "docs" => Some(TokenKind::Docs),
             "has" => Some(TokenKind::Has),
             "is" => Some(TokenKind::Is),
             "derives" => Some(TokenKind::Derives),
@@ -1227,7 +1308,7 @@ impl<'a> Lexer<'a> {
             "return" => Some(TokenKind::Return),
             "in" => Some(TokenKind::In),
             "where" => Some(TokenKind::Where),
-            // DOL 2.0 type keywords
+            // DOL 2.0 type keywords (DEPRECATED in v0.8.0)
             "Int8" => Some(TokenKind::Int8),
             "Int16" => Some(TokenKind::Int16),
             "Int32" => Some(TokenKind::Int32),
@@ -1241,6 +1322,21 @@ impl<'a> Lexer<'a> {
             "Bool" => Some(TokenKind::BoolType),
             "String" => Some(TokenKind::StringType),
             "Void" => Some(TokenKind::VoidType),
+            // DOL v0.8.0 type keywords (NEW)
+            "i8" => Some(TokenKind::I8),
+            "i16" => Some(TokenKind::I16),
+            "i32" => Some(TokenKind::I32),
+            "i64" => Some(TokenKind::I64),
+            "i128" => Some(TokenKind::I128),
+            "u8" => Some(TokenKind::U8),
+            "u16" => Some(TokenKind::U16),
+            "u32" => Some(TokenKind::U32),
+            "u64" => Some(TokenKind::U64),
+            "u128" => Some(TokenKind::U128),
+            "f32" => Some(TokenKind::F32),
+            "f64" => Some(TokenKind::F64),
+            "bool" => Some(TokenKind::Bool),
+            "string" => Some(TokenKind::Str),
             // DOL 2.0 function keyword
             "fun" => Some(TokenKind::Function),
             // DOL 2.0 visibility keywords
@@ -1534,5 +1630,249 @@ mod tests {
         assert_eq!(lexer.next_token().kind, TokenKind::Extends);
         assert_eq!(lexer.next_token().kind, TokenKind::Forall);
         assert_eq!(lexer.next_token().kind, TokenKind::Type);
+    }
+
+    // DOL v0.8.0 Tests
+
+    #[test]
+    fn test_v080_new_keywords() {
+        let mut lexer = Lexer::new("gen rule evo docs");
+        assert_eq!(lexer.next_token().kind, TokenKind::Gen);
+        assert_eq!(lexer.next_token().kind, TokenKind::Rule);
+        assert_eq!(lexer.next_token().kind, TokenKind::Evo);
+        assert_eq!(lexer.next_token().kind, TokenKind::Docs);
+    }
+
+    #[test]
+    fn test_v080_deprecated_keywords() {
+        // Legacy keywords should still work
+        let mut lexer = Lexer::new("gene constraint evolves exegesis");
+        assert_eq!(lexer.next_token().kind, TokenKind::Gene);
+        assert_eq!(lexer.next_token().kind, TokenKind::Constraint);
+        assert_eq!(lexer.next_token().kind, TokenKind::Evolves);
+        assert_eq!(lexer.next_token().kind, TokenKind::Exegesis);
+    }
+
+    #[test]
+    fn test_v080_new_type_keywords_signed() {
+        let mut lexer = Lexer::new("i8 i16 i32 i64 i128");
+        assert_eq!(lexer.next_token().kind, TokenKind::I8);
+        assert_eq!(lexer.next_token().kind, TokenKind::I16);
+        assert_eq!(lexer.next_token().kind, TokenKind::I32);
+        assert_eq!(lexer.next_token().kind, TokenKind::I64);
+        assert_eq!(lexer.next_token().kind, TokenKind::I128);
+    }
+
+    #[test]
+    fn test_v080_new_type_keywords_unsigned() {
+        let mut lexer = Lexer::new("u8 u16 u32 u64 u128");
+        assert_eq!(lexer.next_token().kind, TokenKind::U8);
+        assert_eq!(lexer.next_token().kind, TokenKind::U16);
+        assert_eq!(lexer.next_token().kind, TokenKind::U32);
+        assert_eq!(lexer.next_token().kind, TokenKind::U64);
+        assert_eq!(lexer.next_token().kind, TokenKind::U128);
+    }
+
+    #[test]
+    fn test_v080_new_type_keywords_float() {
+        let mut lexer = Lexer::new("f32 f64");
+        assert_eq!(lexer.next_token().kind, TokenKind::F32);
+        assert_eq!(lexer.next_token().kind, TokenKind::F64);
+    }
+
+    #[test]
+    fn test_v080_new_type_keywords_bool_string() {
+        let mut lexer = Lexer::new("bool string");
+        assert_eq!(lexer.next_token().kind, TokenKind::Bool);
+        assert_eq!(lexer.next_token().kind, TokenKind::Str);
+    }
+
+    #[test]
+    fn test_v080_deprecated_type_keywords() {
+        // Legacy type keywords should still work
+        let mut lexer = Lexer::new("Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64");
+        assert_eq!(lexer.next_token().kind, TokenKind::Int8);
+        assert_eq!(lexer.next_token().kind, TokenKind::Int16);
+        assert_eq!(lexer.next_token().kind, TokenKind::Int32);
+        assert_eq!(lexer.next_token().kind, TokenKind::Int64);
+        assert_eq!(lexer.next_token().kind, TokenKind::UInt8);
+        assert_eq!(lexer.next_token().kind, TokenKind::UInt16);
+        assert_eq!(lexer.next_token().kind, TokenKind::UInt32);
+        assert_eq!(lexer.next_token().kind, TokenKind::UInt64);
+    }
+
+    #[test]
+    fn test_v080_deprecated_type_keywords_float() {
+        let mut lexer = Lexer::new("Float32 Float64");
+        assert_eq!(lexer.next_token().kind, TokenKind::Float32);
+        assert_eq!(lexer.next_token().kind, TokenKind::Float64);
+    }
+
+    #[test]
+    fn test_v080_deprecated_bool_string_void() {
+        let mut lexer = Lexer::new("Bool String Void");
+        assert_eq!(lexer.next_token().kind, TokenKind::BoolType);
+        assert_eq!(lexer.next_token().kind, TokenKind::StringType);
+        assert_eq!(lexer.next_token().kind, TokenKind::VoidType);
+    }
+
+    #[test]
+    fn test_v080_mixed_old_new_keywords() {
+        // Test that both old and new keywords can coexist
+        let mut lexer = Lexer::new("gene gen trait rule");
+        assert_eq!(lexer.next_token().kind, TokenKind::Gene);
+        assert_eq!(lexer.next_token().kind, TokenKind::Gen);
+        assert_eq!(lexer.next_token().kind, TokenKind::Trait);
+        assert_eq!(lexer.next_token().kind, TokenKind::Rule);
+    }
+
+    #[test]
+    fn test_v080_mixed_old_new_types() {
+        // Test that both old and new type keywords can coexist
+        let mut lexer = Lexer::new("Int32 i32 u64 UInt64");
+        assert_eq!(lexer.next_token().kind, TokenKind::Int32);
+        assert_eq!(lexer.next_token().kind, TokenKind::I32);
+        assert_eq!(lexer.next_token().kind, TokenKind::U64);
+        assert_eq!(lexer.next_token().kind, TokenKind::UInt64);
+    }
+
+    #[test]
+    fn test_v080_gen_declaration() {
+        // Test a complete gen declaration with new syntax
+        let mut lexer = Lexer::new("gen container.exists { }");
+        assert_eq!(lexer.next_token().kind, TokenKind::Gen);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+        assert_eq!(lexer.next_token().kind, TokenKind::LeftBrace);
+        assert_eq!(lexer.next_token().kind, TokenKind::RightBrace);
+    }
+
+    #[test]
+    fn test_v080_rule_declaration() {
+        // Test a rule declaration with new syntax
+        let mut lexer = Lexer::new("rule no.null.refs { }");
+        assert_eq!(lexer.next_token().kind, TokenKind::Rule);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+        assert_eq!(lexer.next_token().kind, TokenKind::LeftBrace);
+        assert_eq!(lexer.next_token().kind, TokenKind::RightBrace);
+    }
+
+    #[test]
+    fn test_v080_evo_keyword() {
+        // Test the evo keyword
+        let mut lexer = Lexer::new("evo 0.2.0 { }");
+        assert_eq!(lexer.next_token().kind, TokenKind::Evo);
+        assert_eq!(lexer.next_token().kind, TokenKind::Version);
+        assert_eq!(lexer.next_token().kind, TokenKind::LeftBrace);
+        assert_eq!(lexer.next_token().kind, TokenKind::RightBrace);
+    }
+
+    #[test]
+    fn test_v080_docs_keyword() {
+        // Test the docs keyword
+        let mut lexer = Lexer::new("docs \"Documentation string\"");
+        assert_eq!(lexer.next_token().kind, TokenKind::Docs);
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::String);
+        assert_eq!(token.lexeme, "Documentation string");
+    }
+
+    #[test]
+    fn test_v080_i128_type() {
+        // Test the new i128 type
+        let mut lexer = Lexer::new("i128");
+        assert_eq!(lexer.next_token().kind, TokenKind::I128);
+    }
+
+    #[test]
+    fn test_v080_u128_type() {
+        // Test the new u128 type
+        let mut lexer = Lexer::new("u128");
+        assert_eq!(lexer.next_token().kind, TokenKind::U128);
+    }
+
+    #[test]
+    fn test_v080_all_new_keywords_lexemes() {
+        // Test that lexemes are captured correctly
+        let mut lexer = Lexer::new("gen rule evo docs");
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Gen);
+        assert_eq!(token.lexeme, "gen");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Rule);
+        assert_eq!(token.lexeme, "rule");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Evo);
+        assert_eq!(token.lexeme, "evo");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Docs);
+        assert_eq!(token.lexeme, "docs");
+    }
+
+    #[test]
+    fn test_v080_all_new_type_keywords_lexemes() {
+        // Test that type lexemes are captured correctly
+        let mut lexer = Lexer::new("i8 u8 f32 bool string");
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::I8);
+        assert_eq!(token.lexeme, "i8");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::U8);
+        assert_eq!(token.lexeme, "u8");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::F32);
+        assert_eq!(token.lexeme, "f32");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Bool);
+        assert_eq!(token.lexeme, "bool");
+
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Str);
+        assert_eq!(token.lexeme, "string");
+    }
+
+    #[test]
+    fn test_v080_keyword_case_sensitivity() {
+        // Test that keywords are case-sensitive
+        let mut lexer = Lexer::new("Gen GEN gEn RULE Rule");
+
+        // Gen is not a keyword, should be identifier
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Identifier);
+        assert_eq!(token.lexeme, "Gen");
+
+        // GEN is not a keyword
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Identifier);
+
+        // gEn is not a keyword
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Identifier);
+
+        // RULE is not a keyword
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Identifier);
+
+        // Rule is not a keyword
+        let token = lexer.next_token();
+        assert_eq!(token.kind, TokenKind::Identifier);
+    }
+
+    #[test]
+    fn test_v080_type_case_sensitivity() {
+        // Test that type keywords are case-sensitive
+        let mut lexer = Lexer::new("I8 U8 F32 BOOL STRING");
+
+        // All should be identifiers, not type keywords
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
+        assert_eq!(lexer.next_token().kind, TokenKind::Identifier);
     }
 }

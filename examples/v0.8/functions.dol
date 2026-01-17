@@ -1,0 +1,385 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL v0.8.0 Functions Example
+// Demonstrates pure functions (fun) and side-effect functions (sex)
+// ═══════════════════════════════════════════════════════════════
+
+module functions.example @ 0.8.0
+
+docs {
+    Demonstrates the function system in DOL v0.8.0.
+
+    DOL distinguishes between two kinds of functions:
+
+    1. Pure functions (fun):
+       - No side effects
+       - Given the same inputs, always produce the same output
+       - Cannot modify external state, do I/O, or call sex functions
+       - Safe to memoize, parallelize, and reason about
+
+    2. Side-effect functions (sex):
+       - May have side effects
+       - Can do I/O, modify state, access globals
+       - Can call both pure and sex functions
+       - Must be marked explicitly
+
+    This separation enables the compiler to optimize pure code
+    and helps developers reason about their programs.
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DATA TYPES
+// ═══════════════════════════════════════════════════════════════
+
+gen Vector3 {
+    has x: f64
+    has y: f64
+    has z: f64
+}
+
+gen Matrix3x3 {
+    has m00: f64  has m01: f64  has m02: f64
+    has m10: f64  has m11: f64  has m12: f64
+    has m20: f64  has m21: f64  has m22: f64
+}
+
+gen LogEntry {
+    has timestamp: i64
+    has level: string
+    has message: string
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PURE FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Pure function examples - no side effects, deterministic output.
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Basic Pure Functions
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Add two vectors component-wise.
+}
+
+pub fun vec_add(a: Vector3, b: Vector3) -> Vector3 {
+    return Vector3 {
+        x: a.x + b.x,
+        y: a.y + b.y,
+        z: a.z + b.z
+    }
+}
+
+docs {
+    Subtract vector b from vector a.
+}
+
+pub fun vec_sub(a: Vector3, b: Vector3) -> Vector3 {
+    return Vector3 {
+        x: a.x - b.x,
+        y: a.y - b.y,
+        z: a.z - b.z
+    }
+}
+
+docs {
+    Scale a vector by a scalar value.
+}
+
+pub fun vec_scale(v: Vector3, s: f64) -> Vector3 {
+    return Vector3 {
+        x: v.x * s,
+        y: v.y * s,
+        z: v.z * s
+    }
+}
+
+docs {
+    Compute the dot product of two vectors.
+}
+
+pub fun vec_dot(a: Vector3, b: Vector3) -> f64 {
+    return a.x * b.x + a.y * b.y + a.z * b.z
+}
+
+docs {
+    Compute the cross product of two vectors.
+}
+
+pub fun vec_cross(a: Vector3, b: Vector3) -> Vector3 {
+    return Vector3 {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x
+    }
+}
+
+docs {
+    Compute the squared length of a vector.
+    Useful when you only need to compare magnitudes.
+}
+
+pub fun vec_length_squared(v: Vector3) -> f64 {
+    return v.x * v.x + v.y * v.y + v.z * v.z
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Higher-Order Pure Functions
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Apply a transformation function to each component of a vector.
+}
+
+pub fun vec_map(v: Vector3, f: fun(f64) -> f64) -> Vector3 {
+    return Vector3 {
+        x: f(v.x),
+        y: f(v.y),
+        z: f(v.z)
+    }
+}
+
+docs {
+    Fold/reduce a vector to a single value.
+}
+
+pub fun vec_fold(v: Vector3, init: f64, f: fun(f64, f64) -> f64) -> f64 {
+    let acc = f(init, v.x)
+    let acc = f(acc, v.y)
+    let acc = f(acc, v.z)
+    return acc
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Pure String Functions
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Format a vector as a string.
+}
+
+pub fun vec_to_string(v: Vector3) -> string {
+    return "(" + v.x.to_string() + ", " + v.y.to_string() + ", " + v.z.to_string() + ")"
+}
+
+docs {
+    Check if a string is empty or whitespace only.
+}
+
+pub fun is_blank(s: string) -> bool {
+    return s.trim() == ""
+}
+
+docs {
+    Repeat a string n times.
+}
+
+pub fun repeat_string(s: string, n: u32) -> string {
+    if n == 0 {
+        return ""
+    }
+    let result = ""
+    for i in 0..n {
+        result = result + s
+    }
+    return result
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIDE-EFFECT FUNCTIONS (SEX)
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Side-effect function examples - may perform I/O or modify state.
+}
+
+// ─────────────────────────────────────────────────────────────────
+// I/O Functions
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    External print function (platform-specific).
+}
+
+sex extern fun print(message: string)
+
+docs {
+    External println function.
+}
+
+sex extern fun println(message: string)
+
+docs {
+    External function to read a line from stdin.
+}
+
+sex extern fun read_line() -> string
+
+docs {
+    External function to get current timestamp.
+}
+
+sex extern fun current_time_millis() -> i64
+
+// ─────────────────────────────────────────────────────────────────
+// Logging Functions (SEX)
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Log a message at info level.
+}
+
+pub sex fun log_info(message: string) {
+    let timestamp = current_time_millis()
+    println("[INFO " + timestamp.to_string() + "] " + message)
+}
+
+docs {
+    Log a message at warning level.
+}
+
+pub sex fun log_warn(message: string) {
+    let timestamp = current_time_millis()
+    println("[WARN " + timestamp.to_string() + "] " + message)
+}
+
+docs {
+    Log a message at error level.
+}
+
+pub sex fun log_error(message: string) {
+    let timestamp = current_time_millis()
+    println("[ERROR " + timestamp.to_string() + "] " + message)
+}
+
+docs {
+    Log a vector value for debugging.
+}
+
+pub sex fun log_vector(name: string, v: Vector3) {
+    // Note: sex function can call pure function vec_to_string
+    log_info(name + " = " + vec_to_string(v))
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Interactive Functions (SEX)
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Prompt user for input and return their response.
+}
+
+pub sex fun prompt(question: string) -> string {
+    print(question + " ")
+    return read_line()
+}
+
+docs {
+    Ask user a yes/no question.
+}
+
+pub sex fun confirm(question: string) -> bool {
+    let response = prompt(question + " (y/n)")
+    return response == "y" || response == "Y" || response == "yes" || response == "Yes"
+}
+
+// ─────────────────────────────────────────────────────────────────
+// State-Modifying Functions (SEX)
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Global counter state - requires sex to modify.
+}
+
+var global_counter: i64 = 0
+
+docs {
+    Increment global counter and return new value.
+}
+
+pub sex fun increment_global() -> i64 {
+    global_counter = global_counter + 1
+    return global_counter
+}
+
+docs {
+    Reset global counter to zero.
+}
+
+pub sex fun reset_global() {
+    global_counter = 0
+}
+
+docs {
+    Get current global counter value.
+}
+
+pub sex fun get_global() -> i64 {
+    return global_counter
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MIXING PURE AND SEX FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Sex functions can call pure functions freely.
+    This allows building complex effectful operations from pure building blocks.
+}
+
+pub sex fun demo_vector_operations() {
+    let a = Vector3 { x: 1.0, y: 2.0, z: 3.0 }
+    let b = Vector3 { x: 4.0, y: 5.0, z: 6.0 }
+
+    // Call pure functions
+    let sum = vec_add(a, b)
+    let dot = vec_dot(a, b)
+    let cross = vec_cross(a, b)
+
+    // Use sex function for output
+    log_info("Vector a: " + vec_to_string(a))
+    log_info("Vector b: " + vec_to_string(b))
+    log_info("a + b: " + vec_to_string(sum))
+    log_info("a . b: " + dot.to_string())
+    log_info("a x b: " + vec_to_string(cross))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FUNCTION TYPES AND CALLBACKS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Type alias for a pure transformer function.
+}
+
+type Transformer = fun(f64) -> f64
+
+docs {
+    Type alias for a sex callback with logging.
+}
+
+type Callback = sex fun(string) -> ()
+
+docs {
+    Apply a series of pure transformations to a value.
+}
+
+pub fun apply_transformers(value: f64, transforms: Vec<Transformer>) -> f64 {
+    let result = value
+    for t in transforms {
+        result = t(result)
+    }
+    return result
+}
+
+docs {
+    Execute a callback with error handling.
+}
+
+pub sex fun with_logging(callback: Callback, message: string) {
+    log_info("Starting: " + message)
+    callback(message)
+    log_info("Completed: " + message)
+}

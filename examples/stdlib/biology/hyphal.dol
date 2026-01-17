@@ -7,23 +7,23 @@ module biology.hyphal @ 1.0.0
 use biology.types.{ Vec3, Gradient, Nutrient }
 
 /// State of a hyphal tip
-pub gene HyphalTip {
+pub gen HyphalTip {
   has position: Vec3
   has direction: Vec3
-  has age: Float64
-  has branching_potential: Float64
+  has age: f64
+  has branching_potential: f64
   has nutrients_absorbed: Nutrient
 
-  constraint unit_direction {
+  rule unit_direction {
     this.direction.magnitude() >= 0.99 &&
     this.direction.magnitude() <= 1.01
   }
 
-  constraint positive_age {
+  rule positive_age {
     this.age >= 0.0
   }
 
-  exegesis {
+  docs {
     The growing tip of a fungal hypha.
     Direction is a unit vector indicating growth heading.
     Branching potential increases with nutrient absorption.
@@ -31,24 +31,24 @@ pub gene HyphalTip {
 }
 
 /// Hyphal segment (between tips and branches)
-pub gene HyphalSegment {
+pub gen HyphalSegment {
   has start: Vec3
   has end: Vec3
-  has diameter: Float64
-  has transport_capacity: Float64
+  has diameter: f64
+  has transport_capacity: f64
 
-  constraint positive_diameter {
+  rule positive_diameter {
     this.diameter > 0.0
   }
 
-  fun length() -> Float64 {
+  fun length() -> f64 {
     dx = this.end.x - this.start.x
     dy = this.end.y - this.start.y
     dz = this.end.z - this.start.z
     return (dx * dx + dy * dy + dz * dz).sqrt()
   }
 
-  exegesis {
+  docs {
     A tubular segment of hypha connecting nodes.
     Transport capacity determines nutrient flow rate.
   }
@@ -60,7 +60,7 @@ pub trait Hyphal {
   is extend(gradient: Gradient<Nutrient>) -> Self
 
   /// Branch into multiple hyphae
-  is branch(factor: Float64) -> List<Self>
+  is branch(factor: f64) -> Vec<Self>
 
   /// Fuse with another hypha (anastomosis)
   is fuse(other: Self) -> Option<Self>
@@ -69,7 +69,7 @@ pub trait Hyphal {
   is absorb(available: Nutrient) -> Tuple<Self, Nutrient>
 
   /// Check if ready to fruit
-  is can_fruit() -> Bool
+  is can_fruit() -> bool
 
   // ─────────────────────────────────────────────────────────────
   // Laws (Biological Constraints)
@@ -82,7 +82,7 @@ pub trait Hyphal {
   }
 
   law branching_conserves_potential {
-    forall self: Self, factor: Float64.
+    forall self: Self, factor: f64.
       sum(this.branch(factor).map(|b| b.branching_potential))
         <= this.branching_potential
   }
@@ -92,7 +92,7 @@ pub trait Hyphal {
       a.fuse(b).is_some() implies a.is_compatible(b)
   }
 
-  exegesis {
+  docs {
     Hyphal trait encodes fungal growth behaviors:
     - Chemotropic extension toward nutrients
     - Branching to explore space
@@ -130,7 +130,7 @@ impl Hyphal for HyphalTip {
     }
   }
 
-  fun branch(factor: Float64) -> List<HyphalTip> {
+  fun branch(factor: f64) -> Vec<HyphalTip> {
     if this.branching_potential < factor {
       return [this]
     }
@@ -204,7 +204,7 @@ impl Hyphal for HyphalTip {
     return (new_tip, remaining)
   }
 
-  fun can_fruit() -> Bool {
+  fun can_fruit() -> bool {
     return this.nutrients_absorbed.total_mass() > 100.0 &&
            this.age > 10.0
   }

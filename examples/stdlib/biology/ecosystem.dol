@@ -7,7 +7,7 @@ module biology.ecosystem @ 1.0.0
 use biology.types.{ Energy, Nutrient, Generation }
 
 /// Species role in ecosystem
-pub gene TrophicRole {
+pub gen TrophicRole {
   type: enum {
     Producer,
     PrimaryConsumer,
@@ -16,7 +16,7 @@ pub gene TrophicRole {
     Decomposer
   }
 
-  fun trophic_level() -> UInt8 {
+  fun trophic_level() -> u8 {
     match this {
       Producer { return 1 }
       PrimaryConsumer { return 2 }
@@ -26,62 +26,62 @@ pub gene TrophicRole {
     }
   }
 
-  exegesis {
+  docs {
     Trophic role determines position in food web
     and energy transfer efficiency.
   }
 }
 
 /// Species in an ecosystem
-pub gene Species {
-  has id: UInt64
-  has name: String
+pub gen Species {
+  has id: u64
+  has name: string
   has role: TrophicRole
-  has population: UInt64
-  has birth_rate: Float64
-  has death_rate: Float64
-  has carrying_capacity: UInt64
+  has population: u64
+  has birth_rate: f64
+  has death_rate: f64
+  has carrying_capacity: u64
 
-  constraint positive_rates {
+  rule positive_rates {
     this.birth_rate >= 0.0 && this.death_rate >= 0.0
   }
 
-  constraint population_non_negative {
+  rule population_non_negative {
     this.population >= 0
   }
 
-  fun growth_rate() -> Float64 {
+  fun growth_rate() -> f64 {
     r = this.birth_rate - this.death_rate
-    k = this.carrying_capacity as Float64
-    n = this.population as Float64
+    k = this.carrying_capacity as f64
+    n = this.population as f64
     return r * n * (1.0 - n / k)
   }
 
-  exegesis {
+  docs {
     A species in the ecosystem with population dynamics.
     Growth follows logistic model with carrying capacity.
   }
 }
 
 /// Interaction between species
-pub gene Interaction {
-  has predator: UInt64
-  has prey: UInt64
-  has attack_rate: Float64
-  has handling_time: Float64
-  has conversion_efficiency: Float64
+pub gen Interaction {
+  has predator: u64
+  has prey: u64
+  has attack_rate: f64
+  has handling_time: f64
+  has conversion_efficiency: f64
 
-  constraint efficiency_bounds {
+  rule efficiency_bounds {
     this.conversion_efficiency > 0.0 &&
     this.conversion_efficiency <= 1.0
   }
 
-  fun predation_rate(prey_density: Float64) -> Float64 {
+  fun predation_rate(prey_density: f64) -> f64 {
     return (this.attack_rate * prey_density) /
            (1.0 + this.attack_rate * this.handling_time * prey_density)
   }
 
-  exegesis {
+  docs {
     Predator-prey interaction with Holling Type II
     functional response (includes handling time saturation).
   }
@@ -92,13 +92,13 @@ pub system Ecosystem {
   uses Transport<Energy>
   uses Transport<Nutrient>
 
-  state species: Map<UInt64, Species>
-  state interactions: List<Interaction>
+  state species: Map<u64, Species>
+  state interactions: Vec<Interaction>
   state total_energy: Energy
   state nutrient_pool: Nutrient
   state generation: Generation
 
-  constraint trophic_efficiency {
+  rule trophic_efficiency {
     for level in 1..4 {
       energy_at_level = this.energy_at_trophic_level(level)
       energy_at_next = this.energy_at_trophic_level(level + 1)
@@ -106,24 +106,24 @@ pub system Ecosystem {
       energy_at_next <= energy_at_level * 0.15
     }
 
-    exegesis {
+    docs {
       Lindeman's 10% law: only ~10% of energy
       transfers between trophic levels.
     }
   }
 
-  constraint carrying_capacity_limit {
+  rule carrying_capacity_limit {
     for sp in this.species.values() {
       sp.population <= sp.carrying_capacity * 1.1
     }
 
-    exegesis {
+    docs {
       Carrying capacity limits population.
       Overshoot leads to population crash.
     }
   }
 
-  constraint predator_prey_balance {
+  rule predator_prey_balance {
     for interaction in this.interactions {
       predator = this.species.get(interaction.predator)
       prey = this.species.get(interaction.prey)
@@ -131,12 +131,12 @@ pub system Ecosystem {
       predator.population > 0 implies prey.population > 0
     }
 
-    exegesis {
+    docs {
       Predators cannot persist without prey.
     }
   }
 
-  constraint decomposer_recycling {
+  rule decomposer_recycling {
     decomposer_count = this.species.values()
       .filter(|s| s.role == TrophicRole.Decomposer)
       .map(|s| s.population)
@@ -145,7 +145,7 @@ pub system Ecosystem {
     decomposer_count > 0 implies
       this.nutrient_pool.total_mass() > 0
 
-    exegesis {
+    docs {
       Decomposers are essential for nutrient cycling.
     }
   }
@@ -162,19 +162,19 @@ pub system Ecosystem {
       for interaction in this.interactions {
         if interaction.prey == id {
           predator = this.species.get(interaction.predator)
-          predation_loss += interaction.predation_rate(sp.population as Float64)
-                            * predator.population as Float64
+          predation_loss += interaction.predation_rate(sp.population as f64)
+                            * predator.population as f64
         }
         if interaction.predator == id {
           prey = this.species.get(interaction.prey)
-          consumed = interaction.predation_rate(prey.population as Float64)
-                     * sp.population as Float64
+          consumed = interaction.predation_rate(prey.population as f64)
+                     * sp.population as f64
           predation_gain += consumed * interaction.conversion_efficiency
         }
       }
 
       delta = growth - predation_loss + predation_gain
-      new_pop = max(0, (sp.population as Float64 + delta) as UInt64)
+      new_pop = max(0, (sp.population as f64 + delta) as u64)
 
       new_species.insert(id, Species { ...sp, population: new_pop })
     }
@@ -186,20 +186,20 @@ pub system Ecosystem {
     }
   }
 
-  fun energy_at_trophic_level(level: UInt8) -> Float64 {
+  fun energy_at_trophic_level(level: u8) -> f64 {
     return this.species.values()
       .filter(|s| s.role.trophic_level() == level)
-      .map(|s| s.population as Float64 * 1.0)
+      .map(|s| s.population as f64 * 1.0)
       .sum()
   }
 
-  fun is_stable(tolerance: Float64) -> Bool {
+  fun is_stable(tolerance: f64) -> bool {
     next = this.tick()
 
     for (id, sp) in this.species {
       next_sp = next.species.get(id)
-      change = ((next_sp.population as Float64) - (sp.population as Float64)).abs()
-      if change / (sp.population as Float64 + 1.0) > tolerance {
+      change = ((next_sp.population as f64) - (sp.population as f64)).abs()
+      if change / (sp.population as f64 + 1.0) > tolerance {
         return false
       }
     }
@@ -214,7 +214,7 @@ pub system Ecosystem {
     }
   }
 
-  exegesis {
+  docs {
     Ecosystem models population dynamics using:
     - Lotka-Volterra predator-prey equations
     - Logistic growth with carrying capacity

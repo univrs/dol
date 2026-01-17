@@ -10,22 +10,22 @@ use biology.transport.{ Transport, TransportNode, Flow }
 use biology.evolution.{ Evolvable, Fungus }
 
 /// Node in mycelium network
-pub gene MyceliumNode {
-  has id: UInt64
+pub gen MyceliumNode {
+  has id: u64
   has position: Vec3
-  has tips: List<HyphalTip>
+  has tips: Vec<HyphalTip>
   has stored_nutrients: Nutrient
-  has connections: List<UInt64>
+  has connections: Vec<u64>
 
-  fun is_branching_point() -> Bool {
+  fun is_branching_point() -> bool {
     return this.connections.len() > 2
   }
 
-  fun is_tip() -> Bool {
+  fun is_tip() -> bool {
     return this.connections.len() == 1
   }
 
-  exegesis {
+  docs {
     A node in the mycelium network graph.
     Can be a tip (edge), relay (path), or junction (branch).
   }
@@ -37,23 +37,23 @@ pub system MyceliumNetwork {
   uses Transport<Nutrient>
   uses Evolvable
 
-  state nodes: Map<UInt64, MyceliumNode>
-  state edges: List<HyphalSegment>
-  state next_id: UInt64
-  state total_biomass: Float64
-  state generation: UInt64
+  state nodes: Map<u64, MyceliumNode>
+  state edges: Vec<HyphalSegment>
+  state next_id: u64
+  state total_biomass: f64
+  state generation: u64
 
-  constraint network_connected {
+  rule network_connected {
     forall node1, node2 in this.nodes.values().
       exists_path(node1, node2)
   }
 
-  constraint biomass_conservation {
+  rule biomass_conservation {
     this.total_biomass ==
       sum(this.nodes.values().map(|n| n.stored_nutrients.total_mass()))
   }
 
-  constraint transport_capacity {
+  rule transport_capacity {
     forall edge in this.edges.
       edge.transport_capacity <= edge.diameter * 10.0
   }
@@ -145,7 +145,7 @@ pub system MyceliumNetwork {
     }
   }
 
-  fun find_nearby_nodes(pos: Vec3, max_dist: Float64) -> List<UInt64> {
+  fun find_nearby_nodes(pos: Vec3, max_dist: f64) -> Vec<u64> {
     result = []
     for (id, node) in this.nodes {
       dx = pos.x - node.position.x
@@ -159,26 +159,26 @@ pub system MyceliumNetwork {
     return result
   }
 
-  fun calculate_biomass() -> Float64 {
+  fun calculate_biomass() -> f64 {
     node_mass = sum(this.nodes.values().map(|n| n.stored_nutrients.total_mass()))
     edge_mass = sum(this.edges.map(|e| e.length() * e.diameter * 0.1))
     return node_mass + edge_mass
   }
 
-  pub fun can_fruit() -> Bool {
+  pub fun can_fruit() -> bool {
     return this.total_biomass > 100.0 &&
            this.nodes.len() > 50 &&
            this.has_enough_branching_points()
   }
 
-  fun has_enough_branching_points() -> Bool {
+  fun has_enough_branching_points() -> bool {
     branch_count = this.nodes.values()
       .filter(|n| n.is_branching_point())
       .len()
     return branch_count > 10
   }
 
-  pub fun to_dot() -> String {
+  pub fun to_dot() -> string {
     mut output = "digraph Mycelium {\n"
 
     for (id, node) in this.nodes {
@@ -196,7 +196,7 @@ pub system MyceliumNetwork {
     return output
   }
 
-  exegesis {
+  docs {
     Complete mycelium network simulation.
 
     Biological behaviors modeled:

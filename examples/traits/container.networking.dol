@@ -9,7 +9,7 @@ trait container.networking {
   each connection emits event
 }
 
-exegesis {
+docs {
   Container networking provides isolated network environments for containerized
   applications while enabling controlled communication between containers and
   external networks. Each container operates within its own network namespace,

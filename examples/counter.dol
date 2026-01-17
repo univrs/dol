@@ -1,7 +1,7 @@
 // Counter Spirit - Stateful example
 // Mutation effects inferred automatically
 
-gene Counter {
+gen Counter {
     has value: Int
 
     fun get() -> Int {

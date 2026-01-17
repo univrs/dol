@@ -27,6 +27,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use metadol::transform::{TreeShaking, TreeShakingStats};
 use metadol::{parse_file, validate, Declaration, ValidationResult};
 
 /// Parse and validate Metal DOL files
@@ -61,6 +62,19 @@ struct Args {
     /// Quiet mode: only show errors
     #[arg(short, long)]
     quiet: bool,
+
+    /// Enable tree shaking to eliminate unused declarations
+    #[arg(long)]
+    tree_shake: bool,
+
+    /// Additional root declarations for tree shaking (comma-separated)
+    /// Use with --tree-shake to preserve specific declarations
+    #[arg(long, value_delimiter = ',')]
+    roots: Vec<String>,
+
+    /// Analyze tree shaking without modifying output (dry-run)
+    #[arg(long)]
+    shake_analyze: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -110,6 +124,7 @@ fn main() -> ExitCode {
                     declaration: Some(decl),
                     validation: Some(validation),
                     error: None,
+                    eliminated: false,
                 });
             }
             Err(e) => {
@@ -120,14 +135,22 @@ fn main() -> ExitCode {
                     declaration: None,
                     validation: None,
                     error: Some(e),
+                    eliminated: false,
                 });
             }
         }
     }
 
+    // Apply tree shaking if enabled
+    let shake_stats = if args.tree_shake || args.shake_analyze {
+        Some(apply_tree_shaking(&mut results, &args))
+    } else {
+        None
+    };
+
     // Output results based on format
     if !args.ci || failed > 0 {
-        output_results(&results, &args);
+        output_results(&results, &args, shake_stats.as_ref());
     }
 
     // Print summary unless quiet
@@ -141,6 +164,27 @@ fn main() -> ExitCode {
         }
         if args.warnings && warnings_count > 0 {
             println!("  Warnings: {}", warnings_count.to_string().yellow());
+        }
+
+        // Tree shaking summary
+        if let Some(ref stats) = shake_stats {
+            println!();
+            println!("{}", "Tree Shaking".bold());
+            println!("  Roots:      {}", stats.root_count);
+            println!(
+                "  Retained:   {}",
+                stats.retained_declarations.to_string().green()
+            );
+            println!(
+                "  Eliminated: {}",
+                stats.eliminated_declarations.to_string().yellow()
+            );
+            if args.shake_analyze && !stats.eliminated_names.is_empty() {
+                println!("  Would eliminate:");
+                for name in &stats.eliminated_names {
+                    println!("    - {}", name.dimmed());
+                }
+            }
         }
     }
 
@@ -161,12 +205,50 @@ fn main() -> ExitCode {
     }
 }
 
+/// Apply tree shaking to parsed declarations
+fn apply_tree_shaking(results: &mut [ParseResult], args: &Args) -> TreeShakingStats {
+    // Collect all successful declarations
+    let declarations: Vec<Declaration> = results
+        .iter()
+        .filter_map(|r| r.declaration.clone())
+        .collect();
+
+    // Create tree shaker with extra roots
+    let mut shaker = TreeShaking::new();
+    for root in &args.roots {
+        shaker.add_root(root);
+    }
+
+    // Analyze or shake
+    if args.shake_analyze {
+        // Dry-run: just analyze without modifying
+        shaker.analyze(&declarations)
+    } else {
+        // Actually perform tree shaking
+        let stats = shaker.analyze(&declarations);
+
+        // Mark eliminated declarations in results
+        let reachable = shaker.reachable_names();
+        for result in results.iter_mut() {
+            if let Some(ref decl) = result.declaration {
+                if !reachable.contains(decl.name()) {
+                    result.eliminated = true;
+                }
+            }
+        }
+
+        stats
+    }
+}
+
 struct ParseResult {
     path: PathBuf,
     success: bool,
     declaration: Option<Declaration>,
     validation: Option<ValidationResult>,
     error: Option<String>,
+    /// Whether this declaration was eliminated by tree shaking
+    eliminated: bool,
 }
 
 fn collect_dol_files(paths: &[PathBuf], recursive: bool) -> Vec<PathBuf> {
@@ -227,20 +309,22 @@ fn process_file(path: &PathBuf) -> Result<(Declaration, ValidationResult), Strin
     Ok((decl, validation))
 }
 
-fn output_results(results: &[ParseResult], args: &Args) {
+fn output_results(results: &[ParseResult], args: &Args, shake_stats: Option<&TreeShakingStats>) {
     match args.format {
-        OutputFormat::Json => output_json(results, args),
+        OutputFormat::Json => output_json(results, args, shake_stats),
         OutputFormat::Pretty => output_pretty(results, args),
         OutputFormat::Compact => output_compact(results, args),
         OutputFormat::Debug => output_debug(results, args),
     }
 }
 
-fn output_json(results: &[ParseResult], _args: &Args) {
+fn output_json(results: &[ParseResult], _args: &Args, shake_stats: Option<&TreeShakingStats>) {
     #[derive(serde::Serialize)]
     struct JsonOutput {
         files: Vec<JsonFileResult>,
         summary: JsonSummary,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tree_shaking: Option<JsonTreeShaking>,
     }
 
     #[derive(serde::Serialize)]
@@ -253,6 +337,8 @@ fn output_json(results: &[ParseResult], _args: &Args) {
         name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        eliminated: bool,
     }
 
     #[derive(serde::Serialize)]
@@ -260,6 +346,14 @@ fn output_json(results: &[ParseResult], _args: &Args) {
         total: usize,
         successful: usize,
         failed: usize,
+    }
+
+    #[derive(serde::Serialize)]
+    struct JsonTreeShaking {
+        roots: usize,
+        retained: usize,
+        eliminated: usize,
+        eliminated_names: Vec<String>,
     }
 
     let files: Vec<JsonFileResult> = results
@@ -279,10 +373,18 @@ fn output_json(results: &[ParseResult], _args: &Args) {
             }),
             name: r.declaration.as_ref().map(|d| d.name().to_string()),
             error: r.error.clone(),
+            eliminated: r.eliminated,
         })
         .collect();
 
     let successful = results.iter().filter(|r| r.success).count();
+
+    let tree_shaking = shake_stats.map(|stats| JsonTreeShaking {
+        roots: stats.root_count,
+        retained: stats.retained_declarations,
+        eliminated: stats.eliminated_declarations,
+        eliminated_names: stats.eliminated_names.clone(),
+    });
 
     let output = JsonOutput {
         summary: JsonSummary {
@@ -291,6 +393,7 @@ fn output_json(results: &[ParseResult], _args: &Args) {
             failed: results.len() - successful,
         },
         files,
+        tree_shaking,
     };
 
     println!("{}", serde_json::to_string_pretty(&output).unwrap());
@@ -301,14 +404,19 @@ fn output_pretty(results: &[ParseResult], args: &Args) {
         if result.success {
             if !args.validate {
                 let decl = result.declaration.as_ref().unwrap();
-                println!(
-                    "{} {} {}",
-                    "✓".green(),
-                    result.path.display(),
+                let status = if result.eliminated {
+                    "~".yellow()
+                } else {
+                    "✓".green()
+                };
+                let suffix = if result.eliminated {
+                    format!("({}) [eliminated]", decl.name()).dimmed()
+                } else {
                     format!("({})", decl.name()).dimmed()
-                );
+                };
+                println!("{} {} {}", status, result.path.display(), suffix);
 
-                if !args.quiet {
+                if !args.quiet && !result.eliminated {
                     print_declaration_summary(decl);
                 }
             }
@@ -346,8 +454,10 @@ fn output_compact(results: &[ParseResult], _args: &Args) {
                 Declaration::Const(_) => "const",
                 Declaration::SexVar(_) => "sex_var",
             };
+            let status = if result.eliminated { "ELIM" } else { "OK" };
             println!(
-                "OK\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}",
+                status,
                 result.path.display(),
                 decl_type,
                 decl.name()
@@ -364,7 +474,12 @@ fn output_compact(results: &[ParseResult], _args: &Args) {
 
 fn output_debug(results: &[ParseResult], _args: &Args) {
     for result in results {
-        println!("=== {} ===", result.path.display());
+        let status = if result.eliminated {
+            " [ELIMINATED]"
+        } else {
+            ""
+        };
+        println!("=== {}{} ===", result.path.display(), status);
         if let Some(decl) = &result.declaration {
             println!("{:#?}", decl);
         }

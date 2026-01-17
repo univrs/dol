@@ -12,7 +12,7 @@ pub use ecosystem.*
 pub use evolution.*
 pub use mycelium.*
 
-exegesis {
+docs {
   The DOL Biology module provides primitives for modeling
   biological systems, inspired by mycelium networks and
   ecological dynamics.
@@ -45,7 +45,7 @@ exegesis {
   - Trait: Heritable characteristic
   - Genome: Collection of traits
   - Evolvable trait: Evolution mechanics
-  - evolves declarations: Speciation
+  - evo declarations: Speciation
 
   ## Mycelium Network (biology.mycelium)
   - MyceliumNode: Network node

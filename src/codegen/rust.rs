@@ -24,8 +24,8 @@
 //! | `Map<K, V>` | `std::collections::HashMap<K, V>` |
 
 use crate::ast::{
-    Constraint, Declaration, EnumVariant, Evolution, Expr, ExternDecl, FunctionDecl, FunctionParam,
-    Gene, Literal, Mutability, Statement, Stmt, System, Trait, TypeExpr, VarDecl,
+    Block, Declaration, EnumVariant, Evo, Expr, ExternDecl, FunctionDecl, FunctionParam, Gen,
+    Literal, Mutability, Rule, Statement, Stmt, System, Trait, TypeExpr, VarDecl,
 };
 use crate::typechecker::Type;
 
@@ -315,7 +315,7 @@ impl RustCodegen {
     }
 
     /// Generate a Rust struct from a gene declaration.
-    fn generate_gene(&self, gene: &Gene) -> String {
+    fn generate_gene(&self, gene: &Gen) -> String {
         // Check if this gene has an inline enum 'type' field (DOL idiom for enums)
         // If so, generate as a flat enum with the gene's name
         if let Some((variants, extra_fields)) = Self::is_enum_gene(gene) {
@@ -412,7 +412,7 @@ impl RustCodegen {
     }
 
     /// Generate Rust assertions/invariants from a constraint declaration.
-    fn generate_constraint(&self, constraint: &Constraint) -> String {
+    fn generate_constraint(&self, constraint: &Rule) -> String {
         let fn_name = to_rust_ident(&constraint.name);
         let visibility = self.visibility_str();
 
@@ -485,7 +485,7 @@ impl RustCodegen {
     }
 
     /// Generate documentation for an evolution declaration.
-    fn generate_evolution(&self, evolution: &Evolution) -> String {
+    fn generate_evolution(&self, evolution: &Evo) -> String {
         let mut output = String::new();
 
         // Evolution is primarily documentation
@@ -1599,10 +1599,11 @@ impl RustCodegen {
                 }
                 output
             }
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 let mut output = String::new();
                 output.push_str("{\n");
                 for stmt in statements {
@@ -1626,10 +1627,11 @@ impl RustCodegen {
                 output.push('}');
                 output
             }
-            Expr::SexBlock {
+            Expr::SexBlock(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 let mut output = String::new();
                 output.push_str("/* sex */ {\n");
                 for stmt in statements {
@@ -3429,7 +3431,7 @@ impl RustCodegen {
     ///     .with_field(FieldInfo::new("name", "String"))
     ///     .with_doc("A user entity")
     /// ```
-    pub fn gen_type_info(&self, gene: &Gene) -> String {
+    pub fn gen_type_info(&self, gene: &Gen) -> String {
         let type_name = to_pascal_case(&gene.name);
         let mut output = String::new();
 
@@ -3491,7 +3493,7 @@ impl RustCodegen {
     /// Check if a gene has an inline enum 'type' field (the DOL idiom for enums)
     /// Returns Some((variants, extra_fields)) if this gene should be generated as a flat enum
     #[allow(clippy::type_complexity)]
-    fn is_enum_gene(gene: &Gene) -> Option<(&Vec<EnumVariant>, Vec<(&str, String)>)> {
+    fn is_enum_gene(gene: &Gen) -> Option<(&Vec<EnumVariant>, Vec<(&str, String)>)> {
         let fields: Vec<_> = gene
             .statements
             .iter()
@@ -3526,7 +3528,7 @@ impl RustCodegen {
     /// extra_fields are fields like 'span' that should be added to each variant
     fn gen_enum_from_gene(
         &self,
-        gene: &Gene,
+        gene: &Gen,
         variants: &[EnumVariant],
         extra_fields: &[(&str, String)],
     ) -> String {
@@ -3720,7 +3722,7 @@ mod tests {
 
     #[test]
     fn test_generate_gene_struct() {
-        let gene = Gene {
+        let gene = Gen {
             visibility: crate::ast::Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
@@ -3835,7 +3837,7 @@ mod tests {
 
     #[test]
     fn test_generate_constraint() {
-        let constraint = Constraint {
+        let constraint = Rule {
             visibility: crate::ast::Visibility::default(),
             name: "container.integrity".to_string(),
             statements: vec![
@@ -4132,7 +4134,7 @@ mod tests {
         let expr = Expr::Lambda {
             params: vec![("x".to_string(), None)],
             return_type: None,
-            body: Box::new(Expr::Block {
+            body: Box::new(Expr::Block(crate::ast::Block {
                 statements: vec![Stmt::Let {
                     name: "doubled".to_string(),
                     type_ann: None,
@@ -4143,7 +4145,8 @@ mod tests {
                     },
                 }],
                 final_expr: Some(Box::new(Expr::Identifier("doubled".to_string()))),
-            }),
+                span: Span::default(),
+            })),
         };
         let result = gen.gen_expr(&expr);
         assert!(result.starts_with("|x| {"));
@@ -4842,7 +4845,7 @@ mod tests {
     #[test]
     fn test_gen_file() {
         let gen = RustCodegen::new();
-        let gene = Gene {
+        let gene = Gen {
             visibility: crate::ast::Visibility::default(),
             name: "TestStruct".to_string(),
             extends: None,
@@ -4858,7 +4861,7 @@ mod tests {
     #[test]
     fn test_gen_file_with_hashmap() {
         let gen = RustCodegen::new();
-        let gene = Gene {
+        let gene = Gen {
             visibility: crate::ast::Visibility::default(),
             name: "TestStruct".to_string(),
             extends: None,
@@ -4887,7 +4890,7 @@ mod tests {
     #[test]
     fn test_gen_imports() {
         let gen = RustCodegen::new();
-        let gene = Gene {
+        let gene = Gen {
             visibility: crate::ast::Visibility::default(),
             name: "TestStruct".to_string(),
             extends: None,

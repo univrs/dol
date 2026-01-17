@@ -26,7 +26,7 @@
 //! | `Tuple(A, B)` | `[A, B]` |
 //! | `Function` | `(args) => ReturnType` |
 
-use crate::ast::{Constraint, Declaration, Evolution, Gene, Statement, System, Trait, TypeExpr};
+use crate::ast::{Declaration, Evo, Gen, Rule, Statement, System, Trait, TypeExpr};
 use crate::typechecker::Type;
 
 use super::{to_pascal_case, CodegenOptions, TypeMapper};
@@ -149,7 +149,7 @@ impl TypeScriptCodegen {
     }
 
     /// Generate a TypeScript interface from a gene declaration.
-    fn generate_gene(&self, gene: &Gene) -> String {
+    fn generate_gene(&self, gene: &Gen) -> String {
         let interface_name = to_pascal_case(&gene.name);
 
         // Collect properties from "has" statements
@@ -226,8 +226,8 @@ impl TypeScriptCodegen {
         output
     }
 
-    /// Generate a TypeScript type guard from a constraint declaration.
-    fn generate_constraint(&self, constraint: &Constraint) -> String {
+    /// Generate a TypeScript type guard from a rule declaration.
+    fn generate_constraint(&self, constraint: &Rule) -> String {
         let mut output = String::new();
 
         // JSDoc comment from exegesis
@@ -298,7 +298,7 @@ impl TypeScriptCodegen {
     }
 
     /// Generate TypeScript documentation from an evolution declaration.
-    fn generate_evolution(&self, evolution: &Evolution) -> String {
+    fn generate_evolution(&self, evolution: &Evo) -> String {
         let type_name = to_pascal_case(&evolution.name);
 
         let mut output = String::new();
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn test_generate_gene_interface() {
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
@@ -670,7 +670,7 @@ mod tests {
 
     #[test]
     fn test_generate_constraint_type_guard() {
-        let constraint = Constraint {
+        let constraint = Rule {
             visibility: Visibility::default(),
             name: "container.integrity".to_string(),
             statements: vec![Statement::Matches {

@@ -305,7 +305,7 @@ fn validate_statements(decl: &Declaration, result: &mut ValidationResult) {
 }
 
 /// Validates gene-specific rules.
-fn validate_gene(gene: &Gene, result: &mut ValidationResult) {
+fn validate_gene(gene: &Gen, result: &mut ValidationResult) {
     // Genes should only contain has, is, derives from, requires statements
     for stmt in &gene.statements {
         match stmt {
@@ -347,7 +347,7 @@ fn validate_trait(trait_decl: &Trait, result: &mut ValidationResult) {
 }
 
 /// Validates constraint-specific rules.
-fn validate_constraint(constraint: &Constraint, result: &mut ValidationResult) {
+fn validate_constraint(constraint: &Rule, result: &mut ValidationResult) {
     // Constraints should have matches or never statements
     let has_constraint_stmts = constraint
         .statements
@@ -384,7 +384,7 @@ fn validate_system(system: &System, result: &mut ValidationResult) {
 }
 
 /// Validates evolution-specific rules.
-fn validate_evolution(evolution: &Evolution, result: &mut ValidationResult) {
+fn validate_evolution(evolution: &Evo, result: &mut ValidationResult) {
     // Validate versions
     if !is_valid_version(&evolution.version) {
         result.add_error(ValidationError::InvalidVersion {
@@ -636,7 +636,7 @@ mod tests {
     use super::*;
 
     fn make_gene(name: &str, exegesis: &str) -> Declaration {
-        Declaration::Gene(Gene {
+        Declaration::Gene(Gen {
             visibility: Visibility::default(),
             name: name.to_string(),
             extends: None,

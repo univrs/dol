@@ -1,11 +1,11 @@
-constraint counter.bounds_valid {
+rule counter.bounds_valid {
   value never overflows
   value never underflows
   bounds never inverted
 }
 
-exegesis {
-  The counter.bounds_valid constraint ensures the counter state is
+docs {
+  The counter.bounds_valid rule ensures the counter state is
   always valid. Three invariants must hold:
 
   1. value >= minimum: can't go below the lower bound

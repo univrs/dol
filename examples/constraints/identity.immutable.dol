@@ -1,10 +1,10 @@
-constraint identity.immutable {
+rule identity.immutable {
   keypair never changes
   public_key never changes
   signature matches content
 }
 
-exegesis {
+docs {
   Cryptographic identity must be immutable because any mutation invalidates the
   entire trust chain built upon it. When a keypair changes, all signatures
   created with the previous private key become orphaned, and all verification

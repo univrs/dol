@@ -3,7 +3,7 @@
 //! This module tracks side effects through the DOL AST, allowing the linter
 //! to detect purity violations and enforce sex context rules.
 
-use crate::ast::{Declaration, Expr, Gene, Purity, Span, Statement, Stmt, Trait};
+use crate::ast::{Block, Declaration, Expr, Gen, Purity, Span, Statement, Stmt, Trait};
 use std::collections::{HashMap, HashSet};
 
 /// The kind of side effect being tracked.
@@ -110,11 +110,11 @@ impl Effect {
 ///
 /// ```rust
 /// use metadol::sex::tracking::EffectTracker;
-/// use metadol::ast::{Declaration, Gene, Span, Visibility};
+/// use metadol::ast::{Declaration, Gen, Span, Visibility};
 ///
 /// let mut tracker = EffectTracker::new();
 ///
-/// let gene = Gene {
+/// let gene = Gen {
 ///     name: "test.gene".to_string(),
 ///     extends: None,
 ///     statements: vec![],
@@ -169,7 +169,7 @@ impl EffectTracker {
     }
 
     /// Track effects in a gene.
-    fn track_gene(&mut self, gene: &Gene, effects: &mut Vec<Effect>) {
+    fn track_gene(&mut self, gene: &Gen, effects: &mut Vec<Effect>) {
         for statement in &gene.statements {
             self.track_statement(statement, effects);
         }
@@ -277,11 +277,11 @@ impl EffectTracker {
                     self.track_expr(else_expr, effects);
                 }
             }
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
                 ..
-            } => {
+            }) => {
                 for stmt in statements {
                     self.track_stmt(stmt, effects);
                 }
@@ -433,7 +433,7 @@ mod tests {
     fn test_effect_tracker_gene_tracking() {
         let mut tracker = EffectTracker::new();
 
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "io.gene".to_string(),
             extends: None,

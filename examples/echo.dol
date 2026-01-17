@@ -1,7 +1,7 @@
 // Echo Spirit - Messaging example
 // send/recv effects inferred automatically
 
-gene EchoSpirit {
+gen EchoSpirit {
     has messages_handled: Int
 
     fun tick() {

@@ -1,7 +1,7 @@
 // DOL v0.0.1 - Metal Primitives
 // genes/container.exists.dol
 
-gene container.exists {
+gen container.exists {
   container has identity
   container has status
   container has boundaries
@@ -9,8 +9,8 @@ gene container.exists {
   container has image
 }
 
-exegesis {
-  The container gene defines the essential properties of a container in
+docs {
+  The container gen defines the essential properties of a container in
   the Univrs platform. A container is an isolated execution environment
   that encapsulates a workload.
   

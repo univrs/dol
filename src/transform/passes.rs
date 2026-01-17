@@ -5,8 +5,9 @@
 //! - Dead code elimination
 //! - Expression simplification
 
-use crate::ast::{BinaryOp, Declaration, Expr, Literal, UnaryOp};
+use crate::ast::{BinaryOp, Block, Declaration, Expr, Literal, Span, UnaryOp, Visibility};
 use crate::transform::{Pass, PassResult};
+use std::collections::{HashMap, HashSet};
 
 /// Constant folding pass.
 ///
@@ -74,10 +75,11 @@ impl ConstantFolding {
                         self.fold_expr(*else_expr)
                     } else {
                         // No else branch, return void-like
-                        Expr::Block {
+                        Expr::Block(Block {
                             statements: vec![],
                             final_expr: None,
-                        }
+                            span: Span::default(),
+                        })
                     };
                 }
 
@@ -100,13 +102,15 @@ impl ConstantFolding {
                 return_type,
                 body: Box::new(self.fold_expr(*body)),
             },
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => Expr::Block {
+                ..
+            }) => Expr::Block(Block {
                 statements,
                 final_expr: final_expr.map(|e| Box::new(self.fold_expr(*e))),
-            },
+                span: Span::default(),
+            }),
             other => other,
         }
     }
@@ -192,7 +196,8 @@ impl Pass for ConstantFolding {
 
 /// Dead code elimination pass.
 ///
-/// Removes unreachable code and unused bindings.
+/// Removes unreachable code and unused bindings within a single declaration.
+/// For whole-program tree shaking, use [`TreeShaking`] instead.
 pub struct DeadCodeElimination;
 
 impl DeadCodeElimination {
@@ -214,9 +219,258 @@ impl Pass for DeadCodeElimination {
     }
 
     fn run(&mut self, decl: Declaration) -> PassResult<Declaration> {
-        // For now, just return the declaration unchanged
-        // Full DCE requires use-def analysis
+        // Single-declaration DCE is limited - most interesting cases
+        // require whole-program analysis via TreeShaking
         Ok(decl)
+    }
+}
+
+/// Whole-program tree shaking (dead code elimination).
+///
+/// Analyzes all declarations to build a dependency graph, then removes
+/// declarations that are not reachable from root declarations (public items).
+///
+/// # Algorithm
+///
+/// 1. Build a dependency graph from all declarations
+/// 2. Identify root declarations (public or entry points)
+/// 3. Traverse from roots, marking all reachable declarations
+/// 4. Remove unreachable declarations
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::transform::TreeShaking;
+/// use metadol::ast::{Declaration, Gen, Trait, Statement, Span, Visibility};
+///
+/// // Create some declarations
+/// let public_gen = Gen {
+///     visibility: Visibility::Public,
+///     name: "api.public".to_string(),
+///     extends: None,
+///     statements: vec![],
+///     exegesis: "Public API".to_string(),
+///     span: Span::default(),
+/// };
+///
+/// let private_gen = Gen {
+///     visibility: Visibility::Private,
+///     name: "internal.unused".to_string(),
+///     extends: None,
+///     statements: vec![],
+///     exegesis: "Unused internal".to_string(),
+///     span: Span::default(),
+/// };
+///
+/// let decls = vec![
+///     Declaration::Gene(public_gen),
+///     Declaration::Gene(private_gen),
+/// ];
+///
+/// let mut shaker = TreeShaking::new();
+/// let result = shaker.shake(decls);
+///
+/// // Only the public gen is retained
+/// assert_eq!(result.len(), 1);
+/// assert_eq!(result[0].name(), "api.public");
+/// ```
+#[derive(Debug, Default)]
+pub struct TreeShaking {
+    /// Dependency graph: declaration name -> dependencies
+    dependencies: HashMap<String, HashSet<String>>,
+    /// Reverse dependency graph: declaration name -> dependents
+    dependents: HashMap<String, HashSet<String>>,
+    /// Set of root declarations (entry points)
+    roots: HashSet<String>,
+    /// Set of reachable declarations
+    reachable: HashSet<String>,
+    /// Additional entry points specified by user
+    extra_roots: HashSet<String>,
+}
+
+impl TreeShaking {
+    /// Creates a new tree shaking instance.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds an additional entry point.
+    ///
+    /// Use this to prevent specific declarations from being eliminated
+    /// even if they appear unused (e.g., for reflection, serialization).
+    pub fn add_root(&mut self, name: impl Into<String>) -> &mut Self {
+        self.extra_roots.insert(name.into());
+        self
+    }
+
+    /// Performs tree shaking on a collection of declarations.
+    ///
+    /// Returns a new vector containing only the reachable declarations.
+    pub fn shake(&mut self, decls: Vec<Declaration>) -> Vec<Declaration> {
+        // Reset state
+        self.dependencies.clear();
+        self.dependents.clear();
+        self.roots.clear();
+        self.reachable.clear();
+
+        // Phase 1: Build dependency graph
+        self.build_dependency_graph(&decls);
+
+        // Phase 2: Identify roots (public declarations + extra roots)
+        self.identify_roots(&decls);
+
+        // Phase 3: Mark reachable declarations
+        self.mark_reachable();
+
+        // Phase 4: Filter to keep only reachable declarations
+        decls
+            .into_iter()
+            .filter(|d| self.reachable.contains(d.name()))
+            .collect()
+    }
+
+    /// Analyzes declarations without modifying them.
+    ///
+    /// Returns statistics about what would be eliminated.
+    pub fn analyze(&mut self, decls: &[Declaration]) -> TreeShakingStats {
+        // Reset state
+        self.dependencies.clear();
+        self.dependents.clear();
+        self.roots.clear();
+        self.reachable.clear();
+
+        self.build_dependency_graph(decls);
+        self.identify_roots(decls);
+        self.mark_reachable();
+
+        let total = decls.len();
+        let retained = self.reachable.len();
+        let eliminated = total - retained;
+
+        let eliminated_names: Vec<String> = decls
+            .iter()
+            .filter(|d| !self.reachable.contains(d.name()))
+            .map(|d| d.name().to_string())
+            .collect();
+
+        TreeShakingStats {
+            total_declarations: total,
+            retained_declarations: retained,
+            eliminated_declarations: eliminated,
+            eliminated_names,
+            root_count: self.roots.len(),
+        }
+    }
+
+    /// Builds the dependency graph from declarations.
+    fn build_dependency_graph(&mut self, decls: &[Declaration]) {
+        for decl in decls {
+            let name = decl.name().to_string();
+            let mut deps = HashSet::new();
+
+            // Collect explicit dependencies from 'uses' statements
+            for dep in decl.collect_dependencies() {
+                deps.insert(dep.clone());
+
+                // Build reverse graph (dependents)
+                self.dependents.entry(dep).or_default().insert(name.clone());
+            }
+
+            // Collect inheritance dependencies from 'extends'
+            if let Declaration::Gene(gen) = decl {
+                if let Some(ref parent) = gen.extends {
+                    deps.insert(parent.clone());
+                    self.dependents
+                        .entry(parent.clone())
+                        .or_default()
+                        .insert(name.clone());
+                }
+            }
+
+            self.dependencies.insert(name, deps);
+        }
+    }
+
+    /// Identifies root declarations (entry points).
+    fn identify_roots(&mut self, decls: &[Declaration]) {
+        for decl in decls {
+            let name = decl.name();
+            let visibility = decl.visibility();
+
+            // Public declarations are always roots
+            if matches!(visibility, Visibility::Public | Visibility::PubSpirit) {
+                self.roots.insert(name.to_string());
+            }
+        }
+
+        // Add extra roots specified by user
+        for root in &self.extra_roots {
+            self.roots.insert(root.clone());
+        }
+    }
+
+    /// Marks all declarations reachable from roots.
+    fn mark_reachable(&mut self) {
+        let mut worklist: Vec<String> = self.roots.iter().cloned().collect();
+
+        while let Some(name) = worklist.pop() {
+            if self.reachable.contains(&name) {
+                continue;
+            }
+
+            self.reachable.insert(name.clone());
+
+            // Add all dependencies to worklist
+            if let Some(deps) = self.dependencies.get(&name) {
+                for dep in deps {
+                    if !self.reachable.contains(dep) {
+                        worklist.push(dep.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns the set of reachable declaration names.
+    pub fn reachable_names(&self) -> &HashSet<String> {
+        &self.reachable
+    }
+
+    /// Returns the dependency graph.
+    pub fn dependency_graph(&self) -> &HashMap<String, HashSet<String>> {
+        &self.dependencies
+    }
+}
+
+/// Statistics from tree shaking analysis.
+#[derive(Debug, Clone)]
+pub struct TreeShakingStats {
+    /// Total number of input declarations
+    pub total_declarations: usize,
+    /// Number of declarations retained
+    pub retained_declarations: usize,
+    /// Number of declarations eliminated
+    pub eliminated_declarations: usize,
+    /// Names of eliminated declarations
+    pub eliminated_names: Vec<String>,
+    /// Number of root declarations
+    pub root_count: usize,
+}
+
+impl std::fmt::Display for TreeShakingStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Tree Shaking Results:")?;
+        writeln!(f, "  Total declarations: {}", self.total_declarations)?;
+        writeln!(f, "  Root declarations:  {}", self.root_count)?;
+        writeln!(f, "  Retained:           {}", self.retained_declarations)?;
+        writeln!(f, "  Eliminated:         {}", self.eliminated_declarations)?;
+        if !self.eliminated_names.is_empty() {
+            writeln!(f, "  Eliminated names:")?;
+            for name in &self.eliminated_names {
+                writeln!(f, "    - {}", name)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -505,5 +759,264 @@ mod tests {
         };
         let result = pass.simplify_expr(expr);
         assert_eq!(result, Expr::Identifier("x".to_string()));
+    }
+
+    // ===== Tree Shaking Tests =====
+
+    use crate::ast::{Gen, Statement, Trait};
+
+    fn make_gen(name: &str, visibility: Visibility) -> Declaration {
+        Declaration::Gene(Gen {
+            visibility,
+            name: name.to_string(),
+            extends: None,
+            statements: vec![],
+            exegesis: format!("{} gen", name),
+            span: Span::default(),
+        })
+    }
+
+    fn make_gen_with_extends(name: &str, visibility: Visibility, extends: &str) -> Declaration {
+        Declaration::Gene(Gen {
+            visibility,
+            name: name.to_string(),
+            extends: Some(extends.to_string()),
+            statements: vec![],
+            exegesis: format!("{} gen", name),
+            span: Span::default(),
+        })
+    }
+
+    fn make_trait_with_uses(name: &str, visibility: Visibility, uses: &[&str]) -> Declaration {
+        let statements = uses
+            .iter()
+            .map(|u| Statement::Uses {
+                reference: u.to_string(),
+                span: Span::default(),
+            })
+            .collect();
+
+        Declaration::Trait(Trait {
+            visibility,
+            name: name.to_string(),
+            statements,
+            exegesis: format!("{} trait", name),
+            span: Span::default(),
+        })
+    }
+
+    #[test]
+    fn test_tree_shaking_keeps_public_declarations() {
+        let decls = vec![
+            make_gen("public.api", Visibility::Public),
+            make_gen("private.internal", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name(), "public.api");
+    }
+
+    #[test]
+    fn test_tree_shaking_keeps_dependencies_of_public() {
+        let decls = vec![
+            make_trait_with_uses("public.api", Visibility::Public, &["private.dep"]),
+            make_gen("private.dep", Visibility::Private),
+            make_gen("private.unused", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 2);
+        let names: Vec<&str> = result.iter().map(|d| d.name()).collect();
+        assert!(names.contains(&"public.api"));
+        assert!(names.contains(&"private.dep"));
+        assert!(!names.contains(&"private.unused"));
+    }
+
+    #[test]
+    fn test_tree_shaking_follows_inheritance() {
+        let decls = vec![
+            make_gen_with_extends("public.child", Visibility::Public, "private.parent"),
+            make_gen("private.parent", Visibility::Private),
+            make_gen("private.unrelated", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 2);
+        let names: Vec<&str> = result.iter().map(|d| d.name()).collect();
+        assert!(names.contains(&"public.child"));
+        assert!(names.contains(&"private.parent"));
+        assert!(!names.contains(&"private.unrelated"));
+    }
+
+    #[test]
+    fn test_tree_shaking_transitive_dependencies() {
+        let decls = vec![
+            make_trait_with_uses("public.api", Visibility::Public, &["private.a"]),
+            make_trait_with_uses("private.a", Visibility::Private, &["private.b"]),
+            make_trait_with_uses("private.b", Visibility::Private, &["private.c"]),
+            make_gen("private.c", Visibility::Private),
+            make_gen("private.unused", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 4);
+        let names: Vec<&str> = result.iter().map(|d| d.name()).collect();
+        assert!(names.contains(&"public.api"));
+        assert!(names.contains(&"private.a"));
+        assert!(names.contains(&"private.b"));
+        assert!(names.contains(&"private.c"));
+        assert!(!names.contains(&"private.unused"));
+    }
+
+    #[test]
+    fn test_tree_shaking_extra_roots() {
+        let decls = vec![
+            make_gen("public.api", Visibility::Public),
+            make_gen("private.internal", Visibility::Private),
+            make_gen("private.reflected", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        shaker.add_root("private.reflected");
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 2);
+        let names: Vec<&str> = result.iter().map(|d| d.name()).collect();
+        assert!(names.contains(&"public.api"));
+        assert!(names.contains(&"private.reflected"));
+        assert!(!names.contains(&"private.internal"));
+    }
+
+    #[test]
+    fn test_tree_shaking_pub_spirit_is_root() {
+        let decls = vec![
+            make_gen("spirit.internal", Visibility::PubSpirit),
+            make_gen("private.internal", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name(), "spirit.internal");
+    }
+
+    #[test]
+    fn test_tree_shaking_all_public_kept() {
+        let decls = vec![
+            make_gen("public.a", Visibility::Public),
+            make_gen("public.b", Visibility::Public),
+            make_gen("public.c", Visibility::Public),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_tree_shaking_analyze() {
+        let decls = vec![
+            make_trait_with_uses("public.api", Visibility::Public, &["private.dep"]),
+            make_gen("private.dep", Visibility::Private),
+            make_gen("private.unused1", Visibility::Private),
+            make_gen("private.unused2", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let stats = shaker.analyze(&decls);
+
+        assert_eq!(stats.total_declarations, 4);
+        assert_eq!(stats.retained_declarations, 2);
+        assert_eq!(stats.eliminated_declarations, 2);
+        assert_eq!(stats.root_count, 1);
+        assert!(stats
+            .eliminated_names
+            .contains(&"private.unused1".to_string()));
+        assert!(stats
+            .eliminated_names
+            .contains(&"private.unused2".to_string()));
+    }
+
+    #[test]
+    fn test_tree_shaking_empty_input() {
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(vec![]);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_tree_shaking_no_public_declarations() {
+        let decls = vec![
+            make_gen("private.a", Visibility::Private),
+            make_gen("private.b", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let result = shaker.shake(decls);
+
+        // No roots means nothing is retained
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_tree_shaking_stats_display() {
+        let stats = TreeShakingStats {
+            total_declarations: 10,
+            retained_declarations: 6,
+            eliminated_declarations: 4,
+            eliminated_names: vec!["unused.a".to_string(), "unused.b".to_string()],
+            root_count: 2,
+        };
+
+        let output = format!("{}", stats);
+        assert!(output.contains("Total declarations: 10"));
+        assert!(output.contains("Retained:           6"));
+        assert!(output.contains("Eliminated:         4"));
+        assert!(output.contains("unused.a"));
+        assert!(output.contains("unused.b"));
+    }
+
+    #[test]
+    fn test_tree_shaking_dependency_graph_accessor() {
+        let decls = vec![
+            make_trait_with_uses("public.api", Visibility::Public, &["private.dep"]),
+            make_gen("private.dep", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let _ = shaker.shake(decls);
+
+        let graph = shaker.dependency_graph();
+        assert!(graph.contains_key("public.api"));
+        assert!(graph["public.api"].contains("private.dep"));
+    }
+
+    #[test]
+    fn test_tree_shaking_reachable_names_accessor() {
+        let decls = vec![
+            make_trait_with_uses("public.api", Visibility::Public, &["private.dep"]),
+            make_gen("private.dep", Visibility::Private),
+            make_gen("private.unused", Visibility::Private),
+        ];
+
+        let mut shaker = TreeShaking::new();
+        let _ = shaker.shake(decls);
+
+        let reachable = shaker.reachable_names();
+        assert!(reachable.contains("public.api"));
+        assert!(reachable.contains("private.dep"));
+        assert!(!reachable.contains("private.unused"));
     }
 }

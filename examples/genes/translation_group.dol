@@ -1,33 +1,33 @@
-gene TranslationGroup<D: UInt64> {
-  has offset: Array<Float64>
-  has dim: UInt64 = D
+gen TranslationGroup<D: u64> {
+  has offset: Array<f64>
+  has dim: u64 = D
 
-  constraint valid_dimension {
+  rule valid_dimension {
     this.offset.length == D
   }
 
-  fun identity() -> Array<Float64> {
+  fun identity() -> Array<f64> {
     return (0..D).map(|i| 0.0).collect()
   }
 
-  fun compose(other: TranslationGroup<D>) -> Array<Float64> {
+  fun compose(other: TranslationGroup<D>) -> Array<f64> {
     return (0..D).map(|i| this.offset[i] + other.offset[i]).collect()
   }
 
-  fun inverse() -> Array<Float64> {
+  fun inverse() -> Array<f64> {
     return this.offset.map(|x| -x).collect()
   }
 
-  fun act(point: Array<Float64>) -> Array<Float64> {
+  fun act(point: Array<f64>) -> Array<f64> {
     return (0..D).map(|i| point[i] + this.offset[i]).collect()
   }
 
-  fun magnitude() -> Float64 {
+  fun magnitude() -> f64 {
     let sum_sq = this.offset.map(|x| x * x).sum()
     return sum_sq.sqrt()
   }
 
-  fun normalize() -> Array<Float64> {
+  fun normalize() -> Array<f64> {
     let mag = this.magnitude()
     if mag == 0.0 {
       return this.offset
@@ -35,20 +35,20 @@ gene TranslationGroup<D: UInt64> {
     return this.offset.map(|x| x / mag).collect()
   }
 
-  fun scale(factor: Float64) -> Array<Float64> {
+  fun scale(factor: f64) -> Array<f64> {
     return this.offset.map(|x| x * factor).collect()
   }
 
-  fun dot(other: TranslationGroup<D>) -> Float64 {
+  fun dot(other: TranslationGroup<D>) -> f64 {
     return (0..D).map(|i| this.offset[i] * other.offset[i]).sum()
   }
 
-  fun is_identity() -> Bool {
+  fun is_identity() -> bool {
     return !(0..D).any(|i| this.offset[i] != 0.0)
   }
 }
 
-exegesis {
+docs {
   TranslationGroup<D> represents the translation group T(D) in D-dimensional
   Euclidean space. This is a continuous Lie group consisting of all translations
   (shifts) in R^D space.
@@ -60,12 +60,12 @@ exegesis {
   - Grid3D: T(3) - translations in 3D space (volumes, point clouds)
 
   Type Parameter:
-  - D: UInt64 - The dimension of the space (compile-time constant)
+  - D: u64 - The dimension of the space (compile-time constant)
     D=1 for sequences, D=2 for images, D=3 for volumetric data
 
   Properties:
-  - offset: Array<Float64> - The translation vector with D components
-  - dim: UInt64 = D - The dimension (stored for runtime convenience)
+  - offset: Array<f64> - The translation vector with D components
+  - dim: u64 = D - The dimension (stored for runtime convenience)
 
   Constraint:
   - valid_dimension: Ensures offset array has exactly D elements

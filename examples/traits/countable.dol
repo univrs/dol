@@ -6,7 +6,7 @@ trait counter.countable {
   operations is atomic
 }
 
-exegesis {
+docs {
   The counter.countable trait defines operations on a counter. It depends
   on counter.state (which provides value, min, max properties).
 

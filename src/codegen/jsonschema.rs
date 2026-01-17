@@ -39,7 +39,7 @@
 //! println!("{}", schema);
 //! ```
 
-use crate::ast::{Constraint, Declaration, Evolution, Gene, Statement, System, Trait, TypeExpr};
+use crate::ast::{Declaration, Evo, Gen, Rule, Statement, System, Trait, TypeExpr};
 use crate::typechecker::Type;
 
 use super::{to_pascal_case, CodegenOptions, TypeMapper};
@@ -181,7 +181,7 @@ impl JsonSchemaCodegen {
     }
 
     /// Generate a JSON Schema object from a gene declaration.
-    fn generate_gene(&self, gene: &Gene) -> String {
+    fn generate_gene(&self, gene: &Gen) -> String {
         let properties = self.extract_properties(&gene.statements);
         let required = self.extract_required(&gene.statements);
 
@@ -300,7 +300,7 @@ impl JsonSchemaCodegen {
     }
 
     /// Generate a schema for constraint (validation rules as metadata).
-    fn generate_constraint(&self, constraint: &Constraint) -> String {
+    fn generate_constraint(&self, constraint: &Rule) -> String {
         let mut schema = String::from("{\n");
 
         // Description from exegesis
@@ -389,7 +389,7 @@ impl JsonSchemaCodegen {
     }
 
     /// Generate a schema for evolution (version history metadata).
-    fn generate_evolution(&self, evolution: &Evolution) -> String {
+    fn generate_evolution(&self, evolution: &Evo) -> String {
         let mut schema = String::from("{\n");
 
         // Description from exegesis
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_generate_gene_schema() {
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
@@ -695,7 +695,7 @@ mod tests {
 
     #[test]
     fn test_generate_constraint_schema() {
-        let constraint = Constraint {
+        let constraint = Rule {
             visibility: Visibility::default(),
             name: "container.integrity".to_string(),
             statements: vec![Statement::Matches {

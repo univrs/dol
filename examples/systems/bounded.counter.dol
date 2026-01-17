@@ -7,7 +7,7 @@ system bounded.counter @0.1.0 {
   counter has overflow.policy
 }
 
-exegesis {
+docs {
   The bounded.counter system composes genes, traits, and constraints
   into a complete, versioned component.
 

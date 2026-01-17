@@ -1,3 +1,3 @@
-gene Counter {
-    type: Int64
+gen Counter {
+    type: i64
 }

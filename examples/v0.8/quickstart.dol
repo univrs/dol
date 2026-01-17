@@ -1,0 +1,118 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL v0.8.0 Quickstart Example
+// Demonstrates basic gen declarations with primitive types
+// ═══════════════════════════════════════════════════════════════
+
+module quickstart @ 0.8.0
+
+docs {
+    A minimal DOL v0.8.0 example demonstrating the new syntax.
+
+    This file showcases:
+    - The new `gen` keyword (replaces `gene`)
+    - The new `docs` keyword (replaces `exegesis`)
+    - New primitive type names: i32, i64, f64, bool, string
+    - Basic field declarations with `has`
+
+    Run with: cargo run --bin dol-parse -- examples/v0.8/quickstart.dol
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Simple Data Structures
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    A 2D point using f64 coordinates.
+}
+
+gen Point {
+    has x: f64
+    has y: f64
+}
+
+docs {
+    A user profile with basic information.
+}
+
+gen User {
+    has id: u64
+    has name: string
+    has email: string
+    has active: bool
+    has age: u8
+}
+
+docs {
+    A configuration entry with typed value.
+}
+
+gen ConfigEntry {
+    has key: string
+    has value: string
+    has priority: i32
+    has enabled: bool
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Numeric Types Showcase
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Demonstrates all numeric primitive types available in v0.8.0.
+
+    Signed integers: i8, i16, i32, i64, i128
+    Unsigned integers: u8, u16, u32, u64, u128
+    Floating point: f32, f64
+}
+
+gen NumericShowcase {
+    // Signed integers
+    has tiny_signed: i8
+    has small_signed: i16
+    has normal_signed: i32
+    has large_signed: i64
+    has huge_signed: i128
+
+    // Unsigned integers
+    has tiny_unsigned: u8
+    has small_unsigned: u16
+    has normal_unsigned: u32
+    has large_unsigned: u64
+    has huge_unsigned: u128
+
+    // Floating point
+    has single_precision: f32
+    has double_precision: f64
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Simple Pure Function
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    Calculate the distance between two points.
+    Pure function - no side effects.
+}
+
+fun distance(p1: Point, p2: Point) -> f64 {
+    let dx = p2.x - p1.x
+    let dy = p2.y - p1.y
+    return (dx * dx + dy * dy)
+}
+
+docs {
+    Check if a user is valid for registration.
+}
+
+fun is_valid_user(user: User) -> bool {
+    if user.name == "" {
+        return false
+    }
+    if user.email == "" {
+        return false
+    }
+    if user.age < 13 {
+        return false
+    }
+    return true
+}

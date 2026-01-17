@@ -3735,10 +3735,10 @@ mod tests {
 
     #[test]
     fn test_compile_non_function_declaration_fails() {
-        use crate::ast::{Gene, Visibility};
+        use crate::ast::{Gen, Visibility};
 
         // Try to compile a Gene (not supported)
-        let gene = Gene {
+        let gene = Gen {
             name: "test.gene".to_string(),
             visibility: Visibility::Private,
             extends: None,

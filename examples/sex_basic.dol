@@ -2,22 +2,22 @@
 // This file tests the complete SEX syntax
 
 // Host imports (no body = WASM import)
-sex fun vudo_print(ptr: Int32, len: Int32)
-sex fun vudo_alloc(size: Int32) -> Int32
+sex fun vudo_print(ptr: i32, len: i32)
+sex fun vudo_alloc(size: i32) -> i32
 
 // Pure function - no effects allowed
-fun add(a: Int64, b: Int64) -> Int64 {
+fun add(a: i64, b: i64) -> i64 {
     return a + b
 }
 
 // Sex function with body - effects allowed
-sex fun log_and_add(a: Int64, b: Int64) -> Int64 {
+sex fun log_and_add(a: i64, b: i64) -> i64 {
     // vudo_print("Adding...", 10)  // Would call the import
     return a + b
 }
 
 // Sex block in pure function
-fun compute_with_debug(x: Int64) -> Int64 {
+fun compute_with_debug(x: i64) -> i64 {
     let result = x * 2
     sex {
         // vudo_print("Debug: result computed", 22)

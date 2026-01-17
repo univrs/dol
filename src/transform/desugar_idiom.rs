@@ -25,7 +25,7 @@
 //! (add <$> x) <*> y
 //! ```
 
-use crate::ast::{BinaryOp, Declaration, Expr};
+use crate::ast::{BinaryOp, Block, Declaration, Expr, Span};
 use crate::transform::{Pass, PassResult};
 
 /// Desugaring pass for idiom brackets.
@@ -157,10 +157,11 @@ impl IdiomDesugar {
                 }
             }
 
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 use crate::ast::Stmt;
 
                 // Desugar expressions within statements
@@ -199,10 +200,11 @@ impl IdiomDesugar {
                     })
                     .collect();
 
-                Expr::Block {
+                Expr::Block(Block {
                     statements,
                     final_expr: final_expr.map(|e| Box::new(self.desugar_expr(*e))),
-                }
+                    span: Span::default(),
+                })
             }
 
             Expr::Quote(inner) => Expr::Quote(Box::new(self.desugar_expr(*inner))),
@@ -236,10 +238,11 @@ impl IdiomDesugar {
             },
 
             // Sex block - recursively desugar statements and final expression
-            Expr::SexBlock {
+            Expr::SexBlock(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 use crate::ast::Stmt;
 
                 // Desugar expressions within statements
@@ -278,10 +281,11 @@ impl IdiomDesugar {
                     })
                     .collect();
 
-                Expr::SexBlock {
+                Expr::SexBlock(Block {
                     statements,
                     final_expr: final_expr.map(|e| Box::new(self.desugar_expr(*e))),
-                }
+                    span: Span::default(),
+                })
             }
 
             // Leaf nodes - no transformation needed

@@ -2,7 +2,7 @@
 // This demonstrates the DOL -> WASM -> Loa string pipeline
 
 // Host import for printing (from Loa)
-sex fun vudo_print(ptr: Int32, len: Int32)
+sex fun vudo_print(ptr: i32, len: i32)
 
 // Function that prints a greeting
 fun greet() {
@@ -10,6 +10,6 @@ fun greet() {
 }
 
 // Simple function for testing non-string code
-fun add(a: Int64, b: Int64) -> Int64 {
+fun add(a: i64, b: i64) -> i64 {
     return a + b
 }

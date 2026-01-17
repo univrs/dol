@@ -347,10 +347,10 @@ fn test_all_gdl_genes_have_constraints() {
         let content =
             fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to read {}", path));
 
-        // Check that "constraint" keyword appears in the source
+        // Check that "constraint" or "rule" keyword appears in the source (v0.8.0+ uses "rule")
         assert!(
-            content.contains("constraint"),
-            "{} must have at least one constraint",
+            content.contains("constraint") || content.contains("rule"),
+            "{} must have at least one constraint/rule",
             gene_file
         );
     }

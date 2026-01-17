@@ -1,12 +1,12 @@
-gene counter.state {
+gen counter.state {
   counter has value
   counter has minimum
   counter has maximum
   counter derives from initialization
 }
 
-exegesis {
-  The counter.state gene models a bounded counter. A counter has a current
+docs {
+  The counter.state gen models a bounded counter. A counter has a current
   value, and bounds (minimum and maximum). The counter derives from an
   initialization value when created.
 

@@ -215,7 +215,7 @@ exegesis {
             module: None,
             uses: vec![],
             declarations: vec![
-                crate::ast::Declaration::Gene(crate::ast::Gene {
+                crate::ast::Declaration::Gene(crate::ast::Gen {
                     visibility: crate::ast::Visibility::default(),
                     name: "gene.one".to_string(),
                     extends: None,
@@ -223,7 +223,7 @@ exegesis {
                     exegesis: "First gene".to_string(),
                     span: crate::ast::Span::default(),
                 }),
-                crate::ast::Declaration::Gene(crate::ast::Gene {
+                crate::ast::Declaration::Gene(crate::ast::Gen {
                     visibility: crate::ast::Visibility::default(),
                     name: "gene.two".to_string(),
                     extends: None,
@@ -261,7 +261,7 @@ exegesis {
         let file = crate::ast::DolFile {
             module: None,
             uses: vec![],
-            declarations: vec![crate::ast::Declaration::Gene(crate::ast::Gene {
+            declarations: vec![crate::ast::Declaration::Gene(crate::ast::Gen {
                 visibility: crate::ast::Visibility::default(),
                 name: "test.comprehensive".to_string(),
                 extends: None,

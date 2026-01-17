@@ -1,24 +1,24 @@
-gene Grid2D<T> {
-  has height: UInt64
-  has width: UInt64
-  has channels: UInt64
+gen Grid2D<T> {
+  has height: u64
+  has width: u64
+  has channels: u64
   has data: Array<T>
-  has stride: UInt64 = width * channels
+  has stride: u64 = width * channels
 
-  constraint valid_shape {
+  rule valid_shape {
     this.data.length == this.height * this.width * this.channels
   }
 
-  constraint positive_dimensions {
+  rule positive_dimensions {
     this.height > 0 && this.width > 0 && this.channels > 0
   }
 
-  fun at(row: UInt64, col: UInt64, channel: UInt64) -> T {
+  fun at(row: u64, col: u64, channel: u64) -> T {
     let idx = row * this.stride + col * this.channels + channel
     return this.data[idx]
   }
 
-  fun shape() -> Tuple<UInt64, UInt64, UInt64> {
+  fun shape() -> Tuple<u64, u64, u64> {
     return (this.height, this.width, this.channels)
   }
 
@@ -28,11 +28,11 @@ gene Grid2D<T> {
 
 }
 
-exegesis {
+docs {
   Grid2D<T> models a regular 2-dimensional grid domain for structured data
   such as images, spectrograms, and dense feature maps.
 
-  This gene is fundamental to Geometric Deep Learning (GDL) as grids are
+  This gen is fundamental to Geometric Deep Learning (GDL) as grids are
   the most common domain for translation-equivariant architectures like
   Convolutional Neural Networks (CNNs).
 
@@ -44,7 +44,7 @@ exegesis {
   - stride: Pre-computed row stride for efficient indexing
 
   Shape Constraint:
-  The valid_shape constraint ensures data integrity by verifying that
+  The valid_shape rule ensures data integrity by verifying that
   the flattened data array has exactly height * width * channels elements.
   This is critical for memory safety and tensor operations.
 
@@ -54,9 +54,9 @@ exegesis {
   to respect this structure (e.g., convolutional layers with weight sharing).
 
   Common Use Cases:
-  - Images: Grid2D<Float32> with channels=3 (RGB) or channels=1 (grayscale)
-  - Feature maps: Grid2D<Float32> with channels=hidden_dim
-  - Spectrograms: Grid2D<Float32> with height=frequency_bins, width=time_steps
+  - Images: Grid2D<f32> with channels=3 (RGB) or channels=1 (grayscale)
+  - Feature maps: Grid2D<f32> with channels=hidden_dim
+  - Spectrograms: Grid2D<f32> with height=frequency_bins, width=time_steps
 
   Related Genes:
   - Grid1D<T>: Sequences and time series (1D translation symmetry)

@@ -1,16 +1,16 @@
-gene Graph<N, E> {
-  has nodes: List<N>
-  has edges: List<Tuple<UInt64, UInt64, E>>
-  has adjacency: SparseMatrix<Float64>
-  has node_count: UInt64 = nodes.length
-  has edge_count: UInt64 = edges.length
+gen Graph<N, E> {
+  has nodes: Vec<N>
+  has edges: Vec<Tuple<u64, u64, E>>
+  has adjacency: SparseMatrix<f64>
+  has node_count: u64 = nodes.length
+  has edge_count: u64 = edges.length
 
-  constraint valid_edges {
+  rule valid_edges {
     forall edge in this.edges.
       edge.0 < this.nodes.length && edge.1 < this.nodes.length
   }
 
-  constraint no_self_loops {
+  rule no_self_loops {
     forall edge in this.edges.
       edge.0 != edge.1
   }
@@ -20,25 +20,25 @@ gene Graph<N, E> {
       (j, i, e) in this.edges
   }
 
-  fun neighbors(node_idx: UInt64) -> List<UInt64> {
+  fun neighbors(node_idx: u64) -> Vec<u64> {
     return this.edges
       .filter(|edge| edge.0 == node_idx)
       .map(|edge| edge.1)
   }
 
-  fun degree(node_idx: UInt64) -> UInt64 {
+  fun degree(node_idx: u64) -> u64 {
     return this.neighbors(node_idx).length
   }
 
-  fun has_edge(src: UInt64, dst: UInt64) -> Bool {
+  fun has_edge(src: u64, dst: u64) -> bool {
     return this.edges.any(|edge| edge.0 == src && edge.1 == dst)
   }
 
-  fun get_node(idx: UInt64) -> N {
+  fun get_node(idx: u64) -> N {
     return this.nodes[idx]
   }
 
-  fun get_edge_data(src: UInt64, dst: UInt64) -> Option<E> {
+  fun get_edge_data(src: u64, dst: u64) -> Option<E> {
     return this.edges
       .find(|edge| edge.0 == src && edge.1 == dst)
       .map(|edge| edge.2)
@@ -75,7 +75,7 @@ gene Graph<N, E> {
   }
 
   // Build adjacency matrix from edge list
-  fun build_adjacency(edges: List<Tuple<UInt64, UInt64, E>>) -> SparseMatrix<Float64> {
+  fun build_adjacency(edges: Vec<Tuple<u64, u64, E>>) -> SparseMatrix<f64> {
     let adj = SparseMatrix::zeros(this.node_count, this.node_count)
     for edge in edges {
       adj.set(edge.0, edge.1, 1.0)
@@ -84,17 +84,17 @@ gene Graph<N, E> {
   }
 
   // Check if two graphs have same structure
-  fun same_structure(other: Graph<N, E>) -> Bool {
+  fun same_structure(other: Graph<N, E>) -> bool {
     return this.node_count == other.node_count && this.edge_count == other.edge_count
   }
 }
 
-exegesis {
+docs {
   Graph<N, E> models a graph domain where N is the node feature type and
   E is the edge feature type. This is a fundamental structure for Geometric
   Deep Learning architectures operating on relational data.
 
-  This gene represents the Graph domain in the GDL three-pillar ontology,
+  This gen represents the Graph domain in the GDL three-pillar ontology,
   enabling permutation-equivariant neural network architectures like
   Graph Neural Networks (GNNs) and Message Passing Neural Networks (MPNNs).
 
@@ -106,12 +106,12 @@ exegesis {
   - edge_count: Number of edges (derived)
 
   Edge Validity Constraint:
-  The valid_edges constraint ensures all edge indices are within bounds,
+  The valid_edges rule ensures all edge indices are within bounds,
   preventing invalid node references. This is critical for memory safety
   and guarantees well-formed graph structure.
 
   No Self-Loops Constraint:
-  The no_self_loops constraint prevents edges from a node to itself,
+  The no_self_loops rule prevents edges from a node to itself,
   which is standard for many graph learning tasks. This can be relaxed
   for domains where self-loops are meaningful.
 

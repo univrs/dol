@@ -471,18 +471,18 @@ fn param_has_name() {
 
 #[test]
 fn param_has_type_ann() {
-    let file = Parser::new("fun test(x: Int64) { }").parse_file().unwrap();
+    let file = Parser::new("fun test(x: i64) { }").parse_file().unwrap();
     if let Some(Declaration::Function(func)) = file.declarations.first() {
         if let Some(param) = func.params.first() {
-            // Use type_ann, not param_type
-            assert!(format!("{:?}", param.type_ann).contains("Int64"));
+            // Use type_ann, not param_type - v0.8.0 uses lowercase i64
+            assert!(format!("{:?}", param.type_ann).contains("i64"));
         }
     }
 }
 
 #[test]
 fn multiple_params() {
-    let file = Parser::new("fun test(a: Int64, b: String, c: Bool) { }")
+    let file = Parser::new("fun test(a: i64, b: string, c: bool) { }")
         .parse_file()
         .unwrap();
     if let Some(Declaration::Function(func)) = file.declarations.first() {
@@ -522,6 +522,6 @@ fn expr_lambda() {
 fn expr_block() {
     let expr = Parser::new("{ a }").parse_expr(0);
     if let Ok(e) = expr {
-        assert!(matches!(e, Expr::Block { .. }));
+        assert!(matches!(e, Expr::Block(..)));
     }
 }

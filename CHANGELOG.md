@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2025-01-17 - "Clarity"
+
+### Language Changes
+
+#### New Preferred Keywords
+- `gen` replaces `gene` for genome declarations
+- `rule` replaces `constraint` for constraint declarations
+- `evo` replaces `evolves` for evolution declarations
+- `docs` replaces `exegesis` for documentation blocks
+
+#### Modernized Type Names (Rust-aligned)
+- `string` replaces `String`
+- `bool` replaces `Bool`
+- `i8`, `i16`, `i32`, `i64` replace `Int8`, `Int16`, `Int32`, `Int64`
+- `u8`, `u16`, `u32`, `u64` replace `UInt8`, `UInt16`, `UInt32`, `UInt64`
+- `f32`, `f64` replace `Float32`, `Float64`
+- `()` replaces `Void` for unit type
+- `Vec<T>` replaces `List<T>` for vectors
+
+#### Deprecated Syntax (warnings in 0.8, errors in 0.9)
+The old keywords and types are deprecated but still supported with compiler warnings.
+
+### New Features
+
+#### Tree Shaking
+- Added `TreeShaking` pass for dead code elimination
+- Analyzes dependency graphs to identify unreachable declarations
+- Public declarations and their transitive dependencies are preserved
+- Use `--tree-shake` flag in `dol-parse` CLI
+
+#### CLI Improvements
+- `dol-parse --tree-shake` - Enable tree shaking
+- `dol-parse --roots <names>` - Specify additional root declarations
+- `dol-parse --shake-analyze` - Dry-run to preview eliminations
+- Output formats (pretty, JSON, compact, debug) show eliminated declarations
+
+#### Migration Tool
+- `dol-migrate 0.7-to-0.8 <path>` - Automatic syntax migration
+- `--dry-run` flag to preview changes
+- `--diff` flag to show before/after
+- `--modernize` flag for return statement updates
+
+### Internal Changes
+- Lexer updated with new keywords and type tokens
+- Parser supports both old and new syntax
+- Deprecation warnings emitted at parse time with source locations
+- Type name normalization in codegen
+
+### Migration
+
+```bash
+# Auto-migrate your DOL files to v0.8.0 syntax
+cargo run --bin dol-migrate --features cli -- 0.7-to-0.8 src/
+
+# Preview changes first
+cargo run --bin dol-migrate --features cli -- 0.7-to-0.8 --diff src/
+```
+
 ## [0.3.0] - 2025-12-27 - "HIR"
 
 ### Language Changes

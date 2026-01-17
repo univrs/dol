@@ -1,0 +1,553 @@
+// ═══════════════════════════════════════════════════════════════
+// DOL v0.8.0 Collections Example
+// Demonstrates Vec<T>, generics, and type parameters
+// ═══════════════════════════════════════════════════════════════
+
+module collections.example @ 0.8.0
+
+docs {
+    Demonstrates collections and generic types in DOL v0.8.0.
+
+    Key changes from earlier versions:
+    - Vec<T> replaces List<T> for dynamic arrays
+    - Map<K, V> for key-value collections
+    - Option<T> and Result<T, E> for error handling
+    - Full generic type parameter support
+
+    Vec<T> is the primary collection type, inspired by Rust.
+    It provides efficient dynamic arrays with type safety.
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BASIC VEC USAGE
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    A simple record type for our examples.
+}
+
+gen Person {
+    has id: u64
+    has name: string
+    has age: u8
+}
+
+docs {
+    A container with a Vec of persons.
+}
+
+gen PersonList {
+    has people: Vec<Person>
+    has count: u32
+}
+
+docs {
+    Create an empty person list.
+}
+
+pub fun new_person_list() -> PersonList {
+    return PersonList {
+        people: Vec::new(),
+        count: 0
+    }
+}
+
+docs {
+    Add a person to the list.
+}
+
+pub fun add_person(list: PersonList, person: Person) -> PersonList {
+    let mut people = list.people
+    people.push(person)
+    return PersonList {
+        people: people,
+        count: list.count + 1
+    }
+}
+
+docs {
+    Find a person by ID.
+}
+
+pub fun find_person(list: PersonList, id: u64) -> Option<Person> {
+    for person in list.people {
+        if person.id == id {
+            return Some(person)
+        }
+    }
+    return None
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GENERIC TYPES
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    A generic pair type - holds two values of different types.
+}
+
+gen Pair<A, B> {
+    has first: A
+    has second: B
+}
+
+docs {
+    Create a new pair.
+}
+
+pub fun make_pair<A, B>(a: A, b: B) -> Pair<A, B> {
+    return Pair {
+        first: a,
+        second: b
+    }
+}
+
+docs {
+    Swap the elements of a pair.
+}
+
+pub fun swap<A, B>(pair: Pair<A, B>) -> Pair<B, A> {
+    return Pair {
+        first: pair.second,
+        second: pair.first
+    }
+}
+
+docs {
+    A generic triple type.
+}
+
+gen Triple<A, B, C> {
+    has first: A
+    has second: B
+    has third: C
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Generic Stack
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    A generic stack implementation using Vec<T>.
+}
+
+gen Stack<T> {
+    has items: Vec<T>
+    has size: u32
+}
+
+docs {
+    Create an empty stack.
+}
+
+pub fun stack_new<T>() -> Stack<T> {
+    return Stack {
+        items: Vec::new(),
+        size: 0
+    }
+}
+
+docs {
+    Push an item onto the stack.
+}
+
+pub fun stack_push<T>(stack: Stack<T>, item: T) -> Stack<T> {
+    let mut items = stack.items
+    items.push(item)
+    return Stack {
+        items: items,
+        size: stack.size + 1
+    }
+}
+
+docs {
+    Pop an item from the stack.
+}
+
+pub fun stack_pop<T>(stack: Stack<T>) -> Pair<Stack<T>, Option<T>> {
+    if stack.size == 0 {
+        return Pair {
+            first: stack,
+            second: None
+        }
+    }
+
+    let mut items = stack.items
+    let item = items.pop()
+
+    return Pair {
+        first: Stack {
+            items: items,
+            size: stack.size - 1
+        },
+        second: item
+    }
+}
+
+docs {
+    Peek at the top item without removing it.
+}
+
+pub fun stack_peek<T>(stack: Stack<T>) -> Option<T> {
+    if stack.size == 0 {
+        return None
+    }
+    return stack.items.last()
+}
+
+docs {
+    Check if stack is empty.
+}
+
+pub fun stack_is_empty<T>(stack: Stack<T>) -> bool {
+    return stack.size == 0
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Generic Queue
+// ─────────────────────────────────────────────────────────────────
+
+docs {
+    A generic queue implementation (FIFO).
+}
+
+gen Queue<T> {
+    has items: Vec<T>
+    has head: u32
+    has tail: u32
+}
+
+docs {
+    Create an empty queue.
+}
+
+pub fun queue_new<T>() -> Queue<T> {
+    return Queue {
+        items: Vec::new(),
+        head: 0,
+        tail: 0
+    }
+}
+
+docs {
+    Enqueue an item at the back.
+}
+
+pub fun queue_enqueue<T>(queue: Queue<T>, item: T) -> Queue<T> {
+    let mut items = queue.items
+    items.push(item)
+    return Queue {
+        items: items,
+        head: queue.head,
+        tail: queue.tail + 1
+    }
+}
+
+docs {
+    Dequeue an item from the front.
+}
+
+pub fun queue_dequeue<T>(queue: Queue<T>) -> Pair<Queue<T>, Option<T>> {
+    if queue.head >= queue.tail {
+        return Pair {
+            first: queue,
+            second: None
+        }
+    }
+
+    let item = queue.items.get(queue.head)
+
+    return Pair {
+        first: Queue {
+            items: queue.items,
+            head: queue.head + 1,
+            tail: queue.tail
+        },
+        second: item
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAP COLLECTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    A cache entry with expiration.
+}
+
+gen CacheEntry<V> {
+    has value: V
+    has expires_at: i64
+    has hits: u32
+}
+
+docs {
+    A simple cache using Map<K, V>.
+}
+
+gen Cache<K, V> {
+    has entries: Map<K, CacheEntry<V>>
+    has max_size: u32
+    has current_size: u32
+}
+
+docs {
+    Create a new cache with maximum size.
+}
+
+pub fun cache_new<K, V>(max_size: u32) -> Cache<K, V> {
+    return Cache {
+        entries: Map::new(),
+        max_size: max_size,
+        current_size: 0
+    }
+}
+
+docs {
+    Get an item from the cache.
+}
+
+pub fun cache_get<K, V>(cache: Cache<K, V>, key: K) -> Option<V> {
+    match cache.entries.get(key) {
+        Some(entry) {
+            return Some(entry.value)
+        }
+        None {
+            return None
+        }
+    }
+}
+
+docs {
+    Put an item into the cache with TTL in milliseconds.
+}
+
+pub fun cache_put<K, V>(cache: Cache<K, V>, key: K, value: V, ttl_ms: i64, now: i64) -> Cache<K, V> {
+    let entry = CacheEntry {
+        value: value,
+        expires_at: now + ttl_ms,
+        hits: 0
+    }
+
+    let mut entries = cache.entries
+    let was_present = entries.contains_key(key)
+    entries.insert(key, entry)
+
+    return Cache {
+        entries: entries,
+        max_size: cache.max_size,
+        current_size: if was_present { cache.current_size } else { cache.current_size + 1 }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RESULT AND ERROR HANDLING
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Error type for collection operations.
+}
+
+gen CollectionError {
+    has code: u32
+    has message: string
+}
+
+docs {
+    Safe division that returns Result.
+}
+
+pub fun safe_divide(a: f64, b: f64) -> Result<f64, CollectionError> {
+    if b == 0.0 {
+        return Err(CollectionError {
+            code: 1,
+            message: "Division by zero"
+        })
+    }
+    return Ok(a / b)
+}
+
+docs {
+    Safe vector index access.
+}
+
+pub fun safe_get<T>(items: Vec<T>, index: u32) -> Result<T, CollectionError> {
+    if index >= items.len() {
+        return Err(CollectionError {
+            code: 2,
+            message: "Index out of bounds"
+        })
+    }
+    match items.get(index) {
+        Some(item) { return Ok(item) }
+        None {
+            return Err(CollectionError {
+                code: 3,
+                message: "Unexpected None"
+            })
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HIGHER-ORDER FUNCTIONS WITH COLLECTIONS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    Map a function over a vector.
+}
+
+pub fun vec_map<A, B>(items: Vec<A>, f: fun(A) -> B) -> Vec<B> {
+    let mut result: Vec<B> = Vec::new()
+    for item in items {
+        result.push(f(item))
+    }
+    return result
+}
+
+docs {
+    Filter a vector by predicate.
+}
+
+pub fun vec_filter<T>(items: Vec<T>, pred: fun(T) -> bool) -> Vec<T> {
+    let mut result: Vec<T> = Vec::new()
+    for item in items {
+        if pred(item) {
+            result.push(item)
+        }
+    }
+    return result
+}
+
+docs {
+    Fold/reduce a vector to a single value.
+}
+
+pub fun vec_fold<T, A>(items: Vec<T>, init: A, f: fun(A, T) -> A) -> A {
+    let mut acc = init
+    for item in items {
+        acc = f(acc, item)
+    }
+    return acc
+}
+
+docs {
+    Find first element matching predicate.
+}
+
+pub fun vec_find<T>(items: Vec<T>, pred: fun(T) -> bool) -> Option<T> {
+    for item in items {
+        if pred(item) {
+            return Some(item)
+        }
+    }
+    return None
+}
+
+docs {
+    Check if any element matches predicate.
+}
+
+pub fun vec_any<T>(items: Vec<T>, pred: fun(T) -> bool) -> bool {
+    for item in items {
+        if pred(item) {
+            return true
+        }
+    }
+    return false
+}
+
+docs {
+    Check if all elements match predicate.
+}
+
+pub fun vec_all<T>(items: Vec<T>, pred: fun(T) -> bool) -> bool {
+    for item in items {
+        if !pred(item) {
+            return false
+        }
+    }
+    return true
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NESTED GENERICS
+// ═══════════════════════════════════════════════════════════════
+
+docs {
+    A table is a vector of vectors (2D grid).
+}
+
+type Table<T> = Vec<Vec<T>>
+
+docs {
+    Create an empty table.
+}
+
+pub fun table_new<T>() -> Table<T> {
+    return Vec::new()
+}
+
+docs {
+    Add a row to the table.
+}
+
+pub fun table_add_row<T>(table: Table<T>, row: Vec<T>) -> Table<T> {
+    let mut t = table
+    t.push(row)
+    return t
+}
+
+docs {
+    Get a cell value from the table.
+}
+
+pub fun table_get<T>(table: Table<T>, row: u32, col: u32) -> Option<T> {
+    match table.get(row) {
+        Some(r) {
+            return r.get(col)
+        }
+        None {
+            return None
+        }
+    }
+}
+
+docs {
+    A tree node with generic value.
+}
+
+gen TreeNode<T> {
+    has value: T
+    has children: Vec<TreeNode<T>>
+}
+
+docs {
+    Create a leaf node (no children).
+}
+
+pub fun leaf<T>(value: T) -> TreeNode<T> {
+    return TreeNode {
+        value: value,
+        children: Vec::new()
+    }
+}
+
+docs {
+    Create a branch node with children.
+}
+
+pub fun branch<T>(value: T, children: Vec<TreeNode<T>>) -> TreeNode<T> {
+    return TreeNode {
+        value: value,
+        children: children
+    }
+}
+
+docs {
+    Check if a node is a leaf.
+}
+
+pub fun is_leaf<T>(node: TreeNode<T>) -> bool {
+    return node.children.len() == 0
+}

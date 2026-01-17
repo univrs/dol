@@ -1,52 +1,52 @@
-gene PermutationGroup<N: UInt64> {
-  has perm: Array<UInt64>
-  has size: UInt64 = N
+gen PermutationGroup<N: u64> {
+  has perm: Array<u64>
+  has size: u64 = N
 
-  constraint valid_size {
+  rule valid_size {
     this.perm.length == N
   }
 
-  constraint valid_indices {
-    forall i: UInt64.
+  rule valid_indices {
+    forall i: u64.
       i < this.perm.length implies this.perm[i] < N
   }
 
-  constraint is_bijection {
-    forall i: UInt64. forall j: UInt64.
+  rule is_bijection {
+    forall i: u64. forall j: u64.
       i < N && j < N && i != j implies this.perm[i] != this.perm[j]
   }
 
-  fun identity() -> Array<UInt64> {
+  fun identity() -> Array<u64> {
     return (0..N).collect()
   }
 
-  fun compose(other: PermutationGroup<N>) -> Array<UInt64> {
+  fun compose(other: PermutationGroup<N>) -> Array<u64> {
     return (0..N).map(|i| this.perm[other.perm[i]]).collect()
   }
 
-  fun inverse() -> Array<UInt64> {
+  fun inverse() -> Array<u64> {
     return (0..N)
       .map(|i| (0..N).find(|j| this.perm[j] == i))
       .collect()
   }
 
-  fun act(indices: Array<UInt64>) -> Array<UInt64> {
+  fun act(indices: Array<u64>) -> Array<u64> {
     return indices.map(|i| this.perm[i])
   }
 
-  fun apply_to(arr: Array<Float64>) -> Array<Float64> {
+  fun apply_to(arr: Array<f64>) -> Array<f64> {
     return (0..N).map(|i| arr[this.inverse_at(i)]).collect()
   }
 
-  fun inverse_at(target: UInt64) -> UInt64 {
+  fun inverse_at(target: u64) -> u64 {
     return (0..N).find(|j| this.perm[j] == target).unwrap()
   }
 
-  fun cycle_lengths() -> List<UInt64> {
+  fun cycle_lengths() -> Vec<u64> {
     return this.compute_cycle_lengths()
   }
 
-  fun compute_cycle_lengths() -> List<UInt64> {
+  fun compute_cycle_lengths() -> Vec<u64> {
     return this.perm
       .indices()
       .filter(|i| this.is_cycle_start(i))
@@ -55,30 +55,30 @@ gene PermutationGroup<N: UInt64> {
       .collect()
   }
 
-  fun is_cycle_start(idx: UInt64) -> Bool {
+  fun is_cycle_start(idx: u64) -> bool {
     return !(0..idx).any(|j| this.in_same_cycle(j, idx))
   }
 
-  fun in_same_cycle(i: UInt64, j: UInt64) -> Bool {
+  fun in_same_cycle(i: u64, j: u64) -> bool {
     return this.reaches(i, j)
   }
 
-  fun reaches(start: UInt64, target: UInt64) -> Bool {
+  fun reaches(start: u64, target: u64) -> bool {
     return (0..N).any(|steps| this.apply_n_times(start, steps) == target)
   }
 
-  fun apply_n_times(idx: UInt64, steps: UInt64) -> UInt64 {
+  fun apply_n_times(idx: u64, steps: u64) -> u64 {
     if steps == 0 {
       return idx
     }
     return this.apply_n_times(this.perm[idx], steps - 1)
   }
 
-  fun cycle_length_at(start: UInt64) -> UInt64 {
+  fun cycle_length_at(start: u64) -> u64 {
     return (1..N).find(|k| this.apply_n_times(start, k) == start).unwrap()
   }
 
-  fun sign() -> Int64 {
+  fun sign() -> i64 {
     let lengths = this.cycle_lengths()
     let transpositions = lengths.map(|len| len - 1).sum()
     if transpositions % 2 == 0 {
@@ -88,11 +88,11 @@ gene PermutationGroup<N: UInt64> {
     }
   }
 
-  fun is_identity() -> Bool {
+  fun is_identity() -> bool {
     return !(0..N).any(|i| this.perm[i] != i)
   }
 
-  fun order() -> UInt64 {
+  fun order() -> u64 {
     // Order of permutation = LCM of all cycle lengths
     // This avoids iterating up to N! which overflows
     let lengths = this.cycle_lengths()
@@ -102,7 +102,7 @@ gene PermutationGroup<N: UInt64> {
     return lengths.fold(1, |acc, len| this.lcm(acc, len))
   }
 
-  fun pow(k: UInt64) -> PermutationGroup<N> {
+  fun pow(k: u64) -> PermutationGroup<N> {
     if k == 0 {
       return PermutationGroup { perm: this.identity(), size: N }
     }
@@ -116,14 +116,14 @@ gene PermutationGroup<N: UInt64> {
     return PermutationGroup { perm: this.compose(half.compose(half)), size: N }
   }
 
-  fun gcd(a: UInt64, b: UInt64) -> UInt64 {
+  fun gcd(a: u64, b: u64) -> u64 {
     if b == 0 {
       return a
     }
     return this.gcd(b, a % b)
   }
 
-  fun lcm(a: UInt64, b: UInt64) -> UInt64 {
+  fun lcm(a: u64, b: u64) -> u64 {
     if a == 0 || b == 0 {
       return 0
     }
@@ -131,7 +131,7 @@ gene PermutationGroup<N: UInt64> {
   }
 }
 
-exegesis {
+docs {
   PermutationGroup<N> represents the symmetric group S_n, the group of all
   permutations of N elements. This is a fundamental algebraic structure that
   extends the abstract SymmetryGroup interface with concrete implementations
@@ -143,7 +143,7 @@ exegesis {
   for a GNN layer f and permutation matrix P, f(PX, PAP^T) = Pf(X, A).
 
   Type Parameter:
-  - N: UInt64 - The number of elements being permuted (compile-time constant)
+  - N: u64 - The number of elements being permuted (compile-time constant)
 
   Properties:
   - perm: Index array where perm[i] indicates where element i maps to

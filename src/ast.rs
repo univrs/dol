@@ -1,7 +1,16 @@
 //! Abstract Syntax Tree definitions for Metal DOL.
 //!
 //! This module defines the complete AST representation for parsed DOL files,
-//! including genes, traits, constraints, systems, and evolution declarations.
+//! including gens, traits, rules, systems, and evo declarations.
+//!
+//! # v0.8.0 Changes
+//!
+//! - `Gene` → `Gen` (backward compatibility alias provided)
+//! - `Constraint` → `Rule` (backward compatibility alias provided)
+//! - `Evolution` → `Evo` (backward compatibility alias provided)
+//! - Added Rust-aligned `Type` enum for improved type system support
+//! - `Block` is now a separate struct with `span` field
+//! - `exegesis` keyword updated to `docs` in documentation examples
 //!
 //! # Structure
 //!
@@ -20,9 +29,9 @@
 //! # Example
 //!
 //! ```rust
-//! use metadol::ast::{Declaration, Gene, Statement, Span, Visibility};
+//! use metadol::ast::{Declaration, Gen, Statement, Span, Visibility};
 //!
-//! let gene = Gene {
+//! let gen = Gen {
 //!     visibility: Visibility::default(),
 //!     name: "container.exists".to_string(),
 //!     extends: None,
@@ -37,7 +46,7 @@
 //!     span: Span::default(),
 //! };
 //!
-//! let decl = Declaration::Gene(gene);
+//! let decl = Declaration::Gene(gen);
 //! ```
 
 #[cfg(feature = "serde")]
@@ -250,28 +259,28 @@ pub enum Mutability {
 ///
 /// # Variants
 ///
-/// - [`Gene`]: Atomic units declaring fundamental truths
+/// - [`Gen`]: Atomic units declaring fundamental truths (v0.8.0: renamed from Gene)
 /// - [`Trait`]: Composable behaviors built from genes
-/// - [`Constraint`]: Invariants that must always hold
+/// - [`Rule`]: Invariants that must always hold (v0.8.0: renamed from Constraint)
 /// - [`System`]: Top-level composition of subsystems
-/// - [`Evolution`]: Lineage records of ontology changes
+/// - [`Evo`]: Lineage records of ontology changes (v0.8.0: renamed from Evolution)
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Declaration {
-    /// A gene declaration - the atomic unit of DOL.
-    Gene(Gene),
+    /// A gen declaration - the atomic unit of DOL.
+    Gene(Gen),
 
     /// A trait declaration - composable behaviors.
     Trait(Trait),
 
-    /// A constraint declaration - system invariants.
-    Constraint(Constraint),
+    /// A rule declaration - system invariants.
+    Constraint(Rule),
 
     /// A system declaration - top-level composition.
     System(System),
 
-    /// An evolution declaration - version lineage.
-    Evolution(Evolution),
+    /// An evo declaration - version lineage.
+    Evolution(Evo),
 
     /// A top-level function declaration.
     Function(Box<FunctionDecl>),
@@ -322,6 +331,20 @@ impl Declaration {
             Declaration::Function(f) => f.span,
             Declaration::Const(c) => c.span,
             Declaration::SexVar(v) => v.span,
+        }
+    }
+
+    /// Returns the visibility of the declaration.
+    pub fn visibility(&self) -> Visibility {
+        match self {
+            Declaration::Gene(g) => g.visibility,
+            Declaration::Trait(t) => t.visibility,
+            Declaration::Constraint(c) => c.visibility,
+            Declaration::System(s) => s.visibility,
+            Declaration::Function(f) => f.visibility,
+            Declaration::Const(c) => c.visibility,
+            // Evolutions and SexVars don't have explicit visibility (internal by default)
+            Declaration::Evolution(_) | Declaration::SexVar(_) => Visibility::Private,
         }
     }
 
@@ -386,42 +409,42 @@ impl Declaration {
     }
 }
 
-/// A gene declaration representing atomic ontological truths.
+/// A gen declaration representing atomic ontological truths.
 ///
-/// Genes are the fundamental building blocks of DOL. They declare
-/// properties that cannot be decomposed further.
+/// Gens (v0.8.0: formerly "genes") are the fundamental building blocks of DOL.
+/// They declare properties that cannot be decomposed further.
 ///
 /// # DOL Syntax
 ///
 /// ```dol
-/// gene container.exists {
+/// gen container.exists {
 ///   container has identity
 ///   container has state
 ///   container has boundaries
 /// }
 ///
-/// exegesis {
+/// docs {
 ///   A container is the fundamental unit of workload isolation.
 /// }
 /// ```
 ///
 /// # Naming Convention
 ///
-/// Genes use dot notation: `domain.property`
+/// Gens use dot notation: `domain.property`
 /// Examples: `container.exists`, `identity.cryptographic`
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Gene {
-    /// Visibility modifier for this gene
+pub struct Gen {
+    /// Visibility modifier for this gen
     pub visibility: Visibility,
 
     /// The fully qualified name using dot notation
     pub name: String,
 
-    /// Optional parent type this gene extends (v0.3.0)
+    /// Optional parent type this gen extends (v0.3.0)
     pub extends: Option<String>,
 
-    /// The declarative statements within the gene body
+    /// The declarative statements within the gen body
     pub statements: Vec<Statement>,
 
     /// The mandatory exegesis explaining intent and context
@@ -430,6 +453,10 @@ pub struct Gene {
     /// Source location for error reporting
     pub span: Span,
 }
+
+/// Backward compatibility alias for Gen (v0.8.0)
+#[deprecated(since = "0.8.0", note = "Use `Gen` instead")]
+pub type Gene = Gen;
 
 /// A trait declaration for composable behaviors.
 ///
@@ -478,38 +505,38 @@ pub struct Trait {
     pub span: Span,
 }
 
-/// A constraint declaration for system invariants.
+/// A rule declaration for system invariants.
 ///
-/// Constraints define rules that must always hold true in the system.
+/// Rules (v0.8.0: formerly "constraints") define invariants that must always hold true in the system.
 ///
 /// # DOL Syntax
 ///
 /// ```dol
-/// constraint container.integrity {
+/// rule container.integrity {
 ///   container state matches declared state
 ///   container identity never changes
 ///   container boundaries are enforced
 /// }
 ///
-/// exegesis {
+/// docs {
 ///   Container integrity ensures runtime matches declared ontology.
 /// }
 /// ```
 ///
 /// # Naming Convention
 ///
-/// Constraints use dot notation: `domain.invariant`
+/// Rules use dot notation: `domain.invariant`
 /// Examples: `container.integrity`, `cluster.consistency`
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Constraint {
-    /// Visibility modifier for this constraint
+pub struct Rule {
+    /// Visibility modifier for this rule
     pub visibility: Visibility,
 
     /// The fully qualified name
     pub name: String,
 
-    /// The constraint statements (matches, never, etc.)
+    /// The rule statements (matches, never, etc.)
     pub statements: Vec<Statement>,
 
     /// The mandatory exegesis
@@ -518,6 +545,10 @@ pub struct Constraint {
     /// Source location
     pub span: Span,
 }
+
+/// Backward compatibility alias for Rule (v0.8.0)
+#[deprecated(since = "0.8.0", note = "Use `Rule` instead")]
+pub type Constraint = Rule;
 
 /// A system declaration for top-level composition.
 ///
@@ -585,28 +616,28 @@ pub struct Requirement {
     pub span: Span,
 }
 
-/// An evolution declaration tracking version changes.
+/// An evo declaration tracking version changes.
 ///
-/// Evolutions record how declarations change over time, maintaining
-/// an accumulative history.
+/// Evos (v0.8.0: formerly "evolutions") record how declarations change over time,
+/// maintaining an accumulative history.
 ///
 /// # DOL Syntax
 ///
 /// ```dol
-/// evolves container.lifecycle @ 0.0.2 > 0.0.1 {
+/// evo container.lifecycle @ 0.0.2 > 0.0.1 {
 ///   adds container is paused
 ///   adds container is resumed
-///   
+///
 ///   because "workload migration requires state preservation"
 /// }
 ///
-/// exegesis {
+/// docs {
 ///   Version 0.0.2 extends the lifecycle for migration support.
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Evolution {
+pub struct Evo {
     /// The declaration being evolved
     pub name: String,
 
@@ -634,6 +665,10 @@ pub struct Evolution {
     /// Source location
     pub span: Span,
 }
+
+/// Backward compatibility alias for Evo (v0.8.0)
+#[deprecated(since = "0.8.0", note = "Use `Evo` instead")]
+pub type Evolution = Evo;
 
 /// A statement within a DOL declaration.
 ///
@@ -770,6 +805,119 @@ impl std::fmt::Display for Quantifier {
 }
 
 // === DOL 2.0 Expression Types ===
+
+/// Type system aligned with Rust primitive and compound types.
+///
+/// This enum represents the type system for DOL v0.8.0, providing
+/// first-class support for Rust-compatible types with full type inference
+/// and generic programming capabilities.
+///
+/// # Type Categories
+///
+/// - **Primitive types**: Integers (signed/unsigned), floats, bool, string, unit
+/// - **Compound types**: Vec, Option, Result, Map, Tuple
+/// - **Function types**: Function signatures with parameter and return types
+/// - **User-defined types**: Named types and generic types
+/// - **Type variables**: For type inference and polymorphism
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::ast::Type;
+///
+/// let int_type = Type::I32;
+/// let vec_type = Type::Vec(Box::new(Type::String));
+/// let option_type = Type::Option(Box::new(Type::I64));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum Type {
+    // Signed integers
+    /// 8-bit signed integer
+    I8,
+    /// 16-bit signed integer
+    I16,
+    /// 32-bit signed integer
+    I32,
+    /// 64-bit signed integer
+    I64,
+    /// 128-bit signed integer
+    I128,
+
+    // Unsigned integers
+    /// 8-bit unsigned integer
+    U8,
+    /// 16-bit unsigned integer
+    U16,
+    /// 32-bit unsigned integer
+    U32,
+    /// 64-bit unsigned integer
+    U64,
+    /// 128-bit unsigned integer
+    U128,
+
+    // Floating point
+    /// 32-bit floating point
+    F32,
+    /// 64-bit floating point
+    F64,
+
+    // Boolean
+    /// Boolean type (true/false)
+    Bool,
+
+    // String (owned, UTF-8)
+    /// Owned UTF-8 string
+    String,
+
+    // Unit type
+    /// Unit type (empty tuple)
+    Unit,
+
+    // Compound types
+    /// Vector type: Vec<T>
+    Vec(Box<Type>),
+    /// Option type: Option<T>
+    Option(Box<Type>),
+    /// Result type: Result<T, E>
+    Result(Box<Type>, Box<Type>),
+    /// Map type: Map<K, V>
+    Map(Box<Type>, Box<Type>),
+    /// Tuple type: (T1, T2, ...)
+    Tuple(Vec<Type>),
+
+    // Function type
+    /// Function type with parameters and return type
+    Function {
+        /// Parameter types
+        params: Vec<Type>,
+        /// Return type
+        ret: Box<Type>,
+    },
+
+    // User-defined type
+    /// Named type (user-defined or imported)
+    Named(String),
+
+    // Generic type
+    /// Generic type with type parameters
+    Generic {
+        /// Type name
+        name: String,
+        /// Type parameters
+        params: Vec<Type>,
+    },
+
+    // Type variable (for inference)
+    /// Type variable for type inference
+    Var(usize),
+
+    // Unknown / Error
+    /// Unknown type (not yet inferred)
+    Unknown,
+    /// Error type (type checking failed)
+    Error,
+}
 
 /// Binary operator for expressions.
 ///
@@ -952,6 +1100,42 @@ pub struct ExistsExpr {
     pub span: Span,
 }
 
+/// Block structure for expression-based blocks.
+///
+/// Represents a block of statements with an optional final expression
+/// that serves as the return value. This follows Rust's expression-based
+/// block semantics where the last expression without a semicolon becomes
+/// the block's value.
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::ast::{Block, Stmt, Expr, Literal, Span};
+///
+/// // Block with statements and return expression
+/// let block = Block {
+///     statements: vec![
+///         Stmt::Let {
+///             name: "x".to_string(),
+///             type_ann: None,
+///             value: Expr::Literal(Literal::Int(42)),
+///         },
+///     ],
+///     final_expr: Some(Box::new(Expr::Identifier("x".to_string()))),
+///     span: Span::default(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Block {
+    /// Statements in the block (executed sequentially)
+    pub statements: Vec<Stmt>,
+    /// Optional final expression (return value, no semicolon)
+    pub final_expr: Option<Box<Expr>>,
+    /// Source location
+    pub span: Span,
+}
+
 /// Expression node for DOL 2.0.
 ///
 /// Represents computational expressions that can be evaluated to produce values.
@@ -1037,13 +1221,8 @@ pub enum Expr {
         /// Match arms
         arms: Vec<MatchArm>,
     },
-    /// Block expression
-    Block {
-        /// Statements in the block
-        statements: Vec<Stmt>,
-        /// Optional final expression (return value)
-        final_expr: Option<Box<Expr>>,
-    },
+    /// Block expression (v0.8.0: now uses Block struct)
+    Block(Block),
     /// Quote expression (AST capture)
     Quote(Box<Expr>),
     /// Unquote/splice - insert evaluated expr into quote
@@ -1078,12 +1257,8 @@ pub enum Expr {
     },
     /// Sex block expression for side-effecting code
     /// Syntax: `sex { statements }`
-    SexBlock {
-        /// Statements in the sex block
-        statements: Vec<Stmt>,
-        /// Optional final expression (return value)
-        final_expr: Option<Box<Expr>>,
-    },
+    /// (v0.8.0: now uses Block struct)
+    SexBlock(Block),
     /// Type cast expression
     /// Syntax: `expr as Type`
     Cast {
@@ -1287,13 +1462,14 @@ impl QuotedExpr {
             },
             QuotedExpr::List(exprs) => {
                 // Convert list to a block with expressions
-                Expr::Block {
+                Expr::Block(Block {
                     statements: vec![],
                     final_expr: Some(Box::new(Expr::Call {
                         callee: Box::new(Expr::Identifier("list".to_string())),
                         args: exprs.iter().map(|e| e.to_expr()).collect(),
                     })),
-                }
+                    span: Span::default(),
+                })
             }
             QuotedExpr::Lambda { params, body } => Expr::Lambda {
                 params: params.iter().map(|p| (p.clone(), None)).collect(),
@@ -1599,7 +1775,7 @@ mod tests {
 
     #[test]
     fn test_declaration_name() {
-        let gene = Gene {
+        let gen = Gen {
             visibility: Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
@@ -1607,7 +1783,7 @@ mod tests {
             exegesis: "Test".to_string(),
             span: Span::default(),
         };
-        let decl = Declaration::Gene(gene);
+        let decl = Declaration::Gene(gen);
 
         assert_eq!(decl.name(), "container.exists");
     }

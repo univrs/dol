@@ -423,7 +423,7 @@ fn lambda_multiple_params() {
 fn block_empty() {
     let expr = Parser::new("{ }").parse_expr(0);
     if let Ok(e) = expr {
-        assert!(matches!(e, Expr::Block { .. }));
+        assert!(matches!(e, Expr::Block(..)));
     }
 }
 
@@ -431,7 +431,7 @@ fn block_empty() {
 fn block_single_expr() {
     let expr = Parser::new("{ x }").parse_expr(0);
     if let Ok(e) = expr {
-        assert!(matches!(e, Expr::Block { .. }));
+        assert!(matches!(e, Expr::Block(..)));
     }
 }
 
@@ -439,7 +439,7 @@ fn block_single_expr() {
 fn block_with_let() {
     let expr = Parser::new("{ let x = 1; x }").parse_expr(0);
     if let Ok(e) = expr {
-        assert!(matches!(e, Expr::Block { .. }));
+        assert!(matches!(e, Expr::Block(..)));
     }
 }
 

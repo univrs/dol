@@ -1,14 +1,14 @@
 // DOL v0.0.1 - Evolution Example
 // evolutions/identity.cryptographic.v0.0.2.dol
 
-evolves identity.cryptographic @ 0.0.2 > 0.0.1 {
+evo identity.cryptographic @ 0.0.2 > 0.0.1 {
   adds identity has rotation
   adds identity is rotatable
   deprecates identity is permanent
   because "security best practices require key rotation capabilities"
 }
 
-exegesis {
+docs {
   Version 0.0.2 of cryptographic identity adds key rotation support
   to align with security best practices and compliance requirements.
 

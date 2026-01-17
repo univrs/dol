@@ -9,12 +9,12 @@ module biology.types @ 1.0.0
 // ─────────────────────────────────────────────────────────────────
 
 /// 3D position vector
-pub gene Vec3 {
-  has x: Float64
-  has y: Float64
-  has z: Float64
+pub gen Vec3 {
+  has x: f64
+  has y: f64
+  has z: f64
 
-  fun magnitude() -> Float64 {
+  fun magnitude() -> f64 {
     return (this.x * this.x + this.y * this.y + this.z * this.z).sqrt()
   }
 
@@ -23,22 +23,22 @@ pub gene Vec3 {
     return Vec3 { x: this.x / mag, y: this.y / mag, z: this.z / mag }
   }
 
-  fun dot(other: Vec3) -> Float64 {
+  fun dot(other: Vec3) -> f64 {
     return this.x * other.x + this.y * other.y + this.z * other.z
   }
 
-  exegesis {
+  docs {
     Three-dimensional vector for spatial positioning.
     Used for hyphal growth direction, nutrient gradients, etc.
   }
 }
 
 /// Gradient field - maps positions to intensity
-pub gene Gradient<T> {
+pub gen Gradient<T> {
   has origin: Vec3
   has direction: Vec3
   has intensity: T
-  has decay_rate: Float64
+  has decay_rate: f64
 
   fun sample_at(pos: Vec3) -> T {
     distance = (pos.x - this.origin.x).abs() +
@@ -48,7 +48,7 @@ pub gene Gradient<T> {
     return this.intensity * factor
   }
 
-  exegesis {
+  docs {
     Spatial gradient field with exponential decay.
     Models nutrient concentration, chemical signals, etc.
   }
@@ -59,20 +59,20 @@ pub gene Gradient<T> {
 // ─────────────────────────────────────────────────────────────────
 
 /// Elemental nutrients (Redfield ratio)
-pub gene Nutrient {
-  has carbon: Float64
-  has nitrogen: Float64
-  has phosphorus: Float64
-  has water: Float64
+pub gen Nutrient {
+  has carbon: f64
+  has nitrogen: f64
+  has phosphorus: f64
+  has water: f64
 
-  constraint non_negative {
+  rule non_negative {
     this.carbon >= 0.0 &&
     this.nitrogen >= 0.0 &&
     this.phosphorus >= 0.0 &&
     this.water >= 0.0
   }
 
-  constraint stoichiometry {
+  rule stoichiometry {
     // Redfield ratio: C:N:P ≈ 106:16:1
     // Allow some flexibility: C/N between 6-10
     this.nitrogen > 0.0 implies (
@@ -81,7 +81,7 @@ pub gene Nutrient {
     )
   }
 
-  fun total_mass() -> Float64 {
+  fun total_mass() -> f64 {
     return this.carbon + this.nitrogen + this.phosphorus + this.water
   }
 
@@ -94,7 +94,7 @@ pub gene Nutrient {
     }
   }
 
-  exegesis {
+  docs {
     Nutrient package following ecological stoichiometry.
     The Redfield ratio (C:N:P ≈ 106:16:1) constrains valid
     nutrient compositions for biological realism.
@@ -102,15 +102,15 @@ pub gene Nutrient {
 }
 
 /// Energy quantum for trophic transfers
-pub gene Energy {
-  has joules: Float64
-  has quality: Float64  // 0.0 = heat, 1.0 = chemical potential
+pub gen Energy {
+  has joules: f64
+  has quality: f64  // 0.0 = heat, 1.0 = chemical potential
 
-  constraint positive {
+  rule positive {
     this.joules >= 0.0
   }
 
-  constraint quality_bounds {
+  rule quality_bounds {
     this.quality >= 0.0 && this.quality <= 1.0
   }
 
@@ -122,7 +122,7 @@ pub gene Energy {
     }
   }
 
-  exegesis {
+  docs {
     Energy packet for ecological energy flow.
     Encodes the ~10% trophic transfer efficiency.
   }
@@ -133,26 +133,26 @@ pub gene Energy {
 // ─────────────────────────────────────────────────────────────────
 
 /// Geological time (for evolution tracking)
-pub gene GeoTime {
-  has mya: Float64  // Millions of years ago
+pub gen GeoTime {
+  has mya: f64  // Millions of years ago
 
-  constraint non_negative {
+  rule non_negative {
     this.mya >= 0.0
   }
 
-  fun is_before(other: GeoTime) -> Bool {
+  fun is_before(other: GeoTime) -> bool {
     return this.mya > other.mya  // Larger MYA = earlier
   }
 
-  exegesis {
+  docs {
     Geological time for evolutionary lineage tracking.
     Measured in millions of years ago (MYA).
   }
 }
 
 /// Generation counter for population dynamics
-pub gene Generation {
-  has count: UInt64
+pub gen Generation {
+  has count: u64
   has started_at: Timestamp
 
   fun next() -> Generation {
@@ -162,7 +162,7 @@ pub gene Generation {
     }
   }
 
-  exegesis {
+  docs {
     Generation marker for tracking evolutionary time
     in population dynamics simulations.
   }

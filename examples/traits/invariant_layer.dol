@@ -33,7 +33,7 @@ trait gdl.invariant_layer {
   transformations produce identical results
 }
 
-exegesis {
+docs {
   The gdl.invariant_layer trait defines the interface for neural network layers
   that produce outputs unchanged by symmetry transformations. This is a special
   case of EquivariantLayer where the output representation is trivial.
@@ -45,14 +45,14 @@ exegesis {
 
   OPERATIONS:
   - forward(x: X) -> Y: The forward pass producing invariant output
-  - parameters() -> List<Tensor>: Returns trainable parameters of the layer
-  - set_parameters(params: List<Tensor>) -> Void: Sets the trainable parameters
+  - parameters() -> Vec<Tensor>: Returns trainable parameters of the layer
+  - set_parameters(params: Vec<Tensor>) -> (): Sets the trainable parameters
 
   THE INVARIANCE LAW:
   For all group elements g in G and all inputs x in X:
     this.forward(G.act(g, x)) == this.forward(x)
 
-  This fundamental constraint states: "transforming the input does not change
+  This fundamental rule states: "transforming the input does not change
   the output." Unlike equivariant layers where output transforms with input,
   invariant layers produce identical output regardless of symmetry transformation.
 

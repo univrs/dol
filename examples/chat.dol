@@ -1,8 +1,8 @@
 // Chat - Multi-Spirit coordination
 // All effects inferred from usage
 
-gene ChatRoom {
-    has name: String
+gen ChatRoom {
+    has name: string
     has message_count: Int
 
     fun tick() {
@@ -18,11 +18,11 @@ gene ChatRoom {
     }
 }
 
-gene ChatUser {
-    has name: String
+gen ChatUser {
+    has name: string
     has room: SpiritId
 
-    fun say(msg: String) {
+    fun say(msg: string) {
         send(this.room, this.name + ": " + msg)
     }
 

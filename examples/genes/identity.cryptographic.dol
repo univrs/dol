@@ -1,7 +1,7 @@
 // DOL v0.0.1 - Metal Primitives
 // genes/identity.cryptographic.dol
 
-gene identity.cryptographic {
+gen identity.cryptographic {
   identity has keypair
   identity has signature
   identity has public_key
@@ -9,8 +9,8 @@ gene identity.cryptographic {
   identity derives from ed25519 keypair
 }
 
-exegesis {
-  The identity.cryptographic gene establishes the foundational cryptographic
+docs {
+  The identity.cryptographic gen establishes the foundational cryptographic
   properties that enable secure, verifiable identity in the Univrs platform.
   Every entity in the system possesses a cryptographic identity that serves
   as the root of trust for all operations.
@@ -35,7 +35,7 @@ exegesis {
   access to the public key can verify that a message was signed by the
   corresponding private key holder.
 
-  This gene establishes the primitive from which all authentication,
+  This gen establishes the primitive from which all authentication,
   authorization, and trust relationships derive. Without cryptographic
   identity, no secure operations can occur in the Univrs platform.
 }

@@ -22,7 +22,9 @@
 //! assert_eq!(ty, Type::Int64);
 //! ```
 
-use crate::ast::{BinaryOp, Expr, Literal, Pattern, Stmt, TypeExpr, UnaryOp};
+#[cfg(test)]
+use crate::ast::Span;
+use crate::ast::{BinaryOp, Block, Expr, Literal, Pattern, Stmt, TypeExpr, UnaryOp};
 use std::collections::HashMap;
 
 /// Semantic types used during type checking.
@@ -488,10 +490,11 @@ impl TypeChecker {
             Expr::Match { scrutinee, arms } => self.infer_match(scrutinee, arms),
 
             // Block expressions
-            Expr::Block {
+            Expr::Block(Block {
                 statements,
                 final_expr,
-            } => self.infer_block(statements, final_expr.as_deref()),
+                ..
+            }) => self.infer_block(statements, final_expr.as_deref()),
 
             // Member/Field access
             Expr::Member { object, field } => {
@@ -592,10 +595,11 @@ impl TypeChecker {
                 Ok(Type::Bool)
             }
             // Sex block - enter sex context, infer type, exit context
-            Expr::SexBlock {
+            Expr::SexBlock(Block {
                 statements,
                 final_expr,
-            } => {
+                ..
+            }) => {
                 self.enter_sex_context();
                 let result = self.infer_block(statements, final_expr.as_deref());
                 self.exit_sex_context();
@@ -1631,10 +1635,11 @@ mod tests {
         let mut checker = TypeChecker::new();
 
         // Create a sex block with an integer literal
-        let sex_block = Expr::SexBlock {
+        let sex_block = Expr::SexBlock(Block {
             statements: vec![],
             final_expr: Some(Box::new(int_lit(42))),
-        };
+            span: Span::default(),
+        });
 
         let ty = checker.infer(&sex_block).unwrap();
         assert_eq!(ty, Type::Int64);

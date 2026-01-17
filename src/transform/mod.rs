@@ -19,7 +19,7 @@ pub mod visitor;
 
 pub use desugar_idiom::IdiomDesugar;
 pub use fold::Fold;
-pub use passes::{ConstantFolding, DeadCodeElimination};
+pub use passes::{ConstantFolding, DeadCodeElimination, TreeShaking, TreeShakingStats};
 pub use visitor::{MutVisitor, Visitor};
 
 use crate::ast::Declaration;
@@ -186,9 +186,9 @@ mod tests {
 
     #[test]
     fn test_pipeline_runs_passes() {
-        use crate::ast::{Gene, Span, Visibility};
+        use crate::ast::{Gen, Span, Visibility};
 
-        let gene = Gene {
+        let gene = Gen {
             visibility: Visibility::default(),
             name: "test".to_string(),
             extends: None,

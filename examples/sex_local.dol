@@ -1,11 +1,11 @@
 // sex_local.dol - Test sex fun with body (no imports)
 
 // Pure function
-fun add(a: Int64, b: Int64) -> Int64 {
+fun add(a: i64, b: i64) -> i64 {
     return a + b
 }
 
 // Sex function with body - still gets exported
-sex fun compute(x: Int64) -> Int64 {
+sex fun compute(x: i64) -> i64 {
     return x * 2
 }

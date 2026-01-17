@@ -1,16 +1,16 @@
-gene hello.world {
+gen hello.world {
   message has content
   message has sender
   message has timestamp
 }
 
-exegesis {
-  The hello.world gene is the simplest possible DOL example. It defines
+docs {
+  The hello.world gen is the simplest possible DOL example. It defines
   a message entity with three essential properties: content (what the
   message says), sender (who sent it), and timestamp (when it was sent).
 
   This demonstrates the basic pattern:
-  - gene <domain>.<name> declares a new gene
+  - gen <domain>.<name> declares a new gen
   - <entity> has <property> declares properties
-  - exegesis explains the intent and usage
+  - docs explains the intent and usage
 }

@@ -8,7 +8,7 @@ system univrs.scheduler @ 0.1.0 {
   each scheduling emits event
 }
 
-exegesis {
+docs {
   The univrs.scheduler system implements intelligent workload distribution and resource
   allocation across the cluster infrastructure. It maintains a priority queue to manage
   pending container deployment requests and applies configurable scheduling policies to

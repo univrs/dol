@@ -107,7 +107,10 @@ pub mod compiler;
 pub mod test_parser;
 
 // Re-exports for convenience
-pub use ast::{Constraint, Declaration, DolFile, Evolution, Gene, Span, Statement, System, Trait};
+pub use ast::{Declaration, DolFile, Evo, Gen, Rule, Span, Statement, System, Trait};
+// Backward compatibility re-exports (deprecated)
+#[allow(deprecated)]
+pub use ast::{Constraint, Evolution, Gene};
 pub use error::{LexError, ParseError, ValidationError};
 pub use eval::{EvalError, Interpreter, Value};
 pub use lexer::{Lexer, Token, TokenKind};

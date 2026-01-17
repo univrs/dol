@@ -34,7 +34,7 @@ impl LoweringContext {
     }
 
     /// Lower a gene declaration to HIR
-    pub fn lower_gene(&mut self, gene: &ast::Gene) -> HirDecl {
+    pub fn lower_gene(&mut self, gene: &ast::Gen) -> HirDecl {
         let name = self.intern(&gene.name);
         let statements: Vec<HirStatement> = gene
             .statements
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn test_lower_gene() {
         let mut ctx = LoweringContext::new();
-        let gene = ast::Gene {
+        let gene = ast::Gen {
             visibility: ast::Visibility::default(),
             name: "container.exists".to_string(),
             extends: None,
