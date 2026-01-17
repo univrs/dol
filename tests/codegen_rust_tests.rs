@@ -12,7 +12,7 @@ use metadol::codegen::{RustCodegen, TypeMapper};
 
 #[test]
 fn test_codegen_simple_gene() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Point".to_string(),
@@ -54,7 +54,7 @@ fn test_codegen_simple_gene() {
 
 #[test]
 fn test_codegen_gene_with_constraint() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "PositiveNumber".to_string(),
@@ -95,7 +95,7 @@ fn test_codegen_gene_with_constraint() {
 
 #[test]
 fn test_codegen_gene_with_multiple_types() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "User".to_string(),
@@ -158,7 +158,7 @@ fn test_codegen_gene_with_multiple_types() {
 
 #[test]
 fn test_codegen_gene_with_legacy_has_statement() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Legacy".to_string(),
@@ -388,7 +388,7 @@ fn test_codegen_system_no_requirements() {
 
 #[test]
 fn test_codegen_constraint() {
-    let constraint = Constraint {
+    let constraint = Rule {
         visibility: Visibility::default(),
         name: "data.integrity".to_string(),
         statements: vec![
@@ -429,7 +429,7 @@ fn test_codegen_constraint() {
 
 #[test]
 fn test_codegen_constraint_empty() {
-    let constraint = Constraint {
+    let constraint = Rule {
         visibility: Visibility::default(),
         name: "empty".to_string(),
         statements: vec![],
@@ -452,7 +452,7 @@ fn test_codegen_constraint_empty() {
 
 #[test]
 fn test_codegen_evolution() {
-    let evolution = Evolution {
+    let evolution = Evo {
         name: "Container".to_string(),
         version: "2.0.0".to_string(),
         parent_version: "1.0.0".to_string(),
@@ -496,7 +496,7 @@ fn test_codegen_evolution() {
 
 #[test]
 fn test_codegen_evolution_no_rationale() {
-    let evolution = Evolution {
+    let evolution = Evo {
         name: "Simple".to_string(),
         version: "1.1.0".to_string(),
         parent_version: "1.0.0".to_string(),
@@ -810,7 +810,7 @@ fn test_codegen_type_mapping_nested_generics() {
 
 #[test]
 fn test_codegen_generate_all() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Point".to_string(),
@@ -865,7 +865,7 @@ fn test_codegen_gen_visibility() {
 #[test]
 fn test_codegen_type_info() {
     let gen = RustCodegen::new();
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "User".to_string(),
@@ -895,7 +895,7 @@ fn test_codegen_type_info() {
 #[test]
 fn test_codegen_type_registry() {
     let gen = RustCodegen::new();
-    let gene1 = Gene {
+    let gene1 = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Point".to_string(),
@@ -904,7 +904,7 @@ fn test_codegen_type_registry() {
         span: Span::default(),
     };
 
-    let gene2 = Gene {
+    let gene2 = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Line".to_string(),
@@ -962,7 +962,7 @@ fn test_codegen_gen_param_complex_type() {
 #[test]
 fn test_codegen_naming_snake_to_pascal() {
     // Test that gene names are converted to PascalCase
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "my.special.gene".to_string(),
@@ -981,7 +981,7 @@ fn test_codegen_naming_snake_to_pascal() {
 #[test]
 fn test_codegen_naming_field_snake_case() {
     // Test that field names are converted to snake_case
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Test".to_string(),
@@ -1009,7 +1009,7 @@ fn test_codegen_naming_field_snake_case() {
 
 #[test]
 fn test_codegen_empty_gene() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Empty".to_string(),
@@ -1039,7 +1039,7 @@ fn test_codegen_empty_trait() {
 
 #[test]
 fn test_codegen_multiline_exegesis() {
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "Test".to_string(),

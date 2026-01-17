@@ -8,7 +8,7 @@
 //! - Rust code generation
 
 use metadol::ast::{
-    Block, Declaration, Expr, ExternDecl, FunctionDecl, FunctionParam, Gene, Literal, Mutability,
+    Block, Declaration, Expr, ExternDecl, FunctionDecl, FunctionParam, Gen, Literal, Mutability,
     Purity, Span, Statement, Stmt, TypeExpr, VarDecl, Visibility,
 };
 use metadol::codegen::RustCodegen;
@@ -152,7 +152,7 @@ fn test_effect_tracker_purity_context() {
 fn test_effect_tracker_gene_with_io() {
     let mut tracker = EffectTracker::new();
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "io.gene".to_string(),
@@ -177,7 +177,7 @@ fn test_effect_tracker_gene_with_io() {
 fn test_effect_tracker_gene_with_ffi() {
     let mut tracker = EffectTracker::new();
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "ffi.gene".to_string(),
@@ -202,7 +202,7 @@ fn test_effect_tracker_gene_with_ffi() {
 fn test_effect_tracker_gene_with_global() {
     let mut tracker = EffectTracker::new();
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "global.gene".to_string(),
@@ -227,7 +227,7 @@ fn test_effect_tracker_gene_with_global() {
 fn test_effect_tracker_pure_gene() {
     let mut tracker = EffectTracker::new();
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "pure.gene".to_string(),
@@ -289,7 +289,7 @@ fn test_lint_result_with_warning() {
 fn test_linter_pure_gene_no_effects() {
     let linter = SexLinter::new(SexContext::Pure);
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "test.gene".to_string(),
@@ -310,7 +310,7 @@ fn test_linter_pure_gene_no_effects() {
 fn test_linter_io_in_pure_context() {
     let linter = SexLinter::new(SexContext::Pure);
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "io.gene".to_string(),
@@ -333,7 +333,7 @@ fn test_linter_io_in_pure_context() {
 fn test_linter_ffi_in_pure_context() {
     let linter = SexLinter::new(SexContext::Pure);
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "ffi.gene".to_string(),
@@ -356,7 +356,7 @@ fn test_linter_ffi_in_pure_context() {
 fn test_linter_mutable_global_in_pure_context() {
     let linter = SexLinter::new(SexContext::Pure);
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "global.gene".to_string(),
@@ -387,7 +387,7 @@ fn test_linter_large_block_warning() {
         })
         .collect();
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "test.gene".to_string(),
@@ -406,7 +406,7 @@ fn test_linter_large_block_warning() {
 fn test_linter_sex_without_documentation() {
     let linter = SexLinter::new(SexContext::Sex);
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "test.gene".to_string(),
@@ -424,7 +424,7 @@ fn test_linter_sex_without_documentation() {
 fn test_linter_sex_context_allows_effects() {
     let linter = SexLinter::new(SexContext::Sex);
 
-    let gene = Gene {
+    let gene = Gen {
         visibility: Visibility::default(),
         extends: None,
         name: "io.gene".to_string(),
