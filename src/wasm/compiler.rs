@@ -70,6 +70,8 @@ pub struct WasmCompiler {
     optimize: bool,
     /// Include debug information in WASM
     debug_info: bool,
+    /// Enable tree shaking to eliminate dead code
+    tree_shaking: bool,
     /// Registry of gene layouts for struct literal compilation
     gene_layouts: GeneLayoutRegistry,
     /// Registry of enum definitions for variant compilation
@@ -575,6 +577,7 @@ impl WasmCompiler {
         Self {
             optimize: false,
             debug_info: true,
+            tree_shaking: false,
             gene_layouts: GeneLayoutRegistry::new(),
             enum_registry: EnumRegistry::new(),
         }
@@ -728,6 +731,28 @@ impl WasmCompiler {
     /// ```
     pub fn with_debug_info(mut self, debug_info: bool) -> Self {
         self.debug_info = debug_info;
+        self
+    }
+
+    /// Enable or disable tree shaking.
+    ///
+    /// When enabled, the compiler will eliminate unreachable declarations
+    /// before generating WASM bytecode. This reduces output size by removing
+    /// unused code.
+    ///
+    /// # Arguments
+    ///
+    /// * `tree_shaking` - `true` to enable tree shaking, `false` to disable
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use metadol::wasm::WasmCompiler;
+    ///
+    /// let compiler = WasmCompiler::new().with_tree_shaking(true);
+    /// ```
+    pub fn with_tree_shaking(mut self, tree_shaking: bool) -> Self {
+        self.tree_shaking = tree_shaking;
         self
     }
 
@@ -972,15 +997,24 @@ impl WasmCompiler {
             ImportSection, Module, TypeSection, ValType,
         };
 
+        // Apply tree shaking if enabled
+        let declarations = if self.tree_shaking {
+            use crate::transform::TreeShaking;
+            let mut shaker = TreeShaking::new();
+            shaker.shake(file.declarations.clone())
+        } else {
+            file.declarations.clone()
+        };
+
         // Register gene layouts in dependency order (parents before children)
-        self.register_gene_layouts_ordered(&file.declarations)?;
+        self.register_gene_layouts_ordered(&declarations)?;
 
         // Extract imports (sex fun without body)
-        let mut imports = self.extract_imports(&file.declarations)?;
+        let mut imports = self.extract_imports(&declarations)?;
 
         // Extract all local functions (with body) from all declarations
         let mut functions: Vec<ExtractedFunction> = Vec::new();
-        for decl in &file.declarations {
+        for decl in &declarations {
             let extracted = self.extract_functions(decl)?;
             // Filter out import functions (sex fun without body)
             for f in extracted {
@@ -995,7 +1029,7 @@ impl WasmCompiler {
 
         // Collect string literals from all declarations
         let mut string_pool = StringPool::new();
-        for decl in &file.declarations {
+        for decl in &declarations {
             self.collect_strings_from_declaration(decl, &mut string_pool);
         }
 
@@ -1108,7 +1142,7 @@ impl WasmCompiler {
 
         // ============= GLOBAL SECTION =============
         // Extract sex var declarations and emit globals
-        let user_globals = self.extract_sex_vars(&file.declarations)?;
+        let user_globals = self.extract_sex_vars(&declarations)?;
         let has_user_globals = !user_globals.is_empty();
         let mut user_global_map: std::collections::HashMap<String, u32> =
             std::collections::HashMap::new();

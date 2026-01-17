@@ -87,6 +87,9 @@ pub mod validator;
 pub mod network;
 pub mod swarm;
 
+// Spirit REPL (interactive evaluation)
+pub mod repl;
+
 // MCP server (requires serde feature)
 #[cfg(feature = "serde")]
 pub mod mcp;
@@ -153,6 +156,11 @@ pub use network::{
 
 // Swarm module re-exports
 pub use swarm::{AgentRole, HyphalAgent, HyphalSwarm, SwarmMessage, SwarmMetrics};
+
+// REPL module re-exports
+pub use repl::{
+    EvalResult, ReplContext, ReplError, ReplEvaluator, ReplSession, SessionConfig, SpiritRepl,
+};
 
 // MLIR backend re-exports (requires mlir feature)
 #[cfg(feature = "mlir")]

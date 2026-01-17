@@ -18,6 +18,7 @@
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -49,6 +50,9 @@ enum Commands {
 
     /// Type-check DOL files
     Check(CheckArgs),
+
+    /// Start interactive REPL
+    Repl(ReplArgs),
 }
 
 /// Arguments for the run command
@@ -115,6 +119,26 @@ struct CheckArgs {
     recursive: bool,
 }
 
+/// Arguments for the repl command
+#[derive(Parser, Debug)]
+struct ReplArgs {
+    /// Load a file on startup
+    #[arg(short, long)]
+    load: Option<PathBuf>,
+
+    /// Enable tree shaking
+    #[arg(long, default_value = "true")]
+    tree_shake: bool,
+
+    /// Enable optimization
+    #[arg(long)]
+    optimize: bool,
+
+    /// Session name
+    #[arg(long, default_value = "default")]
+    session: String,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -122,6 +146,7 @@ fn main() -> ExitCode {
         Commands::Run(args) => cmd_run(args, cli.verbose, cli.quiet),
         Commands::Compile(args) => cmd_compile(args, cli.verbose, cli.quiet),
         Commands::Check(args) => cmd_check(args, cli.verbose, cli.quiet),
+        Commands::Repl(args) => cmd_repl(args, cli.verbose, cli.quiet),
     };
 
     match result {
@@ -453,6 +478,177 @@ fn check_file(path: &PathBuf) -> Result<(), String> {
     // TODO: Add type checking when typechecker is integrated
 
     Ok(())
+}
+
+// =============================================================================
+// REPL Command
+// =============================================================================
+
+fn cmd_repl(args: ReplArgs, verbose: bool, _quiet: bool) -> Result<(), String> {
+    use metadol::repl::{EvalResult, SessionConfig, SpiritRepl};
+    use std::io::{self, BufRead, Write};
+
+    let config = SessionConfig::with_name(&args.session)
+        .with_tree_shaking(args.tree_shake)
+        .with_optimization(args.optimize);
+
+    let mut repl = SpiritRepl::with_config(config);
+
+    // Load file if specified
+    if let Some(path) = &args.load {
+        if verbose {
+            eprintln!("{} {}", "Loading".cyan(), path.display());
+        }
+        let source =
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to load file: {}", e))?;
+        let file =
+            metadol::parse_dol_file(&source).map_err(|e| format!("Failed to parse file: {}", e))?;
+        for _decl in file.declarations {
+            let _ = repl.eval("// loaded from file");
+        }
+        eprintln!("Loaded {}", path.display());
+    }
+
+    // Print banner
+    println!("{}", "Spirit REPL v0.8.0".cyan().bold());
+    println!(
+        "Type {} for help, {} to quit",
+        ":help".green(),
+        ":quit".green()
+    );
+    println!();
+
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    loop {
+        // Print prompt
+        print!("{} ", "dol>".blue().bold());
+        stdout.flush().map_err(|e| e.to_string())?;
+
+        // Read input
+        let mut line = String::new();
+        if stdin
+            .lock()
+            .read_line(&mut line)
+            .map_err(|e| e.to_string())?
+            == 0
+        {
+            // EOF
+            println!();
+            break;
+        }
+
+        let input = line.trim();
+
+        // Handle multi-line input (for declarations with braces)
+        let full_input = if needs_continuation(input) {
+            collect_multiline(&stdin, input)?
+        } else {
+            input.to_string()
+        };
+
+        // Evaluate
+        match repl.eval(&full_input) {
+            Ok(result) => match result {
+                EvalResult::Empty => {}
+                EvalResult::Quit => {
+                    println!("Goodbye!");
+                    break;
+                }
+                EvalResult::Help(text) => println!("{}", text),
+                EvalResult::Message(msg) => println!("{}", msg),
+                EvalResult::Defined {
+                    name,
+                    kind,
+                    message,
+                } => {
+                    println!(
+                        "{} {} {}: {}",
+                        "Defined".green(),
+                        kind.cyan(),
+                        name.yellow(),
+                        message
+                    );
+                }
+                EvalResult::Expression { value, .. } => {
+                    println!("= {}", value.yellow());
+                }
+                EvalResult::TypeInfo(info) => {
+                    println!("{}", info.cyan());
+                }
+                EvalResult::RustCode(code) => {
+                    println!("--- Rust ---");
+                    println!("{}", code);
+                    println!("------------");
+                }
+                EvalResult::WasmInfo {
+                    size_bytes,
+                    functions,
+                    has_memory,
+                } => {
+                    println!(
+                        "WASM: {} bytes, {} functions, memory: {}",
+                        size_bytes, functions, has_memory
+                    );
+                }
+            },
+            Err(e) => {
+                eprintln!("{}: {}", "Error".red(), e);
+            }
+        }
+    }
+
+    // Print session summary
+    if verbose {
+        println!(
+            "\nSession ended. {} declarations defined.",
+            repl.declarations().len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Check if input needs continuation (unclosed braces)
+fn needs_continuation(input: &str) -> bool {
+    let open_braces = input.matches('{').count();
+    let close_braces = input.matches('}').count();
+    open_braces > close_braces
+}
+
+/// Collect multi-line input until braces are balanced
+fn collect_multiline(stdin: &io::Stdin, first_line: &str) -> Result<String, String> {
+    use std::io::{BufRead, Write};
+
+    let mut full = first_line.to_string();
+    let mut stdout = io::stdout();
+
+    loop {
+        print!("{} ", "...".blue());
+        stdout.flush().map_err(|e| e.to_string())?;
+
+        let mut line = String::new();
+        if stdin
+            .lock()
+            .read_line(&mut line)
+            .map_err(|e| e.to_string())?
+            == 0
+        {
+            break;
+        }
+
+        full.push('\n');
+        full.push_str(&line);
+
+        let open_braces = full.matches('{').count();
+        let close_braces = full.matches('}').count();
+        if open_braces <= close_braces {
+            break;
+        }
+    }
+
+    Ok(full)
 }
 
 // =============================================================================
