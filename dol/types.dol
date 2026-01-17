@@ -30,7 +30,7 @@ docs {
     2. Compound: Function types with parameter list and return type,
        and Tuple types for anonymous product types.
 
-    3. Generic: Parameterized types like List<T> or Map<K, V>.
+    3. Generic: Parameterized types like Vec<T> or Map<K, V>.
        The name field holds the base type, args holds type arguments.
 
     4. Named: Reference to a user-defined type by name.
@@ -83,13 +83,13 @@ pub gen Type {
 
         /// Function type: (params...) -> ret
         Function {
-            params: List<Type>,
+            params: Vec<Type>,
             ret: Box<Type>
         },
 
         /// Tuple type: (T1, T2, ...)
         Tuple {
-            elements: List<Type>
+            elements: Vec<Type>
         },
 
         // ─────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ pub gen Type {
         /// Parameterized type: Name<Arg1, Arg2, ...>
         Generic {
             name: string,
-            args: List<Type>
+            args: Vec<Type>
         },
 
         // ─────────────────────────────────────────────────────────

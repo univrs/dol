@@ -100,7 +100,7 @@ docs {
     command handler. All commands follow Unix conventions for exit codes.
 }
 
-sex fun main(args: List<string>) -> i32 {
+sex fun main(args: Vec<string>) -> i32 {
     // Check for minimum arguments
     if args.length() < 2 {
         print_usage()
@@ -148,7 +148,7 @@ docs {
     to the specified output file.
 }
 
-fun handle_compile(args: List<string>) -> i32 {
+fun handle_compile(args: Vec<string>) -> i32 {
     // Parse compile arguments
     if args.length() < 5 {
         eprintln("Error: compile requires <input> -o <output>")
@@ -200,7 +200,7 @@ docs {
     Useful for CI validation and IDE integration.
 }
 
-fun handle_check(args: List<string>) -> i32 {
+fun handle_check(args: Vec<string>) -> i32 {
     if args.length() < 3 {
         eprintln("Error: check requires <input>")
         eprintln("Usage: dol check <input.dol>")
@@ -244,7 +244,7 @@ docs {
     Useful for debugging and tooling development.
 }
 
-fun handle_parse(args: List<string>) -> i32 {
+fun handle_parse(args: Vec<string>) -> i32 {
     if args.length() < 3 {
         eprintln("Error: parse requires <input>")
         eprintln("Usage: dol parse <input.dol>")

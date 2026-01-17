@@ -40,7 +40,7 @@ pub gen Lexer {
   has column: u32 = 1
 
   /// Accumulated tokens
-  has tokens: List<Token> = []
+  has tokens: Vec<Token> = []
 }
 
 -- =============================================================================
@@ -686,7 +686,7 @@ docs {
 }
 
 /// Tokenize source code into a list of tokens
-pub fun lex(source: string) -> List<Token> {
+pub fun lex(source: string) -> Vec<Token> {
   let lexer = Lexer { source: source }
 
   loop {

@@ -84,9 +84,9 @@ docs {
 }
 
 pub gen Parser {
-    has tokens: List<Token>
+    has tokens: Vec<Token>
     has pos: u64 = 0
-    has errors: List<ParseError> = []
+    has errors: Vec<ParseError> = []
 
     // ===================================================================
     // HELPER METHODS
@@ -147,7 +147,7 @@ pub gen Parser {
         Checks if current token matches any of the given kinds.
     }
 
-    fun check_any(kinds: List<TokenKind>) -> bool {
+    fun check_any(kinds: Vec<TokenKind>) -> bool {
         let current_kind = this.current().kind
         for kind in kinds {
             if current_kind == kind {
@@ -179,7 +179,7 @@ pub gen Parser {
         Returns true and advances if matched, false otherwise.
     }
 
-    fun match_any(kinds: List<TokenKind>) -> bool {
+    fun match_any(kinds: Vec<TokenKind>) -> bool {
         if this.check_any(kinds) {
             this.advance()
             return true
@@ -1362,7 +1362,7 @@ pub gen Parser {
         Parses type parameters for generics: `<T, U: Bound>`
     }
 
-    fun parse_type_params() -> Result<List<TypeParam>, ParseError> {
+    fun parse_type_params() -> Result<Vec<TypeParam>, ParseError> {
         let params = []
 
         loop {
@@ -1396,7 +1396,7 @@ pub gen Parser {
         Parses trait bounds: `Trait1 + Trait2`
     }
 
-    fun parse_trait_bounds() -> Result<List<string>, ParseError> {
+    fun parse_trait_bounds() -> Result<Vec<string>, ParseError> {
         let bounds = []
 
         loop {
@@ -1475,7 +1475,7 @@ pub gen Parser {
         Parses function/method parameters: `(param1: Type1, param2: Type2)`
     }
 
-    fun parse_params() -> Result<List<Param>, ParseError> {
+    fun parse_params() -> Result<Vec<Param>, ParseError> {
         this.consume(TokenKind.LParen, "Expected '(' for parameters")?
 
         let params = []
@@ -1527,7 +1527,7 @@ pub gen Parser {
         Parses law parameters: `[forall x: T, y: U]`
     }
 
-    fun parse_law_params() -> Result<List<Param>, ParseError> {
+    fun parse_law_params() -> Result<Vec<Param>, ParseError> {
         let params = []
 
         loop {
@@ -1557,7 +1557,7 @@ pub gen Parser {
         Parses a where clause: `where T: Bound, U: OtherBound`
     }
 
-    fun parse_where_clause() -> Result<List<WhereClause>, ParseError> {
+    fun parse_where_clause() -> Result<Vec<WhereClause>, ParseError> {
         this.consume(TokenKind.Where, "Expected 'where'")?
 
         let clauses = []
@@ -2510,7 +2510,7 @@ pub gen Parser {
         Parses call arguments.
     }
 
-    fun parse_call_args() -> Result<List<Arg>, ParseError> {
+    fun parse_call_args() -> Result<Vec<Arg>, ParseError> {
         let args = []
 
         if !this.check(TokenKind.RParen) {
@@ -2545,7 +2545,7 @@ pub gen Parser {
         Parses struct literal fields.
     }
 
-    fun parse_struct_fields() -> Result<List<StructField>, ParseError> {
+    fun parse_struct_fields() -> Result<Vec<StructField>, ParseError> {
         let fields = []
 
         while !this.check(TokenKind.RBrace) && !this.is_at_end() {
@@ -2706,7 +2706,7 @@ docs {
     Returns either the parsed file or a list of errors.
 }
 
-pub fun parse(source: string) -> Result<DolFile, List<ParseError>> {
+pub fun parse(source: string) -> Result<DolFile, Vec<ParseError>> {
     // Lex the source into tokens
     let tokens = lex(source)
 
@@ -2732,7 +2732,7 @@ docs {
     Convenience function to parse and return errors as strings.
 }
 
-pub fun parse_with_diagnostics(source: string) -> Tuple<Option<DolFile>, List<string>> {
+pub fun parse_with_diagnostics(source: string) -> Tuple<Option<DolFile>, Vec<string>> {
     match parse(source) {
         Ok(file) {
             return (Some(file), [])

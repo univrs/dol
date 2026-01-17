@@ -22,7 +22,7 @@ docs {
     ┌─────────┐
     │  Lexer  │  dol.lexer - Tokenization
     └────┬────┘
-         │ List<Token>
+         │ Vec<Token>
          v
     ┌─────────┐
     │ Parser  │  dol.parser - Syntax Analysis

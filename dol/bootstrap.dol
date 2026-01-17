@@ -14,7 +14,7 @@ pub gen ModuleDecl {
 // Use statement wrapper
 pub gen UseStmt {
     path: string
-    items: List<string>
+    items: Vec<string>
     span: Span
 }
 
@@ -48,7 +48,7 @@ pub gen TraitMember {
 // Method declaration wrapper
 pub gen MethodDecl {
     name: string
-    params: List<Param>
+    params: Vec<Param>
     return_type: Option<TypeExpr>
     body: Option<Block>
     is_pub: bool
@@ -66,7 +66,7 @@ pub gen TypeAlias {
 // Associated type
 pub gen AssociatedType {
     name: string
-    bounds: List<TypeExpr>
+    bounds: Vec<TypeExpr>
     span: Span
 }
 
@@ -135,7 +135,7 @@ pub gen ExegesisBlock {
 
 // Where clause
 pub gen WhereClause {
-    predicates: List<WherePredicate>
+    predicates: Vec<WherePredicate>
     span: Span
 }
 
@@ -177,7 +177,7 @@ pub gen IfStmt {
 
 pub gen MatchStmt {
     scrutinee: Expr
-    arms: List<MatchArm>
+    arms: Vec<MatchArm>
     span: Span
 }
 
@@ -270,7 +270,7 @@ pub gen IdiomExpr {
 }
 
 pub gen ArrayExpr {
-    elements: List<Expr>
+    elements: Vec<Expr>
     span: Span
 }
 
@@ -285,14 +285,14 @@ pub gen IdentExpr {
 
 pub gen CallExpr {
     callee: Box<Expr>
-    args: List<CallArg>
+    args: Vec<CallArg>
     span: Span
 }
 
 pub gen MethodCallExpr {
     receiver: Box<Expr>
     method: string
-    args: List<CallArg>
+    args: Vec<CallArg>
     span: Span
 }
 
@@ -310,7 +310,7 @@ pub gen IndexExpr {
 
 pub gen StructExpr {
     name: string
-    fields: List<StructField>
+    fields: Vec<StructField>
     span: Span
 }
 
@@ -334,7 +334,7 @@ pub gen LambdaBody {
 }
 
 pub gen LambdaExpr {
-    params: List<LambdaParam>
+    params: Vec<LambdaParam>
     body: Box<LambdaBody>
     return_type: Option<TypeExpr>
     span: Span
@@ -349,7 +349,7 @@ pub gen IfExpr {
 
 pub gen MatchExpr {
     scrutinee: Box<Expr>
-    arms: List<MatchArm>
+    arms: Vec<MatchArm>
     span: Span
 }
 

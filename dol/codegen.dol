@@ -321,7 +321,7 @@ pub gen RustCodegen {
     }
 
     /// Generate enum definition
-    pub fun gen_enum(name: string, variants: List<EnumVariant>) {
+    pub fun gen_enum(name: string, variants: Vec<EnumVariant>) {
         let enum_name = this.pascal_case(name)
 
         this.emit_line("#[derive(Debug, Clone, PartialEq)]")
@@ -610,7 +610,7 @@ pub gen RustCodegen {
     }
 
     /// Generate function that validates all constraints
-    pub fun gen_validate_all(constraints: List<ConstraintDecl>) {
+    pub fun gen_validate_all(constraints: Vec<ConstraintDecl>) {
         this.emit_line("/// Run all constraint validators")
         this.emit_line("pub fn validate_all() -> Result<(), Vec<&'static str>> {")
         this.push_indent()
@@ -872,7 +872,7 @@ pub gen RustCodegen {
     }
 
     /// Generate function parameters
-    pub fun gen_params(params: List<Param>) -> string {
+    pub fun gen_params(params: Vec<Param>) -> string {
         let param_strs = []
         for param in params {
             let param_name = this.snake_case(param.name)
@@ -1249,7 +1249,7 @@ pub gen RustCodegen {
     }
 
     /// Generate lambda expression
-    fun gen_lambda(params: List<LambdaParam>, return_type: Option<TypeExpr>, body: Expr) -> string {
+    fun gen_lambda(params: Vec<LambdaParam>, return_type: Option<TypeExpr>, body: Expr) -> string {
         let param_strs = []
         for param in params {
             match param.type_ {
@@ -1298,7 +1298,7 @@ pub gen RustCodegen {
     }
 
     /// Generate match expression
-    fun gen_match_expr(scrutinee: Expr, arms: List<MatchArm>) -> string {
+    fun gen_match_expr(scrutinee: Expr, arms: Vec<MatchArm>) -> string {
         let scrutinee_str = this.gen_expr(scrutinee)
         let result = "match " + scrutinee_str + " {\n"
 
@@ -1387,7 +1387,7 @@ pub gen RustCodegen {
     }
 
     /// Generate block expression
-    fun gen_block_expr(statements: List<Stmt>, final_expr: Option<Expr>) -> string {
+    fun gen_block_expr(statements: Vec<Stmt>, final_expr: Option<Expr>) -> string {
         let result = "{\n"
 
         for stmt in statements {
@@ -1454,7 +1454,7 @@ pub gen RustCodegen {
     }
 
     /// Generate idiom bracket [| f a b |] -> f <$> a <*> b
-    fun gen_idiom_bracket(func: Expr, args: List<Expr>) -> string {
+    fun gen_idiom_bracket(func: Expr, args: Vec<Expr>) -> string {
         if args.length() == 0 {
             return this.gen_expr(func)
         }
@@ -1499,7 +1499,7 @@ pub gen RustCodegen {
     }
 
     /// Generate sex block
-    fun gen_sex_block(statements: List<Stmt>, final_expr: Option<Expr>) -> string {
+    fun gen_sex_block(statements: Vec<Stmt>, final_expr: Option<Expr>) -> string {
         return this.gen_block_expr(statements, final_expr)
     }
 
@@ -1508,7 +1508,7 @@ pub gen RustCodegen {
     }
 
     /// Generate struct literal
-    fun gen_struct_literal(name: string, fields: List<FieldInit>) -> string {
+    fun gen_struct_literal(name: string, fields: Vec<FieldInit>) -> string {
         let name_str = this.pascal_case(name)
         let field_strs = []
         for field in fields {

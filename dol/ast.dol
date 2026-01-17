@@ -29,7 +29,7 @@ docs {
 
 /// Top-level AST node representing an entire DOL source file
 pub gen DolFile {
-    has declarations: List<Decl>
+    has declarations: Vec<Decl>
     has span: Span
 }
 
@@ -49,7 +49,7 @@ pub gen Decl {
         Module { name: string, version: Option<string> },
 
         /// Use declaration: `use foo.bar.{ Baz, Qux }`
-        Use { path: List<string>, items: List<string> },
+        Use { path: Vec<string>, items: Vec<string> },
 
         /// Gene declaration (struct-like with constraints)
         Gene { decl: GeneDecl },
@@ -85,11 +85,11 @@ docs {
 pub gen GeneDecl {
     has name: string
     has is_pub: bool = false
-    has type_params: List<TypeParam> = []
+    has type_params: Vec<TypeParam> = []
     has type_def: Option<TypeExpr>
-    has fields: List<Field>
-    has methods: List<FunctionDecl>
-    has constraints: List<ConstraintDecl>
+    has fields: Vec<Field>
+    has methods: Vec<FunctionDecl>
+    has constraints: Vec<ConstraintDecl>
     has exegesis: Option<string>
     has span: Span
 }
@@ -114,7 +114,7 @@ docs {
 /// Type parameter with optional bounds
 pub gen TypeParam {
     has name: string
-    has bounds: List<string> = []
+    has bounds: Vec<string> = []
     has span: Span
 }
 
@@ -131,11 +131,11 @@ docs {
 pub gen TraitDecl {
     has name: string
     has is_pub: bool = false
-    has type_params: List<TypeParam> = []
-    has super_traits: List<string> = []
-    has required_methods: List<MethodSig>
-    has provided_methods: List<FunctionDecl>
-    has laws: List<LawDecl>
+    has type_params: Vec<TypeParam> = []
+    has super_traits: Vec<string> = []
+    has required_methods: Vec<MethodSig>
+    has provided_methods: Vec<FunctionDecl>
+    has laws: Vec<LawDecl>
     has exegesis: Option<string>
     has span: Span
 }
@@ -147,8 +147,8 @@ docs {
 /// Method signature (declaration without body)
 pub gen MethodSig {
     has name: string
-    has type_params: List<TypeParam> = []
-    has params: List<Param>
+    has type_params: Vec<TypeParam> = []
+    has params: Vec<Param>
     has return_type: TypeExpr
     has span: Span
 }
@@ -160,8 +160,8 @@ docs {
 /// Law declaration expressing invariants
 pub gen LawDecl {
     has name: string
-    has type_params: List<TypeParam> = []
-    has params: List<Param> = []
+    has type_params: Vec<TypeParam> = []
+    has params: Vec<Param> = []
     has body: Expr
     has exegesis: Option<string>
     has span: Span
@@ -180,11 +180,11 @@ docs {
 pub gen SystemDecl {
     has name: string
     has is_pub: bool = false
-    has type_params: List<TypeParam> = []
-    has uses: List<string>
-    has states: List<Field>
-    has functions: List<FunctionDecl>
-    has constraints: List<ConstraintDecl>
+    has type_params: Vec<TypeParam> = []
+    has uses: Vec<string>
+    has states: Vec<Field>
+    has functions: Vec<FunctionDecl>
+    has constraints: Vec<ConstraintDecl>
     has exegesis: Option<string>
     has span: Span
 }
@@ -201,7 +201,7 @@ docs {
 /// Constraint declaration
 pub gen ConstraintDecl {
     has name: string
-    has params: List<Param> = []
+    has params: Vec<Param> = []
     has body: Expr
     has exegesis: Option<string>
     has span: Span
@@ -217,7 +217,7 @@ pub gen EvolvesDecl {
     has from_version: string
     has to_type: string
     has to_version: string
-    has changes: List<Change>
+    has changes: Vec<Change>
     has migrate: Option<Block>
     has exegesis: Option<string>
     has span: Span
@@ -257,11 +257,11 @@ pub gen FunctionDecl {
     has is_pub: bool = false
     has is_sex: bool = false
     has is_extern: bool = false
-    has type_params: List<TypeParam> = []
-    has params: List<Param>
+    has type_params: Vec<TypeParam> = []
+    has params: Vec<Param>
     has return_type: TypeExpr
     has body: Option<Block>
-    has where_clause: List<WherePredicate> = []
+    has where_clause: Vec<WherePredicate> = []
     has exegesis: Option<string>
     has span: Span
 }
@@ -286,7 +286,7 @@ docs {
 /// Where clause predicate
 pub gen WherePredicate {
     has type_name: string
-    has bounds: List<string>
+    has bounds: Vec<string>
     has span: Span
 }
 
@@ -338,16 +338,16 @@ pub gen TypeExpr {
         // ═══════════════════════════════════════════════════════════════
 
         /// Named type reference: `Foo`, `Bar.Baz`
-        Named { path: List<string> },
+        Named { path: Vec<string> },
 
-        /// Generic type application: `List<T>`, `Map<K, V>`
-        Generic { name: string, args: List<TypeExpr> },
+        /// Generic type application: `Vec<T>`, `Map<K, V>`
+        Generic { name: string, args: Vec<TypeExpr> },
 
         /// Function type: `(A, B) -> C`
-        Function { params: List<TypeExpr>, ret: Box<TypeExpr> },
+        Function { params: Vec<TypeExpr>, ret: Box<TypeExpr> },
 
         /// Tuple type: `(A, B, C)`
-        Tuple { elements: List<TypeExpr> },
+        Tuple { elements: Vec<TypeExpr> },
 
         /// Array type: `[T; N]`
         Array { element: Box<TypeExpr>, size: Option<u64> },
@@ -366,7 +366,7 @@ pub gen TypeExpr {
         // ═══════════════════════════════════════════════════════════════
 
         /// Inline enum definition: `enum { Foo, Bar { x: Int } }`
-        Enum { variants: List<EnumVariant> },
+        Enum { variants: Vec<EnumVariant> },
 
         // ═══════════════════════════════════════════════════════════════
         // Higher-Kinded Types
@@ -398,7 +398,7 @@ docs {
 /// Enum variant
 pub gen EnumVariant {
     has name: string
-    has fields: List<Field> = []
+    has fields: Vec<Field> = []
     has span: Span
 }
 
@@ -455,7 +455,7 @@ pub gen UnaryExpr {
 /// Function call expression
 pub gen CallExpr {
     has callee: Box<Expr>
-    has args: List<CallArg>
+    has args: Vec<CallArg>
     has span: Span
 
     docs {
@@ -468,7 +468,7 @@ pub gen CallExpr {
 pub gen MethodCallExpr {
     has receiver: Box<Expr>
     has method: string
-    has args: List<CallArg>
+    has args: Vec<CallArg>
     has span: Span
 
     docs {
@@ -501,7 +501,7 @@ pub gen IndexExpr {
 /// Struct literal expression - TypeName { field: value, ... }
 pub gen StructExpr {
     has name: string
-    has fields: List<FieldInit>
+    has fields: Vec<FieldInit>
     has span: Span
 
     docs {
@@ -511,7 +511,7 @@ pub gen StructExpr {
 
 /// Array literal expression - [a, b, c]
 pub gen ArrayExpr {
-    has elements: List<Expr>
+    has elements: Vec<Expr>
     has span: Span
 
     docs {
@@ -521,7 +521,7 @@ pub gen ArrayExpr {
 
 /// Lambda/closure expression - |params| body or |params| { block }
 pub gen LambdaExpr {
-    has params: List<LambdaParam>
+    has params: Vec<LambdaParam>
     has body: Box<Expr>
     has return_type: Option<TypeExpr>
     has span: Span
@@ -546,7 +546,7 @@ pub gen IfExpr {
 /// Match expression - match expr { arms }
 pub gen MatchExpr {
     has scrutinee: Box<Expr>
-    has arms: List<MatchArm>
+    has arms: Vec<MatchArm>
     has span: Span
 
     docs {
@@ -694,7 +694,7 @@ pub gen LoopStmt {
 /// Match statement (non-expression form)
 pub gen MatchStmt {
     has scrutinee: Expr
-    has arms: List<MatchArm>
+    has arms: Vec<MatchArm>
     has span: Span
 
     docs {
@@ -740,7 +740,7 @@ pub gen Expr {
         Ident { name: string },
 
         /// Qualified path: `foo.bar.baz`
-        Path { segments: List<string> },
+        Path { segments: Vec<string> },
 
         /// This reference (within method context)
         This(ThisExpr),
@@ -782,7 +782,7 @@ pub gen Expr {
         Struct(StructExpr),
 
         /// Tuple construction: `(a, b, c)`
-        TupleLit { elements: List<Expr> },
+        TupleLit { elements: Vec<Expr> },
 
         /// Array literal: `[1, 2, 3]`
         ArrayLit(ArrayExpr),
@@ -798,7 +798,7 @@ pub gen Expr {
         Lambda(LambdaExpr),
 
         /// Block lambda: `|x| { let y = x * 2; y + 1 }`
-        BlockLambda { params: List<LambdaParam>, body: Box<Block>, is_sex: bool },
+        BlockLambda { params: Vec<LambdaParam>, body: Box<Block>, is_sex: bool },
 
         // ═══════════════════════════════════════════════════════════════
         // Control Flow Expressions
@@ -846,10 +846,10 @@ pub gen Expr {
         Reflect { ty: TypeExpr },
 
         /// Idiom brackets (applicative): `[| f x y |]`
-        IdiomBracket { exprs: List<Expr> },
+        IdiomBracket { exprs: Vec<Expr> },
 
         /// Macro invocation: `#macro_name!(args)`
-        MacroCall { name: string, bang: bool, args: List<Expr> },
+        MacroCall { name: string, bang: bool, args: Vec<Expr> },
 
         // ═══════════════════════════════════════════════════════════════
         // Error Recovery
@@ -1018,19 +1018,19 @@ pub gen Pattern {
         Literal { value: Expr },
 
         /// Tuple pattern: `(a, b, c)`
-        Tuple { elements: List<Pattern> },
+        Tuple { elements: Vec<Pattern> },
 
         /// Array pattern: `[a, b, c]`, `[head, ..tail]`
-        Array { elements: List<Pattern>, rest: Option<string> },
+        Array { elements: Vec<Pattern>, rest: Option<string> },
 
         /// Struct pattern: `Foo { x, y: z }`
-        Struct { name: string, fields: List<FieldPattern>, rest: bool },
+        Struct { name: string, fields: Vec<FieldPattern>, rest: bool },
 
         /// Enum variant pattern: `Some(x)`, `None`
-        Variant { path: List<string>, fields: List<Pattern> },
+        Variant { path: Vec<string>, fields: Vec<Pattern> },
 
         /// Or pattern: `A | B | C`
-        Or { patterns: List<Pattern> },
+        Or { patterns: Vec<Pattern> },
 
         /// Range pattern: `0..10`, `'a'..='z'`
         Range { start: Option<Expr>, end: Option<Expr>, inclusive: bool },
@@ -1142,7 +1142,7 @@ docs {
 
 /// Block with statements and optional final expression
 pub gen Block {
-    has stmts: List<Stmt>
+    has stmts: Vec<Stmt>
     has expr: Option<Expr>
     has span: Span
 }
@@ -1165,7 +1165,7 @@ pub gen Visibility {
         /// Crate-public: `pub(crate)`
         Crate,
         /// Module-public: `pub(super)`, `pub(in path)`
-        Restricted { path: List<string> }
+        Restricted { path: Vec<string> }
     }
     has span: Span
 }
@@ -1181,7 +1181,7 @@ docs {
 /// Attribute on a declaration
 pub gen Attribute {
     has name: string
-    has args: List<AttrArg>
+    has args: Vec<AttrArg>
     has span: Span
 }
 
@@ -1255,7 +1255,7 @@ pub fun binary(op: BinOp, left: Expr, right: Expr, span: Span) -> Expr {
 }
 
 /// Create a function call expression
-pub fun call(callee: Expr, args: List<Expr>, span: Span) -> Expr {
+pub fun call(callee: Expr, args: Vec<Expr>, span: Span) -> Expr {
     // Use the function's span for all args since Expr doesn't have a direct span accessor
     let call_args = args.map(|arg| CallArg { name: None, value: arg, span: span.clone() })
     return Expr {

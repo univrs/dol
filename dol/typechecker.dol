@@ -23,7 +23,7 @@ docs {
 /// Main type checker state
 pub gen TypeChecker {
     has env: TypeEnv
-    has errors: List<TypeError> = []
+    has errors: Vec<TypeError> = []
     has var_counter: u64 = 0
 
     // ═══════════════════════════════════════════════════════════════
@@ -52,7 +52,7 @@ pub gen TypeChecker {
     }
 
     /// Check an entire DOL file
-    fun check_file(file: DolFile) -> List<TypeError> {
+    fun check_file(file: DolFile) -> Vec<TypeError> {
         // First pass: register all top-level declarations
         for decl in file.decls {
             this.register_decl(decl)
@@ -1540,7 +1540,7 @@ docs {
 }
 
 /// Type check a DOL file
-pub fun typecheck(file: DolFile) -> List<TypeError> {
+pub fun typecheck(file: DolFile) -> Vec<TypeError> {
     let checker = TypeChecker {
         env: TypeEnv.new(),
         errors: [],
