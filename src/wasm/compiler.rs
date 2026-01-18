@@ -665,6 +665,100 @@ impl WasmCompiler {
         !self.gene_layouts.is_empty()
     }
 
+    /// Get the list of gene names with layouts.
+    pub fn get_gene_layout_names(&self) -> Vec<String> {
+        self.gene_layouts.names()
+    }
+
+    /// Get a gene layout by name.
+    pub fn get_gene_layout(&self, name: &str) -> Option<&GeneLayout> {
+        self.gene_layouts.get(name)
+    }
+
+    /// Build a constructor function for a gene.
+    ///
+    /// The constructor takes field values as parameters and returns a pointer (i32)
+    /// to the newly allocated and initialized gene instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `layout` - The gene layout to build a constructor for
+    /// * `alloc_func_idx` - The function index of the alloc function
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (param_types, result_types, function_body)
+    #[cfg(feature = "wasm-compile")]
+    fn build_gene_constructor(
+        layout: &GeneLayout,
+        alloc_func_idx: u32,
+    ) -> (
+        Vec<wasm_encoder::ValType>,
+        Vec<wasm_encoder::ValType>,
+        wasm_encoder::Function,
+    ) {
+        use crate::wasm::layout::WasmFieldType;
+        use wasm_encoder::{Function, Instruction, ValType};
+
+        // Build parameter types from fields
+        let params: Vec<ValType> = layout
+            .fields
+            .iter()
+            .map(|f| f.wasm_type.to_val_type())
+            .collect();
+
+        // Result is always i32 (pointer)
+        let results = vec![ValType::I32];
+
+        // Build the function body
+        // Locals: one i32 for the struct pointer
+        let locals = vec![(1, ValType::I32)];
+        let mut func = Function::new(locals);
+
+        // Local 0..n-1 are parameters, local n is __ptr
+        let ptr_local = params.len() as u32;
+
+        // Allocate memory: push size, alignment, call alloc
+        func.instruction(&Instruction::I32Const(layout.total_size as i32));
+        func.instruction(&Instruction::I32Const(layout.alignment as i32));
+        func.instruction(&Instruction::Call(alloc_func_idx));
+        func.instruction(&Instruction::LocalTee(ptr_local));
+
+        // Initialize each field
+        for (param_idx, field) in layout.fields.iter().enumerate() {
+            // Get pointer
+            func.instruction(&Instruction::LocalGet(ptr_local));
+            // Get parameter value
+            func.instruction(&Instruction::LocalGet(param_idx as u32));
+            // Store at field offset
+            let mem_arg = wasm_encoder::MemArg {
+                offset: field.offset as u64,
+                align: field.wasm_type.alignment_log2(),
+                memory_index: 0,
+            };
+            match field.wasm_type {
+                WasmFieldType::I32 | WasmFieldType::Ptr => {
+                    func.instruction(&Instruction::I32Store(mem_arg));
+                }
+                WasmFieldType::I64 => {
+                    func.instruction(&Instruction::I64Store(mem_arg));
+                }
+                WasmFieldType::F32 => {
+                    func.instruction(&Instruction::F32Store(mem_arg));
+                }
+                WasmFieldType::F64 => {
+                    func.instruction(&Instruction::F64Store(mem_arg));
+                }
+            }
+        }
+
+        // Return pointer - already on stack from LocalTee above
+        // The LocalTee instruction both stores to local AND leaves the value on the stack
+        func.instruction(&Instruction::End);
+
+        (params, results, func)
+    }
+
     /// Auto-register gene layouts from a module declaration.
     ///
     /// This scans the module for gene declarations with fields and
@@ -1095,6 +1189,27 @@ impl WasmCompiler {
             next_type_idx += 1;
         }
 
+        // Add constructor types for each gene layout
+        // Collect gene constructors for later use
+        let gene_names: Vec<String> = self.gene_layouts.names();
+        let constructor_type_offset = next_type_idx;
+        let mut constructor_infos: Vec<(String, Vec<ValType>, Vec<ValType>)> = Vec::new();
+
+        for gene_name in &gene_names {
+            if let Some(layout) = self.gene_layouts.get(gene_name) {
+                // Build parameter types from fields
+                let params: Vec<ValType> = layout
+                    .fields
+                    .iter()
+                    .map(|f| f.wasm_type.to_val_type())
+                    .collect();
+                let results = vec![ValType::I32]; // Return pointer
+                types.function(params.clone(), results.clone());
+                constructor_infos.push((gene_name.clone(), params, results));
+                next_type_idx += 1;
+            }
+        }
+
         wasm_module.section(&types);
 
         // ============= IMPORT SECTION =============
@@ -1112,15 +1227,16 @@ impl WasmCompiler {
         }
 
         // ============= FUNCTION SECTION =============
-        // Function indices: imports get 0..n-1, then alloc (if needed), then local functions
+        // Function indices: imports get 0..n-1, then alloc (if needed), then local functions, then constructors
         // Note: imports already occupy indices 0..import_count-1
         let import_count = imports.len() as u32;
-        let _alloc_func_idx = if needs_memory {
+        let alloc_func_idx = if needs_memory {
             Some(import_count) // alloc comes right after imports
         } else {
             None
         };
         let local_func_idx_offset = import_count + if needs_memory { 1 } else { 0 };
+        let constructor_func_idx_offset = local_func_idx_offset + functions.len() as u32;
 
         let mut funcs = FunctionSection::new();
         // Add alloc function type reference
@@ -1130,6 +1246,10 @@ impl WasmCompiler {
         // Add local function type references
         for (i, _func) in functions.iter().enumerate() {
             funcs.function(local_func_type_offset + i as u32);
+        }
+        // Add constructor function type references
+        for (i, _) in constructor_infos.iter().enumerate() {
+            funcs.function(constructor_type_offset + i as u32);
         }
         wasm_module.section(&funcs);
 
@@ -1200,6 +1320,15 @@ impl WasmCompiler {
                 &extracted.exported_name,
                 ExportKind::Func,
                 local_func_idx_offset + idx as u32,
+            );
+        }
+        // Export constructor functions as new_GeneName
+        for (i, (gene_name, _, _)) in constructor_infos.iter().enumerate() {
+            let export_name = format!("new_{}", gene_name);
+            exports.export(
+                &export_name,
+                ExportKind::Func,
+                constructor_func_idx_offset + i as u32,
             );
         }
         if needs_memory {
@@ -1277,8 +1406,23 @@ impl WasmCompiler {
             code.function(&function);
         }
 
-        // Only emit code section if we have local functions
-        if has_local_functions || needs_memory {
+        // Add constructor function code
+        if let Some(alloc_idx) = alloc_func_idx {
+            for (i, (gene_name, _, _)) in constructor_infos.iter().enumerate() {
+                if let Some(layout) = self.gene_layouts.get(gene_name) {
+                    let (_, _, constructor_func) = Self::build_gene_constructor(layout, alloc_idx);
+                    code.function(&constructor_func);
+
+                    // Register constructor in function name map for call resolution
+                    let constructor_name = format!("new_{}", gene_name);
+                    func_name_map.insert(constructor_name, constructor_func_idx_offset + i as u32);
+                }
+            }
+        }
+
+        // Only emit code section if we have local functions or constructors
+        let has_constructors = !constructor_infos.is_empty();
+        if has_local_functions || needs_memory || has_constructors {
             wasm_module.section(&code);
         }
 
@@ -3047,8 +3191,8 @@ impl WasmCompiler {
                         }
                     }
 
-                    // Leave pointer on stack as result
-                    function.instruction(&Instruction::LocalGet(ptr_local));
+                    // Pointer is already on stack from LocalTee above - no need for additional LocalGet
+                    // The LocalTee instruction both stores to local AND leaves the value on the stack
                 } else {
                     return Err(WasmError::new(format!(
                         "Unknown gene type for struct literal: '{}'. \
@@ -3221,9 +3365,34 @@ impl WasmCompiler {
                 _ => ValType::I64,                              // default
             },
             Expr::Identifier(name) => {
-                // Check if this identifier will be widened during emit_expression
-                // If so, return i64 to match the actual stack type after widening
-                if locals.needs_widening(name) {
+                // Check if this is a dotted identifier (e.g., "p.x") which represents
+                // a member access. The lexer produces these as single tokens.
+                if let Some(dot_pos) = name.find('.') {
+                    let object_name = &name[..dot_pos];
+                    let field_name = &name[dot_pos + 1..];
+
+                    // Check if object is an enum type (e.g., AccountType.Node)
+                    // Enum variant access always returns i32
+                    if self
+                        .enum_registry
+                        .get_variant_index(object_name, field_name)
+                        .is_some()
+                    {
+                        return ValType::I32;
+                    }
+
+                    // Get the gene type for this variable and look up field type
+                    if let Some(gene_name) = locals.lookup_dol_type(object_name) {
+                        if let Some(layout) = self.gene_layouts.get(gene_name) {
+                            if let Some(field_layout) = layout.get_field(field_name) {
+                                return field_layout.wasm_type.to_val_type();
+                            }
+                        }
+                    }
+                    ValType::I64 // default for member access we can't resolve
+                } else if locals.needs_widening(name) {
+                    // Check if this identifier will be widened during emit_expression
+                    // If so, return i64 to match the actual stack type after widening
                     ValType::I64
                 } else {
                     locals.lookup_var_type(name).unwrap_or(ValType::I64)
@@ -3250,6 +3419,21 @@ impl WasmCompiler {
                 } else {
                     ValType::I64
                 }
+            }
+            Expr::Member { object, field } => {
+                // For member access like p.x, infer type from gene field layout
+                if let Expr::Identifier(obj_name) = object.as_ref() {
+                    // Get the gene type for this variable
+                    if let Some(gene_name) = locals.lookup_dol_type(obj_name) {
+                        // Look up field type from gene layout
+                        if let Some(layout) = self.gene_layouts.get(gene_name) {
+                            if let Some(field_layout) = layout.get_field(field) {
+                                return field_layout.wasm_type.to_val_type();
+                            }
+                        }
+                    }
+                }
+                ValType::I64 // default for member access we can't resolve
             }
             _ => ValType::I64, // default
         }
@@ -3802,5 +3986,91 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("No functions found"));
+    }
+
+    #[test]
+    fn test_gene_constructor_generation() {
+        use crate::ast::{DolFile, Gen, HasField, Statement, Visibility};
+
+        // Create a gene with two i64 fields
+        let gene = Gen {
+            name: "Point".to_string(),
+            visibility: Visibility::Public,
+            extends: None,
+            statements: vec![
+                Statement::HasField(Box::new(HasField {
+                    name: "x".to_string(),
+                    type_: TypeExpr::Named("Int64".to_string()),
+                    default: None,
+                    constraint: None,
+                    span: Span::default(),
+                })),
+                Statement::HasField(Box::new(HasField {
+                    name: "y".to_string(),
+                    type_: TypeExpr::Named("Int64".to_string()),
+                    default: None,
+                    constraint: None,
+                    span: Span::default(),
+                })),
+            ],
+            exegesis: "A 2D point".to_string(),
+            span: Span::default(),
+        };
+
+        // Create a simple function that uses the gene
+        let func = FunctionDecl {
+            visibility: Visibility::Public,
+            purity: Purity::Pure,
+            name: "get_origin".to_string(),
+            type_params: None,
+            params: vec![],
+            return_type: Some(TypeExpr::Named("i32".to_string())), // Returns pointer
+            body: vec![Stmt::Return(Some(Expr::StructLiteral {
+                type_name: "Point".to_string(),
+                fields: vec![
+                    ("x".to_string(), Expr::Literal(Literal::Int(0))),
+                    ("y".to_string(), Expr::Literal(Literal::Int(0))),
+                ],
+            }))],
+            exegesis: "Creates origin point".to_string(),
+            span: Span::default(),
+        };
+
+        let file = DolFile {
+            module: None,
+            uses: vec![],
+            declarations: vec![
+                Declaration::Gene(gene),
+                Declaration::Function(Box::new(func)),
+            ],
+        };
+
+        let mut compiler = WasmCompiler::new();
+        let wasm_bytes = compiler.compile_file(&file).expect("Compilation failed");
+
+        // Verify WASM magic number
+        assert!(wasm_bytes.len() >= 8, "WASM output too short");
+        assert_eq!(
+            &wasm_bytes[0..4],
+            &[0x00, 0x61, 0x73, 0x6D],
+            "Invalid WASM magic number"
+        );
+
+        // Verify we have the layout registered
+        assert!(compiler.has_gene_layouts());
+        let names = compiler.get_gene_layout_names();
+        assert!(names.contains(&"Point".to_string()));
+
+        // Verify the layout is correct
+        let layout = compiler
+            .get_gene_layout("Point")
+            .expect("Point layout not found");
+        assert_eq!(layout.total_size, 16); // Two i64 fields = 16 bytes
+        assert_eq!(layout.alignment, 8); // Aligned to largest field
+        assert_eq!(layout.fields.len(), 2);
+        assert_eq!(layout.fields[0].name, "x");
+        assert_eq!(layout.fields[0].offset, 0);
+        assert_eq!(layout.fields[1].name, "y");
+        assert_eq!(layout.fields[1].offset, 8);
     }
 }

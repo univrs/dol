@@ -212,7 +212,7 @@ impl ReplSession {
             .config
             .session_file
             .as_ref()
-            .ok_or_else(|| SessionError::NoSessionFile)?;
+            .ok_or(SessionError::NoSessionFile)?;
 
         let data = serde_json::json!({
             "name": self.config.name,
@@ -234,7 +234,7 @@ impl ReplSession {
             .config
             .session_file
             .as_ref()
-            .ok_or_else(|| SessionError::NoSessionFile)?;
+            .ok_or(SessionError::NoSessionFile)?;
 
         // Simple text format when serde is not available
         let content = format!(

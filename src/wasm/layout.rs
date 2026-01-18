@@ -379,6 +379,11 @@ impl GeneLayoutRegistry {
         self.layouts.iter()
     }
 
+    /// Get all registered layout names.
+    pub fn names(&self) -> Vec<String> {
+        self.layouts.keys().cloned().collect()
+    }
+
     /// Remove a layout from the registry.
     ///
     /// Returns the removed layout if it existed.

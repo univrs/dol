@@ -186,24 +186,124 @@ impl ReplEvaluator {
         Err(EvalError::Feature("wasm feature not enabled".to_string()))
     }
 
+    /// Infer the type of an expression based on its structure.
+    ///
+    /// Returns the DOL type string (i64, f64, i32, bool) for the expression.
+    pub fn infer_expression_type(&self, expr: &str) -> &'static str {
+        let expr = expr.trim();
+
+        // Check for boolean literals
+        if expr == "true" || expr == "false" {
+            return "bool";
+        }
+
+        // Check for float literals (contains '.' followed by digits)
+        if expr.contains('.') && expr.chars().any(|c| c.is_ascii_digit()) {
+            // Could be a float literal like 3.14
+            let is_float = expr
+                .chars()
+                .filter(|c| *c != '.' && *c != '-')
+                .all(|c| c.is_ascii_digit() || c == 'e' || c == 'E' || c == '+' || c == '_');
+            if is_float {
+                return "f64";
+            }
+        }
+
+        // Check for simple integer literal
+        let is_int = expr
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .all(|c| c.is_ascii_digit());
+        if is_int && !expr.is_empty() {
+            return "i64";
+        }
+
+        // Check for operators that produce floats
+        if expr.contains("f64") || expr.contains("Float64") {
+            return "f64";
+        }
+
+        // Check for float operations (simple heuristic: if expression contains a float literal)
+        for token in expr.split(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '_') {
+            if token.contains('.') {
+                let is_float = token
+                    .chars()
+                    .filter(|c| *c != '.')
+                    .all(|c| c.is_ascii_digit() || c == 'e' || c == 'E' || c == '_');
+                if is_float && !token.is_empty() {
+                    return "f64";
+                }
+            }
+        }
+
+        // Default to i64
+        "i64"
+    }
+
     /// Evaluate an expression by wrapping it in a function.
+    ///
+    /// The expression is wrapped in a `dolReplEval` function, compiled to WASM,
+    /// and executed. The result is returned as a formatted string.
     pub fn eval_expression(&mut self, expr: &str, declarations: &str) -> Result<String, EvalError> {
-        // Build source with expression wrapped in __repl_eval__ function
+        // Infer the return type of the expression
+        let return_type = self.infer_expression_type(expr);
+
+        // Build source with expression wrapped in dolReplEval function
+        // Use v0.8.0 syntax (pub fun, i64, f64, etc.)
+        // Note: DOL identifiers cannot start with underscore
         let source = format!(
             r#"{}
 
-fun __repl_eval__() -> Int64 {{
+pub fun dolReplEval() -> {} {{
     {}
 }}
 "#,
-            declarations, expr
+            declarations, return_type, expr
         );
 
         // Compile
         let wasm = self.compile_to_wasm(&source)?;
 
         // Execute
-        let results = self.execute_wasm(&wasm, "__repl_eval__", &[])?;
+        let results = self.execute_wasm(&wasm, "dolReplEval", &[])?;
+
+        // Format result
+        if results.is_empty() {
+            Ok("()".to_string())
+        } else {
+            Ok(results
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", "))
+        }
+    }
+
+    /// Evaluate an expression with explicit return type.
+    ///
+    /// Use this when you know the expected return type of the expression.
+    pub fn eval_expression_typed(
+        &mut self,
+        expr: &str,
+        declarations: &str,
+        return_type: &str,
+    ) -> Result<String, EvalError> {
+        // Build source with expression wrapped in dolReplEval function
+        let source = format!(
+            r#"{}
+
+pub fun dolReplEval() -> {} {{
+    {}
+}}
+"#,
+            declarations, return_type, expr
+        );
+
+        // Compile
+        let wasm = self.compile_to_wasm(&source)?;
+
+        // Execute
+        let results = self.execute_wasm(&wasm, "dolReplEval", &[])?;
 
         // Format result
         if results.is_empty() {
@@ -318,5 +418,150 @@ mod tests {
         assert_eq!(format!("{}", WasmValue::I64(100)), "100");
         assert_eq!(format!("{}", WasmValue::F32(3.14)), "3.14");
         assert_eq!(format!("{}", WasmValue::F64(2.718)), "2.718");
+    }
+
+    #[test]
+    fn test_infer_type_integer_literals() {
+        let eval = ReplEvaluator::new();
+        assert_eq!(eval.infer_expression_type("42"), "i64");
+        assert_eq!(eval.infer_expression_type("0"), "i64");
+        assert_eq!(eval.infer_expression_type("-1"), "i64");
+        assert_eq!(eval.infer_expression_type("1_000_000"), "i64");
+    }
+
+    #[test]
+    fn test_infer_type_float_literals() {
+        let eval = ReplEvaluator::new();
+        assert_eq!(eval.infer_expression_type("3.14"), "f64");
+        assert_eq!(eval.infer_expression_type("0.0"), "f64");
+        assert_eq!(eval.infer_expression_type("-1.5"), "f64");
+        assert_eq!(eval.infer_expression_type("1.0e10"), "f64");
+        assert_eq!(eval.infer_expression_type("2.5E-3"), "f64");
+    }
+
+    #[test]
+    fn test_infer_type_boolean_literals() {
+        let eval = ReplEvaluator::new();
+        assert_eq!(eval.infer_expression_type("true"), "bool");
+        assert_eq!(eval.infer_expression_type("false"), "bool");
+    }
+
+    #[test]
+    fn test_infer_type_with_whitespace() {
+        let eval = ReplEvaluator::new();
+        assert_eq!(eval.infer_expression_type("  42  "), "i64");
+        assert_eq!(eval.infer_expression_type("\t3.14\n"), "f64");
+        assert_eq!(eval.infer_expression_type("  true  "), "bool");
+    }
+
+    #[test]
+    fn test_infer_type_expressions_with_floats() {
+        let eval = ReplEvaluator::new();
+        // Expressions containing float literals
+        assert_eq!(eval.infer_expression_type("1.0 + 2.0"), "f64");
+        assert_eq!(eval.infer_expression_type("x + 3.14"), "f64");
+        assert_eq!(eval.infer_expression_type("a * 0.5"), "f64");
+    }
+
+    #[test]
+    fn test_infer_type_expressions_with_type_hints() {
+        let eval = ReplEvaluator::new();
+        // Type hints in expression
+        assert_eq!(eval.infer_expression_type("x as f64"), "f64");
+        assert_eq!(eval.infer_expression_type("Float64::from(x)"), "f64");
+    }
+
+    #[test]
+    fn test_infer_type_complex_expressions_default_to_i64() {
+        let eval = ReplEvaluator::new();
+        // Complex expressions without clear type hints default to i64
+        assert_eq!(eval.infer_expression_type("a + b"), "i64");
+        assert_eq!(eval.infer_expression_type("foo(x, y)"), "i64");
+        assert_eq!(eval.infer_expression_type("if x { 1 } else { 2 }"), "i64");
+    }
+
+    #[test]
+    fn test_builder_methods() {
+        let eval = ReplEvaluator::new()
+            .with_optimization(true)
+            .with_debug_info(false);
+        assert!(eval.optimize);
+        assert!(!eval.debug_info);
+
+        let eval2 = ReplEvaluator::new()
+            .with_optimization(false)
+            .with_debug_info(true);
+        assert!(!eval2.optimize);
+        assert!(eval2.debug_info);
+    }
+
+    #[test]
+    fn test_clear_cache() {
+        let mut eval = ReplEvaluator::new();
+        // Just ensure it doesn't panic
+        eval.clear_cache();
+        assert!(eval.wasm_cache.is_empty());
+    }
+
+    #[test]
+    fn test_eval_error_display() {
+        assert_eq!(
+            format!("{}", EvalError::Parse("unexpected token".to_string())),
+            "Parse error: unexpected token"
+        );
+        assert_eq!(
+            format!("{}", EvalError::Compile("type mismatch".to_string())),
+            "Compile error: type mismatch"
+        );
+        assert_eq!(
+            format!("{}", EvalError::Runtime("division by zero".to_string())),
+            "Runtime error: division by zero"
+        );
+        assert_eq!(
+            format!("{}", EvalError::Feature("wasm not enabled".to_string())),
+            "Feature error: wasm not enabled"
+        );
+    }
+
+    #[test]
+    fn test_eval_result_variants() {
+        // Test that all EvalResult variants can be created
+        let empty = EvalResult::Empty;
+        assert!(matches!(empty, EvalResult::Empty));
+
+        let defined = EvalResult::Defined {
+            name: "foo".to_string(),
+            kind: "gene".to_string(),
+            message: "defined".to_string(),
+        };
+        assert!(matches!(defined, EvalResult::Defined { .. }));
+
+        let expr = EvalResult::Expression {
+            input: "1 + 2".to_string(),
+            value: "3".to_string(),
+        };
+        assert!(matches!(expr, EvalResult::Expression { .. }));
+
+        let help = EvalResult::Help("help text".to_string());
+        assert!(matches!(help, EvalResult::Help(_)));
+
+        let quit = EvalResult::Quit;
+        assert!(matches!(quit, EvalResult::Quit));
+
+        let msg = EvalResult::Message("hello".to_string());
+        assert!(matches!(msg, EvalResult::Message(_)));
+
+        let type_info = EvalResult::TypeInfo("i64".to_string());
+        assert!(matches!(type_info, EvalResult::TypeInfo(_)));
+
+        let rust_code = EvalResult::RustCode("fn main() {}".to_string());
+        assert!(matches!(rust_code, EvalResult::RustCode(_)));
+
+        let wasm_info = EvalResult::WasmInfo {
+            size_bytes: 100,
+            functions: 5,
+            has_memory: true,
+        };
+        assert!(matches!(wasm_info, EvalResult::WasmInfo { .. }));
     }
 }
