@@ -1,0 +1,956 @@
+// Music Spirit - Rhythm Module
+// Time signatures, tempo, durations, and rhythm patterns
+
+module music.rhythm @ 0.1.0
+
+// ============================================================================
+// DURATION VALUES
+// ============================================================================
+
+pub gen DurationValue {
+    type: enum {
+        Whole,          // 4 beats (semibreve)
+        Half,           // 2 beats (minim)
+        Quarter,        // 1 beat (crotchet)
+        Eighth,         // 1/2 beat (quaver)
+        Sixteenth,      // 1/4 beat (semiquaver)
+        ThirtySecond,   // 1/8 beat (demisemiquaver)
+        SixtyFourth,    // 1/16 beat (hemidemisemiquaver)
+        DottedWhole,    // 6 beats
+        DottedHalf,     // 3 beats
+        DottedQuarter,  // 1.5 beats
+        DottedEighth,   // 0.75 beats
+        TripletQuarter, // 2/3 beat
+        TripletEighth   // 1/3 beat
+    }
+
+    fun to_beats() -> f64 {
+        return match this {
+            DurationValue::Whole { 4.0 }
+            DurationValue::Half { 2.0 }
+            DurationValue::Quarter { 1.0 }
+            DurationValue::Eighth { 0.5 }
+            DurationValue::Sixteenth { 0.25 }
+            DurationValue::ThirtySecond { 0.125 }
+            DurationValue::SixtyFourth { 0.0625 }
+            DurationValue::DottedWhole { 6.0 }
+            DurationValue::DottedHalf { 3.0 }
+            DurationValue::DottedQuarter { 1.5 }
+            DurationValue::DottedEighth { 0.75 }
+            DurationValue::TripletQuarter { 2.0 / 3.0 }
+            DurationValue::TripletEighth { 1.0 / 3.0 }
+        }
+    }
+
+    fun symbol() -> string {
+        return match this {
+            DurationValue::Whole { "w" }
+            DurationValue::Half { "h" }
+            DurationValue::Quarter { "q" }
+            DurationValue::Eighth { "e" }
+            DurationValue::Sixteenth { "s" }
+            DurationValue::ThirtySecond { "t" }
+            DurationValue::SixtyFourth { "x" }
+            DurationValue::DottedWhole { "w." }
+            DurationValue::DottedHalf { "h." }
+            DurationValue::DottedQuarter { "q." }
+            DurationValue::DottedEighth { "e." }
+            DurationValue::TripletQuarter { "q3" }
+            DurationValue::TripletEighth { "e3" }
+        }
+    }
+
+    docs {
+        Standard note duration values.
+        Based on the quarter note = 1 beat convention.
+
+        Dotted notes are 1.5x the base duration.
+        Triplets divide the beat into thirds.
+    }
+}
+
+// ============================================================================
+// DURATION
+// ============================================================================
+
+pub gen Duration {
+    has beats: f64       // Duration in beats
+    has tied: bool       // Is this tied to the next note?
+
+    rule positive_beats {
+        this.beats > 0.0
+    }
+
+    fun from_value(value: DurationValue) -> Duration {
+        return Duration {
+            beats: value.to_beats(),
+            tied: false
+        }
+    }
+
+    fun dotted() -> Duration {
+        return Duration {
+            beats: this.beats * 1.5,
+            tied: this.tied
+        }
+    }
+
+    fun double_dotted() -> Duration {
+        return Duration {
+            beats: this.beats * 1.75,
+            tied: this.tied
+        }
+    }
+
+    fun tuplet(n: u8, in_space_of: u8) -> Duration {
+        return Duration {
+            beats: this.beats * (in_space_of as f64 / n as f64),
+            tied: this.tied
+        }
+    }
+
+    fun tie() -> Duration {
+        return Duration {
+            beats: this.beats,
+            tied: true
+        }
+    }
+
+    docs {
+        A musical duration measured in beats.
+
+        Can be tied to create longer durations spanning measures.
+        Supports dotted values and tuplets.
+
+        Example:
+            let quarter = Duration { beats: 1.0, tied: false }
+            let dotted_quarter = quarter.dotted()  // 1.5 beats
+            let triplet_quarter = quarter.tuplet(3, 2)  // 2/3 beat
+    }
+}
+
+// ============================================================================
+// REST
+// ============================================================================
+
+pub gen Rest {
+    has duration: Duration
+
+    fun from_value(value: DurationValue) -> Rest {
+        return Rest {
+            duration: Duration::from_value(value)
+        }
+    }
+
+    docs {
+        A musical rest (silence) with a specific duration.
+    }
+}
+
+// ============================================================================
+// TEMPO
+// ============================================================================
+
+pub gen Tempo {
+    has bpm: f64  // Beats per minute
+
+    rule valid_bpm {
+        this.bpm > 0.0 && this.bpm <= 500.0
+    }
+
+    fun beat_duration_ms() -> f64 {
+        return 60000.0 / this.bpm
+    }
+
+    fun beat_duration_seconds() -> f64 {
+        return 60.0 / this.bpm
+    }
+
+    fun with_bpm(new_bpm: f64) -> Tempo {
+        return Tempo { bpm: clamp(new_bpm, 1.0, 500.0) }
+    }
+
+    fun accelerando(amount: f64) -> Tempo {
+        return this.with_bpm(this.bpm + amount)
+    }
+
+    fun ritardando(amount: f64) -> Tempo {
+        return this.with_bpm(this.bpm - amount)
+    }
+
+    fun double() -> Tempo {
+        return this.with_bpm(this.bpm * 2.0)
+    }
+
+    fun halve() -> Tempo {
+        return this.with_bpm(this.bpm / 2.0)
+    }
+
+    fun marking() -> string {
+        if this.bpm < 40.0 { return "Grave" }
+        if this.bpm < 55.0 { return "Largo" }
+        if this.bpm < 66.0 { return "Larghetto" }
+        if this.bpm < 76.0 { return "Adagio" }
+        if this.bpm < 92.0 { return "Andante" }
+        if this.bpm < 108.0 { return "Moderato" }
+        if this.bpm < 120.0 { return "Allegretto" }
+        if this.bpm < 156.0 { return "Allegro" }
+        if this.bpm < 176.0 { return "Vivace" }
+        if this.bpm < 200.0 { return "Presto" }
+        return "Prestissimo"
+    }
+
+    docs {
+        Musical tempo - the speed of the music in beats per minute (BPM).
+
+        Common tempo markings:
+        - Grave: < 40 BPM (very slow)
+        - Largo: 40-55 BPM (slow and broad)
+        - Adagio: 66-76 BPM (slow)
+        - Andante: 76-92 BPM (walking pace)
+        - Moderato: 92-108 BPM (moderate)
+        - Allegro: 120-156 BPM (fast)
+        - Presto: 168-200 BPM (very fast)
+        - Prestissimo: > 200 BPM (extremely fast)
+
+        Example:
+            let tempo = Tempo { bpm: 120.0 }
+            let ms_per_beat = tempo.beat_duration_ms()  // 500 ms
+    }
+}
+
+// Standard tempo constants
+pub const GRAVE: Tempo = Tempo { bpm: 35.0 }
+pub const LARGO: Tempo = Tempo { bpm: 50.0 }
+pub const ADAGIO: Tempo = Tempo { bpm: 70.0 }
+pub const ANDANTE: Tempo = Tempo { bpm: 84.0 }
+pub const MODERATO: Tempo = Tempo { bpm: 100.0 }
+pub const ALLEGRETTO: Tempo = Tempo { bpm: 112.0 }
+pub const ALLEGRO: Tempo = Tempo { bpm: 132.0 }
+pub const VIVACE: Tempo = Tempo { bpm: 168.0 }
+pub const PRESTO: Tempo = Tempo { bpm: 184.0 }
+pub const PRESTISSIMO: Tempo = Tempo { bpm: 208.0 }
+
+// ============================================================================
+// TIME SIGNATURE
+// ============================================================================
+
+pub gen TimeSignature {
+    has beats_per_measure: u8   // Top number (numerator)
+    has beat_value: u8          // Bottom number (denominator, power of 2)
+
+    rule valid_beats {
+        this.beats_per_measure > 0 && this.beats_per_measure <= 32
+    }
+
+    rule valid_beat_value {
+        // Must be power of 2: 1, 2, 4, 8, 16, 32
+        this.beat_value == 1 || this.beat_value == 2 ||
+        this.beat_value == 4 || this.beat_value == 8 ||
+        this.beat_value == 16 || this.beat_value == 32
+    }
+
+    fun measure_duration_beats() -> f64 {
+        // Duration of one measure in quarter-note beats
+        return this.beats_per_measure as f64 * (4.0 / this.beat_value as f64)
+    }
+
+    fun is_simple() -> bool {
+        // Simple meter: beats divide into two
+        return this.beats_per_measure == 2 ||
+               this.beats_per_measure == 3 ||
+               this.beats_per_measure == 4
+    }
+
+    fun is_compound() -> bool {
+        // Compound meter: beats divide into three (6/8, 9/8, 12/8)
+        return this.beats_per_measure % 3 == 0 && this.beat_value == 8
+    }
+
+    fun is_irregular() -> bool {
+        // Irregular/asymmetric meters (5/4, 7/8, etc.)
+        return !this.is_simple() && !this.is_compound()
+    }
+
+    fun strong_beats() -> Vec<u8> {
+        // Returns positions of strong (accented) beats
+        if this.is_compound() {
+            // In compound meter, every 3rd beat is strong
+            let num_groups = this.beats_per_measure / 3
+            return (0..num_groups).map(|i| (i * 3) as u8).collect()
+        }
+        // In simple meter, beat 1 is always strong
+        return vec![0]
+    }
+
+    fun display() -> string {
+        return this.beats_per_measure.to_string() + "/" + this.beat_value.to_string()
+    }
+
+    docs {
+        Time signature - defines the metric structure of music.
+
+        beats_per_measure: Number of beats in each measure
+        beat_value: Note value that gets one beat (4 = quarter note)
+
+        Common time signatures:
+        - 4/4 (Common Time): 4 quarter-note beats per measure
+        - 3/4 (Waltz): 3 quarter-note beats per measure
+        - 6/8 (Compound Duple): 2 groups of 3 eighth-notes
+        - 5/4 (Irregular): 5 quarter-note beats
+
+        Example:
+            let four_four = TimeSignature { beats_per_measure: 4, beat_value: 4 }
+            let waltz = TimeSignature { beats_per_measure: 3, beat_value: 4 }
+    }
+}
+
+// Standard time signature constants
+pub const COMMON_TIME: TimeSignature = TimeSignature { beats_per_measure: 4, beat_value: 4 }
+pub const CUT_TIME: TimeSignature = TimeSignature { beats_per_measure: 2, beat_value: 2 }
+pub const WALTZ_TIME: TimeSignature = TimeSignature { beats_per_measure: 3, beat_value: 4 }
+pub const SIX_EIGHT: TimeSignature = TimeSignature { beats_per_measure: 6, beat_value: 8 }
+pub const TWELVE_EIGHT: TimeSignature = TimeSignature { beats_per_measure: 12, beat_value: 8 }
+pub const FIVE_FOUR: TimeSignature = TimeSignature { beats_per_measure: 5, beat_value: 4 }
+pub const SEVEN_EIGHT: TimeSignature = TimeSignature { beats_per_measure: 7, beat_value: 8 }
+
+// ============================================================================
+// BEAT
+// ============================================================================
+
+pub gen Beat {
+    has position: f64    // Position in beats (0-indexed within measure)
+    has accent: f64      // Accent/velocity (0.0 - 1.0)
+
+    rule valid_accent {
+        this.accent >= 0.0 && this.accent <= 1.0
+    }
+
+    fun is_downbeat() -> bool {
+        return this.position == 0.0
+    }
+
+    fun is_on_beat() -> bool {
+        return this.position == floor(this.position)
+    }
+
+    fun is_off_beat() -> bool {
+        return !this.is_on_beat()
+    }
+
+    fun subdivide(divisions: u8) -> Vec<Beat> {
+        let subdivision_size = 1.0 / divisions as f64
+        return (0..divisions).map(|i| {
+            Beat {
+                position: this.position + i as f64 * subdivision_size,
+                accent: if i == 0 { this.accent } else { this.accent * 0.5 }
+            }
+        }).collect()
+    }
+
+    docs {
+        A single beat within a measure.
+
+        position: Beat position (0.0 = first beat)
+        accent: Dynamic accent (0.0 = ghost note, 1.0 = full accent)
+    }
+}
+
+// ============================================================================
+// MEASURE
+// ============================================================================
+
+pub gen Measure {
+    has beats: Vec<Beat>
+    has time_signature: TimeSignature
+
+    rule beat_count {
+        this.beats.length <= this.time_signature.beats_per_measure as u64 * 4
+    }
+
+    fun duration() -> f64 {
+        return this.time_signature.measure_duration_beats()
+    }
+
+    fun at_beat(beat: f64) -> Option<Beat> {
+        for b in this.beats {
+            if abs(b.position - beat) < 0.001 {
+                return Some(b)
+            }
+        }
+        return None
+    }
+
+    fun add_beat(position: f64, accent: f64) -> Measure {
+        let mut new_beats = this.beats.clone()
+        new_beats.push(Beat { position: position, accent: accent })
+        return Measure {
+            beats: new_beats,
+            time_signature: this.time_signature
+        }
+    }
+
+    fun fill_quarters() -> Measure {
+        let num_beats = this.time_signature.beats_per_measure as u64
+        let beats = (0..num_beats).map(|i| {
+            let accent = if i == 0 { 1.0 } else { 0.7 }
+            Beat { position: i as f64, accent: accent }
+        }).collect()
+        return Measure {
+            beats: beats,
+            time_signature: this.time_signature
+        }
+    }
+
+    docs {
+        A measure (bar) containing beats according to a time signature.
+    }
+}
+
+// ============================================================================
+// RHYTHM PATTERN
+// ============================================================================
+
+pub gen RhythmPattern {
+    has hits: Vec<bool>  // True = hit/note, False = rest
+    has length: u32      // Number of steps/subdivisions
+
+    rule valid_length {
+        this.length > 0 && this.length <= 64
+    }
+
+    rule hits_match_length {
+        this.hits.length == this.length as u64
+    }
+
+    fun density() -> f64 {
+        let hit_count = this.hits.iter().filter(|h| *h).count()
+        return hit_count as f64 / this.length as f64
+    }
+
+    fun rotate(steps: i32) -> RhythmPattern {
+        let len = this.length as i32
+        let normalized = ((steps % len) + len) % len
+        let mut rotated = Vec::new()
+        for i in 0..this.length {
+            let idx = ((i as i32 - normalized + len) % len) as u64
+            rotated.push(this.hits[idx])
+        }
+        return RhythmPattern {
+            hits: rotated,
+            length: this.length
+        }
+    }
+
+    fun invert() -> RhythmPattern {
+        return RhythmPattern {
+            hits: this.hits.iter().map(|h| !h).collect(),
+            length: this.length
+        }
+    }
+
+    fun combine(other: RhythmPattern) -> RhythmPattern {
+        // OR combination
+        if this.length != other.length {
+            return this.clone()
+        }
+        return RhythmPattern {
+            hits: this.hits.iter().zip(other.hits.iter())
+                     .map(|(a, b)| *a || *b).collect(),
+            length: this.length
+        }
+    }
+
+    fun intersect(other: RhythmPattern) -> RhythmPattern {
+        // AND combination
+        if this.length != other.length {
+            return this.clone()
+        }
+        return RhythmPattern {
+            hits: this.hits.iter().zip(other.hits.iter())
+                     .map(|(a, b)| *a && *b).collect(),
+            length: this.length
+        }
+    }
+
+    fun to_string() -> string {
+        return this.hits.iter()
+            .map(|h| if *h { "x" } else { "." })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    fun from_string(pattern: string) -> RhythmPattern {
+        let hits: Vec<bool> = pattern.chars()
+            .map(|c| c == 'x' || c == 'X' || c == '1')
+            .collect()
+        return RhythmPattern {
+            hits: hits.clone(),
+            length: hits.length as u32
+        }
+    }
+
+    docs {
+        A rhythmic pattern as a sequence of hits and rests.
+
+        Represented as a boolean array where true = hit, false = rest.
+        Common use: drum patterns, arpeggiator patterns, step sequencers.
+
+        Example:
+            let four_on_floor = RhythmPattern {
+                hits: vec![true, false, false, false,
+                          true, false, false, false,
+                          true, false, false, false,
+                          true, false, false, false],
+                length: 16
+            }
+            // "x...x...x...x..."
+    }
+}
+
+// ============================================================================
+// SUBDIVISION
+// ============================================================================
+
+pub gen Subdivision {
+    has divisions: u8    // Number of equal parts
+    has accents: Vec<f64> // Accent for each division (0.0 - 1.0)
+
+    rule valid_divisions {
+        this.divisions >= 2 && this.divisions <= 12
+    }
+
+    fun triplet() -> Subdivision {
+        return Subdivision {
+            divisions: 3,
+            accents: vec![1.0, 0.5, 0.5]
+        }
+    }
+
+    fun duplet() -> Subdivision {
+        return Subdivision {
+            divisions: 2,
+            accents: vec![1.0, 0.7]
+        }
+    }
+
+    fun quadruplet() -> Subdivision {
+        return Subdivision {
+            divisions: 4,
+            accents: vec![1.0, 0.5, 0.7, 0.5]
+        }
+    }
+
+    docs {
+        Beat subdivision with accent patterns.
+        Triplets divide a beat into 3, quadruplets into 4, etc.
+    }
+}
+
+// ============================================================================
+// GROOVE
+// ============================================================================
+
+pub gen Groove {
+    has timing_offsets: Vec<f64>  // Timing offset per step (-1.0 to 1.0)
+    has velocity_mods: Vec<f64>   // Velocity modifier per step (0.0 to 2.0)
+    has name: string
+
+    rule valid_offsets {
+        this.timing_offsets.iter().all(|o| *o >= -1.0 && *o <= 1.0)
+    }
+
+    rule valid_velocities {
+        this.velocity_mods.iter().all(|v| *v >= 0.0 && *v <= 2.0)
+    }
+
+    fun apply_to(pattern: RhythmPattern) -> (Vec<f64>, Vec<f64>) {
+        let len = min(pattern.length as u64, this.timing_offsets.length)
+        let timings: Vec<f64> = (0..len).map(|i| {
+            i as f64 + this.timing_offsets[i] * 0.25  // Max 25% offset
+        }).collect()
+        let velocities: Vec<f64> = (0..len).map(|i| {
+            this.velocity_mods[i]
+        }).collect()
+        return (timings, velocities)
+    }
+
+    docs {
+        A groove template that adds human feel to rigid patterns.
+
+        timing_offsets: Micro-timing adjustments per step
+        velocity_mods: Velocity (volume) adjustments per step
+
+        Grooves add "swing" and "feel" to quantized patterns.
+    }
+}
+
+// ============================================================================
+// POLYRHYTHM
+// ============================================================================
+
+pub gen Polyrhythm {
+    has patterns: Vec<RhythmPattern>
+    has length: u32  // Least common multiple of pattern lengths
+
+    fun superimpose() -> RhythmPattern {
+        let mut combined = vec![false; self.length as usize]
+        for pattern in this.patterns {
+            let repeat_count = self.length / pattern.length
+            for r in 0..repeat_count {
+                for i in 0..pattern.length {
+                    let idx = r * pattern.length + i
+                    combined[idx as usize] = combined[idx as usize] || pattern.hits[i as u64]
+                }
+            }
+        }
+        return RhythmPattern {
+            hits: combined,
+            length: self.length
+        }
+    }
+
+    docs {
+        Multiple simultaneous rhythm patterns (polyrhythm).
+
+        Examples:
+        - 3 against 4 (3:4): Three evenly spaced hits over four beats
+        - 2 against 3 (2:3): Two evenly spaced hits over three beats
+
+        The length is the LCM of all pattern lengths for proper alignment.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Quantizable {
+    fun quantize(grid: f64) -> Self
+
+    docs {
+        Types that can be quantized to a rhythmic grid.
+        Grid value is in beats (e.g., 0.25 for 16th notes).
+    }
+}
+
+pub trait Syncopatable {
+    fun syncopate(amount: f64) -> Self
+
+    docs {
+        Types that can have syncopation applied.
+        Syncopation emphasizes off-beats.
+    }
+}
+
+pub trait Divisible {
+    fun divide(n: u8) -> Vec<Self>
+
+    docs {
+        Types that can be divided into equal parts.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Quantizable for Beat {
+    fun quantize(grid: f64) -> Beat {
+        let quantized_pos = round(this.position / grid) * grid
+        return Beat {
+            position: quantized_pos,
+            accent: this.accent
+        }
+    }
+}
+
+impl Quantizable for RhythmPattern {
+    fun quantize(grid: f64) -> RhythmPattern {
+        // For patterns, quantize by reducing resolution
+        let new_length = max(1, (this.length as f64 * grid) as u32)
+        let scale = this.length as f64 / new_length as f64
+        let mut new_hits = Vec::new()
+        for i in 0..new_length {
+            let start = (i as f64 * scale) as u64
+            let end = ((i + 1) as f64 * scale) as u64
+            let has_hit = (start..end).any(|j| this.hits[j])
+            new_hits.push(has_hit)
+        }
+        return RhythmPattern {
+            hits: new_hits,
+            length: new_length
+        }
+    }
+}
+
+impl Divisible for Duration {
+    fun divide(n: u8) -> Vec<Duration> {
+        let divided_beats = this.beats / n as f64
+        return (0..n).map(|_| Duration {
+            beats: divided_beats,
+            tied: false
+        }).collect()
+    }
+}
+
+// ============================================================================
+// RULES
+// ============================================================================
+
+rule MetronomeMark {
+    // Standard metronome tempo marking
+    // Tempo = beats per minute at given note value
+    forall t: Tempo, d: Duration {
+        beats_to_seconds(d.beats, t) == d.beats / t.bpm * 60.0
+    }
+
+    docs {
+        Metronome marking defines tempo as beats per minute.
+        MM (Maelzel's Metronome) quarter = 120 means 120 quarter notes per minute.
+    }
+}
+
+rule CommonTime {
+    // Common time (4/4) is the most frequently used time signature
+    let signature = TimeSignature { beats_per_measure: 4, beat_value: 4 }
+    signature.measure_duration_beats() == 4.0
+
+    docs {
+        Common Time (4/4) - four quarter-note beats per measure.
+        Symbolized by "C" in music notation.
+    }
+}
+
+rule CutTime {
+    // Cut time (2/2) - alla breve
+    let signature = TimeSignature { beats_per_measure: 2, beat_value: 2 }
+    signature.measure_duration_beats() == 4.0  // Same duration as 4/4
+
+    docs {
+        Cut Time (2/2) - two half-note beats per measure.
+        Often played faster than 4/4, symbolized by "C" with vertical line.
+    }
+}
+
+// ============================================================================
+// FUNCTIONS
+// ============================================================================
+
+pub fun beats_to_seconds(beats: f64, tempo: Tempo) -> f64 {
+    return beats * 60.0 / tempo.bpm
+
+    docs {
+        Convert beat duration to seconds at a given tempo.
+
+        Example:
+            let tempo = Tempo { bpm: 120.0 }
+            let seconds = beats_to_seconds(4.0, tempo)  // 2.0 seconds
+    }
+}
+
+pub fun seconds_to_beats(seconds: f64, tempo: Tempo) -> f64 {
+    return seconds * tempo.bpm / 60.0
+
+    docs {
+        Convert seconds to beats at a given tempo.
+    }
+}
+
+pub fun bpm_to_ms(bpm: f64) -> f64 {
+    return 60000.0 / bpm
+
+    docs {
+        Convert BPM to milliseconds per beat.
+    }
+}
+
+pub fun euclidean_rhythm(hits: u32, steps: u32) -> RhythmPattern {
+    // Bjorklund's algorithm for Euclidean rhythms
+    if hits >= steps {
+        return RhythmPattern {
+            hits: vec![true; steps as usize],
+            length: steps
+        }
+    }
+
+    if hits == 0 {
+        return RhythmPattern {
+            hits: vec![false; steps as usize],
+            length: steps
+        }
+    }
+
+    let mut pattern = vec![vec![true]; hits as usize]
+    let mut remainder = vec![vec![false]; (steps - hits) as usize]
+
+    while remainder.length > 1 {
+        let move_count = min(pattern.length, remainder.length)
+        for i in 0..move_count {
+            pattern[i as usize].extend(remainder[i as usize].clone())
+        }
+        remainder = if pattern.length > move_count as u64 {
+            pattern.drain((move_count as usize)..).collect()
+        } else {
+            remainder.drain((move_count as usize)..).collect()
+        }
+    }
+
+    // Flatten and pad if necessary
+    let mut result: Vec<bool> = pattern.iter()
+        .chain(remainder.iter())
+        .flat_map(|v| v.iter().cloned())
+        .collect()
+
+    while result.length < steps as u64 {
+        result.push(false)
+    }
+
+    return RhythmPattern {
+        hits: result,
+        length: steps
+    }
+
+    docs {
+        Generate a Euclidean rhythm - evenly distributed hits over steps.
+
+        Euclidean rhythms are found in many world music traditions:
+        - (3, 8) = Cuban tresillo: "x..x..x."
+        - (4, 12) = Afro-Cuban standard pattern
+        - (5, 8) = Cuban cinquillo: "x.xx.xx."
+        - (5, 16) = Bossa nova
+        - (7, 12) = West African bell pattern
+        - (7, 16) = Brazilian samba
+
+        Example:
+            let tresillo = euclidean_rhythm(3, 8)  // "x..x..x."
+            let clave = euclidean_rhythm(5, 16)    // Son clave approximation
+    }
+}
+
+pub fun swing(pattern: RhythmPattern, amount: f64) -> RhythmPattern {
+    // Apply swing by delaying off-beat notes
+    // amount: 0.0 = straight, 0.5 = triplet swing, 1.0 = extreme swing
+    let swing_factor = clamp(amount, 0.0, 1.0)
+
+    // For swing, we typically shift every other 8th note
+    // This changes timing, not the pattern itself
+    // Return pattern unchanged (timing is handled at playback)
+    return pattern.clone()
+
+    docs {
+        Apply swing feel to a rhythm pattern.
+
+        Swing shifts the timing of off-beat notes:
+        - amount = 0.0: Straight (no swing)
+        - amount = 0.5: Triplet swing (2:1 ratio)
+        - amount = 0.67: Heavy swing (3:1 ratio)
+
+        Note: This marks the pattern for swing playback.
+        Actual timing adjustment happens during rendering.
+    }
+}
+
+pub fun humanize(pattern: RhythmPattern, amount: f64) -> Groove {
+    // Generate random timing and velocity variations
+    let len = pattern.length as u64
+    let mut timing_offsets = Vec::new()
+    let mut velocity_mods = Vec::new()
+
+    for i in 0..len {
+        // Random offset within range
+        let offset = (random() * 2.0 - 1.0) * amount * 0.5
+        timing_offsets.push(offset)
+
+        // Random velocity variation
+        let vel_mod = 1.0 + (random() * 2.0 - 1.0) * amount * 0.3
+        velocity_mods.push(vel_mod)
+    }
+
+    return Groove {
+        timing_offsets: timing_offsets,
+        velocity_mods: velocity_mods,
+        name: "Humanized"
+    }
+
+    docs {
+        Add human-like timing and velocity variations to a pattern.
+
+        amount: 0.0 = mechanical, 1.0 = loose/human
+
+        Creates natural-sounding variations that avoid the "machine gun" effect.
+    }
+}
+
+pub fun quantize_rhythm(times: Vec<f64>, grid: f64) -> Vec<f64> {
+    return times.iter().map(|t| round(*t / grid) * grid).collect()
+
+    docs {
+        Quantize a list of timing values to a grid.
+
+        grid: Grid size in beats (e.g., 0.25 for 16th notes)
+    }
+}
+
+pub fun polyrhythm(a: u32, b: u32) -> Polyrhythm {
+    let lcm = (a * b) / gcd(a, b)
+
+    let pattern_a = euclidean_rhythm(a, lcm)
+    let pattern_b = euclidean_rhythm(b, lcm)
+
+    return Polyrhythm {
+        patterns: vec![pattern_a, pattern_b],
+        length: lcm
+    }
+
+    docs {
+        Create a polyrhythm from two pulse rates.
+
+        Example:
+            let three_against_four = polyrhythm(3, 4)
+            // Creates 3 evenly spaced over 4 beats (and vice versa)
+            // LCM = 12 steps: pattern A at positions 0, 4, 8
+            //                 pattern B at positions 0, 3, 6, 9
+    }
+}
+
+// Helper function
+fun gcd(a: u32, b: u32) -> u32 {
+    if b == 0 { return a }
+    return gcd(b, a % b)
+}
+
+docs {
+    Music Spirit - Rhythm Module
+
+    Timing, meter, and rhythm pattern primitives.
+
+    Core Types:
+    - Tempo: Speed in beats per minute (BPM)
+    - TimeSignature: Metric structure (beats per measure, beat value)
+    - Duration: Note/rest length in beats
+    - Beat: Single beat with position and accent
+    - Measure: Collection of beats in a time signature
+    - RhythmPattern: Boolean pattern for step sequencing
+
+    Advanced Features:
+    - Euclidean rhythms: Mathematically optimal hit distribution
+    - Polyrhythms: Multiple simultaneous pulse rates
+    - Groove/Humanization: Natural timing variations
+    - Swing: Off-beat timing shift
+
+    Key Functions:
+    - beats_to_seconds: Convert beats to time at tempo
+    - euclidean_rhythm: Generate world rhythm patterns
+    - swing: Apply swing feel
+    - humanize: Add human timing variations
+    - polyrhythm: Create cross-rhythms
+
+    Common Euclidean Rhythms:
+        (3, 8)  = Tresillo      "x..x..x."
+        (4, 12) = Afro-Cuban    "x..x..x..x.."
+        (5, 8)  = Cinquillo     "x.xx.xx."
+        (5, 16) = Bossa nova    "x..x..x..x..x..."
+        (7, 12) = West African  "x.x.x.x.xx.x"
+        (7, 16) = Samba         "x..x.x.x..x.x.x."
+}

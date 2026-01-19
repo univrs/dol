@@ -1,0 +1,1062 @@
+// Music Spirit - Composition Module
+// Melodies, phrases, songs, and arrangement structures
+
+module music.composition @ 0.1.0
+
+use super.theory.{
+    Note, Interval, Scale, Chord, ChordQuality, Key, Mode,
+    note_to_frequency, build_scale, chord_from_scale, transpose
+}
+use super.rhythm.{
+    Duration, DurationValue, Tempo, TimeSignature, RhythmPattern,
+    beats_to_seconds
+}
+
+// ============================================================================
+// DYNAMICS
+// ============================================================================
+
+pub gen Dynamics {
+    type: enum {
+        Pianissimo,     // pp - very soft
+        Piano,          // p - soft
+        MezzoPiano,     // mp - moderately soft
+        MezzoForte,     // mf - moderately loud
+        Forte,          // f - loud
+        Fortissimo,     // ff - very loud
+        Sforzando,      // sfz - sudden accent
+        Crescendo,      // gradually louder
+        Decrescendo     // gradually softer
+    }
+
+    fun to_velocity() -> f64 {
+        return match this {
+            Dynamics::Pianissimo { 0.2 }
+            Dynamics::Piano { 0.35 }
+            Dynamics::MezzoPiano { 0.5 }
+            Dynamics::MezzoForte { 0.65 }
+            Dynamics::Forte { 0.8 }
+            Dynamics::Fortissimo { 0.95 }
+            Dynamics::Sforzando { 1.0 }
+            Dynamics::Crescendo { 0.5 }  // Starting point
+            Dynamics::Decrescendo { 0.7 }  // Starting point
+        }
+    }
+
+    fun symbol() -> string {
+        return match this {
+            Dynamics::Pianissimo { "pp" }
+            Dynamics::Piano { "p" }
+            Dynamics::MezzoPiano { "mp" }
+            Dynamics::MezzoForte { "mf" }
+            Dynamics::Forte { "f" }
+            Dynamics::Fortissimo { "ff" }
+            Dynamics::Sforzando { "sfz" }
+            Dynamics::Crescendo { "cresc." }
+            Dynamics::Decrescendo { "decresc." }
+        }
+    }
+
+    docs {
+        Musical dynamics - loudness/intensity markings.
+
+        Standard dynamic levels from softest to loudest:
+        pp (pianissimo) -> p (piano) -> mp (mezzo piano) ->
+        mf (mezzo forte) -> f (forte) -> ff (fortissimo)
+
+        Special markings:
+        - sfz (sforzando): sudden strong accent
+        - cresc. (crescendo): gradually get louder
+        - decresc. (decrescendo): gradually get softer
+    }
+}
+
+// ============================================================================
+// ARTICULATION
+// ============================================================================
+
+pub gen Articulation {
+    type: enum {
+        Normal,         // Standard note length
+        Staccato,       // Short, detached
+        Legato,         // Smooth, connected
+        Tenuto,         // Held for full value
+        Accent,         // Emphasized
+        Marcato,        // Strong accent
+        Slur,           // Grouped smoothly
+        Portato         // Between legato and staccato
+    }
+
+    fun duration_modifier() -> f64 {
+        return match this {
+            Articulation::Normal { 0.9 }
+            Articulation::Staccato { 0.5 }
+            Articulation::Legato { 1.0 }
+            Articulation::Tenuto { 1.0 }
+            Articulation::Accent { 0.85 }
+            Articulation::Marcato { 0.8 }
+            Articulation::Slur { 1.0 }
+            Articulation::Portato { 0.7 }
+        }
+    }
+
+    fun velocity_modifier() -> f64 {
+        return match this {
+            Articulation::Normal { 1.0 }
+            Articulation::Staccato { 0.9 }
+            Articulation::Legato { 0.95 }
+            Articulation::Tenuto { 1.05 }
+            Articulation::Accent { 1.3 }
+            Articulation::Marcato { 1.5 }
+            Articulation::Slur { 0.9 }
+            Articulation::Portato { 0.95 }
+        }
+    }
+
+    docs {
+        Note articulation - how notes are attacked and released.
+    }
+}
+
+// ============================================================================
+// EXPRESSION
+// ============================================================================
+
+pub gen Expression {
+    has dynamics: Dynamics
+    has articulation: Articulation
+    has vibrato: f64      // Vibrato amount (0.0 - 1.0)
+    has bend: f64         // Pitch bend in semitones (-12 to 12)
+
+    rule valid_vibrato {
+        this.vibrato >= 0.0 && this.vibrato <= 1.0
+    }
+
+    rule valid_bend {
+        this.bend >= -12.0 && this.bend <= 12.0
+    }
+
+    fun default() -> Expression {
+        return Expression {
+            dynamics: Dynamics::MezzoForte,
+            articulation: Articulation::Normal,
+            vibrato: 0.0,
+            bend: 0.0
+        }
+    }
+
+    docs {
+        Musical expression parameters combining dynamics, articulation,
+        and performance techniques like vibrato and pitch bend.
+    }
+}
+
+// ============================================================================
+// MOTIF
+// ============================================================================
+
+pub gen Motif {
+    has notes: Vec<Note>
+    has name: string
+
+    rule non_empty {
+        this.notes.length > 0
+    }
+
+    fun length() -> u64 {
+        return this.notes.length
+    }
+
+    fun duration() -> f64 {
+        return this.notes.iter().map(|n| n.duration).sum()
+    }
+
+    fun transpose(semitones: i8) -> Motif {
+        return Motif {
+            notes: this.notes.iter().map(|n| n.transpose(semitones)).collect(),
+            name: this.name + " (transposed)"
+        }
+    }
+
+    fun retrograde() -> Motif {
+        return Motif {
+            notes: this.notes.iter().rev().collect(),
+            name: this.name + " (retrograde)"
+        }
+    }
+
+    fun invert(pivot: Note) -> Motif {
+        let pivot_pitch = pivot.pitch as i16
+        let inverted = this.notes.iter().map(|n| {
+            let interval = n.pitch as i16 - pivot_pitch
+            Note {
+                pitch: (pivot_pitch - interval) as u8,
+                octave: n.octave,
+                duration: n.duration
+            }
+        }).collect()
+        return Motif {
+            notes: inverted,
+            name: this.name + " (inverted)"
+        }
+    }
+
+    fun augment(factor: f64) -> Motif {
+        return Motif {
+            notes: this.notes.iter().map(|n| {
+                Note {
+                    pitch: n.pitch,
+                    octave: n.octave,
+                    duration: n.duration * factor
+                }
+            }).collect(),
+            name: this.name + " (augmented)"
+        }
+    }
+
+    fun diminish(factor: f64) -> Motif {
+        return Motif {
+            notes: this.notes.iter().map(|n| {
+                Note {
+                    pitch: n.pitch,
+                    octave: n.octave,
+                    duration: n.duration / factor
+                }
+            }).collect(),
+            name: this.name + " (diminished)"
+        }
+    }
+
+    docs {
+        A short musical idea - the smallest meaningful unit.
+
+        Motifs can be transformed through:
+        - Transposition: shift all pitches
+        - Retrograde: reverse order
+        - Inversion: flip intervals around a pivot
+        - Augmentation: stretch durations
+        - Diminution: compress durations
+    }
+}
+
+// ============================================================================
+// MELODY
+// ============================================================================
+
+pub gen Melody {
+    has notes: Vec<Note>
+    has rhythm: Vec<Duration>
+
+    rule matching_lengths {
+        this.notes.length == this.rhythm.length
+    }
+
+    fun length() -> u64 {
+        return this.notes.length
+    }
+
+    fun total_duration() -> f64 {
+        return this.rhythm.iter().map(|d| d.beats).sum()
+    }
+
+    fun range() -> (Note, Note) {
+        let pitches: Vec<u8> = this.notes.iter().map(|n| n.pitch).collect()
+        let min_pitch = pitches.iter().min().unwrap_or(60)
+        let max_pitch = pitches.iter().max().unwrap_or(60)
+        return (
+            Note { pitch: *min_pitch, octave: (*min_pitch / 12) as i8 - 1, duration: 1.0 },
+            Note { pitch: *max_pitch, octave: (*max_pitch / 12) as i8 - 1, duration: 1.0 }
+        )
+    }
+
+    fun transpose(semitones: i8) -> Melody {
+        return Melody {
+            notes: this.notes.iter().map(|n| n.transpose(semitones)).collect(),
+            rhythm: this.rhythm.clone()
+        }
+    }
+
+    fun retrograde() -> Melody {
+        return Melody {
+            notes: this.notes.iter().rev().collect(),
+            rhythm: this.rhythm.iter().rev().collect()
+        }
+    }
+
+    fun append(other: Melody) -> Melody {
+        let mut new_notes = this.notes.clone()
+        let mut new_rhythm = this.rhythm.clone()
+        new_notes.extend(other.notes)
+        new_rhythm.extend(other.rhythm)
+        return Melody {
+            notes: new_notes,
+            rhythm: new_rhythm
+        }
+    }
+
+    fun slice(start: u64, end: u64) -> Melody {
+        return Melody {
+            notes: this.notes[start..end].to_vec(),
+            rhythm: this.rhythm[start..end].to_vec()
+        }
+    }
+
+    fun to_motif(name: string) -> Motif {
+        // Combine notes with their durations
+        let combined = this.notes.iter().zip(this.rhythm.iter())
+            .map(|(n, d)| Note {
+                pitch: n.pitch,
+                octave: n.octave,
+                duration: d.beats
+            }).collect()
+        return Motif { notes: combined, name: name }
+    }
+
+    docs {
+        A musical melody - a sequence of notes with rhythm.
+
+        The notes array contains pitch/octave information,
+        while the rhythm array contains timing information.
+        Both must have the same length.
+
+        Example:
+            let melody = Melody {
+                notes: vec![
+                    Note { pitch: 60, octave: 4, duration: 1.0 },  // C4
+                    Note { pitch: 62, octave: 4, duration: 1.0 },  // D4
+                    Note { pitch: 64, octave: 4, duration: 1.0 }   // E4
+                ],
+                rhythm: vec![
+                    Duration { beats: 1.0, tied: false },
+                    Duration { beats: 1.0, tied: false },
+                    Duration { beats: 2.0, tied: false }
+                ]
+            }
+    }
+}
+
+// ============================================================================
+// PHRASE
+// ============================================================================
+
+pub gen Phrase {
+    has melody: Melody
+    has measures: u32
+    has expression: Expression
+
+    fun duration() -> f64 {
+        return this.melody.total_duration()
+    }
+
+    fun with_dynamics(dynamics: Dynamics) -> Phrase {
+        return Phrase {
+            melody: this.melody,
+            measures: this.measures,
+            expression: Expression {
+                dynamics: dynamics,
+                articulation: this.expression.articulation,
+                vibrato: this.expression.vibrato,
+                bend: this.expression.bend
+            }
+        }
+    }
+
+    fun with_articulation(articulation: Articulation) -> Phrase {
+        return Phrase {
+            melody: this.melody,
+            measures: this.measures,
+            expression: Expression {
+                dynamics: this.expression.dynamics,
+                articulation: articulation,
+                vibrato: this.expression.vibrato,
+                bend: this.expression.bend
+            }
+        }
+    }
+
+    docs {
+        A musical phrase - a melodic unit with expression.
+
+        Phrases are like musical "sentences" - complete thoughts
+        that typically span 2-8 measures.
+    }
+}
+
+// ============================================================================
+// SECTION
+// ============================================================================
+
+pub gen Section {
+    has phrases: Vec<Phrase>
+    has name: string        // e.g., "Verse", "Chorus", "Bridge"
+    has repeat_count: u32
+
+    rule non_empty {
+        this.phrases.length > 0
+    }
+
+    rule valid_repeat {
+        this.repeat_count >= 1
+    }
+
+    fun duration() -> f64 {
+        let phrase_duration: f64 = this.phrases.iter().map(|p| p.duration()).sum()
+        return phrase_duration * this.repeat_count as f64
+    }
+
+    fun total_measures() -> u32 {
+        let phrase_measures: u32 = this.phrases.iter().map(|p| p.measures).sum()
+        return phrase_measures * this.repeat_count
+    }
+
+    fun with_repeat(count: u32) -> Section {
+        return Section {
+            phrases: this.phrases.clone(),
+            name: this.name.clone(),
+            repeat_count: count
+        }
+    }
+
+    docs {
+        A song section containing multiple phrases.
+
+        Common section names:
+        - Intro: Opening section
+        - Verse: Narrative/story section
+        - Pre-Chorus: Build-up to chorus
+        - Chorus: Main hook/refrain
+        - Bridge: Contrasting section
+        - Outro: Closing section
+        - Solo: Instrumental feature
+        - Break: Rhythmic interlude
+    }
+}
+
+// ============================================================================
+// SONG
+// ============================================================================
+
+pub gen Song {
+    has sections: Vec<Section>
+    has tempo: Tempo
+    has key: Key
+    has time_signature: TimeSignature
+    has title: string
+    has composer: string
+
+    rule non_empty {
+        this.sections.length > 0
+    }
+
+    fun duration_beats() -> f64 {
+        return this.sections.iter().map(|s| s.duration()).sum()
+    }
+
+    fun duration_seconds() -> f64 {
+        return beats_to_seconds(this.duration_beats(), this.tempo)
+    }
+
+    fun total_measures() -> u32 {
+        return this.sections.iter().map(|s| s.total_measures()).sum()
+    }
+
+    fun structure() -> Vec<string> {
+        // Return section names in order (e.g., ["Intro", "Verse", "Chorus", "Verse", "Chorus", "Outro"])
+        return this.sections.iter().map(|s| s.name.clone()).collect()
+    }
+
+    fun form() -> string {
+        // Generate form notation (e.g., "AABA" or "ABABCB")
+        let mut labels = std::collections::HashMap::new()
+        let mut current_label = 'A'
+        let mut form = String::new()
+
+        for section in this.sections {
+            if !labels.contains_key(&section.name) {
+                labels.insert(section.name.clone(), current_label)
+                current_label = ((current_label as u8) + 1) as char
+            }
+            for _ in 0..section.repeat_count {
+                form.push(*labels.get(&section.name).unwrap())
+            }
+        }
+        return form
+    }
+
+    fun transpose(semitones: i8) -> Song {
+        let new_key = Key {
+            tonic: this.key.tonic.transpose(semitones),
+            mode: this.key.mode
+        }
+        let new_sections = this.sections.iter().map(|s| {
+            Section {
+                phrases: s.phrases.iter().map(|p| {
+                    Phrase {
+                        melody: p.melody.transpose(semitones),
+                        measures: p.measures,
+                        expression: p.expression.clone()
+                    }
+                }).collect(),
+                name: s.name.clone(),
+                repeat_count: s.repeat_count
+            }
+        }).collect()
+
+        return Song {
+            sections: new_sections,
+            tempo: this.tempo,
+            key: new_key,
+            time_signature: this.time_signature,
+            title: this.title.clone(),
+            composer: this.composer.clone()
+        }
+    }
+
+    docs {
+        A complete song with sections, tempo, key, and metadata.
+
+        Example structure:
+            Song {
+                sections: [Intro, Verse, Chorus, Verse, Chorus, Bridge, Chorus, Outro],
+                tempo: Tempo { bpm: 120.0 },
+                key: Key { tonic: C4, mode: Major },
+                time_signature: TimeSignature { beats_per_measure: 4, beat_value: 4 },
+                title: "My Song",
+                composer: "Artist"
+            }
+    }
+}
+
+// ============================================================================
+// VOICE
+// ============================================================================
+
+pub gen Voice {
+    has instrument: string
+    has melody: Melody
+    has channel: u8        // MIDI channel (0-15)
+
+    rule valid_channel {
+        this.channel <= 15
+    }
+
+    fun transpose(semitones: i8) -> Voice {
+        return Voice {
+            instrument: this.instrument.clone(),
+            melody: this.melody.transpose(semitones),
+            channel: this.channel
+        }
+    }
+
+    fun with_instrument(inst: string) -> Voice {
+        return Voice {
+            instrument: inst,
+            melody: this.melody.clone(),
+            channel: this.channel
+        }
+    }
+
+    docs {
+        A single instrumental/vocal voice in a score.
+
+        MIDI channels:
+        - Channels 0-8, 10-15: Melodic instruments
+        - Channel 9: Drums/percussion (General MIDI standard)
+    }
+}
+
+// ============================================================================
+// PART
+// ============================================================================
+
+pub gen Part {
+    has voice: Voice
+    has sections: Vec<Section>
+
+    fun total_duration() -> f64 {
+        return this.sections.iter().map(|s| s.duration()).sum()
+    }
+
+    docs {
+        A complete part for one instrument across all song sections.
+    }
+}
+
+// ============================================================================
+// SCORE
+// ============================================================================
+
+pub gen Score {
+    has voices: Vec<Voice>
+    has tempo: Tempo
+    has time_signature: TimeSignature
+    has key: Key
+    has title: string
+
+    rule non_empty {
+        this.voices.length > 0
+    }
+
+    fun voice_count() -> u64 {
+        return this.voices.length
+    }
+
+    fun duration() -> f64 {
+        // All voices should have same duration; return max
+        return this.voices.iter()
+            .map(|v| v.melody.total_duration())
+            .max()
+            .unwrap_or(0.0)
+    }
+
+    fun add_voice(voice: Voice) -> Score {
+        let mut new_voices = this.voices.clone()
+        new_voices.push(voice)
+        return Score {
+            voices: new_voices,
+            tempo: this.tempo,
+            time_signature: this.time_signature,
+            key: this.key.clone(),
+            title: this.title.clone()
+        }
+    }
+
+    fun transpose(semitones: i8) -> Score {
+        return Score {
+            voices: this.voices.iter().map(|v| v.transpose(semitones)).collect(),
+            tempo: this.tempo,
+            time_signature: this.time_signature,
+            key: Key {
+                tonic: this.key.tonic.transpose(semitones),
+                mode: this.key.mode
+            },
+            title: this.title.clone()
+        }
+    }
+
+    docs {
+        A musical score containing multiple voices/instruments.
+
+        The score defines the overall structure (tempo, key, time signature)
+        while individual voices contain the melodic content.
+    }
+}
+
+// ============================================================================
+// ARRANGEMENT
+// ============================================================================
+
+pub gen Arrangement {
+    has song: Song
+    has parts: Vec<Part>
+    has producer: string
+
+    fun instrument_list() -> Vec<string> {
+        return this.parts.iter().map(|p| p.voice.instrument.clone()).collect()
+    }
+
+    docs {
+        A complete arrangement of a song with all instrumental parts.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Arrangeable {
+    fun arrange(structure: Vec<string>) -> Song
+
+    docs {
+        Types that can be arranged into a song structure.
+    }
+}
+
+pub trait Repeatable {
+    fun repeat(count: u32) -> Self
+
+    docs {
+        Types that can be repeated.
+    }
+}
+
+pub trait Sequenceable {
+    fun sequence(times: u32, transform: fn(Self) -> Self) -> Vec<Self>
+
+    docs {
+        Types that can be sequenced with transformations.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Repeatable for Melody {
+    fun repeat(count: u32) -> Melody {
+        let mut result = this.clone()
+        for _ in 1..count {
+            result = result.append(this.clone())
+        }
+        return result
+    }
+}
+
+impl Repeatable for Section {
+    fun repeat(count: u32) -> Section {
+        return this.with_repeat(count)
+    }
+}
+
+impl Sequenceable for Motif {
+    fun sequence(times: u32, transform: fn(Motif) -> Motif) -> Vec<Motif> {
+        let mut result = Vec::new()
+        let mut current = this.clone()
+        for _ in 0..times {
+            result.push(current.clone())
+            current = transform(current)
+        }
+        return result
+    }
+}
+
+// ============================================================================
+// COMPOSITION FUNCTIONS
+// ============================================================================
+
+pub fun generate_melody(scale: Scale, length: u32, seed: u64) -> Melody {
+    // Generate a melody using scale notes
+    let scale_notes = scale.notes()
+    let num_scale_notes = scale_notes.length
+
+    let mut rng_state = seed
+    let mut notes = Vec::new()
+    let mut rhythm = Vec::new()
+
+    // Start on root or fifth
+    let mut current_idx = if lcg_next(&mut rng_state) % 2 == 0 { 0 } else { 4 % num_scale_notes }
+
+    for _ in 0..length {
+        // Get current scale note
+        let note = scale_notes[current_idx as u64]
+        notes.push(note)
+
+        // Generate rhythm (quarter, eighth, half)
+        let rhythm_choice = lcg_next(&mut rng_state) % 4
+        let duration = match rhythm_choice {
+            0 { Duration { beats: 0.5, tied: false } }  // Eighth
+            1 | 2 { Duration { beats: 1.0, tied: false } }  // Quarter (more common)
+            3 { Duration { beats: 2.0, tied: false } }  // Half
+            _ { Duration { beats: 1.0, tied: false } }
+        }
+        rhythm.push(duration)
+
+        // Move to next note (stepwise motion preferred)
+        let step = lcg_next(&mut rng_state) % 5
+        let direction = if lcg_next(&mut rng_state) % 2 == 0 { 1 } else { -1 }
+        current_idx = match step {
+            0 | 1 { ((current_idx as i64 + direction + num_scale_notes as i64) % num_scale_notes as i64) as u64 }
+            2 { ((current_idx as i64 + 2 * direction + num_scale_notes as i64) % num_scale_notes as i64) as u64 }
+            3 { 0 }  // Return to root
+            4 { ((current_idx as i64 + 4 + num_scale_notes as i64) % num_scale_notes as i64) as u64 }  // Jump to fifth
+            _ { current_idx }
+        }
+    }
+
+    return Melody { notes: notes, rhythm: rhythm }
+
+    docs {
+        Generate a melody from a scale using algorithmic composition.
+
+        Uses a seeded random number generator for reproducibility.
+        Prefers stepwise motion with occasional leaps to root/fifth.
+
+        Example:
+            let c_major = build_scale(Note { pitch: 60, ... }, Mode::Major)
+            let melody = generate_melody(c_major, 16, 42)
+    }
+}
+
+// Simple LCG random number generator
+fun lcg_next(state: &mut u64) -> u64 {
+    *state = (*state * 6364136223846793005 + 1442695040888963407) % (1 << 63)
+    return *state >> 32
+}
+
+pub fun harmonize(melody: Melody, key: Key) -> Vec<Chord> {
+    let scale = key.scale()
+    let mut chords = Vec::new()
+
+    for note in melody.notes {
+        // Find the scale degree of this note
+        let pitch_class = note.pitch % 12
+        let root_class = key.tonic.pitch % 12
+
+        let mut degree = 1
+        for (i, scale_note) in scale.notes().iter().enumerate() {
+            if scale_note.pitch % 12 == pitch_class {
+                degree = (i + 1) as u8
+                break
+            }
+        }
+
+        // Build chord from scale degree
+        let chord = chord_from_scale(scale.clone(), degree)
+        chords.push(chord)
+    }
+
+    return chords
+
+    docs {
+        Generate chord harmonization for a melody in a given key.
+
+        For each melody note, finds its scale degree and builds
+        the corresponding diatonic chord.
+
+        This creates a simple harmonization; more sophisticated
+        harmonizations might use secondary dominants, borrowed chords, etc.
+    }
+}
+
+pub fun arpeggiate(chord: Chord, pattern: string) -> Melody {
+    // Pattern examples: "up", "down", "updown", "1324", "1535"
+    let chord_notes = chord.notes.clone()
+    let num_notes = chord_notes.length
+
+    if num_notes == 0 {
+        return Melody { notes: vec![], rhythm: vec![] }
+    }
+
+    let indices: Vec<u64> = match pattern.as_str() {
+        "up" { (0..num_notes).collect() }
+        "down" { (0..num_notes).rev().collect() }
+        "updown" {
+            let mut v: Vec<u64> = (0..num_notes).collect()
+            let mut down: Vec<u64> = (1..(num_notes - 1)).rev().collect()
+            v.extend(down)
+            v
+        }
+        "downup" {
+            let mut v: Vec<u64> = (0..num_notes).rev().collect()
+            let mut up: Vec<u64> = (1..(num_notes - 1)).collect()
+            v.extend(up)
+            v
+        }
+        _ {
+            // Parse numeric pattern like "1324" or "1535"
+            pattern.chars()
+                .filter(|c| c.is_digit(10))
+                .map(|c| (c.to_digit(10).unwrap_or(1) - 1) as u64 % num_notes)
+                .collect()
+        }
+    }
+
+    let notes: Vec<Note> = indices.iter()
+        .map(|&i| chord_notes[i % num_notes].clone())
+        .collect()
+
+    let rhythm: Vec<Duration> = notes.iter()
+        .map(|_| Duration { beats: 0.5, tied: false })  // Default to eighth notes
+        .collect()
+
+    return Melody { notes: notes, rhythm: rhythm }
+
+    docs {
+        Convert a chord to an arpeggiated melody pattern.
+
+        Pattern types:
+        - "up": Play notes from lowest to highest
+        - "down": Play notes from highest to lowest
+        - "updown": Up then down (skip endpoints on return)
+        - "downup": Down then up
+        - "1324": Custom pattern (1=root, 2=second note, etc.)
+        - "1535": Another custom pattern
+
+        Example:
+            let c_major = Chord { root: C4, notes: [C4, E4, G4], ... }
+            let arp = arpeggiate(c_major, "1535")  // C-G-E-G pattern
+    }
+}
+
+pub fun retrograde(melody: Melody) -> Melody {
+    return melody.retrograde()
+
+    docs {
+        Reverse the melody (retrograde).
+    }
+}
+
+pub fun augment(melody: Melody, factor: f64) -> Melody {
+    return Melody {
+        notes: melody.notes.clone(),
+        rhythm: melody.rhythm.iter().map(|d| {
+            Duration {
+                beats: d.beats * factor,
+                tied: d.tied
+            }
+        }).collect()
+    }
+
+    docs {
+        Augment melody durations by a factor (stretch).
+        Factor > 1.0 makes it slower, < 1.0 makes it faster.
+    }
+}
+
+pub fun diminish(melody: Melody, factor: f64) -> Melody {
+    return augment(melody, 1.0 / factor)
+
+    docs {
+        Diminish melody durations by a factor (compress).
+        Equivalent to augment with inverted factor.
+    }
+}
+
+pub fun sequence_motif(motif: Motif, intervals: Vec<i8>) -> Melody {
+    // Sequence a motif through a series of transpositions
+    let mut all_notes = Vec::new()
+    let mut all_rhythm = Vec::new()
+
+    for interval in intervals {
+        let transposed = motif.transpose(interval)
+        for note in transposed.notes {
+            all_notes.push(Note {
+                pitch: note.pitch,
+                octave: note.octave,
+                duration: 1.0
+            })
+            all_rhythm.push(Duration { beats: note.duration, tied: false })
+        }
+    }
+
+    return Melody { notes: all_notes, rhythm: all_rhythm }
+
+    docs {
+        Create a sequence by transposing a motif through intervals.
+
+        Example:
+            let motif = Motif { notes: [C4, E4, G4], ... }
+            let seq = sequence_motif(motif, vec![0, 2, 4])
+            // Creates: C-E-G, D-F#-A, E-G#-B
+    }
+}
+
+pub fun create_variation(melody: Melody, variation_type: string) -> Melody {
+    return match variation_type.as_str() {
+        "retrograde" { melody.retrograde() }
+        "transpose_up" { melody.transpose(2) }  // Whole step up
+        "transpose_down" { melody.transpose(-2) }  // Whole step down
+        "augment" { augment(melody, 2.0) }
+        "diminish" { diminish(melody, 2.0) }
+        "double" { melody.repeat(2) }
+        "ornament" {
+            // Add passing tones (simplified)
+            let mut new_notes = Vec::new()
+            let mut new_rhythm = Vec::new()
+            for i in 0..melody.notes.length {
+                new_notes.push(melody.notes[i].clone())
+                new_rhythm.push(Duration { beats: melody.rhythm[i].beats * 0.75, tied: false })
+
+                // Add passing tone to next note if exists
+                if i + 1 < melody.notes.length {
+                    let current = melody.notes[i].pitch as i16
+                    let next = melody.notes[i + 1].pitch as i16
+                    if abs(next - current) > 1 {
+                        let passing = ((current + next) / 2) as u8
+                        new_notes.push(Note {
+                            pitch: passing,
+                            octave: melody.notes[i].octave,
+                            duration: melody.rhythm[i].beats * 0.25
+                        })
+                        new_rhythm.push(Duration { beats: melody.rhythm[i].beats * 0.25, tied: false })
+                    }
+                }
+            }
+            Melody { notes: new_notes, rhythm: new_rhythm }
+        }
+        _ { melody.clone() }
+    }
+
+    docs {
+        Create a variation of a melody.
+
+        Variation types:
+        - "retrograde": Reverse the melody
+        - "transpose_up": Move up a whole step
+        - "transpose_down": Move down a whole step
+        - "augment": Double note durations
+        - "diminish": Halve note durations
+        - "double": Repeat the melody
+        - "ornament": Add passing tones
+    }
+}
+
+docs {
+    Music Spirit - Composition Module
+
+    High-level composition structures for creating music.
+
+    Core Types:
+    - Motif: Smallest musical idea (few notes)
+    - Melody: Sequence of notes with rhythm
+    - Phrase: Musical "sentence" with expression
+    - Section: Song part (verse, chorus, bridge)
+    - Song: Complete musical piece with structure
+    - Voice: Single instrument/vocal line
+    - Score: Multiple voices combined
+
+    Expression System:
+    - Dynamics: Volume/intensity (pp to ff)
+    - Articulation: Note attack/release (staccato, legato)
+    - Expression: Combined performance parameters
+
+    Composition Techniques:
+    - generate_melody: Algorithmic melody from scale
+    - harmonize: Auto-harmonization with chords
+    - arpeggiate: Convert chords to melodic patterns
+    - create_variation: Apply transformations
+
+    Motif Transformations:
+    - Transposition: Shift all pitches
+    - Retrograde: Reverse order
+    - Inversion: Mirror around pivot pitch
+    - Augmentation: Stretch durations
+    - Diminution: Compress durations
+    - Sequence: Repeat at different pitches
+
+    Song Structure:
+        Song
+        |-- Section (Intro)
+        |   |-- Phrase
+        |       |-- Melody + Expression
+        |-- Section (Verse, repeat: 2)
+        |   |-- Phrase
+        |-- Section (Chorus, repeat: 2)
+        |   |-- Phrase
+        |-- Section (Bridge)
+        |   |-- Phrase
+        |-- Section (Outro)
+            |-- Phrase
+
+    Example workflow:
+        // Create a scale
+        let scale = build_scale(Note { pitch: 60, ... }, Mode::Major)
+
+        // Generate melody
+        let melody = generate_melody(scale, 16, 42)
+
+        // Create phrase with expression
+        let phrase = Phrase {
+            melody: melody,
+            measures: 4,
+            expression: Expression::default().with_dynamics(Dynamics::MezzoForte)
+        }
+
+        // Build song structure
+        let song = Song {
+            sections: vec![verse, chorus, verse, chorus, bridge, chorus],
+            tempo: Tempo { bpm: 120.0 },
+            key: Key { tonic: C4, mode: Mode::Major },
+            ...
+        }
+}

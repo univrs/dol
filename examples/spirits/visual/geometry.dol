@@ -1,0 +1,1411 @@
+// Visual Arts Spirit - Geometry Module
+// 2D/3D primitives, curves, transforms, and spatial operations
+
+module visual.geometry @ 0.1.0
+
+use @univrs/physics.mechanics.{ Vector3 as PhysicsVec3 }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const PI: f64 = 3.14159265358979323846
+pub const TAU: f64 = 6.28318530717958647692  // 2 * PI
+pub const PHI: f64 = 1.61803398874989484820  // Golden ratio
+pub const SQRT2: f64 = 1.41421356237309504880
+pub const SQRT3: f64 = 1.73205080756887729353
+
+// ============================================================================
+// 2D PRIMITIVES
+// ============================================================================
+
+pub gen Point2D {
+    has x: f64
+    has y: f64
+
+    fun distance_to(other: Point2D) -> f64 {
+        let dx = other.x - this.x
+        let dy = other.y - this.y
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    fun midpoint(other: Point2D) -> Point2D {
+        return Point2D {
+            x: (this.x + other.x) / 2.0,
+            y: (this.y + other.y) / 2.0
+        }
+    }
+
+    fun lerp(other: Point2D, t: f64) -> Point2D {
+        return Point2D {
+            x: this.x + (other.x - this.x) * t,
+            y: this.y + (other.y - this.y) * t
+        }
+    }
+
+    fun to_vector() -> Vector2D {
+        return Vector2D { x: this.x, y: this.y }
+    }
+
+    docs {
+        A point in 2D Cartesian space.
+        Foundation primitive for 2D geometry.
+    }
+}
+
+pub gen Vector2D {
+    has x: f64
+    has y: f64
+
+    fun length() -> f64 {
+        return sqrt(this.x * this.x + this.y * this.y)
+    }
+
+    fun length_squared() -> f64 {
+        return this.x * this.x + this.y * this.y
+    }
+
+    fun normalize() -> Vector2D {
+        let len = this.length()
+        if len == 0.0 {
+            return Vector2D { x: 0.0, y: 0.0 }
+        }
+        return Vector2D { x: this.x / len, y: this.y / len }
+    }
+
+    fun dot(other: Vector2D) -> f64 {
+        return this.x * other.x + this.y * other.y
+    }
+
+    fun cross(other: Vector2D) -> f64 {
+        // 2D cross product returns scalar (z-component)
+        return this.x * other.y - this.y * other.x
+    }
+
+    fun add(other: Vector2D) -> Vector2D {
+        return Vector2D { x: this.x + other.x, y: this.y + other.y }
+    }
+
+    fun sub(other: Vector2D) -> Vector2D {
+        return Vector2D { x: this.x - other.x, y: this.y - other.y }
+    }
+
+    fun scale(s: f64) -> Vector2D {
+        return Vector2D { x: this.x * s, y: this.y * s }
+    }
+
+    fun rotate(angle: f64) -> Vector2D {
+        let cos_a = cos(angle)
+        let sin_a = sin(angle)
+        return Vector2D {
+            x: this.x * cos_a - this.y * sin_a,
+            y: this.x * sin_a + this.y * cos_a
+        }
+    }
+
+    fun perpendicular() -> Vector2D {
+        return Vector2D { x: -this.y, y: this.x }
+    }
+
+    fun angle() -> f64 {
+        return atan2(this.y, this.x)
+    }
+
+    fun angle_between(other: Vector2D) -> f64 {
+        return acos(this.dot(other) / (this.length() * other.length()))
+    }
+
+    docs {
+        A 2D vector for direction and magnitude.
+        Supports common vector operations.
+    }
+}
+
+pub gen Line2D {
+    has start: Point2D
+    has end: Point2D
+
+    fun length() -> f64 {
+        return this.start.distance_to(this.end)
+    }
+
+    fun direction() -> Vector2D {
+        return Vector2D {
+            x: this.end.x - this.start.x,
+            y: this.end.y - this.start.y
+        }.normalize()
+    }
+
+    fun midpoint() -> Point2D {
+        return this.start.midpoint(this.end)
+    }
+
+    fun point_at(t: f64) -> Point2D {
+        return this.start.lerp(this.end, t)
+    }
+
+    fun perpendicular_at(t: f64) -> Vector2D {
+        return this.direction().perpendicular()
+    }
+
+    docs {
+        A line segment defined by two endpoints.
+    }
+}
+
+pub gen Ray2D {
+    has origin: Point2D
+    has direction: Vector2D
+
+    rule normalized_direction {
+        abs(this.direction.length() - 1.0) < 0.0001
+    }
+
+    fun point_at(t: f64) -> Point2D {
+        return Point2D {
+            x: this.origin.x + this.direction.x * t,
+            y: this.origin.y + this.direction.y * t
+        }
+    }
+
+    docs {
+        A ray with origin point and direction.
+        Direction should be normalized.
+    }
+}
+
+pub gen Segment2D {
+    has p1: Point2D
+    has p2: Point2D
+
+    fun to_line() -> Line2D {
+        return Line2D { start: this.p1, end: this.p2 }
+    }
+
+    fun length() -> f64 {
+        return this.p1.distance_to(this.p2)
+    }
+
+    docs {
+        Alias for Line2D - a line segment.
+    }
+}
+
+pub gen Circle {
+    has center: Point2D
+    has radius: f64
+
+    rule positive_radius {
+        this.radius > 0.0
+    }
+
+    fun area() -> f64 {
+        return PI * this.radius * this.radius
+    }
+
+    fun circumference() -> f64 {
+        return TAU * this.radius
+    }
+
+    fun contains(point: Point2D) -> bool {
+        return this.center.distance_to(point) <= this.radius
+    }
+
+    fun point_on_circle(angle: f64) -> Point2D {
+        return Point2D {
+            x: this.center.x + this.radius * cos(angle),
+            y: this.center.y + this.radius * sin(angle)
+        }
+    }
+
+    fun tangent_at(angle: f64) -> Vector2D {
+        return Vector2D {
+            x: -sin(angle),
+            y: cos(angle)
+        }
+    }
+
+    docs {
+        A circle defined by center and radius.
+    }
+}
+
+pub gen Ellipse {
+    has center: Point2D
+    has radius_x: f64
+    has radius_y: f64
+    has rotation: f64
+
+    rule positive_radii {
+        this.radius_x > 0.0 && this.radius_y > 0.0
+    }
+
+    fun area() -> f64 {
+        return PI * this.radius_x * this.radius_y
+    }
+
+    fun eccentricity() -> f64 {
+        let a = max(this.radius_x, this.radius_y)
+        let b = min(this.radius_x, this.radius_y)
+        return sqrt(1.0 - (b * b) / (a * a))
+    }
+
+    fun point_on_ellipse(angle: f64) -> Point2D {
+        let x = this.radius_x * cos(angle)
+        let y = this.radius_y * sin(angle)
+
+        // Rotate by ellipse rotation
+        let cos_r = cos(this.rotation)
+        let sin_r = sin(this.rotation)
+
+        return Point2D {
+            x: this.center.x + x * cos_r - y * sin_r,
+            y: this.center.y + x * sin_r + y * cos_r
+        }
+    }
+
+    docs {
+        An ellipse with independent x/y radii and rotation.
+    }
+}
+
+pub gen Arc {
+    has center: Point2D
+    has radius: f64
+    has start_angle: f64
+    has end_angle: f64
+
+    rule positive_radius {
+        this.radius > 0.0
+    }
+
+    fun angle_span() -> f64 {
+        return this.end_angle - this.start_angle
+    }
+
+    fun arc_length() -> f64 {
+        return this.radius * abs(this.angle_span())
+    }
+
+    fun point_at(t: f64) -> Point2D {
+        let angle = this.start_angle + t * this.angle_span()
+        return Point2D {
+            x: this.center.x + this.radius * cos(angle),
+            y: this.center.y + this.radius * sin(angle)
+        }
+    }
+
+    docs {
+        An arc of a circle defined by angle range.
+    }
+}
+
+pub gen Triangle {
+    has a: Point2D
+    has b: Point2D
+    has c: Point2D
+
+    fun area() -> f64 {
+        // Shoelace formula
+        return abs(
+            (this.b.x - this.a.x) * (this.c.y - this.a.y) -
+            (this.c.x - this.a.x) * (this.b.y - this.a.y)
+        ) / 2.0
+    }
+
+    fun perimeter() -> f64 {
+        return this.a.distance_to(this.b) +
+               this.b.distance_to(this.c) +
+               this.c.distance_to(this.a)
+    }
+
+    fun centroid() -> Point2D {
+        return Point2D {
+            x: (this.a.x + this.b.x + this.c.x) / 3.0,
+            y: (this.a.y + this.b.y + this.c.y) / 3.0
+        }
+    }
+
+    fun incenter() -> Point2D {
+        let a_len = this.b.distance_to(this.c)
+        let b_len = this.a.distance_to(this.c)
+        let c_len = this.a.distance_to(this.b)
+        let perimeter = a_len + b_len + c_len
+
+        return Point2D {
+            x: (a_len * this.a.x + b_len * this.b.x + c_len * this.c.x) / perimeter,
+            y: (a_len * this.a.y + b_len * this.b.y + c_len * this.c.y) / perimeter
+        }
+    }
+
+    fun contains(point: Point2D) -> bool {
+        // Barycentric coordinate method
+        let v0 = Vector2D { x: this.c.x - this.a.x, y: this.c.y - this.a.y }
+        let v1 = Vector2D { x: this.b.x - this.a.x, y: this.b.y - this.a.y }
+        let v2 = Vector2D { x: point.x - this.a.x, y: point.y - this.a.y }
+
+        let dot00 = v0.dot(v0)
+        let dot01 = v0.dot(v1)
+        let dot02 = v0.dot(v2)
+        let dot11 = v1.dot(v1)
+        let dot12 = v1.dot(v2)
+
+        let inv_denom = 1.0 / (dot00 * dot11 - dot01 * dot01)
+        let u = (dot11 * dot02 - dot01 * dot12) * inv_denom
+        let v = (dot00 * dot12 - dot01 * dot02) * inv_denom
+
+        return u >= 0.0 && v >= 0.0 && u + v <= 1.0
+    }
+
+    docs {
+        A triangle defined by three vertices.
+    }
+}
+
+pub gen Rectangle {
+    has origin: Point2D  // Top-left corner
+    has width: f64
+    has height: f64
+
+    rule positive_dimensions {
+        this.width > 0.0 && this.height > 0.0
+    }
+
+    fun area() -> f64 {
+        return this.width * this.height
+    }
+
+    fun perimeter() -> f64 {
+        return 2.0 * (this.width + this.height)
+    }
+
+    fun center() -> Point2D {
+        return Point2D {
+            x: this.origin.x + this.width / 2.0,
+            y: this.origin.y + this.height / 2.0
+        }
+    }
+
+    fun corners() -> (Point2D, Point2D, Point2D, Point2D) {
+        return (
+            this.origin,
+            Point2D { x: this.origin.x + this.width, y: this.origin.y },
+            Point2D { x: this.origin.x + this.width, y: this.origin.y + this.height },
+            Point2D { x: this.origin.x, y: this.origin.y + this.height }
+        )
+    }
+
+    fun contains(point: Point2D) -> bool {
+        return point.x >= this.origin.x &&
+               point.x <= this.origin.x + this.width &&
+               point.y >= this.origin.y &&
+               point.y <= this.origin.y + this.height
+    }
+
+    fun to_polygon() -> Polygon {
+        let (a, b, c, d) = this.corners()
+        return Polygon { vertices: vec![a, b, c, d] }
+    }
+
+    docs {
+        An axis-aligned rectangle.
+    }
+}
+
+pub gen Polygon {
+    has vertices: Vec<Point2D>
+
+    rule minimum_vertices {
+        this.vertices.length >= 3
+    }
+
+    fun area() -> f64 {
+        // Shoelace formula
+        let n = this.vertices.length
+        let sum = 0.0
+        for i in 0..n {
+            let j = (i + 1) % n
+            sum = sum + this.vertices[i].x * this.vertices[j].y
+            sum = sum - this.vertices[j].x * this.vertices[i].y
+        }
+        return abs(sum) / 2.0
+    }
+
+    fun perimeter() -> f64 {
+        let n = this.vertices.length
+        let sum = 0.0
+        for i in 0..n {
+            let j = (i + 1) % n
+            sum = sum + this.vertices[i].distance_to(this.vertices[j])
+        }
+        return sum
+    }
+
+    fun centroid() -> Point2D {
+        let sum_x = this.vertices.map(|v| v.x).sum()
+        let sum_y = this.vertices.map(|v| v.y).sum()
+        let n = this.vertices.length as f64
+        return Point2D { x: sum_x / n, y: sum_y / n }
+    }
+
+    fun is_convex() -> bool {
+        let n = this.vertices.length
+        if n < 3 {
+            return false
+        }
+
+        let sign = 0.0
+        for i in 0..n {
+            let v1 = this.vertices[(i + 1) % n].to_vector().sub(this.vertices[i].to_vector())
+            let v2 = this.vertices[(i + 2) % n].to_vector().sub(this.vertices[(i + 1) % n].to_vector())
+            let cross = v1.cross(v2)
+
+            if i == 0 {
+                sign = cross
+            } else if sign * cross < 0.0 {
+                return false
+            }
+        }
+        return true
+    }
+
+    fun edge(index: u64) -> Line2D {
+        let n = this.vertices.length
+        return Line2D {
+            start: this.vertices[index % n],
+            end: this.vertices[(index + 1) % n]
+        }
+    }
+
+    docs {
+        A polygon defined by an ordered list of vertices.
+    }
+}
+
+// ============================================================================
+// BEZIER CURVES
+// ============================================================================
+
+pub gen QuadraticBezier {
+    has p0: Point2D  // Start
+    has p1: Point2D  // Control
+    has p2: Point2D  // End
+
+    fun point_at(t: f64) -> Point2D {
+        let mt = 1.0 - t
+        return Point2D {
+            x: mt * mt * this.p0.x + 2.0 * mt * t * this.p1.x + t * t * this.p2.x,
+            y: mt * mt * this.p0.y + 2.0 * mt * t * this.p1.y + t * t * this.p2.y
+        }
+    }
+
+    fun tangent_at(t: f64) -> Vector2D {
+        let mt = 1.0 - t
+        return Vector2D {
+            x: 2.0 * mt * (this.p1.x - this.p0.x) + 2.0 * t * (this.p2.x - this.p1.x),
+            y: 2.0 * mt * (this.p1.y - this.p0.y) + 2.0 * t * (this.p2.y - this.p1.y)
+        }.normalize()
+    }
+
+    fun split(t: f64) -> (QuadraticBezier, QuadraticBezier) {
+        let p01 = this.p0.lerp(this.p1, t)
+        let p12 = this.p1.lerp(this.p2, t)
+        let p012 = p01.lerp(p12, t)
+
+        return (
+            QuadraticBezier { p0: this.p0, p1: p01, p2: p012 },
+            QuadraticBezier { p0: p012, p1: p12, p2: this.p2 }
+        )
+    }
+
+    docs {
+        Quadratic Bezier curve with one control point.
+    }
+}
+
+pub gen CubicBezier {
+    has p0: Point2D  // Start
+    has p1: Point2D  // Control 1
+    has p2: Point2D  // Control 2
+    has p3: Point2D  // End
+
+    fun point_at(t: f64) -> Point2D {
+        let mt = 1.0 - t
+        let mt2 = mt * mt
+        let t2 = t * t
+        return Point2D {
+            x: mt2 * mt * this.p0.x +
+               3.0 * mt2 * t * this.p1.x +
+               3.0 * mt * t2 * this.p2.x +
+               t2 * t * this.p3.x,
+            y: mt2 * mt * this.p0.y +
+               3.0 * mt2 * t * this.p1.y +
+               3.0 * mt * t2 * this.p2.y +
+               t2 * t * this.p3.y
+        }
+    }
+
+    fun tangent_at(t: f64) -> Vector2D {
+        let mt = 1.0 - t
+        return Vector2D {
+            x: 3.0 * mt * mt * (this.p1.x - this.p0.x) +
+               6.0 * mt * t * (this.p2.x - this.p1.x) +
+               3.0 * t * t * (this.p3.x - this.p2.x),
+            y: 3.0 * mt * mt * (this.p1.y - this.p0.y) +
+               6.0 * mt * t * (this.p2.y - this.p1.y) +
+               3.0 * t * t * (this.p3.y - this.p2.y)
+        }.normalize()
+    }
+
+    fun split(t: f64) -> (CubicBezier, CubicBezier) {
+        let p01 = this.p0.lerp(this.p1, t)
+        let p12 = this.p1.lerp(this.p2, t)
+        let p23 = this.p2.lerp(this.p3, t)
+        let p012 = p01.lerp(p12, t)
+        let p123 = p12.lerp(p23, t)
+        let p0123 = p012.lerp(p123, t)
+
+        return (
+            CubicBezier { p0: this.p0, p1: p01, p2: p012, p3: p0123 },
+            CubicBezier { p0: p0123, p1: p123, p2: p23, p3: this.p3 }
+        )
+    }
+
+    fun approximate_length(segments: u64) -> f64 {
+        let length = 0.0
+        let prev = this.p0
+        for i in 1..=segments {
+            let t = i as f64 / segments as f64
+            let curr = this.point_at(t)
+            length = length + prev.distance_to(curr)
+            prev = curr
+        }
+        return length
+    }
+
+    docs {
+        Cubic Bezier curve with two control points.
+        The standard curve type for vector graphics.
+    }
+}
+
+pub gen BezierCurve {
+    has control_points: Vec<Point2D>
+
+    rule minimum_points {
+        this.control_points.length >= 2
+    }
+
+    fun degree() -> u64 {
+        return this.control_points.length - 1
+    }
+
+    fun point_at(t: f64) -> Point2D {
+        // De Casteljau's algorithm
+        let points = this.control_points.clone()
+        let n = points.length
+
+        for r in 1..n {
+            for i in 0..(n - r) {
+                points[i] = points[i].lerp(points[i + 1], t)
+            }
+        }
+
+        return points[0]
+    }
+
+    docs {
+        General Bezier curve of arbitrary degree.
+        Uses De Casteljau's algorithm for evaluation.
+    }
+}
+
+// ============================================================================
+// PATH
+// ============================================================================
+
+pub gen PathCommand {
+    type: enum {
+        MoveTo { point: Point2D },
+        LineTo { point: Point2D },
+        QuadTo { control: Point2D, end: Point2D },
+        CubicTo { control1: Point2D, control2: Point2D, end: Point2D },
+        ArcTo { radius: f64, angle: f64, large_arc: bool, sweep: bool, end: Point2D },
+        Close
+    }
+
+    docs {
+        SVG-style path commands.
+    }
+}
+
+pub gen Path2D {
+    has commands: Vec<PathCommand>
+
+    fun move_to(point: Point2D) -> Path2D {
+        let mut cmds = this.commands.clone()
+        cmds.push(PathCommand::MoveTo { point: point })
+        return Path2D { commands: cmds }
+    }
+
+    fun line_to(point: Point2D) -> Path2D {
+        let mut cmds = this.commands.clone()
+        cmds.push(PathCommand::LineTo { point: point })
+        return Path2D { commands: cmds }
+    }
+
+    fun quad_to(control: Point2D, end: Point2D) -> Path2D {
+        let mut cmds = this.commands.clone()
+        cmds.push(PathCommand::QuadTo { control: control, end: end })
+        return Path2D { commands: cmds }
+    }
+
+    fun cubic_to(control1: Point2D, control2: Point2D, end: Point2D) -> Path2D {
+        let mut cmds = this.commands.clone()
+        cmds.push(PathCommand::CubicTo { control1: control1, control2: control2, end: end })
+        return Path2D { commands: cmds }
+    }
+
+    fun close() -> Path2D {
+        let mut cmds = this.commands.clone()
+        cmds.push(PathCommand::Close)
+        return Path2D { commands: cmds }
+    }
+
+    fun is_closed() -> bool {
+        if this.commands.is_empty() {
+            return false
+        }
+        match this.commands.last() {
+            Some(PathCommand::Close) { return true }
+            _ { return false }
+        }
+    }
+
+    docs {
+        A 2D path composed of multiple commands.
+        Similar to SVG path or Canvas2D path.
+    }
+}
+
+// ============================================================================
+// 3D PRIMITIVES
+// ============================================================================
+
+pub gen Point3D {
+    has x: f64
+    has y: f64
+    has z: f64
+
+    fun distance_to(other: Point3D) -> f64 {
+        let dx = other.x - this.x
+        let dy = other.y - this.y
+        let dz = other.z - this.z
+        return sqrt(dx * dx + dy * dy + dz * dz)
+    }
+
+    fun midpoint(other: Point3D) -> Point3D {
+        return Point3D {
+            x: (this.x + other.x) / 2.0,
+            y: (this.y + other.y) / 2.0,
+            z: (this.z + other.z) / 2.0
+        }
+    }
+
+    fun lerp(other: Point3D, t: f64) -> Point3D {
+        return Point3D {
+            x: this.x + (other.x - this.x) * t,
+            y: this.y + (other.y - this.y) * t,
+            z: this.z + (other.z - this.z) * t
+        }
+    }
+
+    fun to_vector() -> Vector3D {
+        return Vector3D { x: this.x, y: this.y, z: this.z }
+    }
+
+    fun project_2d() -> Point2D {
+        // Simple orthographic projection
+        return Point2D { x: this.x, y: this.y }
+    }
+
+    docs {
+        A point in 3D Cartesian space.
+    }
+}
+
+pub gen Vector3D {
+    has x: f64
+    has y: f64
+    has z: f64
+
+    fun length() -> f64 {
+        return sqrt(this.x * this.x + this.y * this.y + this.z * this.z)
+    }
+
+    fun length_squared() -> f64 {
+        return this.x * this.x + this.y * this.y + this.z * this.z
+    }
+
+    fun normalize() -> Vector3D {
+        let len = this.length()
+        if len == 0.0 {
+            return Vector3D { x: 0.0, y: 0.0, z: 0.0 }
+        }
+        return Vector3D { x: this.x / len, y: this.y / len, z: this.z / len }
+    }
+
+    fun dot(other: Vector3D) -> f64 {
+        return this.x * other.x + this.y * other.y + this.z * other.z
+    }
+
+    fun cross(other: Vector3D) -> Vector3D {
+        return Vector3D {
+            x: this.y * other.z - this.z * other.y,
+            y: this.z * other.x - this.x * other.z,
+            z: this.x * other.y - this.y * other.x
+        }
+    }
+
+    fun add(other: Vector3D) -> Vector3D {
+        return Vector3D { x: this.x + other.x, y: this.y + other.y, z: this.z + other.z }
+    }
+
+    fun sub(other: Vector3D) -> Vector3D {
+        return Vector3D { x: this.x - other.x, y: this.y - other.y, z: this.z - other.z }
+    }
+
+    fun scale(s: f64) -> Vector3D {
+        return Vector3D { x: this.x * s, y: this.y * s, z: this.z * s }
+    }
+
+    docs {
+        A 3D vector for direction and magnitude.
+    }
+}
+
+pub gen Line3D {
+    has start: Point3D
+    has end: Point3D
+
+    fun length() -> f64 {
+        return this.start.distance_to(this.end)
+    }
+
+    fun direction() -> Vector3D {
+        return Vector3D {
+            x: this.end.x - this.start.x,
+            y: this.end.y - this.start.y,
+            z: this.end.z - this.start.z
+        }.normalize()
+    }
+
+    fun midpoint() -> Point3D {
+        return this.start.midpoint(this.end)
+    }
+
+    fun point_at(t: f64) -> Point3D {
+        return this.start.lerp(this.end, t)
+    }
+
+    docs {
+        A line segment in 3D space.
+    }
+}
+
+pub gen Plane {
+    has normal: Vector3D
+    has d: f64  // Distance from origin
+
+    fun from_points(a: Point3D, b: Point3D, c: Point3D) -> Plane {
+        let ab = Vector3D { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z }
+        let ac = Vector3D { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }
+        let normal = ab.cross(ac).normalize()
+        let d = -(normal.x * a.x + normal.y * a.y + normal.z * a.z)
+        return Plane { normal: normal, d: d }
+    }
+
+    fun distance_to_point(point: Point3D) -> f64 {
+        return abs(this.normal.x * point.x +
+                   this.normal.y * point.y +
+                   this.normal.z * point.z + this.d)
+    }
+
+    fun project_point(point: Point3D) -> Point3D {
+        let dist = this.normal.x * point.x +
+                   this.normal.y * point.y +
+                   this.normal.z * point.z + this.d
+        return Point3D {
+            x: point.x - dist * this.normal.x,
+            y: point.y - dist * this.normal.y,
+            z: point.z - dist * this.normal.z
+        }
+    }
+
+    docs {
+        A plane defined by normal vector and distance from origin.
+        Equation: n.x * x + n.y * y + n.z * z + d = 0
+    }
+}
+
+pub gen Sphere {
+    has center: Point3D
+    has radius: f64
+
+    rule positive_radius {
+        this.radius > 0.0
+    }
+
+    fun volume() -> f64 {
+        return (4.0 / 3.0) * PI * this.radius * this.radius * this.radius
+    }
+
+    fun surface_area() -> f64 {
+        return 4.0 * PI * this.radius * this.radius
+    }
+
+    fun contains(point: Point3D) -> bool {
+        return this.center.distance_to(point) <= this.radius
+    }
+
+    fun point_on_sphere(theta: f64, phi: f64) -> Point3D {
+        return Point3D {
+            x: this.center.x + this.radius * sin(phi) * cos(theta),
+            y: this.center.y + this.radius * sin(phi) * sin(theta),
+            z: this.center.z + this.radius * cos(phi)
+        }
+    }
+
+    docs {
+        A sphere in 3D space.
+        theta: azimuthal angle (0 to 2*PI)
+        phi: polar angle (0 to PI)
+    }
+}
+
+// ============================================================================
+// TRANSFORMS
+// ============================================================================
+
+pub gen Matrix3x3 {
+    has m: [[f64; 3]; 3]
+
+    fun identity() -> Matrix3x3 {
+        return Matrix3x3 {
+            m: [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
+        }
+    }
+
+    fun multiply(other: Matrix3x3) -> Matrix3x3 {
+        let result = [[0.0; 3]; 3]
+        for i in 0..3 {
+            for j in 0..3 {
+                for k in 0..3 {
+                    result[i][j] = result[i][j] + this.m[i][k] * other.m[k][j]
+                }
+            }
+        }
+        return Matrix3x3 { m: result }
+    }
+
+    fun transform_point(p: Point2D) -> Point2D {
+        let w = this.m[2][0] * p.x + this.m[2][1] * p.y + this.m[2][2]
+        return Point2D {
+            x: (this.m[0][0] * p.x + this.m[0][1] * p.y + this.m[0][2]) / w,
+            y: (this.m[1][0] * p.x + this.m[1][1] * p.y + this.m[1][2]) / w
+        }
+    }
+
+    fun determinant() -> f64 {
+        return this.m[0][0] * (this.m[1][1] * this.m[2][2] - this.m[1][2] * this.m[2][1]) -
+               this.m[0][1] * (this.m[1][0] * this.m[2][2] - this.m[1][2] * this.m[2][0]) +
+               this.m[0][2] * (this.m[1][0] * this.m[2][1] - this.m[1][1] * this.m[2][0])
+    }
+
+    docs {
+        3x3 matrix for 2D affine transformations.
+    }
+}
+
+pub gen Transform2D {
+    has matrix: Matrix3x3
+
+    fun identity() -> Transform2D {
+        return Transform2D { matrix: Matrix3x3::identity() }
+    }
+
+    fun translate(tx: f64, ty: f64) -> Transform2D {
+        let t = Matrix3x3 {
+            m: [
+                [1.0, 0.0, tx],
+                [0.0, 1.0, ty],
+                [0.0, 0.0, 1.0]
+            ]
+        }
+        return Transform2D { matrix: this.matrix.multiply(t) }
+    }
+
+    fun rotate(angle: f64) -> Transform2D {
+        let cos_a = cos(angle)
+        let sin_a = sin(angle)
+        let r = Matrix3x3 {
+            m: [
+                [cos_a, -sin_a, 0.0],
+                [sin_a, cos_a, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
+        }
+        return Transform2D { matrix: this.matrix.multiply(r) }
+    }
+
+    fun scale(sx: f64, sy: f64) -> Transform2D {
+        let s = Matrix3x3 {
+            m: [
+                [sx, 0.0, 0.0],
+                [0.0, sy, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
+        }
+        return Transform2D { matrix: this.matrix.multiply(s) }
+    }
+
+    fun skew(ax: f64, ay: f64) -> Transform2D {
+        let sk = Matrix3x3 {
+            m: [
+                [1.0, tan(ax), 0.0],
+                [tan(ay), 1.0, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
+        }
+        return Transform2D { matrix: this.matrix.multiply(sk) }
+    }
+
+    fun apply(point: Point2D) -> Point2D {
+        return this.matrix.transform_point(point)
+    }
+
+    fun compose(other: Transform2D) -> Transform2D {
+        return Transform2D { matrix: this.matrix.multiply(other.matrix) }
+    }
+
+    docs {
+        2D affine transformation supporting translate, rotate, scale, skew.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Transformable {
+    fun transform(t: Transform2D) -> Self
+    fun translate(tx: f64, ty: f64) -> Self
+    fun rotate(angle: f64) -> Self
+    fun scale(sx: f64, sy: f64) -> Self
+
+    docs {
+        Types that can be transformed in 2D space.
+    }
+}
+
+pub trait Drawable {
+    fun to_path() -> Path2D
+    fun stroke_points(segments: u64) -> Vec<Point2D>
+
+    docs {
+        Types that can be rendered as paths.
+    }
+}
+
+pub trait Bounded {
+    fun bounding_box() -> Rectangle
+    fun bounding_circle() -> Circle
+
+    docs {
+        Types with spatial bounds.
+    }
+}
+
+pub trait Intersectable {
+    fun intersects(other: Self) -> bool
+    fun intersection_points(other: Self) -> Vec<Point2D>
+
+    docs {
+        Types that can compute intersections.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Transformable for Point2D {
+    fun transform(t: Transform2D) -> Point2D {
+        return t.apply(this)
+    }
+
+    fun translate(tx: f64, ty: f64) -> Point2D {
+        return Point2D { x: this.x + tx, y: this.y + ty }
+    }
+
+    fun rotate(angle: f64) -> Point2D {
+        let cos_a = cos(angle)
+        let sin_a = sin(angle)
+        return Point2D {
+            x: this.x * cos_a - this.y * sin_a,
+            y: this.x * sin_a + this.y * cos_a
+        }
+    }
+
+    fun scale(sx: f64, sy: f64) -> Point2D {
+        return Point2D { x: this.x * sx, y: this.y * sy }
+    }
+}
+
+impl Transformable for Polygon {
+    fun transform(t: Transform2D) -> Polygon {
+        let transformed = this.vertices.map(|v| t.apply(v)).collect()
+        return Polygon { vertices: transformed }
+    }
+
+    fun translate(tx: f64, ty: f64) -> Polygon {
+        let translated = this.vertices.map(|v| v.translate(tx, ty)).collect()
+        return Polygon { vertices: translated }
+    }
+
+    fun rotate(angle: f64) -> Polygon {
+        let rotated = this.vertices.map(|v| v.rotate(angle)).collect()
+        return Polygon { vertices: rotated }
+    }
+
+    fun scale(sx: f64, sy: f64) -> Polygon {
+        let scaled = this.vertices.map(|v| v.scale(sx, sy)).collect()
+        return Polygon { vertices: scaled }
+    }
+}
+
+impl Drawable for Circle {
+    fun to_path() -> Path2D {
+        // Approximate with 4 cubic beziers
+        let k = 0.5522847498  // Magic number for circular bezier approximation
+        let r = this.radius
+        let cx = this.center.x
+        let cy = this.center.y
+
+        return Path2D { commands: vec![] }
+            .move_to(Point2D { x: cx + r, y: cy })
+            .cubic_to(
+                Point2D { x: cx + r, y: cy + k * r },
+                Point2D { x: cx + k * r, y: cy + r },
+                Point2D { x: cx, y: cy + r }
+            )
+            .cubic_to(
+                Point2D { x: cx - k * r, y: cy + r },
+                Point2D { x: cx - r, y: cy + k * r },
+                Point2D { x: cx - r, y: cy }
+            )
+            .cubic_to(
+                Point2D { x: cx - r, y: cy - k * r },
+                Point2D { x: cx - k * r, y: cy - r },
+                Point2D { x: cx, y: cy - r }
+            )
+            .cubic_to(
+                Point2D { x: cx + k * r, y: cy - r },
+                Point2D { x: cx + r, y: cy - k * r },
+                Point2D { x: cx + r, y: cy }
+            )
+            .close()
+    }
+
+    fun stroke_points(segments: u64) -> Vec<Point2D> {
+        return (0..segments).map(|i| {
+            let angle = (i as f64 / segments as f64) * TAU
+            this.point_on_circle(angle)
+        }).collect()
+    }
+}
+
+impl Bounded for Circle {
+    fun bounding_box() -> Rectangle {
+        return Rectangle {
+            origin: Point2D {
+                x: this.center.x - this.radius,
+                y: this.center.y - this.radius
+            },
+            width: this.radius * 2.0,
+            height: this.radius * 2.0
+        }
+    }
+
+    fun bounding_circle() -> Circle {
+        return this
+    }
+}
+
+impl Bounded for Polygon {
+    fun bounding_box() -> Rectangle {
+        let min_x = this.vertices.map(|v| v.x).min()
+        let max_x = this.vertices.map(|v| v.x).max()
+        let min_y = this.vertices.map(|v| v.y).min()
+        let max_y = this.vertices.map(|v| v.y).max()
+
+        return Rectangle {
+            origin: Point2D { x: min_x, y: min_y },
+            width: max_x - min_x,
+            height: max_y - min_y
+        }
+    }
+
+    fun bounding_circle() -> Circle {
+        let center = this.centroid()
+        let radius = this.vertices.map(|v| center.distance_to(v)).max()
+        return Circle { center: center, radius: radius }
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+pub fun distance(p1: Point2D, p2: Point2D) -> f64 {
+    return p1.distance_to(p2)
+
+    docs {
+        Compute Euclidean distance between two points.
+    }
+}
+
+pub fun dot_product(v1: Vector2D, v2: Vector2D) -> f64 {
+    return v1.dot(v2)
+
+    docs {
+        Compute dot product of two vectors.
+    }
+}
+
+pub fun cross_product(v1: Vector3D, v2: Vector3D) -> Vector3D {
+    return v1.cross(v2)
+
+    docs {
+        Compute cross product of two 3D vectors.
+    }
+}
+
+pub fun normalize(v: Vector2D) -> Vector2D {
+    return v.normalize()
+
+    docs {
+        Normalize a vector to unit length.
+    }
+}
+
+pub fun rotate_point(point: Point2D, angle: f64, center: Point2D) -> Point2D {
+    let translated = Point2D {
+        x: point.x - center.x,
+        y: point.y - center.y
+    }
+    let rotated = translated.rotate(angle)
+    return Point2D {
+        x: rotated.x + center.x,
+        y: rotated.y + center.y
+    }
+
+    docs {
+        Rotate a point around a center point.
+    }
+}
+
+pub fun scale_point(point: Point2D, scale: f64, center: Point2D) -> Point2D {
+    return Point2D {
+        x: center.x + (point.x - center.x) * scale,
+        y: center.y + (point.y - center.y) * scale
+    }
+
+    docs {
+        Scale a point relative to a center point.
+    }
+}
+
+pub fun translate_point(point: Point2D, offset: Vector2D) -> Point2D {
+    return Point2D {
+        x: point.x + offset.x,
+        y: point.y + offset.y
+    }
+
+    docs {
+        Translate a point by an offset vector.
+    }
+}
+
+// ============================================================================
+// SPIRALS
+// ============================================================================
+
+pub fun golden_spiral(origin: Point2D, turns: u64, scale: f64) -> Vec<Point2D> {
+    let points = vec![]
+    let samples_per_turn = 100
+    let total_samples = turns * samples_per_turn
+
+    for i in 0..total_samples {
+        let angle = (i as f64 / samples_per_turn as f64) * TAU
+        let r = scale * pow(PHI, angle / (PI / 2.0))
+
+        points.push(Point2D {
+            x: origin.x + r * cos(angle),
+            y: origin.y + r * sin(angle)
+        })
+    }
+
+    return points
+
+    docs {
+        Generate points along a golden spiral.
+        The spiral grows by the golden ratio for each quarter turn.
+
+        Parameters:
+        - origin: Center of the spiral
+        - turns: Number of complete rotations
+        - scale: Base radius multiplier
+    }
+}
+
+pub fun fibonacci_spiral(origin: Point2D, squares: u64) -> Vec<Point2D> {
+    let points = vec![]
+    let fib = vec![1, 1]
+
+    // Generate Fibonacci numbers
+    for i in 2..squares {
+        fib.push(fib[i - 1] + fib[i - 2])
+    }
+
+    let x = origin.x
+    let y = origin.y
+    let direction = 0
+
+    for i in 0..squares {
+        let size = fib[i] as f64
+        let samples = max(size as u64 * 10, 10)
+
+        // Add quarter arc
+        for j in 0..samples {
+            let angle = (j as f64 / samples as f64) * (PI / 2.0) + direction as f64 * (PI / 2.0)
+            points.push(Point2D {
+                x: x + size * cos(angle),
+                y: y + size * sin(angle)
+            })
+        }
+
+        // Move origin for next square
+        match direction % 4 {
+            0 { x = x + size }
+            1 { y = y + size }
+            2 { x = x - size }
+            3 { y = y - size }
+        }
+        direction = direction + 1
+    }
+
+    return points
+
+    docs {
+        Generate a Fibonacci spiral from connected quarter circles.
+        Each quarter circle has radius equal to a Fibonacci number.
+    }
+}
+
+pub fun bezier_point(curve: CubicBezier, t: f64) -> Point2D {
+    return curve.point_at(t)
+
+    docs {
+        Get a point on a cubic Bezier curve at parameter t.
+    }
+}
+
+pub fun path_length(path: Path2D, samples: u64) -> f64 {
+    let length = 0.0
+    let prev = None
+
+    for cmd in path.commands {
+        match cmd {
+            PathCommand::MoveTo { point } {
+                prev = Some(point)
+            }
+            PathCommand::LineTo { point } {
+                if let Some(p) = prev {
+                    length = length + p.distance_to(point)
+                }
+                prev = Some(point)
+            }
+            PathCommand::QuadTo { control, end } {
+                if let Some(p) = prev {
+                    let curve = QuadraticBezier { p0: p, p1: control, p2: end }
+                    // Approximate length
+                    for i in 0..samples {
+                        let t1 = i as f64 / samples as f64
+                        let t2 = (i + 1) as f64 / samples as f64
+                        length = length + curve.point_at(t1).distance_to(curve.point_at(t2))
+                    }
+                }
+                prev = Some(end)
+            }
+            PathCommand::CubicTo { control1, control2, end } {
+                if let Some(p) = prev {
+                    let curve = CubicBezier { p0: p, p1: control1, p2: control2, p3: end }
+                    length = length + curve.approximate_length(samples)
+                }
+                prev = Some(end)
+            }
+            PathCommand::Close {
+                // Length back to start handled elsewhere
+            }
+            _ {}
+        }
+    }
+
+    return length
+
+    docs {
+        Approximate the total length of a path.
+    }
+}
+
+docs {
+    Visual Arts Spirit - Geometry Module
+
+    Comprehensive 2D and 3D geometry primitives with transformations.
+
+    2D Primitives:
+    - Point2D, Vector2D: Foundational types
+    - Line2D, Ray2D, Segment2D: Linear elements
+    - Circle, Ellipse, Arc: Curved shapes
+    - Triangle, Rectangle, Polygon: Closed shapes
+    - QuadraticBezier, CubicBezier: Bezier curves
+    - Path2D: SVG-style compound paths
+
+    3D Primitives:
+    - Point3D, Vector3D: 3D foundation
+    - Line3D, Plane, Sphere: 3D elements
+
+    Transforms:
+    - Transform2D: Affine transformations (translate, rotate, scale, skew)
+    - Matrix3x3: Underlying matrix representation
+
+    Traits:
+    - Transformable: Apply transformations
+    - Drawable: Convert to renderable paths
+    - Bounded: Compute bounding boxes/circles
+    - Intersectable: Compute intersections
+
+    Constants:
+    - PI, TAU (2*PI)
+    - PHI (golden ratio)
+    - SQRT2, SQRT3
+
+    Special Functions:
+    - golden_spiral: Generate golden ratio spiral
+    - fibonacci_spiral: Generate Fibonacci spiral
+}

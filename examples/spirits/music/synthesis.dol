@@ -1,0 +1,912 @@
+// Music Spirit - Synthesis Module
+// Sound generation, oscillators, envelopes, and filters
+
+module music.synthesis @ 0.1.0
+
+use @univrs/physics.waves.{ Wave, interference, superposition }
+use super.{
+    SAMPLE_RATE_CD,
+    A4_FREQUENCY,
+    MIN_AUDIBLE_FREQ,
+    MAX_AUDIBLE_FREQ,
+    DB_REFERENCE
+}
+
+// ============================================================================
+// WAVEFORM TYPES
+// ============================================================================
+
+pub gen Waveform {
+    type: enum {
+        Sine,       // Pure tone, no harmonics
+        Square,     // Odd harmonics, hollow sound
+        Sawtooth,   // All harmonics, bright/buzzy
+        Triangle,   // Odd harmonics, softer than square
+        Noise       // White noise, all frequencies
+    }
+
+    docs {
+        Basic oscillator waveform shapes.
+
+        Sine: Pure tone with no harmonics. Sounds smooth and clear.
+        Square: Contains odd harmonics (1, 3, 5...). Hollow, clarinet-like.
+        Sawtooth: Contains all harmonics. Bright, brassy sound.
+        Triangle: Contains odd harmonics with faster rolloff. Softer than square.
+        Noise: Random signal containing all frequencies equally.
+    }
+}
+
+// ============================================================================
+// OSCILLATOR
+// ============================================================================
+
+pub gen Oscillator {
+    has waveform: Waveform
+    has frequency: f64   // Hz
+    has amplitude: f64   // 0.0 - 1.0
+    has phase: f64       // 0.0 - 2*PI radians
+
+    rule valid_frequency {
+        this.frequency >= 0.0 && this.frequency <= MAX_AUDIBLE_FREQ * 2.0
+    }
+
+    rule valid_amplitude {
+        this.amplitude >= 0.0 && this.amplitude <= 1.0
+    }
+
+    rule valid_phase {
+        this.phase >= 0.0 && this.phase < 2.0 * PI
+    }
+
+    fun with_frequency(freq: f64) -> Oscillator {
+        return Oscillator {
+            waveform: this.waveform,
+            frequency: freq,
+            amplitude: this.amplitude,
+            phase: this.phase
+        }
+    }
+
+    fun with_amplitude(amp: f64) -> Oscillator {
+        return Oscillator {
+            waveform: this.waveform,
+            frequency: this.frequency,
+            amplitude: clamp(amp, 0.0, 1.0),
+            phase: this.phase
+        }
+    }
+
+    fun detune(cents: f64) -> Oscillator {
+        // Detune by cents (100 cents = 1 semitone)
+        let ratio = pow(2.0, cents / 1200.0)
+        return this.with_frequency(this.frequency * ratio)
+    }
+
+    fun sample(t: f64) -> f64 {
+        let phase_t = 2.0 * PI * this.frequency * t + this.phase
+        return this.amplitude * match this.waveform {
+            Waveform::Sine { sin(phase_t) }
+            Waveform::Square { if sin(phase_t) >= 0.0 { 1.0 } else { -1.0 } }
+            Waveform::Sawtooth { 2.0 * (phase_t / (2.0 * PI) - floor(phase_t / (2.0 * PI) + 0.5)) }
+            Waveform::Triangle { 2.0 * abs(2.0 * (phase_t / (2.0 * PI) - floor(phase_t / (2.0 * PI) + 0.5))) - 1.0 }
+            Waveform::Noise { random() * 2.0 - 1.0 }
+        }
+    }
+
+    docs {
+        A basic audio oscillator for sound synthesis.
+
+        Parameters:
+        - waveform: The shape of the wave (sine, square, saw, triangle, noise)
+        - frequency: The pitch in Hz (e.g., 440 Hz for A4)
+        - amplitude: The volume from 0.0 (silent) to 1.0 (maximum)
+        - phase: Initial phase offset in radians
+
+        Example:
+            let osc = Oscillator {
+                waveform: Waveform::Sine,
+                frequency: 440.0,
+                amplitude: 0.8,
+                phase: 0.0
+            }
+    }
+}
+
+// ============================================================================
+// ENVELOPE (ADSR)
+// ============================================================================
+
+pub gen Envelope {
+    has attack: f64   // Time in seconds to reach peak
+    has decay: f64    // Time to fall to sustain level
+    has sustain: f64  // Sustain level (0.0 - 1.0)
+    has release: f64  // Time to fall to zero after note off
+
+    rule valid_times {
+        this.attack >= 0.0 &&
+        this.decay >= 0.0 &&
+        this.release >= 0.0
+    }
+
+    rule valid_sustain {
+        this.sustain >= 0.0 && this.sustain <= 1.0
+    }
+
+    fun sample(t: f64, note_on_duration: f64) -> f64 {
+        if t < 0.0 {
+            return 0.0
+        }
+
+        // Note-on phase
+        if t < note_on_duration {
+            if t < this.attack {
+                // Attack phase: ramp up to 1.0
+                return t / this.attack
+            } else if t < this.attack + this.decay {
+                // Decay phase: fall to sustain level
+                let decay_progress = (t - this.attack) / this.decay
+                return 1.0 - (1.0 - this.sustain) * decay_progress
+            } else {
+                // Sustain phase
+                return this.sustain
+            }
+        }
+
+        // Release phase (after note off)
+        let release_t = t - note_on_duration
+        if release_t < this.release {
+            let release_start = if note_on_duration < this.attack {
+                note_on_duration / this.attack
+            } else if note_on_duration < this.attack + this.decay {
+                let decay_progress = (note_on_duration - this.attack) / this.decay
+                1.0 - (1.0 - this.sustain) * decay_progress
+            } else {
+                this.sustain
+            }
+            return release_start * (1.0 - release_t / this.release)
+        }
+
+        return 0.0
+    }
+
+    fun total_time(note_duration: f64) -> f64 {
+        return note_duration + this.release
+    }
+
+    docs {
+        ADSR (Attack, Decay, Sustain, Release) envelope generator.
+
+        Shapes the amplitude of a sound over time:
+        - Attack: Time to reach maximum amplitude
+        - Decay: Time to fall to sustain level
+        - Sustain: Amplitude level while note is held (0.0-1.0)
+        - Release: Time to fade to silence after note release
+
+        Common presets:
+        - Pad: attack=0.5, decay=0.5, sustain=0.7, release=1.0
+        - Pluck: attack=0.001, decay=0.2, sustain=0.0, release=0.1
+        - Organ: attack=0.01, decay=0.0, sustain=1.0, release=0.01
+    }
+}
+
+pub gen ADSR is Envelope {
+    // Alias for Envelope for clarity
+    docs {
+        ADSR envelope - alias for Envelope type.
+    }
+}
+
+// ============================================================================
+// FILTER
+// ============================================================================
+
+pub gen FilterType {
+    type: enum {
+        LowPass,    // Allow frequencies below cutoff
+        HighPass,   // Allow frequencies above cutoff
+        BandPass,   // Allow frequencies around center
+        BandReject, // Reject frequencies around center (notch)
+        Allpass     // Change phase without affecting amplitude
+    }
+
+    docs {
+        Filter types for frequency shaping.
+    }
+}
+
+pub gen Filter {
+    has filter_type: FilterType
+    has cutoff: f64      // Cutoff frequency in Hz
+    has resonance: f64   // Q factor (0.1 - 20.0 typical)
+    has gain: f64        // Gain for shelving filters (dB)
+
+    // Internal state for IIR filter
+    has _x1: f64
+    has _x2: f64
+    has _y1: f64
+    has _y2: f64
+
+    rule valid_cutoff {
+        this.cutoff >= MIN_AUDIBLE_FREQ && this.cutoff <= MAX_AUDIBLE_FREQ
+    }
+
+    rule valid_resonance {
+        this.resonance >= 0.1 && this.resonance <= 30.0
+    }
+
+    fun with_cutoff(freq: f64) -> Filter {
+        return Filter {
+            filter_type: this.filter_type,
+            cutoff: clamp(freq, MIN_AUDIBLE_FREQ, MAX_AUDIBLE_FREQ),
+            resonance: this.resonance,
+            gain: this.gain,
+            _x1: 0.0, _x2: 0.0, _y1: 0.0, _y2: 0.0
+        }
+    }
+
+    fun with_resonance(q: f64) -> Filter {
+        return Filter {
+            filter_type: this.filter_type,
+            cutoff: this.cutoff,
+            resonance: clamp(q, 0.1, 30.0),
+            gain: this.gain,
+            _x1: 0.0, _x2: 0.0, _y1: 0.0, _y2: 0.0
+        }
+    }
+
+    fun reset() -> Filter {
+        return Filter {
+            filter_type: this.filter_type,
+            cutoff: this.cutoff,
+            resonance: this.resonance,
+            gain: this.gain,
+            _x1: 0.0, _x2: 0.0, _y1: 0.0, _y2: 0.0
+        }
+    }
+
+    docs {
+        Biquad filter for audio signal processing.
+
+        Parameters:
+        - filter_type: LowPass, HighPass, BandPass, BandReject, Allpass
+        - cutoff: Cutoff/center frequency in Hz
+        - resonance: Q factor (higher = sharper cutoff, more resonant)
+        - gain: Gain in dB (for shelving filters)
+
+        Example:
+            let lpf = Filter {
+                filter_type: FilterType::LowPass,
+                cutoff: 1000.0,
+                resonance: 1.0,
+                gain: 0.0,
+                _x1: 0.0, _x2: 0.0, _y1: 0.0, _y2: 0.0
+            }
+    }
+}
+
+// ============================================================================
+// AUDIO BUFFER
+// ============================================================================
+
+pub gen SampleFormat {
+    type: enum {
+        Float32,    // 32-bit float (-1.0 to 1.0)
+        Float64,    // 64-bit float (-1.0 to 1.0)
+        Int16,      // 16-bit signed integer
+        Int24,      // 24-bit signed integer
+        Int32       // 32-bit signed integer
+    }
+
+    docs {
+        Audio sample format types.
+    }
+}
+
+pub gen AudioBuffer {
+    has samples: Vec<f64>
+    has sample_rate: u32
+    has channels: u8
+
+    rule valid_sample_rate {
+        this.sample_rate >= 8000 && this.sample_rate <= 192000
+    }
+
+    rule valid_channels {
+        this.channels >= 1 && this.channels <= 8
+    }
+
+    fun duration() -> f64 {
+        return this.samples.length as f64 / (this.sample_rate as f64 * this.channels as f64)
+    }
+
+    fun frame_count() -> u64 {
+        return this.samples.length / this.channels as u64
+    }
+
+    fun get_sample(frame: u64, channel: u8) -> Option<f64> {
+        if channel >= this.channels || frame >= this.frame_count() {
+            return None
+        }
+        let index = frame * this.channels as u64 + channel as u64
+        return Some(this.samples[index])
+    }
+
+    fun set_sample(frame: u64, channel: u8, value: f64) -> AudioBuffer {
+        if channel >= this.channels || frame >= this.frame_count() {
+            return this
+        }
+        let index = frame * this.channels as u64 + channel as u64
+        let mut new_samples = this.samples.clone()
+        new_samples[index] = clamp(value, -1.0, 1.0)
+        return AudioBuffer {
+            samples: new_samples,
+            sample_rate: this.sample_rate,
+            channels: this.channels
+        }
+    }
+
+    fun peak() -> f64 {
+        return this.samples.iter().map(|s| abs(s)).max().unwrap_or(0.0)
+    }
+
+    fun rms() -> f64 {
+        let sum_sq = this.samples.iter().map(|s| s * s).sum()
+        return sqrt(sum_sq / this.samples.length as f64)
+    }
+
+    fun reverse() -> AudioBuffer {
+        // Reverse maintaining channel interleaving
+        let mut reversed = Vec::new()
+        let frames = this.frame_count()
+        for i in (0..frames).rev() {
+            for ch in 0..this.channels {
+                reversed.push(this.samples[i * this.channels as u64 + ch as u64])
+            }
+        }
+        return AudioBuffer {
+            samples: reversed,
+            sample_rate: this.sample_rate,
+            channels: this.channels
+        }
+    }
+
+    docs {
+        Buffer for storing audio samples.
+
+        Samples are stored as interleaved 64-bit floats in range [-1.0, 1.0].
+        For stereo audio, samples alternate: L, R, L, R, ...
+
+        Parameters:
+        - samples: Raw sample data (interleaved for multi-channel)
+        - sample_rate: Samples per second (e.g., 44100)
+        - channels: Number of audio channels (1=mono, 2=stereo)
+    }
+}
+
+// ============================================================================
+// LFO (Low Frequency Oscillator)
+// ============================================================================
+
+pub gen LFO {
+    has oscillator: Oscillator
+    has depth: f64       // Modulation depth (0.0 - 1.0)
+    has center: f64      // Center value being modulated
+
+    rule lfo_frequency {
+        // LFOs typically operate below 20 Hz
+        this.oscillator.frequency <= 100.0
+    }
+
+    rule valid_depth {
+        this.depth >= 0.0 && this.depth <= 1.0
+    }
+
+    fun sample(t: f64) -> f64 {
+        let mod_value = this.oscillator.sample(t)
+        return this.center + mod_value * this.depth * this.center
+    }
+
+    docs {
+        Low Frequency Oscillator for modulation effects.
+        Used for vibrato, tremolo, filter sweeps, etc.
+
+        The LFO modulates around a center value with given depth.
+        Output range: center * (1 - depth) to center * (1 + depth)
+    }
+}
+
+pub gen Modulator {
+    has source: LFO
+    has target: string   // Parameter being modulated
+
+    docs {
+        Connects an LFO to a synthesis parameter.
+    }
+}
+
+// ============================================================================
+// VOICE STATE
+// ============================================================================
+
+pub gen VoiceState {
+    type: enum {
+        Idle,       // Voice not playing
+        Attack,     // In attack phase
+        Decay,      // In decay phase
+        Sustain,    // Holding sustain
+        Release     // Releasing to silence
+    }
+
+    docs {
+        Current state of a synth voice in the ADSR envelope.
+    }
+}
+
+pub gen SynthVoice {
+    has oscillators: Vec<Oscillator>
+    has envelope: Envelope
+    has filter: Option<Filter>
+    has state: VoiceState
+    has note_start: f64
+    has note_end: Option<f64>
+    has velocity: f64
+
+    rule valid_velocity {
+        this.velocity >= 0.0 && this.velocity <= 1.0
+    }
+
+    fun note_on(time: f64, vel: f64) -> SynthVoice {
+        return SynthVoice {
+            oscillators: this.oscillators,
+            envelope: this.envelope,
+            filter: this.filter,
+            state: VoiceState::Attack,
+            note_start: time,
+            note_end: None,
+            velocity: clamp(vel, 0.0, 1.0)
+        }
+    }
+
+    fun note_off(time: f64) -> SynthVoice {
+        return SynthVoice {
+            oscillators: this.oscillators,
+            envelope: this.envelope,
+            filter: this.filter,
+            state: VoiceState::Release,
+            note_start: this.note_start,
+            note_end: Some(time),
+            velocity: this.velocity
+        }
+    }
+
+    fun is_active() -> bool {
+        return this.state != VoiceState::Idle
+    }
+
+    docs {
+        A complete synthesizer voice with oscillators, envelope, and filter.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Playable {
+    fun to_samples(duration: f64, sample_rate: u32) -> AudioBuffer
+
+    docs {
+        Types that can be rendered to audio samples.
+    }
+}
+
+pub trait Modulatable {
+    fun modulate(source: LFO, param: string) -> Self
+
+    docs {
+        Types that can have their parameters modulated by an LFO.
+    }
+}
+
+pub trait SignalProcessor {
+    fun process(input: AudioBuffer) -> AudioBuffer
+
+    docs {
+        Types that process audio signals (filters, effects, etc.)
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Playable for Oscillator {
+    fun to_samples(duration: f64, sample_rate: u32) -> AudioBuffer {
+        let num_samples = (duration * sample_rate as f64) as u64
+        let mut samples = Vec::new()
+        for i in 0..num_samples {
+            let t = i as f64 / sample_rate as f64
+            samples.push(this.sample(t))
+        }
+        return AudioBuffer {
+            samples: samples,
+            sample_rate: sample_rate,
+            channels: 1
+        }
+    }
+}
+
+impl Modulatable for Oscillator {
+    fun modulate(source: LFO, param: string) -> Oscillator {
+        match param {
+            "frequency" {
+                let mod_freq = source.sample(0.0)
+                return this.with_frequency(mod_freq)
+            }
+            "amplitude" {
+                let mod_amp = clamp(source.sample(0.0), 0.0, 1.0)
+                return this.with_amplitude(mod_amp)
+            }
+            _ { return this }
+        }
+    }
+}
+
+impl SignalProcessor for Filter {
+    fun process(input: AudioBuffer) -> AudioBuffer {
+        return apply_filter(input, this)
+    }
+}
+
+// ============================================================================
+// WAVEFORM GENERATION FUNCTIONS
+// ============================================================================
+
+pub fun sine_wave(frequency: f64, t: f64) -> f64 {
+    return sin(2.0 * PI * frequency * t)
+
+    docs {
+        Generate a single sine wave sample.
+
+        Parameters:
+        - frequency: Wave frequency in Hz
+        - t: Time in seconds
+
+        Returns: Sample value in range [-1.0, 1.0]
+    }
+}
+
+pub fun square_wave(frequency: f64, t: f64) -> f64 {
+    let phase = 2.0 * PI * frequency * t
+    return if sin(phase) >= 0.0 { 1.0 } else { -1.0 }
+
+    docs {
+        Generate a single square wave sample.
+        Contains only odd harmonics.
+    }
+}
+
+pub fun sawtooth_wave(frequency: f64, t: f64) -> f64 {
+    let phase = frequency * t
+    return 2.0 * (phase - floor(phase + 0.5))
+
+    docs {
+        Generate a single sawtooth wave sample.
+        Contains all harmonics.
+    }
+}
+
+pub fun triangle_wave(frequency: f64, t: f64) -> f64 {
+    let phase = frequency * t
+    return 2.0 * abs(2.0 * (phase - floor(phase + 0.5))) - 1.0
+
+    docs {
+        Generate a single triangle wave sample.
+        Contains only odd harmonics with faster rolloff than square.
+    }
+}
+
+pub fun white_noise() -> f64 {
+    return random() * 2.0 - 1.0
+
+    docs {
+        Generate a single white noise sample.
+        Random value uniformly distributed in [-1.0, 1.0].
+    }
+}
+
+pub fun pink_noise(state: Vec<f64>) -> (f64, Vec<f64>) {
+    // Voss-McCartney algorithm approximation
+    let mut new_state = state.clone()
+    let white = white_noise()
+
+    // Update octave bands
+    let mut sum = 0.0
+    for i in 0..new_state.length {
+        if random() < 1.0 / pow(2.0, i as f64) {
+            new_state[i] = white
+        }
+        sum = sum + new_state[i]
+    }
+
+    return (sum / new_state.length as f64, new_state)
+
+    docs {
+        Generate pink noise using Voss-McCartney algorithm.
+        Pink noise has equal energy per octave (1/f spectrum).
+
+        Returns: (sample, new_state) tuple for stateful generation.
+    }
+}
+
+// ============================================================================
+// AUDIO PROCESSING FUNCTIONS
+// ============================================================================
+
+pub fun generate_samples(osc: Oscillator, env: Envelope, duration: f64) -> AudioBuffer {
+    let sample_rate = SAMPLE_RATE_CD
+    let total_time = env.total_time(duration)
+    let num_samples = (total_time * sample_rate as f64) as u64
+    let mut samples = Vec::new()
+
+    for i in 0..num_samples {
+        let t = i as f64 / sample_rate as f64
+        let osc_sample = osc.sample(t)
+        let env_value = env.sample(t, duration)
+        samples.push(osc_sample * env_value)
+    }
+
+    return AudioBuffer {
+        samples: samples,
+        sample_rate: sample_rate,
+        channels: 1
+    }
+
+    docs {
+        Generate audio samples from an oscillator with envelope shaping.
+
+        Parameters:
+        - osc: Source oscillator
+        - env: ADSR envelope
+        - duration: Note-on duration in seconds
+
+        Returns: AudioBuffer with generated samples
+    }
+}
+
+pub fun apply_envelope(buffer: AudioBuffer, env: Envelope, duration: f64) -> AudioBuffer {
+    let mut new_samples = Vec::new()
+    let sample_rate = buffer.sample_rate
+
+    for i in 0..buffer.samples.length {
+        let t = i as f64 / sample_rate as f64
+        let env_value = env.sample(t, duration)
+        new_samples.push(buffer.samples[i] * env_value)
+    }
+
+    return AudioBuffer {
+        samples: new_samples,
+        sample_rate: buffer.sample_rate,
+        channels: buffer.channels
+    }
+
+    docs {
+        Apply an ADSR envelope to an existing audio buffer.
+    }
+}
+
+pub fun apply_filter(buffer: AudioBuffer, filter: Filter) -> AudioBuffer {
+    // Biquad filter implementation
+    let sample_rate = buffer.sample_rate as f64
+    let omega = 2.0 * PI * filter.cutoff / sample_rate
+    let sin_omega = sin(omega)
+    let cos_omega = cos(omega)
+    let alpha = sin_omega / (2.0 * filter.resonance)
+
+    // Calculate coefficients based on filter type
+    let (b0, b1, b2, a0, a1, a2) = match filter.filter_type {
+        FilterType::LowPass {
+            let b0 = (1.0 - cos_omega) / 2.0
+            let b1 = 1.0 - cos_omega
+            let b2 = (1.0 - cos_omega) / 2.0
+            let a0 = 1.0 + alpha
+            let a1 = -2.0 * cos_omega
+            let a2 = 1.0 - alpha
+            (b0, b1, b2, a0, a1, a2)
+        }
+        FilterType::HighPass {
+            let b0 = (1.0 + cos_omega) / 2.0
+            let b1 = -(1.0 + cos_omega)
+            let b2 = (1.0 + cos_omega) / 2.0
+            let a0 = 1.0 + alpha
+            let a1 = -2.0 * cos_omega
+            let a2 = 1.0 - alpha
+            (b0, b1, b2, a0, a1, a2)
+        }
+        FilterType::BandPass {
+            let b0 = alpha
+            let b1 = 0.0
+            let b2 = -alpha
+            let a0 = 1.0 + alpha
+            let a1 = -2.0 * cos_omega
+            let a2 = 1.0 - alpha
+            (b0, b1, b2, a0, a1, a2)
+        }
+        FilterType::BandReject {
+            let b0 = 1.0
+            let b1 = -2.0 * cos_omega
+            let b2 = 1.0
+            let a0 = 1.0 + alpha
+            let a1 = -2.0 * cos_omega
+            let a2 = 1.0 - alpha
+            (b0, b1, b2, a0, a1, a2)
+        }
+        FilterType::Allpass {
+            let b0 = 1.0 - alpha
+            let b1 = -2.0 * cos_omega
+            let b2 = 1.0 + alpha
+            let a0 = 1.0 + alpha
+            let a1 = -2.0 * cos_omega
+            let a2 = 1.0 - alpha
+            (b0, b1, b2, a0, a1, a2)
+        }
+    }
+
+    // Normalize coefficients
+    let b0_n = b0 / a0
+    let b1_n = b1 / a0
+    let b2_n = b2 / a0
+    let a1_n = a1 / a0
+    let a2_n = a2 / a0
+
+    // Apply filter
+    let mut new_samples = Vec::new()
+    let mut x1 = 0.0
+    let mut x2 = 0.0
+    let mut y1 = 0.0
+    let mut y2 = 0.0
+
+    for sample in buffer.samples {
+        let y = b0_n * sample + b1_n * x1 + b2_n * x2 - a1_n * y1 - a2_n * y2
+        x2 = x1
+        x1 = sample
+        y2 = y1
+        y1 = y
+        new_samples.push(y)
+    }
+
+    return AudioBuffer {
+        samples: new_samples,
+        sample_rate: buffer.sample_rate,
+        channels: buffer.channels
+    }
+
+    docs {
+        Apply a biquad filter to an audio buffer.
+        Implements standard IIR biquad filter design.
+    }
+}
+
+pub fun mix_buffers(a: AudioBuffer, b: AudioBuffer) -> AudioBuffer {
+    if a.sample_rate != b.sample_rate || a.channels != b.channels {
+        // Return first buffer if formats don't match
+        return a
+    }
+
+    let max_len = max(a.samples.length, b.samples.length)
+    let mut mixed = Vec::new()
+
+    for i in 0..max_len {
+        let sample_a = if i < a.samples.length { a.samples[i] } else { 0.0 }
+        let sample_b = if i < b.samples.length { b.samples[i] } else { 0.0 }
+        mixed.push(clamp(sample_a + sample_b, -1.0, 1.0))
+    }
+
+    return AudioBuffer {
+        samples: mixed,
+        sample_rate: a.sample_rate,
+        channels: a.channels
+    }
+
+    docs {
+        Mix two audio buffers together by summing samples.
+        Output is clamped to prevent clipping.
+    }
+}
+
+pub fun normalize_buffer(buffer: AudioBuffer) -> AudioBuffer {
+    let peak = buffer.peak()
+    if peak == 0.0 {
+        return buffer
+    }
+
+    let gain = 1.0 / peak
+    let normalized = buffer.samples.iter().map(|s| s * gain).collect()
+
+    return AudioBuffer {
+        samples: normalized,
+        sample_rate: buffer.sample_rate,
+        channels: buffer.channels
+    }
+
+    docs {
+        Normalize audio buffer so peak amplitude is 1.0.
+    }
+}
+
+pub fun amplitude_to_db(amplitude: f64) -> f64 {
+    if amplitude <= 0.0 {
+        return -infinity
+    }
+    return 20.0 * log10(amplitude / DB_REFERENCE)
+
+    docs {
+        Convert linear amplitude to decibels (dBFS).
+    }
+}
+
+pub fun db_to_amplitude(db: f64) -> f64 {
+    return DB_REFERENCE * pow(10.0, db / 20.0)
+
+    docs {
+        Convert decibels (dBFS) to linear amplitude.
+    }
+}
+
+// ============================================================================
+// NYQUIST RULE
+// ============================================================================
+
+rule Nyquist {
+    // Fundamental theorem of digital audio
+    // sample_rate must be at least 2x the maximum frequency
+    forall buffer: AudioBuffer, freq: f64 {
+        buffer.sample_rate as f64 >= 2.0 * freq
+    }
+
+    docs {
+        Nyquist-Shannon sampling theorem.
+        To accurately represent a frequency, the sample rate must be
+        at least twice that frequency.
+
+        For CD audio (44.1kHz), max frequency is 22.05kHz.
+        Human hearing range is typically 20Hz-20kHz.
+    }
+}
+
+docs {
+    Music Spirit - Synthesis Module
+
+    Sound synthesis primitives and audio processing functions.
+
+    Core Types:
+    - Oscillator: Generates waveforms (sine, square, saw, triangle, noise)
+    - Envelope: ADSR amplitude shaping
+    - Filter: Frequency-domain processing (low-pass, high-pass, band-pass)
+    - AudioBuffer: Container for audio samples
+
+    Signal Flow:
+        Oscillator -> Envelope -> Filter -> Output
+
+    Key Functions:
+    - sine_wave, square_wave, etc.: Generate individual samples
+    - generate_samples: Render oscillator with envelope
+    - apply_filter: Process audio through biquad filter
+    - mix_buffers: Combine multiple audio streams
+    - normalize_buffer: Adjust peak level
+
+    Reuses physics.waves for underlying wave mathematics and
+    interference calculations.
+
+    Example workflow:
+        // Create oscillator and envelope
+        let osc = Oscillator { waveform: Waveform::Sawtooth, frequency: 220.0, amplitude: 0.8, phase: 0.0 }
+        let env = Envelope { attack: 0.1, decay: 0.2, sustain: 0.6, release: 0.3 }
+
+        // Generate samples
+        let buffer = generate_samples(osc, env, 1.0)
+
+        // Apply low-pass filter
+        let lpf = Filter { filter_type: FilterType::LowPass, cutoff: 800.0, resonance: 2.0, ... }
+        let filtered = apply_filter(buffer, lpf)
+}

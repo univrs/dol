@@ -1,0 +1,322 @@
+// Animation Spirit - Library Entry Point
+// Re-exports all public items from submodules
+
+module animation @ 0.1.0
+
+// Import physics for force-based animation
+pub use @univrs/physics.mechanics.{ Vector2 as PhysVec2, Force as PhysForce }
+
+// Import visual geometry for spatial types
+pub use @univrs/visual.geometry.{ Point2D, Vector2D, CubicBezier }
+pub use @univrs/visual.color.{ RGB, RGBA }
+
+// ============================================================================
+// TIMING CONSTANTS
+// ============================================================================
+
+// Standard frame rates
+pub const FPS_24: f64 = 24.0        // Film standard
+pub const FPS_30: f64 = 30.0        // NTSC video
+pub const FPS_60: f64 = 60.0        // High-quality animation
+pub const FPS_120: f64 = 120.0      // Ultra-smooth animation
+
+// Frame duration at common frame rates (in seconds)
+pub const FRAME_DURATION_24: f64 = 0.041666666666666664   // 1/24
+pub const FRAME_DURATION_30: f64 = 0.03333333333333333    // 1/30
+pub const FRAME_DURATION_60: f64 = 0.016666666666666666   // 1/60
+pub const FRAME_DURATION_120: f64 = 0.008333333333333333  // 1/120
+
+// Common animation durations (in seconds)
+pub const DURATION_INSTANT: f64 = 0.0
+pub const DURATION_FAST: f64 = 0.15
+pub const DURATION_NORMAL: f64 = 0.3
+pub const DURATION_SLOW: f64 = 0.5
+pub const DURATION_VERY_SLOW: f64 = 1.0
+
+// Easing control point presets for cubic bezier
+pub const EASE_LINEAR_P1: Point2D = Point2D { x: 0.0, y: 0.0 }
+pub const EASE_LINEAR_P2: Point2D = Point2D { x: 1.0, y: 1.0 }
+
+pub const EASE_IN_P1: Point2D = Point2D { x: 0.42, y: 0.0 }
+pub const EASE_IN_P2: Point2D = Point2D { x: 1.0, y: 1.0 }
+
+pub const EASE_OUT_P1: Point2D = Point2D { x: 0.0, y: 0.0 }
+pub const EASE_OUT_P2: Point2D = Point2D { x: 0.58, y: 1.0 }
+
+pub const EASE_IN_OUT_P1: Point2D = Point2D { x: 0.42, y: 0.0 }
+pub const EASE_IN_OUT_P2: Point2D = Point2D { x: 0.58, y: 1.0 }
+
+// Physics constants for particle systems
+pub const DEFAULT_GRAVITY: f64 = 9.81          // Earth gravity in m/s^2
+pub const DEFAULT_DRAG: f64 = 0.01             // Air drag coefficient
+pub const DEFAULT_PARTICLE_MASS: f64 = 1.0     // Default particle mass
+
+// ============================================================================
+// KEYFRAMES MODULE EXPORTS
+// ============================================================================
+
+pub use keyframes.{
+    // Core animation types
+    Keyframe,
+    Track,
+    Animation,
+    AnimationState,
+
+    // Easing function enum
+    EasingFn,
+
+    // Traits
+    Interpolatable,
+    Animatable,
+
+    // Easing functions
+    ease_linear,
+    ease_in_quad,
+    ease_out_quad,
+    ease_in_out_quad,
+    ease_in_cubic,
+    ease_out_cubic,
+    ease_in_out_cubic,
+    ease_in_quart,
+    ease_out_quart,
+    ease_in_out_quart,
+    ease_in_quint,
+    ease_out_quint,
+    ease_in_out_quint,
+    ease_in_sine,
+    ease_out_sine,
+    ease_in_out_sine,
+    ease_in_expo,
+    ease_out_expo,
+    ease_in_out_expo,
+    ease_in_circ,
+    ease_out_circ,
+    ease_in_out_circ,
+    ease_in_back,
+    ease_out_back,
+    ease_in_out_back,
+    ease_in_elastic,
+    ease_out_elastic,
+    ease_in_out_elastic,
+    ease_in_bounce,
+    ease_out_bounce,
+    ease_in_out_bounce,
+
+    // Track evaluation
+    evaluate_track,
+    evaluate_animation,
+
+    // Bezier easing
+    bezier_easing,
+    cubic_bezier_easing
+}
+
+// ============================================================================
+// PARTICLES MODULE EXPORTS
+// ============================================================================
+
+pub use particles.{
+    // Core particle types
+    Particle,
+    ParticleState,
+    Emitter,
+    EmitterShape,
+    ParticleSystem,
+    Force,
+    ForceField,
+
+    // Traits
+    Emittable,
+    Updateable,
+
+    // Particle functions
+    create_particle,
+    update_particle,
+    update_particles,
+    is_particle_alive,
+
+    // Emitter functions
+    spawn_single,
+    spawn_burst,
+    spawn_continuous,
+
+    // Force functions
+    apply_force,
+    apply_gravity,
+    apply_wind,
+    apply_drag,
+    apply_attraction,
+    apply_repulsion,
+    apply_turbulence,
+
+    // System functions
+    update_system,
+    cull_dead_particles,
+    get_particle_count
+}
+
+// ============================================================================
+// TIMELINE MODULE EXPORTS
+// ============================================================================
+
+pub use timeline.{
+    // Core timeline types
+    Timeline,
+    Clip,
+    Sequence,
+    Cue,
+    CueAction,
+    Layer,
+
+    // Traits
+    Schedulable,
+    Composable,
+    Playable,
+
+    // Clip operations
+    create_clip,
+    trim_clip,
+    split_clip,
+    time_stretch_clip,
+    reverse_clip,
+
+    // Sequence operations
+    concatenate,
+    parallel_compose,
+    sequential_compose,
+    stagger,
+
+    // Timeline operations
+    create_timeline,
+    add_clip,
+    remove_clip,
+    get_clips_at_time,
+    get_timeline_duration,
+
+    // Cue operations
+    add_cue,
+    remove_cue,
+    get_cues_in_range,
+
+    // Playback
+    seek,
+    get_state_at_time
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+pub fun frames_to_seconds(frames: u64, fps: f64) -> f64 {
+    return frames as f64 / fps
+
+    docs {
+        Convert frame count to seconds at a given frame rate.
+
+        Parameters:
+        - frames: Number of frames
+        - fps: Frames per second
+
+        Returns: Duration in seconds
+    }
+}
+
+pub fun seconds_to_frames(seconds: f64, fps: f64) -> u64 {
+    return (seconds * fps).round() as u64
+
+    docs {
+        Convert seconds to frame count at a given frame rate.
+
+        Parameters:
+        - seconds: Duration in seconds
+        - fps: Frames per second
+
+        Returns: Number of frames (rounded)
+    }
+}
+
+pub fun clamp_time(t: f64, duration: f64) -> f64 {
+    if t < 0.0 {
+        return 0.0
+    }
+    if t > duration {
+        return duration
+    }
+    return t
+
+    docs {
+        Clamp a time value to valid range [0, duration].
+    }
+}
+
+pub fun loop_time(t: f64, duration: f64) -> f64 {
+    if duration <= 0.0 {
+        return 0.0
+    }
+    let result = t % duration
+    if result < 0.0 {
+        return result + duration
+    }
+    return result
+
+    docs {
+        Loop a time value within [0, duration].
+        Handles negative time values.
+    }
+}
+
+pub fun ping_pong_time(t: f64, duration: f64) -> f64 {
+    if duration <= 0.0 {
+        return 0.0
+    }
+    let cycle = 2.0 * duration
+    let looped = loop_time(t, cycle)
+    if looped > duration {
+        return cycle - looped
+    }
+    return looped
+
+    docs {
+        Ping-pong time within [0, duration].
+        Time oscillates forward and backward.
+    }
+}
+
+pub fun normalized_time(t: f64, start: f64, end: f64) -> f64 {
+    let duration = end - start
+    if duration <= 0.0 {
+        return 0.0
+    }
+    return (t - start) / duration
+
+    docs {
+        Normalize time to [0, 1] range within a time span.
+    }
+}
+
+docs {
+    Animation Spirit - Library Entry Point
+
+    This module re-exports all public items from the animation
+    submodules, providing a unified interface for:
+
+    - **Keyframes**: Keyframe animation with easing functions
+    - **Particles**: Particle systems with emitters and forces
+    - **Timeline**: Animation sequencing and composition
+
+    The animation spirit builds on physics.mechanics for realistic
+    force-based animation and visual.geometry for spatial types.
+
+    Module organization:
+        animation/
+        |-- lib.dol      (this file - exports and timing constants)
+        |-- keyframes.dol (keyframe animation and easing)
+        |-- particles.dol (particle systems)
+        |-- timeline.dol  (sequencing and composition)
+
+    Timing Constants:
+        - FPS_24, FPS_30, FPS_60, FPS_120: Standard frame rates
+        - FRAME_DURATION_*: Duration of one frame at each rate
+        - DURATION_*: Common animation duration presets
+        - EASE_*_P1, EASE_*_P2: Cubic bezier control points for standard easings
+}

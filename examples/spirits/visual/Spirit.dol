@@ -1,0 +1,65 @@
+// Visual Arts Spirit Package - Part of Spirits Jam 2
+// A comprehensive visual arts toolkit for DOL
+
+spirit Visual {
+    has name: "visual"
+    has version: "0.1.0"
+    has authors: ["VUDO Team <team@univrs.io>"]
+    has license: "MIT"
+
+    has lib: "lib.dol"
+
+    // Dependencies on scientific spirits
+    has dependencies: [
+        "@univrs/physics @ >=0.1.0",
+        "@univrs/chemistry @ >=0.1.0"
+    ]
+
+    has keywords: [
+        "art",
+        "graphics",
+        "color",
+        "geometry",
+        "fractals",
+        "patterns",
+        "generative"
+    ]
+
+    has categories: [
+        "graphics",
+        "multimedia",
+        "creative-coding"
+    ]
+
+    docs {
+        Visual Arts Spirit - A comprehensive visual arts toolkit for DOL.
+
+        This Spirit provides primitives and algorithms for:
+        - Color spaces (RGB, HSL, HSV, CMYK, LAB) and color theory
+        - 2D/3D geometry with transformations
+        - Fractal mathematics (Mandelbrot, Julia, L-systems)
+        - Pattern generation (noise, tessellations, tilings)
+
+        Built on physics waves for interference patterns and chemistry
+        for color mixing models.
+
+        Quick start:
+            use @univrs/visual.{ RGB, Point2D, Mandelbrot }
+            use @univrs/visual.color.{ rgb_to_hsl, complementary }
+            use @univrs/visual.geometry.{ golden_spiral }
+            use @univrs/visual.fractal.{ mandelbrot_iterate }
+            use @univrs/visual.pattern.{ perlin_noise }
+
+        Examples:
+            // Create a color and find its complement
+            let red = RGB { r: 255, g: 0, b: 0 }
+            let cyan = red.complement()
+
+            // Generate a golden spiral
+            let spiral = golden_spiral(origin, 10, 5.0)
+
+            // Sample Mandelbrot set
+            let z = Complex { re: -0.5, im: 0.5 }
+            let iterations = mandelbrot_iterate(z, 100)
+    }
+}

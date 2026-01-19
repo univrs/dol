@@ -1,0 +1,843 @@
+// Generative Art Spirit - L-Systems Module
+// Lindenmayer systems for organic growth, fractals, and procedural shapes
+
+module generative.lsystems @ 0.1.0
+
+use @univrs/visual.geometry.{ Point2D, Vector2D, Path2D, Polygon }
+use @univrs/visual.color.{ RGB }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const PI: f64 = 3.14159265358979323846
+pub const TAU: f64 = 6.28318530717958647692
+pub const DEG_TO_RAD: f64 = 0.01745329251994329577  // PI / 180
+
+// Default turtle commands
+pub const CMD_FORWARD: char = 'F'      // Move forward
+pub const CMD_FORWARD_NO_DRAW: char = 'f'  // Move forward without drawing
+pub const CMD_TURN_LEFT: char = '+'    // Turn left by angle
+pub const CMD_TURN_RIGHT: char = '-'   // Turn right by angle
+pub const CMD_PUSH: char = '['         // Push state onto stack
+pub const CMD_POP: char = ']'          // Pop state from stack
+pub const CMD_REVERSE: char = '|'      // Turn around (180 degrees)
+
+// ============================================================================
+// PRODUCTION RULE
+// ============================================================================
+
+pub gen ProductionRule {
+    has predecessor: char           // Symbol to replace
+    has successor: string           // Replacement string
+
+    rule valid_predecessor {
+        this.predecessor != ' '
+    }
+
+    rule non_empty_successor {
+        this.successor.length > 0
+    }
+
+    fun matches(symbol: char) -> bool {
+        return this.predecessor == symbol
+    }
+
+    docs {
+        A deterministic production rule for L-systems.
+        Replaces a single predecessor symbol with a successor string.
+    }
+}
+
+pub gen StochasticRule {
+    has predecessor: char           // Symbol to replace
+    has successors: Vec<string>     // Possible replacements
+    has probabilities: Vec<f64>     // Probability for each replacement
+
+    rule matching_lengths {
+        this.successors.length == this.probabilities.length
+    }
+
+    rule probabilities_sum_to_one {
+        let sum = this.probabilities.sum()
+        abs(sum - 1.0) < 0.0001
+    }
+
+    fun select(rng: &mut Random) -> string {
+        let r = rng.next_f64()
+        let cumulative = 0.0
+        for i in 0..this.successors.length {
+            cumulative = cumulative + this.probabilities[i]
+            if r < cumulative {
+                return this.successors[i].clone()
+            }
+        }
+        return this.successors[this.successors.length - 1].clone()
+    }
+
+    docs {
+        A stochastic production rule with multiple possible successors.
+        Each successor has an associated probability.
+    }
+}
+
+pub gen ContextRule {
+    has left_context: Option<char>   // Required left neighbor (None = any)
+    has predecessor: char            // Symbol to replace
+    has right_context: Option<char>  // Required right neighbor (None = any)
+    has successor: string            // Replacement string
+
+    fun matches(left: Option<char>, symbol: char, right: Option<char>) -> bool {
+        if symbol != this.predecessor {
+            return false
+        }
+
+        if let Some(required_left) = this.left_context {
+            if let Some(actual_left) = left {
+                if actual_left != required_left {
+                    return false
+                }
+            } else {
+                return false
+            }
+        }
+
+        if let Some(required_right) = this.right_context {
+            if let Some(actual_right) = right {
+                if actual_right != required_right {
+                    return false
+                }
+            } else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    docs {
+        A context-sensitive production rule.
+        Only applies when the predecessor has specific neighbors.
+    }
+}
+
+// ============================================================================
+// L-SYSTEM
+// ============================================================================
+
+pub gen LSystem {
+    has axiom: string                   // Initial string
+    has rules: Vec<ProductionRule>      // Production rules
+    has angle: f64                      // Default turn angle in degrees
+    has name: string                    // Optional name
+
+    rule non_empty_axiom {
+        this.axiom.length > 0
+    }
+
+    fun find_rule(symbol: char) -> Option<ProductionRule> {
+        for rule in this.rules {
+            if rule.matches(symbol) {
+                return Some(rule)
+            }
+        }
+        return None
+    }
+
+    fun iterate(input: string) -> string {
+        return apply_rules(this, input)
+    }
+
+    fun grow(iterations: u32) -> string {
+        let result = this.axiom.clone()
+        for _ in 0..iterations {
+            result = this.iterate(result)
+        }
+        return result
+    }
+
+    docs {
+        A Lindenmayer system (L-system) for procedural generation.
+
+        L-systems use string rewriting to generate complex structures
+        from simple rules. Common applications:
+        - Plant and tree growth
+        - Fractals (Koch curve, Sierpinski triangle)
+        - Space-filling curves (Hilbert, Peano)
+
+        Symbols:
+        - F: Move forward and draw
+        - f: Move forward without drawing
+        - +: Turn left by angle
+        - -: Turn right by angle
+        - [: Push state (position + direction)
+        - ]: Pop state
+        - |: Turn around (180 degrees)
+    }
+}
+
+pub gen LSystemResult {
+    has final_string: string       // Resulting string after iterations
+    has iterations: u32            // Number of iterations applied
+    has length: u64                // Final string length
+
+    docs {
+        Result of L-system string generation.
+    }
+}
+
+// ============================================================================
+// TURTLE STATE
+// ============================================================================
+
+pub gen TurtleState {
+    has position: Point2D          // Current position
+    has angle: f64                 // Current heading in radians
+    has pen_down: bool             // Whether drawing
+
+    fun forward(distance: f64) -> (TurtleState, Option<(Point2D, Point2D)>) {
+        let dx = cos(this.angle) * distance
+        let dy = sin(this.angle) * distance
+        let new_pos = Point2D {
+            x: this.position.x + dx,
+            y: this.position.y + dy
+        }
+
+        let line = if this.pen_down {
+            Some((this.position, new_pos))
+        } else {
+            None
+        }
+
+        let new_state = TurtleState {
+            position: new_pos,
+            angle: this.angle,
+            pen_down: this.pen_down
+        }
+
+        return (new_state, line)
+    }
+
+    fun turn_left(degrees: f64) -> TurtleState {
+        return TurtleState {
+            position: this.position,
+            angle: this.angle + degrees * DEG_TO_RAD,
+            pen_down: this.pen_down
+        }
+    }
+
+    fun turn_right(degrees: f64) -> TurtleState {
+        return TurtleState {
+            position: this.position,
+            angle: this.angle - degrees * DEG_TO_RAD,
+            pen_down: this.pen_down
+        }
+    }
+
+    fun reverse() -> TurtleState {
+        return TurtleState {
+            position: this.position,
+            angle: this.angle + PI,
+            pen_down: this.pen_down
+        }
+    }
+
+    fun pen_up() -> TurtleState {
+        return TurtleState {
+            position: this.position,
+            angle: this.angle,
+            pen_down: false
+        }
+    }
+
+    fun pen_down() -> TurtleState {
+        return TurtleState {
+            position: this.position,
+            angle: this.angle,
+            pen_down: true
+        }
+    }
+
+    docs {
+        Turtle graphics state for interpreting L-system strings.
+        The turtle has a position, heading angle, and pen state.
+    }
+}
+
+pub gen TurtleGraphics {
+    has states: Vec<TurtleState>    // State stack for push/pop
+    has line_length: f64            // Default step size
+    has lines: Vec<(Point2D, Point2D)>  // Generated line segments
+
+    fun current_state() -> TurtleState {
+        if this.states.length > 0 {
+            return this.states[this.states.length - 1].clone()
+        }
+        return TurtleState {
+            position: Point2D { x: 0.0, y: 0.0 },
+            angle: PI / 2.0,  // Pointing up
+            pen_down: true
+        }
+    }
+
+    fun push_state(state: TurtleState) -> TurtleGraphics {
+        let mut states = this.states.clone()
+        states.push(state)
+        return TurtleGraphics {
+            states: states,
+            line_length: this.line_length,
+            lines: this.lines.clone()
+        }
+    }
+
+    fun pop_state() -> (TurtleGraphics, TurtleState) {
+        let mut states = this.states.clone()
+        let state = states.pop().unwrap_or(TurtleState {
+            position: Point2D { x: 0.0, y: 0.0 },
+            angle: PI / 2.0,
+            pen_down: true
+        })
+        return (TurtleGraphics {
+            states: states,
+            line_length: this.line_length,
+            lines: this.lines.clone()
+        }, state)
+    }
+
+    fun add_line(line: (Point2D, Point2D)) -> TurtleGraphics {
+        let mut lines = this.lines.clone()
+        lines.push(line)
+        return TurtleGraphics {
+            states: this.states.clone(),
+            line_length: this.line_length,
+            lines: lines
+        }
+    }
+
+    docs {
+        Turtle graphics interpreter state.
+        Maintains a stack of states for branching structures.
+    }
+}
+
+pub gen TurtleConfig {
+    has start_position: Point2D     // Starting position
+    has start_angle: f64            // Starting angle in degrees
+    has line_length: f64            // Step length
+    has angle_delta: f64            // Turn angle in degrees
+    has length_scale: f64           // Length multiplier for each iteration
+
+    docs {
+        Configuration for turtle graphics interpretation.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Growable {
+    fun grow(iterations: u32) -> string
+
+    docs {
+        Types that can grow through iterative rewriting.
+    }
+}
+
+pub trait Renderable {
+    fun render(config: TurtleConfig) -> Path2D
+
+    docs {
+        Types that can be rendered to a path using turtle graphics.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Growable for LSystem {
+    fun grow(iterations: u32) -> string {
+        let result = this.axiom.clone()
+        for _ in 0..iterations {
+            result = apply_rules(this, result)
+        }
+        return result
+    }
+}
+
+impl Renderable for LSystem {
+    fun render(config: TurtleConfig) -> Path2D {
+        let grown = this.grow(5)
+        let turtle = TurtleGraphics {
+            states: vec![TurtleState {
+                position: config.start_position,
+                angle: config.start_angle * DEG_TO_RAD,
+                pen_down: true
+            }],
+            line_length: config.line_length,
+            lines: vec![]
+        }
+        let result = turtle_interpret(grown, config)
+        return lines_to_path(result.lines)
+    }
+}
+
+// ============================================================================
+// CORE FUNCTIONS
+// ============================================================================
+
+pub fun apply_rules(sys: LSystem, input: string) -> string {
+    let mut result = ""
+    for char in input.chars() {
+        match sys.find_rule(char) {
+            Some(rule) { result = result + rule.successor }
+            None { result = result + char.to_string() }
+        }
+    }
+    return result
+
+    docs {
+        Apply deterministic L-system rules to an input string.
+        Characters without matching rules pass through unchanged.
+    }
+}
+
+pub fun apply_rules_stochastic(
+    rules: Vec<StochasticRule>,
+    input: string,
+    rng: &mut Random
+) -> string {
+    let mut result = ""
+    for char in input.chars() {
+        let mut found = false
+        for rule in rules {
+            if rule.predecessor == char {
+                result = result + rule.select(rng)
+                found = true
+                break
+            }
+        }
+        if !found {
+            result = result + char.to_string()
+        }
+    }
+    return result
+
+    docs {
+        Apply stochastic L-system rules with random selection.
+        Uses probability distribution to select successors.
+    }
+}
+
+pub fun apply_rules_context(
+    rules: Vec<ContextRule>,
+    input: string
+) -> string {
+    let chars = input.chars().collect::<Vec<char>>()
+    let mut result = ""
+
+    for i in 0..chars.length {
+        let left = if i > 0 { Some(chars[i - 1]) } else { None }
+        let right = if i < chars.length - 1 { Some(chars[i + 1]) } else { None }
+
+        let mut found = false
+        for rule in rules {
+            if rule.matches(left, chars[i], right) {
+                result = result + rule.successor
+                found = true
+                break
+            }
+        }
+        if !found {
+            result = result + chars[i].to_string()
+        }
+    }
+    return result
+
+    docs {
+        Apply context-sensitive L-system rules.
+        Rules only match when predecessors have specific neighbors.
+    }
+}
+
+pub fun turtle_interpret(commands: string, config: TurtleConfig) -> TurtleGraphics {
+    let mut state = TurtleState {
+        position: config.start_position,
+        angle: config.start_angle * DEG_TO_RAD,
+        pen_down: true
+    }
+    let mut stack: Vec<TurtleState> = vec![]
+    let mut lines: Vec<(Point2D, Point2D)> = vec![]
+
+    for char in commands.chars() {
+        match char {
+            'F' | 'G' {
+                // Move forward and draw
+                let (new_state, line) = state.forward(config.line_length)
+                if let Some(l) = line {
+                    lines.push(l)
+                }
+                state = new_state
+            }
+            'f' | 'g' {
+                // Move forward without drawing
+                let old_pen = state.pen_down
+                state = state.pen_up()
+                let (new_state, _) = state.forward(config.line_length)
+                state = TurtleState {
+                    position: new_state.position,
+                    angle: new_state.angle,
+                    pen_down: old_pen
+                }
+            }
+            '+' {
+                // Turn left
+                state = state.turn_left(config.angle_delta)
+            }
+            '-' {
+                // Turn right
+                state = state.turn_right(config.angle_delta)
+            }
+            '[' {
+                // Push state onto stack
+                stack.push(state.clone())
+            }
+            ']' {
+                // Pop state from stack
+                if stack.length > 0 {
+                    state = stack.pop().unwrap()
+                }
+            }
+            '|' {
+                // Turn around
+                state = state.reverse()
+            }
+            _ {
+                // Unknown command - ignore
+            }
+        }
+    }
+
+    return TurtleGraphics {
+        states: stack,
+        line_length: config.line_length,
+        lines: lines
+    }
+
+    docs {
+        Interpret an L-system string using turtle graphics.
+        Returns all generated line segments.
+    }
+}
+
+pub fun turtle_step(
+    state: TurtleState,
+    command: char,
+    config: TurtleConfig
+) -> (TurtleState, Option<(Point2D, Point2D)>) {
+    match command {
+        'F' | 'G' {
+            return state.forward(config.line_length)
+        }
+        'f' | 'g' {
+            let temp = state.pen_up()
+            let (new_state, _) = temp.forward(config.line_length)
+            return (TurtleState {
+                position: new_state.position,
+                angle: new_state.angle,
+                pen_down: state.pen_down
+            }, None)
+        }
+        '+' {
+            return (state.turn_left(config.angle_delta), None)
+        }
+        '-' {
+            return (state.turn_right(config.angle_delta), None)
+        }
+        '|' {
+            return (state.reverse(), None)
+        }
+        _ {
+            return (state, None)
+        }
+    }
+
+    docs {
+        Execute a single turtle command.
+        Returns new state and optional line segment.
+    }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+fun lines_to_path(lines: Vec<(Point2D, Point2D)>) -> Path2D {
+    let mut points = vec![]
+    for (start, end) in lines {
+        if points.length == 0 || points[points.length - 1] != start {
+            points.push(start)
+        }
+        points.push(end)
+    }
+    return Path2D { points: points, closed: false }
+}
+
+fun abs(x: f64) -> f64 {
+    if x < 0.0 { -x } else { x }
+}
+
+fun cos(x: f64) -> f64 {
+    // Built-in
+    __builtin_cos(x)
+}
+
+fun sin(x: f64) -> f64 {
+    // Built-in
+    __builtin_sin(x)
+}
+
+// ============================================================================
+// PRESET L-SYSTEMS
+// ============================================================================
+
+pub fun tree_lsystem(branching_angle: f64) -> LSystem {
+    return LSystem {
+        axiom: "X",
+        rules: vec![
+            ProductionRule { predecessor: 'X', successor: "F+[[X]-X]-F[-FX]+X" },
+            ProductionRule { predecessor: 'F', successor: "FF" }
+        ],
+        angle: branching_angle,
+        name: "Tree"
+    }
+
+    docs {
+        A tree-like branching L-system.
+        Produces organic, asymmetric branching patterns.
+
+        Parameters:
+            branching_angle: Angle between branches (typically 20-30 degrees)
+    }
+}
+
+pub fun bush_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "F",
+        rules: vec![
+            ProductionRule { predecessor: 'F', successor: "FF+[+F-F-F]-[-F+F+F]" }
+        ],
+        angle: 22.5,
+        name: "Bush"
+    }
+
+    docs {
+        A bushy plant L-system.
+        Creates dense, symmetric branching.
+    }
+}
+
+pub fun fern_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "X",
+        rules: vec![
+            ProductionRule { predecessor: 'X', successor: "F+[[X]-X]-F[-FX]+X" },
+            ProductionRule { predecessor: 'F', successor: "FF" }
+        ],
+        angle: 25.0,
+        name: "Fern"
+    }
+
+    docs {
+        A fern-like L-system.
+        Similar to tree but with different angle.
+    }
+}
+
+pub fun koch_curve_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "F",
+        rules: vec![
+            ProductionRule { predecessor: 'F', successor: "F+F-F-F+F" }
+        ],
+        angle: 90.0,
+        name: "Koch Curve"
+    }
+
+    docs {
+        The Koch curve fractal.
+        Each iteration replaces straight segments with a bump.
+        Fractal dimension: log(4)/log(3) ~ 1.26
+    }
+}
+
+pub fun koch_snowflake_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "F--F--F",
+        rules: vec![
+            ProductionRule { predecessor: 'F', successor: "F+F--F+F" }
+        ],
+        angle: 60.0,
+        name: "Koch Snowflake"
+    }
+
+    docs {
+        The Koch snowflake fractal.
+        Three Koch curves arranged in a triangle.
+    }
+}
+
+pub fun sierpinski_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "F-G-G",
+        rules: vec![
+            ProductionRule { predecessor: 'F', successor: "F-G+F+G-F" },
+            ProductionRule { predecessor: 'G', successor: "GG" }
+        ],
+        angle: 120.0,
+        name: "Sierpinski Triangle"
+    }
+
+    docs {
+        The Sierpinski triangle/gasket fractal.
+        Creates a triangular fractal pattern.
+    }
+}
+
+pub fun dragon_curve_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "FX",
+        rules: vec![
+            ProductionRule { predecessor: 'X', successor: "X+YF+" },
+            ProductionRule { predecessor: 'Y', successor: "-FX-Y" }
+        ],
+        angle: 90.0,
+        name: "Dragon Curve"
+    }
+
+    docs {
+        The dragon curve fractal.
+        Self-similar curve that tiles the plane.
+    }
+}
+
+pub fun hilbert_curve_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "A",
+        rules: vec![
+            ProductionRule { predecessor: 'A', successor: "-BF+AFA+FB-" },
+            ProductionRule { predecessor: 'B', successor: "+AF-BFB-FA+" }
+        ],
+        angle: 90.0,
+        name: "Hilbert Curve"
+    }
+
+    docs {
+        The Hilbert space-filling curve.
+        A continuous curve that visits every point in a square.
+    }
+}
+
+pub fun plant_lsystem(complexity: u32) -> LSystem {
+    // Generate rules based on complexity
+    let base_rule = match complexity {
+        0 { "F[+F][-F]" }
+        1 { "F[+F]F[-F]F" }
+        2 { "F[+F]F[-F][F]" }
+        3 { "FF-[-F+F+F]+[+F-F-F]" }
+        _ { "F[+F]F[-F][+F]" }
+    }
+
+    return LSystem {
+        axiom: "F",
+        rules: vec![
+            ProductionRule { predecessor: 'F', successor: base_rule.to_string() }
+        ],
+        angle: 25.7,  // ~180/7, aesthetically pleasing
+        name: format!("Plant (complexity {})", complexity)
+    }
+
+    docs {
+        A parameterized plant L-system.
+        Complexity 0-4 produces increasingly detailed plants.
+    }
+}
+
+pub fun algae_lsystem() -> LSystem {
+    return LSystem {
+        axiom: "A",
+        rules: vec![
+            ProductionRule { predecessor: 'A', successor: "AB" },
+            ProductionRule { predecessor: 'B', successor: "A" }
+        ],
+        angle: 0.0,
+        name: "Algae Growth"
+    }
+
+    docs {
+        Lindenmayer's original algae growth model.
+        Demonstrates simple string growth: A -> AB -> ABA -> ABAAB -> ...
+        The string length follows the Fibonacci sequence.
+    }
+}
+
+docs {
+    Generative Art Spirit - L-Systems Module
+
+    Lindenmayer systems (L-systems) are a formal grammar for modeling
+    growth and self-similar structures. Invented by Aristid Lindenmayer
+    in 1968 to describe plant development.
+
+    Core Concepts:
+    - **Axiom**: Initial string (seed)
+    - **Production Rules**: Symbol replacement rules
+    - **Iteration**: Repeatedly apply rules
+    - **Interpretation**: Convert string to graphics
+
+    Types of L-systems:
+    - **DOL**: Deterministic, context-free (basic)
+    - **Stochastic**: Probabilistic rule selection
+    - **Context-sensitive**: Rules depend on neighbors
+
+    Turtle Graphics Commands:
+    - F, G: Move forward and draw
+    - f, g: Move forward without drawing
+    - +: Turn left by angle
+    - -: Turn right by angle
+    - [: Push state (branching)
+    - ]: Pop state (return from branch)
+    - |: Turn around (180 degrees)
+
+    Classic L-systems included:
+    - Tree/Fern: Organic branching patterns
+    - Koch Curve/Snowflake: Fractal curves
+    - Sierpinski Triangle: Fractal triangle
+    - Dragon Curve: Space-filling curve
+    - Hilbert Curve: Space-filling curve
+    - Plant: Parameterized vegetation
+
+    Usage:
+        // Create and grow an L-system
+        let tree = tree_lsystem(25.0)
+        let grown = tree.grow(5)
+
+        // Interpret with turtle graphics
+        let config = TurtleConfig {
+            start_position: Point2D { x: 400.0, y: 600.0 },
+            start_angle: 90.0,
+            line_length: 5.0,
+            angle_delta: tree.angle,
+            length_scale: 1.0
+        }
+        let result = turtle_interpret(grown, config)
+
+        // Use generated lines
+        for (start, end) in result.lines {
+            draw_line(start, end)
+        }
+
+    References:
+    - Lindenmayer, A. "Mathematical models for cellular interaction in development" (1968)
+    - Prusinkiewicz, P. & Lindenmayer, A. "The Algorithmic Beauty of Plants" (1990)
+}

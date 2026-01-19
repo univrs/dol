@@ -1,0 +1,73 @@
+// Generative Art Spirit Package - Part of Spirits Jam 2
+// Procedural and generative art tools for DOL
+
+spirit Generative {
+    has name: "generative"
+    has version: "0.1.0"
+    has authors: ["VUDO Team <team@univrs.io>"]
+    has license: "MIT"
+
+    has lib: "lib.dol"
+
+    // Dependencies on other art spirits
+    has dependencies: [
+        "@univrs/visual @ >=0.1.0",
+        "@univrs/biology @ >=0.1.0"
+    ]
+
+    has keywords: [
+        "generative",
+        "procedural",
+        "lsystem",
+        "noise",
+        "cellular-automata",
+        "evolutionary",
+        "genetic-algorithm",
+        "fractal"
+    ]
+
+    has categories: [
+        "graphics",
+        "generative-art",
+        "simulation",
+        "creative-coding"
+    ]
+
+    docs {
+        Generative Art Spirit - Procedural and algorithmic art toolkit for DOL.
+
+        This Spirit provides algorithms for generative and procedural art:
+        - L-Systems for organic growth patterns (trees, plants, fractals)
+        - Noise functions (Perlin, Simplex, Worley) for natural textures
+        - Cellular automata (Game of Life, Wolfram rules) for emergent patterns
+        - Evolutionary algorithms for genetic art and optimization
+
+        Builds on visual (geometry, color) and biology (genetics) spirits
+        to create powerful generative art primitives.
+
+        Quick start:
+            use @univrs/generative.{ LSystem, NoiseConfig, CellGrid, Genome }
+            use @univrs/generative.lsystems.{ tree_lsystem, turtle_interpret }
+            use @univrs/generative.noise.{ perlin_2d, fbm }
+            use @univrs/generative.cellular.{ conway_step, glider }
+            use @univrs/generative.evolutionary.{ evolve_generation }
+
+        Examples:
+            // Generate a tree using L-systems
+            let tree = tree_lsystem(25.0)
+            let grown = apply_rules(tree, tree.axiom, 5)
+            let path = turtle_interpret(grown, turtle_config)
+
+            // Create Perlin noise field
+            let config = NoiseConfig { seed: 42, octaves: 4, lacunarity: 2.0, persistence: 0.5 }
+            let value = perlin_2d(x, y, config)
+
+            // Step Conway's Game of Life
+            let grid = glider()
+            let next = conway_step(grid)
+
+            // Evolve a population
+            let pop = Population { individuals: genomes, generation: 0 }
+            let evolved = evolve_generation(pop, fitness_fn, selection, crossover, mutation)
+    }
+}

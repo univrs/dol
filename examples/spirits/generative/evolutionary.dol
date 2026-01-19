@@ -1,0 +1,1219 @@
+// Generative Art Spirit - Evolutionary Module
+// Genetic algorithms for evolving art and optimization
+
+module generative.evolutionary @ 0.1.0
+
+use @univrs/visual.geometry.{ Point2D }
+use @univrs/visual.color.{ RGB, HSL }
+use @univrs/biology.genetics.{ DNA, Gene, Chromosome }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const DEFAULT_POPULATION_SIZE: u32 = 100
+pub const DEFAULT_MUTATION_RATE: f64 = 0.01
+pub const DEFAULT_CROSSOVER_RATE: f64 = 0.7
+pub const DEFAULT_ELITE_COUNT: u32 = 2
+pub const DEFAULT_TOURNAMENT_SIZE: u32 = 3
+pub const DEFAULT_GENERATIONS: u32 = 100
+
+// Gene value bounds
+pub const MIN_GENE_VALUE: f64 = 0.0
+pub const MAX_GENE_VALUE: f64 = 1.0
+
+// ============================================================================
+// GENOME
+// ============================================================================
+
+pub gen Genome {
+    has genes: Vec<f64>             // Gene values (typically 0-1)
+    has fitness: f64                // Evaluated fitness score
+    has generation: u32             // Generation this genome was created
+
+    rule valid_genes {
+        this.genes.length > 0
+    }
+
+    fun length() -> u64 {
+        return this.genes.length
+    }
+
+    fun get(index: u64) -> f64 {
+        if index < this.genes.length {
+            return this.genes[index]
+        }
+        return 0.0
+    }
+
+    fun set(index: u64, value: f64) -> Genome {
+        if index >= this.genes.length {
+            return this.clone()
+        }
+        let mut genes = this.genes.clone()
+        genes[index] = clamp(value, MIN_GENE_VALUE, MAX_GENE_VALUE)
+        return Genome {
+            genes: genes,
+            fitness: 0.0,  // Invalidate fitness
+            generation: this.generation
+        }
+    }
+
+    fun distance(other: Genome) -> f64 {
+        // Euclidean distance between genomes
+        if this.genes.length != other.genes.length {
+            return f64::MAX
+        }
+        let mut sum = 0.0
+        for i in 0..this.genes.length {
+            let diff = this.genes[i] - other.genes[i]
+            sum = sum + diff * diff
+        }
+        return sqrt(sum)
+    }
+
+    fun similarity(other: Genome) -> f64 {
+        let dist = this.distance(other)
+        return 1.0 / (1.0 + dist)
+    }
+
+    docs {
+        A genome containing floating-point genes.
+        Genes are typically normalized to [0, 1].
+        Fitness is the evaluated quality score.
+    }
+}
+
+pub gen Individual {
+    has genome: Genome              // The genetic material
+    has phenotype: Option<string>   // Decoded expression (optional)
+    has metadata: Vec<(string, string)>  // Additional data
+
+    docs {
+        An individual with genome and optional phenotype.
+    }
+}
+
+pub gen FitnessResult {
+    has fitness: f64                // Primary fitness value
+    has objectives: Vec<f64>        // Multiple objectives (for NSGA-II etc.)
+    has valid: bool                 // Whether evaluation was successful
+
+    docs {
+        Result of fitness evaluation.
+        Supports multi-objective optimization.
+    }
+}
+
+// ============================================================================
+// POPULATION
+// ============================================================================
+
+pub gen Population {
+    has individuals: Vec<Genome>    // All genomes in population
+    has generation: u32             // Current generation number
+    has best_fitness: f64           // Best fitness seen
+    has average_fitness: f64        // Average population fitness
+
+    rule non_empty {
+        this.individuals.length > 0
+    }
+
+    fun size() -> u64 {
+        return this.individuals.length
+    }
+
+    fun get(index: u64) -> Option<Genome> {
+        if index < this.individuals.length {
+            return Some(this.individuals[index].clone())
+        }
+        return None
+    }
+
+    fun sorted_by_fitness() -> Population {
+        let mut sorted = this.individuals.clone()
+        sorted.sort_by(|a, b| b.fitness.partial_cmp(&a.fitness).unwrap())
+        return Population {
+            individuals: sorted,
+            generation: this.generation,
+            best_fitness: this.best_fitness,
+            average_fitness: this.average_fitness
+        }
+    }
+
+    fun best() -> Genome {
+        return this.sorted_by_fitness().individuals[0].clone()
+    }
+
+    fun worst() -> Genome {
+        return this.sorted_by_fitness().individuals[this.individuals.length - 1].clone()
+    }
+
+    docs {
+        A population of genomes for evolutionary algorithms.
+    }
+}
+
+// ============================================================================
+// SELECTION METHODS
+// ============================================================================
+
+pub gen SelectionMethod {
+    type: enum {
+        Tournament { size: u32 },   // Select best from random tournament
+        Roulette,                   // Fitness-proportionate selection
+        Rank,                       // Rank-based selection
+        Truncation { top_percent: f64 },  // Select top percentage
+        Random                      // Random selection (baseline)
+    }
+
+    docs {
+        Method for selecting parents for reproduction.
+    }
+}
+
+pub gen TournamentSelection {
+    has size: u32                   // Tournament size
+
+    fun select(pop: Population, rng: &mut Random) -> Genome {
+        let mut best: Option<Genome> = None
+        let mut best_fitness = f64::MIN
+
+        for _ in 0..this.size {
+            let idx = (rng.next_f64() * pop.individuals.length as f64) as u64
+            let candidate = pop.individuals[idx].clone()
+            if candidate.fitness > best_fitness {
+                best_fitness = candidate.fitness
+                best = Some(candidate)
+            }
+        }
+
+        return best.unwrap_or(pop.individuals[0].clone())
+    }
+
+    docs {
+        Tournament selection - pick random individuals and select the best.
+        Larger tournament size = more selection pressure.
+    }
+}
+
+pub gen RouletteSelection {
+    fun select(pop: Population, rng: &mut Random) -> Genome {
+        // Calculate total fitness (assume positive)
+        let total_fitness = pop.individuals.iter().map(|g| g.fitness.max(0.0)).sum()
+
+        if total_fitness == 0.0 {
+            // Random selection if all fitness is 0
+            let idx = (rng.next_f64() * pop.individuals.length as f64) as u64
+            return pop.individuals[idx].clone()
+        }
+
+        let target = rng.next_f64() * total_fitness
+        let mut cumulative = 0.0
+
+        for genome in pop.individuals {
+            cumulative = cumulative + genome.fitness.max(0.0)
+            if cumulative >= target {
+                return genome.clone()
+            }
+        }
+
+        return pop.individuals[pop.individuals.length - 1].clone()
+    }
+
+    docs {
+        Roulette wheel selection - probability proportional to fitness.
+        Also called fitness-proportionate selection.
+    }
+}
+
+pub gen RankSelection {
+    fun select(pop: Population, rng: &mut Random) -> Genome {
+        let sorted = pop.sorted_by_fitness()
+        let n = sorted.individuals.length
+
+        // Linear ranking: probability proportional to rank
+        let total_rank = n * (n + 1) / 2  // Sum of 1..n
+        let target = (rng.next_f64() * total_rank as f64) as u64
+
+        let mut cumulative = 0 as u64
+        for i in 0..n {
+            cumulative = cumulative + (n - i)  // Higher ranks get more weight
+            if cumulative >= target {
+                return sorted.individuals[i].clone()
+            }
+        }
+
+        return sorted.individuals[0].clone()
+    }
+
+    docs {
+        Rank-based selection - probability based on fitness rank.
+        More uniform selection pressure than roulette.
+    }
+}
+
+pub gen TruncationSelection {
+    has top_percent: f64            // Top percentage to select from
+
+    fun select(pop: Population, rng: &mut Random) -> Genome {
+        let sorted = pop.sorted_by_fitness()
+        let cutoff = ((sorted.individuals.length as f64 * this.top_percent) as u64).max(1)
+        let idx = (rng.next_f64() * cutoff as f64) as u64
+        return sorted.individuals[idx].clone()
+    }
+
+    docs {
+        Truncation selection - select only from top performers.
+    }
+}
+
+// ============================================================================
+// CROSSOVER METHODS
+// ============================================================================
+
+pub gen CrossoverMethod {
+    type: enum {
+        SinglePoint,                // Cut at one point
+        TwoPoint,                   // Cut at two points
+        Uniform { mix_ratio: f64 }, // Random per-gene mixing
+        Blend { alpha: f64 },       // BLX-alpha blending
+        SimulatedBinary { eta: f64 } // SBX crossover
+    }
+
+    docs {
+        Method for combining two parent genomes.
+    }
+}
+
+pub gen SinglePointCrossover {
+    fun crossover(parent1: Genome, parent2: Genome, rng: &mut Random) -> (Genome, Genome) {
+        let length = parent1.genes.length.min(parent2.genes.length)
+        let point = (rng.next_f64() * length as f64) as u64
+
+        let mut child1_genes = vec![]
+        let mut child2_genes = vec![]
+
+        for i in 0..length {
+            if i < point {
+                child1_genes.push(parent1.genes[i])
+                child2_genes.push(parent2.genes[i])
+            } else {
+                child1_genes.push(parent2.genes[i])
+                child2_genes.push(parent1.genes[i])
+            }
+        }
+
+        let child1 = Genome {
+            genes: child1_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+        let child2 = Genome {
+            genes: child2_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+
+        return (child1, child2)
+    }
+
+    docs {
+        Single-point crossover - genes swap at one random point.
+    }
+}
+
+pub gen TwoPointCrossover {
+    fun crossover(parent1: Genome, parent2: Genome, rng: &mut Random) -> (Genome, Genome) {
+        let length = parent1.genes.length.min(parent2.genes.length)
+        let mut point1 = (rng.next_f64() * length as f64) as u64
+        let mut point2 = (rng.next_f64() * length as f64) as u64
+
+        if point1 > point2 {
+            let temp = point1
+            point1 = point2
+            point2 = temp
+        }
+
+        let mut child1_genes = vec![]
+        let mut child2_genes = vec![]
+
+        for i in 0..length {
+            if i < point1 || i >= point2 {
+                child1_genes.push(parent1.genes[i])
+                child2_genes.push(parent2.genes[i])
+            } else {
+                child1_genes.push(parent2.genes[i])
+                child2_genes.push(parent1.genes[i])
+            }
+        }
+
+        let child1 = Genome {
+            genes: child1_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+        let child2 = Genome {
+            genes: child2_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+
+        return (child1, child2)
+    }
+
+    docs {
+        Two-point crossover - genes swap between two random points.
+    }
+}
+
+pub gen UniformCrossover {
+    has mix_ratio: f64              // Probability of taking from parent 2
+
+    fun crossover(parent1: Genome, parent2: Genome, rng: &mut Random) -> (Genome, Genome) {
+        let length = parent1.genes.length.min(parent2.genes.length)
+        let mut child1_genes = vec![]
+        let mut child2_genes = vec![]
+
+        for i in 0..length {
+            if rng.next_f64() < this.mix_ratio {
+                child1_genes.push(parent2.genes[i])
+                child2_genes.push(parent1.genes[i])
+            } else {
+                child1_genes.push(parent1.genes[i])
+                child2_genes.push(parent2.genes[i])
+            }
+        }
+
+        let child1 = Genome {
+            genes: child1_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+        let child2 = Genome {
+            genes: child2_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+
+        return (child1, child2)
+    }
+
+    docs {
+        Uniform crossover - each gene randomly chosen from either parent.
+    }
+}
+
+pub gen BlendCrossover {
+    has alpha: f64                  // Blend factor (typically 0.5)
+
+    fun crossover(parent1: Genome, parent2: Genome, rng: &mut Random) -> (Genome, Genome) {
+        let length = parent1.genes.length.min(parent2.genes.length)
+        let mut child1_genes = vec![]
+        let mut child2_genes = vec![]
+
+        for i in 0..length {
+            let p1 = parent1.genes[i]
+            let p2 = parent2.genes[i]
+            let d = (p2 - p1).abs()
+
+            let low = p1.min(p2) - this.alpha * d
+            let high = p1.max(p2) + this.alpha * d
+
+            let c1 = low + rng.next_f64() * (high - low)
+            let c2 = low + rng.next_f64() * (high - low)
+
+            child1_genes.push(clamp(c1, MIN_GENE_VALUE, MAX_GENE_VALUE))
+            child2_genes.push(clamp(c2, MIN_GENE_VALUE, MAX_GENE_VALUE))
+        }
+
+        let child1 = Genome {
+            genes: child1_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+        let child2 = Genome {
+            genes: child2_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+
+        return (child1, child2)
+    }
+
+    docs {
+        BLX-alpha blend crossover - children from extended range.
+    }
+}
+
+pub gen SimulatedBinaryCrossover {
+    has eta: f64                    // Distribution index (larger = less spread)
+
+    fun crossover(parent1: Genome, parent2: Genome, rng: &mut Random) -> (Genome, Genome) {
+        let length = parent1.genes.length.min(parent2.genes.length)
+        let mut child1_genes = vec![]
+        let mut child2_genes = vec![]
+
+        for i in 0..length {
+            let p1 = parent1.genes[i]
+            let p2 = parent2.genes[i]
+
+            let u = rng.next_f64()
+            let beta = if u <= 0.5 {
+                pow(2.0 * u, 1.0 / (this.eta + 1.0))
+            } else {
+                pow(1.0 / (2.0 * (1.0 - u)), 1.0 / (this.eta + 1.0))
+            }
+
+            let c1 = 0.5 * ((1.0 + beta) * p1 + (1.0 - beta) * p2)
+            let c2 = 0.5 * ((1.0 - beta) * p1 + (1.0 + beta) * p2)
+
+            child1_genes.push(clamp(c1, MIN_GENE_VALUE, MAX_GENE_VALUE))
+            child2_genes.push(clamp(c2, MIN_GENE_VALUE, MAX_GENE_VALUE))
+        }
+
+        let child1 = Genome {
+            genes: child1_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+        let child2 = Genome {
+            genes: child2_genes,
+            fitness: 0.0,
+            generation: parent1.generation + 1
+        }
+
+        return (child1, child2)
+    }
+
+    docs {
+        Simulated Binary Crossover (SBX).
+        Simulates single-point crossover for real-valued genes.
+    }
+}
+
+// ============================================================================
+// MUTATION METHODS
+// ============================================================================
+
+pub gen MutationMethod {
+    type: enum {
+        Gaussian { stddev: f64 },   // Add Gaussian noise
+        Uniform { range: f64 },     // Add uniform random
+        Swap,                       // Swap two genes
+        Inversion,                  // Reverse a segment
+        Scramble                    // Shuffle a segment
+    }
+
+    docs {
+        Method for mutating a genome.
+    }
+}
+
+pub gen GaussianMutation {
+    has stddev: f64                 // Standard deviation
+
+    fun mutate(genome: Genome, rate: f64, rng: &mut Random) -> Genome {
+        let mut genes = genome.genes.clone()
+
+        for i in 0..genes.length {
+            if rng.next_f64() < rate {
+                // Box-Muller transform for Gaussian
+                let u1 = rng.next_f64().max(0.0001)
+                let u2 = rng.next_f64()
+                let z = sqrt(-2.0 * ln(u1)) * cos(2.0 * PI * u2)
+                genes[i] = clamp(genes[i] + z * this.stddev, MIN_GENE_VALUE, MAX_GENE_VALUE)
+            }
+        }
+
+        return Genome {
+            genes: genes,
+            fitness: 0.0,
+            generation: genome.generation
+        }
+    }
+
+    docs {
+        Gaussian mutation - add normally distributed noise.
+    }
+}
+
+pub gen UniformMutation {
+    has range: f64                  // Maximum change
+
+    fun mutate(genome: Genome, rate: f64, rng: &mut Random) -> Genome {
+        let mut genes = genome.genes.clone()
+
+        for i in 0..genes.length {
+            if rng.next_f64() < rate {
+                let delta = (rng.next_f64() * 2.0 - 1.0) * this.range
+                genes[i] = clamp(genes[i] + delta, MIN_GENE_VALUE, MAX_GENE_VALUE)
+            }
+        }
+
+        return Genome {
+            genes: genes,
+            fitness: 0.0,
+            generation: genome.generation
+        }
+    }
+
+    docs {
+        Uniform mutation - add uniformly distributed noise.
+    }
+}
+
+pub gen SwapMutation {
+    fun mutate(genome: Genome, rate: f64, rng: &mut Random) -> Genome {
+        let mut genes = genome.genes.clone()
+
+        if rng.next_f64() < rate && genes.length >= 2 {
+            let i = (rng.next_f64() * genes.length as f64) as u64
+            let mut j = (rng.next_f64() * genes.length as f64) as u64
+            while j == i {
+                j = (rng.next_f64() * genes.length as f64) as u64
+            }
+            let temp = genes[i]
+            genes[i] = genes[j]
+            genes[j] = temp
+        }
+
+        return Genome {
+            genes: genes,
+            fitness: 0.0,
+            generation: genome.generation
+        }
+    }
+
+    docs {
+        Swap mutation - swap two random genes.
+    }
+}
+
+pub gen InversionMutation {
+    fun mutate(genome: Genome, rate: f64, rng: &mut Random) -> Genome {
+        let mut genes = genome.genes.clone()
+
+        if rng.next_f64() < rate && genes.length >= 2 {
+            let mut i = (rng.next_f64() * genes.length as f64) as u64
+            let mut j = (rng.next_f64() * genes.length as f64) as u64
+            if i > j {
+                let temp = i
+                i = j
+                j = temp
+            }
+            // Reverse segment [i, j]
+            while i < j {
+                let temp = genes[i]
+                genes[i] = genes[j]
+                genes[j] = temp
+                i = i + 1
+                j = j - 1
+            }
+        }
+
+        return Genome {
+            genes: genes,
+            fitness: 0.0,
+            generation: genome.generation
+        }
+    }
+
+    docs {
+        Inversion mutation - reverse a segment of genes.
+    }
+}
+
+pub gen ScrambleMutation {
+    fun mutate(genome: Genome, rate: f64, rng: &mut Random) -> Genome {
+        let mut genes = genome.genes.clone()
+
+        if rng.next_f64() < rate && genes.length >= 2 {
+            let mut i = (rng.next_f64() * genes.length as f64) as u64
+            let mut j = (rng.next_f64() * genes.length as f64) as u64
+            if i > j {
+                let temp = i
+                i = j
+                j = temp
+            }
+            // Fisher-Yates shuffle segment [i, j]
+            for k in i..j {
+                let l = k + (rng.next_f64() * (j - k + 1) as f64) as u64
+                let temp = genes[k]
+                genes[k] = genes[l]
+                genes[l] = temp
+            }
+        }
+
+        return Genome {
+            genes: genes,
+            fitness: 0.0,
+            generation: genome.generation
+        }
+    }
+
+    docs {
+        Scramble mutation - shuffle a segment of genes.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Evolvable {
+    fun mutate(rate: f64, rng: &mut Random) -> Self
+    fun crossover(other: Self, rng: &mut Random) -> Self
+
+    docs {
+        Types that can be evolved through mutation and crossover.
+    }
+}
+
+pub trait Evaluatable {
+    fun evaluate() -> f64
+
+    docs {
+        Types that can be evaluated for fitness.
+    }
+}
+
+pub trait Encodable {
+    fun encode() -> Genome
+    fun decode(genome: Genome) -> Self
+
+    docs {
+        Types that can be encoded to/from genomes.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Evolvable for Genome {
+    fun mutate(rate: f64, rng: &mut Random) -> Genome {
+        let gaussian = GaussianMutation { stddev: 0.1 }
+        return gaussian.mutate(this, rate, rng)
+    }
+
+    fun crossover(other: Genome, rng: &mut Random) -> Genome {
+        let uniform = UniformCrossover { mix_ratio: 0.5 }
+        let (child1, _) = uniform.crossover(this, other, rng)
+        return child1
+    }
+}
+
+// ============================================================================
+// CORE FUNCTIONS
+// ============================================================================
+
+pub fun select(pop: Population, method: SelectionMethod, rng: &mut Random) -> Genome {
+    match method.type {
+        Tournament { size } {
+            let selector = TournamentSelection { size: size }
+            return selector.select(pop, rng)
+        }
+        Roulette {
+            let selector = RouletteSelection {}
+            return selector.select(pop, rng)
+        }
+        Rank {
+            let selector = RankSelection {}
+            return selector.select(pop, rng)
+        }
+        Truncation { top_percent } {
+            let selector = TruncationSelection { top_percent: top_percent }
+            return selector.select(pop, rng)
+        }
+        Random {
+            let idx = (rng.next_f64() * pop.individuals.length as f64) as u64
+            return pop.individuals[idx].clone()
+        }
+    }
+
+    docs {
+        Select a genome from population using given method.
+    }
+}
+
+pub fun crossover(a: Genome, b: Genome, method: CrossoverMethod, rng: &mut Random) -> Genome {
+    let (child1, _) = match method.type {
+        SinglePoint {
+            let op = SinglePointCrossover {}
+            op.crossover(a, b, rng)
+        }
+        TwoPoint {
+            let op = TwoPointCrossover {}
+            op.crossover(a, b, rng)
+        }
+        Uniform { mix_ratio } {
+            let op = UniformCrossover { mix_ratio: mix_ratio }
+            op.crossover(a, b, rng)
+        }
+        Blend { alpha } {
+            let op = BlendCrossover { alpha: alpha }
+            op.crossover(a, b, rng)
+        }
+        SimulatedBinary { eta } {
+            let op = SimulatedBinaryCrossover { eta: eta }
+            op.crossover(a, b, rng)
+        }
+    }
+    return child1
+
+    docs {
+        Create offspring from two parents using given method.
+    }
+}
+
+pub fun mutate(genome: Genome, rate: f64, method: MutationMethod, rng: &mut Random) -> Genome {
+    match method.type {
+        Gaussian { stddev } {
+            let op = GaussianMutation { stddev: stddev }
+            return op.mutate(genome, rate, rng)
+        }
+        Uniform { range } {
+            let op = UniformMutation { range: range }
+            return op.mutate(genome, rate, rng)
+        }
+        Swap {
+            let op = SwapMutation {}
+            return op.mutate(genome, rate, rng)
+        }
+        Inversion {
+            let op = InversionMutation {}
+            return op.mutate(genome, rate, rng)
+        }
+        Scramble {
+            let op = ScrambleMutation {}
+            return op.mutate(genome, rate, rng)
+        }
+    }
+
+    docs {
+        Mutate a genome using given method and rate.
+    }
+}
+
+pub fun evaluate<F>(genome: Genome, fitness_fn: F) -> Genome
+where
+    F: Fn(Genome) -> f64
+{
+    let fitness = fitness_fn(genome.clone())
+    return Genome {
+        genes: genome.genes,
+        fitness: fitness,
+        generation: genome.generation
+    }
+
+    docs {
+        Evaluate a genome's fitness using given function.
+    }
+}
+
+pub fun evolve_generation<F>(
+    pop: Population,
+    fitness_fn: F,
+    selection: SelectionMethod,
+    crossover_method: CrossoverMethod,
+    mutation: MutationMethod,
+    mutation_rate: f64,
+    crossover_rate: f64,
+    elite_count: u32,
+    rng: &mut Random
+) -> Population
+where
+    F: Fn(Genome) -> f64
+{
+    let pop_size = pop.individuals.length as u32
+
+    // Evaluate all individuals
+    let mut evaluated = pop.individuals.map(|g| evaluate(g, fitness_fn)).collect::<Vec<_>>()
+
+    // Sort by fitness (descending)
+    evaluated.sort_by(|a, b| b.fitness.partial_cmp(&a.fitness).unwrap())
+
+    // Create new population
+    let mut new_individuals = vec![]
+
+    // Elitism: keep top individuals
+    for i in 0..(elite_count as u64).min(evaluated.length) {
+        new_individuals.push(evaluated[i].clone())
+    }
+
+    // Generate rest through selection, crossover, mutation
+    while new_individuals.length < pop_size as u64 {
+        let parent1 = select(Population {
+            individuals: evaluated.clone(),
+            generation: pop.generation,
+            best_fitness: evaluated[0].fitness,
+            average_fitness: evaluated.iter().map(|g| g.fitness).sum::<f64>() / evaluated.length as f64
+        }, selection.clone(), rng)
+
+        let parent2 = select(Population {
+            individuals: evaluated.clone(),
+            generation: pop.generation,
+            best_fitness: evaluated[0].fitness,
+            average_fitness: evaluated.iter().map(|g| g.fitness).sum::<f64>() / evaluated.length as f64
+        }, selection.clone(), rng)
+
+        let mut child = if rng.next_f64() < crossover_rate {
+            crossover(parent1, parent2, crossover_method.clone(), rng)
+        } else {
+            parent1
+        }
+
+        child = mutate(child, mutation_rate, mutation.clone(), rng)
+        child = Genome {
+            genes: child.genes,
+            fitness: child.fitness,
+            generation: pop.generation + 1
+        }
+
+        new_individuals.push(child)
+    }
+
+    // Calculate statistics
+    let total_fitness = new_individuals.iter().map(|g| g.fitness).sum::<f64>()
+    let avg_fitness = total_fitness / new_individuals.length as f64
+    let best_fitness = new_individuals.iter().map(|g| g.fitness).max().unwrap_or(0.0)
+
+    return Population {
+        individuals: new_individuals,
+        generation: pop.generation + 1,
+        best_fitness: best_fitness,
+        average_fitness: avg_fitness
+    }
+
+    docs {
+        Evolve population by one generation.
+
+        Steps:
+        1. Evaluate fitness of all individuals
+        2. Keep elite individuals unchanged
+        3. Select parents using selection method
+        4. Apply crossover with given probability
+        5. Apply mutation with given rate
+        6. Return new population
+    }
+}
+
+pub fun evolve_until<F>(
+    pop: Population,
+    fitness_fn: F,
+    selection: SelectionMethod,
+    crossover_method: CrossoverMethod,
+    mutation: MutationMethod,
+    mutation_rate: f64,
+    crossover_rate: f64,
+    elite_count: u32,
+    max_generations: u32,
+    target_fitness: f64,
+    rng: &mut Random
+) -> Population
+where
+    F: Fn(Genome) -> f64
+{
+    let mut current = pop
+
+    for _ in 0..max_generations {
+        current = evolve_generation(
+            current,
+            fitness_fn,
+            selection.clone(),
+            crossover_method.clone(),
+            mutation.clone(),
+            mutation_rate,
+            crossover_rate,
+            elite_count,
+            rng
+        )
+
+        if current.best_fitness >= target_fitness {
+            break
+        }
+    }
+
+    return current
+
+    docs {
+        Evolve until reaching target fitness or max generations.
+    }
+}
+
+// ============================================================================
+// POPULATION MANAGEMENT
+// ============================================================================
+
+pub fun create_population(
+    size: u32,
+    gene_count: u64,
+    rng: &mut Random
+) -> Population {
+    let mut individuals = vec![]
+
+    for _ in 0..size {
+        let genes = (0..gene_count).map(|_| rng.next_f64()).collect()
+        individuals.push(Genome {
+            genes: genes,
+            fitness: 0.0,
+            generation: 0
+        })
+    }
+
+    return Population {
+        individuals: individuals,
+        generation: 0,
+        best_fitness: 0.0,
+        average_fitness: 0.0
+    }
+
+    docs {
+        Create a random initial population.
+    }
+}
+
+pub fun sort_by_fitness(pop: Population) -> Population {
+    return pop.sorted_by_fitness()
+}
+
+pub fun best_individual(pop: Population) -> Genome {
+    return pop.best()
+}
+
+pub fun average_fitness(pop: Population) -> f64 {
+    let total = pop.individuals.iter().map(|g| g.fitness).sum::<f64>()
+    return total / pop.individuals.length as f64
+}
+
+pub fun diversity(pop: Population) -> f64 {
+    // Calculate average pairwise distance
+    let n = pop.individuals.length
+    if n < 2 {
+        return 0.0
+    }
+
+    let mut total_distance = 0.0
+    let mut count = 0
+
+    for i in 0..(n - 1) {
+        for j in (i + 1)..n {
+            total_distance = total_distance + pop.individuals[i].distance(pop.individuals[j].clone())
+            count = count + 1
+        }
+    }
+
+    return total_distance / count as f64
+
+    docs {
+        Calculate population diversity as average pairwise distance.
+    }
+}
+
+// ============================================================================
+// ART-SPECIFIC GENOME HELPERS
+// ============================================================================
+
+pub fun create_color_genome(rng: &mut Random) -> Genome {
+    // Genome: [h, s, l] for HSL color
+    let genes = vec![
+        rng.next_f64(),  // Hue (0-1 -> 0-360)
+        rng.next_f64(),  // Saturation (0-1)
+        rng.next_f64()   // Lightness (0-1)
+    ]
+    return Genome {
+        genes: genes,
+        fitness: 0.0,
+        generation: 0
+    }
+
+    docs {
+        Create a genome encoding an HSL color.
+    }
+}
+
+pub fun create_shape_genome(num_points: u32, rng: &mut Random) -> Genome {
+    // Genome: [x1, y1, x2, y2, ...] for polygon vertices
+    let mut genes = vec![]
+    for _ in 0..(num_points * 2) {
+        genes.push(rng.next_f64())
+    }
+    return Genome {
+        genes: genes,
+        fitness: 0.0,
+        generation: 0
+    }
+
+    docs {
+        Create a genome encoding a polygon with given vertex count.
+    }
+}
+
+pub fun create_tree_genome(rng: &mut Random) -> Genome {
+    // Genome: [angle, length_ratio, branch_prob, ...]
+    // For evolving L-system tree parameters
+    let genes = vec![
+        rng.next_f64(),  // Base angle (0-1 -> 0-90 degrees)
+        rng.next_f64(),  // Length ratio per iteration
+        rng.next_f64(),  // Branch probability
+        rng.next_f64(),  // Asymmetry factor
+        rng.next_f64(),  // Thickness decay
+        rng.next_f64()   // Iterations (0-1 -> 1-10)
+    ]
+    return Genome {
+        genes: genes,
+        fitness: 0.0,
+        generation: 0
+    }
+
+    docs {
+        Create a genome encoding L-system tree parameters.
+        Can be used with biology.genetics DNA.
+    }
+}
+
+pub fun decode_color_genome(genome: Genome) -> HSL {
+    let h = genome.genes.get(0).unwrap_or(0.0) * 360.0
+    let s = genome.genes.get(1).unwrap_or(0.5)
+    let l = genome.genes.get(2).unwrap_or(0.5)
+    return HSL { h: h, s: s, l: l }
+
+    docs {
+        Decode a color genome to HSL color.
+    }
+}
+
+pub fun decode_shape_genome(genome: Genome) -> Vec<Point2D> {
+    let mut points = vec![]
+    let gene_count = genome.genes.length
+    for i in (0..gene_count).step_by(2) {
+        if i + 1 < gene_count {
+            points.push(Point2D {
+                x: genome.genes[i],
+                y: genome.genes[i + 1]
+            })
+        }
+    }
+    return points
+
+    docs {
+        Decode a shape genome to polygon vertices.
+    }
+}
+
+pub fun decode_tree_genome(genome: Genome) -> (f64, f64, f64, f64, f64, u32) {
+    let angle = genome.genes.get(0).unwrap_or(0.5) * 90.0
+    let length_ratio = genome.genes.get(1).unwrap_or(0.7)
+    let branch_prob = genome.genes.get(2).unwrap_or(0.8)
+    let asymmetry = genome.genes.get(3).unwrap_or(0.0)
+    let thickness = genome.genes.get(4).unwrap_or(0.8)
+    let iterations = (genome.genes.get(5).unwrap_or(0.5) * 9.0) as u32 + 1
+
+    return (angle, length_ratio, branch_prob, asymmetry, thickness, iterations)
+
+    docs {
+        Decode a tree genome to L-system parameters.
+    }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+const PI: f64 = 3.14159265358979323846
+
+fun clamp(x: f64, min_val: f64, max_val: f64) -> f64 {
+    if x < min_val { min_val }
+    else if x > max_val { max_val }
+    else { x }
+}
+
+fun sqrt(x: f64) -> f64 {
+    __builtin_sqrt(x)
+}
+
+fun pow(base: f64, exp: f64) -> f64 {
+    __builtin_pow(base, exp)
+}
+
+fun ln(x: f64) -> f64 {
+    __builtin_ln(x)
+}
+
+fun cos(x: f64) -> f64 {
+    __builtin_cos(x)
+}
+
+docs {
+    Generative Art Spirit - Evolutionary Module
+
+    Evolutionary algorithms for optimizing and generating art through
+    natural selection principles. Inspired by biology.genetics DNA.
+
+    Core Concepts:
+    - **Genome**: Collection of genes (typically 0-1 values)
+    - **Population**: Set of individuals with genomes
+    - **Fitness**: Quality measure for selection
+    - **Selection**: Choose parents based on fitness
+    - **Crossover**: Combine parents to create offspring
+    - **Mutation**: Random changes to maintain diversity
+
+    Selection Methods:
+    - Tournament: Pick best from random subset
+    - Roulette: Probability proportional to fitness
+    - Rank: Probability based on fitness rank
+    - Truncation: Only breed top performers
+
+    Crossover Methods:
+    - Single/Two Point: Cut and swap segments
+    - Uniform: Random per-gene mixing
+    - Blend (BLX-α): Extended range interpolation
+    - Simulated Binary (SBX): Real-coded crossover
+
+    Mutation Methods:
+    - Gaussian: Add normal noise
+    - Uniform: Add uniform noise
+    - Swap: Exchange two genes
+    - Inversion: Reverse segment
+    - Scramble: Shuffle segment
+
+    Art Applications:
+    - Evolving colors and palettes
+    - Evolving shapes and compositions
+    - Evolving L-system tree parameters
+    - Interactive evolutionary art (user as fitness)
+
+    Integration with biology.genetics:
+    The evolutionary module reuses concepts from biology.genetics,
+    treating artistic parameters as DNA that can evolve over
+    generations to produce increasingly fit art.
+
+    Usage:
+        // Create initial population
+        let pop = create_population(100, 10, rng)
+
+        // Define fitness function
+        let fitness = |genome: Genome| -> f64 {
+            // Evaluate how "good" this genome is
+            evaluate_art_quality(genome)
+        }
+
+        // Evolve for 100 generations
+        let selection = SelectionMethod::Tournament { size: 3 }
+        let crossover = CrossoverMethod::Uniform { mix_ratio: 0.5 }
+        let mutation = MutationMethod::Gaussian { stddev: 0.1 }
+
+        let evolved = evolve_until(
+            pop, fitness, selection, crossover, mutation,
+            0.01, 0.7, 2, 100, 0.95, rng
+        )
+
+        let best = evolved.best()
+        let art = decode_tree_genome(best)
+
+    References:
+    - Holland, J. "Adaptation in Natural and Artificial Systems" (1975)
+    - Goldberg, D. "Genetic Algorithms in Search, Optimization, and Machine Learning" (1989)
+    - Sims, K. "Artificial Evolution for Computer Graphics" (SIGGRAPH 1991)
+}

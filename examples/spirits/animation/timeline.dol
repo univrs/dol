@@ -1,0 +1,1077 @@
+// Animation Spirit - Timeline Module
+// Timeline sequencing and composition for complex animations
+
+module animation.timeline @ 0.1.0
+
+use keyframes.{ Animation, AnimationState, Track, evaluate_animation }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const INFINITE_DURATION: f64 = f64::MAX
+pub const DEFAULT_PLAYBACK_SPEED: f64 = 1.0
+
+// ============================================================================
+// CUE ACTION
+// ============================================================================
+
+pub gen CueAction {
+    type: enum {
+        // Fire an event with a name
+        Event { name: string },
+
+        // Start another animation/timeline
+        Start { target: string },
+
+        // Stop another animation/timeline
+        Stop { target: string },
+
+        // Pause another animation/timeline
+        Pause { target: string },
+
+        // Jump to a specific time
+        Seek { target: string, time: f64 },
+
+        // Set a property value
+        SetValue { target: string, property: string, value: f64 },
+
+        // Trigger a callback (callback ID)
+        Callback { id: u64 },
+
+        // No operation (placeholder)
+        Noop
+    }
+
+    docs {
+        Actions that can be triggered at cue points.
+    }
+}
+
+// ============================================================================
+// CUE
+// ============================================================================
+
+pub gen Cue {
+    has time: f64           // When to trigger (in seconds)
+    has action: CueAction   // What action to perform
+    has name: string        // Optional name for the cue
+    has enabled: bool       // Whether the cue is active
+
+    rule non_negative_time {
+        this.time >= 0.0
+    }
+
+    fun matches_time(t: f64, tolerance: f64) -> bool {
+        return abs(this.time - t) <= tolerance
+    }
+
+    docs {
+        A timed event in a timeline.
+
+        Cues trigger actions at specific times during playback,
+        enabling event-driven animation coordination.
+    }
+}
+
+// ============================================================================
+// CLIP
+// ============================================================================
+
+pub gen Clip {
+    has start: f64           // Start time in timeline (seconds)
+    has end: f64             // End time in timeline (seconds)
+    has animation: Animation // The animation to play
+    has name: string         // Clip name
+    has time_offset: f64     // Offset into animation (for trimmed clips)
+    has speed: f64           // Playback speed multiplier
+    has enabled: bool        // Whether clip is active
+
+    rule valid_time_range {
+        this.start <= this.end
+    }
+
+    rule positive_speed {
+        this.speed > 0.0
+    }
+
+    fun duration() -> f64 {
+        return this.end - this.start
+    }
+
+    fun animation_time(timeline_time: f64) -> f64 {
+        // Convert timeline time to animation time
+        let local_time = (timeline_time - this.start) * this.speed + this.time_offset
+        return local_time
+    }
+
+    fun contains_time(t: f64) -> bool {
+        return t >= this.start && t < this.end && this.enabled
+    }
+
+    fun overlaps(other: Clip) -> bool {
+        return this.start < other.end && this.end > other.start
+    }
+
+    docs {
+        A clip places an animation within a timeline.
+
+        Clips define when an animation plays (start/end times),
+        optionally with time offset, speed multiplier, and trimming.
+    }
+}
+
+// ============================================================================
+// LAYER
+// ============================================================================
+
+pub gen Layer {
+    has clips: Vec<Clip>
+    has name: string
+    has blend_mode: BlendMode
+    has weight: f64  // 0.0 to 1.0
+    has muted: bool
+    has solo: bool
+
+    rule valid_weight {
+        this.weight >= 0.0 && this.weight <= 1.0
+    }
+
+    fun clips_at_time(t: f64) -> Vec<Clip> {
+        return this.clips.filter(|c| c.contains_time(t) && c.enabled).collect()
+    }
+
+    fun duration() -> f64 {
+        if this.clips.is_empty() {
+            return 0.0
+        }
+        return this.clips.map(|c| c.end).max()
+    }
+
+    fun add_clip(clip: Clip) -> Layer {
+        let mut clips = this.clips.clone()
+        clips.push(clip)
+        return Layer {
+            clips: clips,
+            name: this.name.clone(),
+            blend_mode: this.blend_mode,
+            weight: this.weight,
+            muted: this.muted,
+            solo: this.solo
+        }
+    }
+
+    docs {
+        A layer contains clips and defines how they blend.
+
+        Layers support:
+        - Multiple clips that can overlap
+        - Blend modes for combining with other layers
+        - Weight for partial blending
+        - Mute/solo for editing
+    }
+}
+
+pub gen BlendMode {
+    type: enum {
+        Replace,     // Completely replace lower layers
+        Add,         // Add values
+        Multiply,    // Multiply values
+        Average,     // Average with lower layers
+        Override     // Override only where keyframes exist
+    }
+
+    docs {
+        How a layer blends with layers below it.
+    }
+}
+
+// ============================================================================
+// SEQUENCE
+// ============================================================================
+
+pub gen Sequence {
+    has timelines: Vec<Timeline>
+    has parallel: bool        // True = play all at once, False = play in order
+    has gap: f64              // Gap between items (for sequential)
+    has name: string
+
+    fun duration() -> f64 {
+        if this.timelines.is_empty() {
+            return 0.0
+        }
+
+        if this.parallel {
+            // Parallel: max duration
+            return this.timelines.map(|t| t.duration).max()
+        } else {
+            // Sequential: sum of durations plus gaps
+            let total_duration = this.timelines.map(|t| t.duration).sum()
+            let total_gaps = (this.timelines.length - 1) as f64 * this.gap
+            return total_duration + total_gaps
+        }
+    }
+
+    fun get_active_timelines(t: f64) -> Vec<(Timeline, f64)> {
+        // Returns active timelines with their local time
+        if this.parallel {
+            return this.timelines.map(|tl| (tl, t)).collect()
+        } else {
+            // Sequential
+            let mut offset = 0.0
+            for tl in this.timelines {
+                if t < offset + tl.duration {
+                    return vec![(tl, t - offset)]
+                }
+                offset = offset + tl.duration + this.gap
+            }
+            return vec![]
+        }
+    }
+
+    docs {
+        A sequence of timelines played either in parallel or sequentially.
+
+        Parallel sequences play all timelines simultaneously.
+        Sequential sequences play timelines one after another with optional gaps.
+    }
+}
+
+// ============================================================================
+// TIMELINE
+// ============================================================================
+
+pub gen Timeline {
+    has layers: Vec<Layer>
+    has cues: Vec<Cue>
+    has duration: f64
+    has name: string
+    has looping: bool
+
+    rule positive_duration {
+        this.duration >= 0.0
+    }
+
+    fun layer_count() -> u64 {
+        return this.layers.length
+    }
+
+    fun clip_count() -> u64 {
+        return this.layers.map(|l| l.clips.length).sum()
+    }
+
+    fun cue_count() -> u64 {
+        return this.cues.length
+    }
+
+    fun get_layer(name: string) -> Option<Layer> {
+        for layer in this.layers {
+            if layer.name == name {
+                return Some(layer)
+            }
+        }
+        return None
+    }
+
+    fun add_layer(layer: Layer) -> Timeline {
+        let mut layers = this.layers.clone()
+        layers.push(layer)
+        return Timeline {
+            layers: layers,
+            cues: this.cues.clone(),
+            duration: this.duration,
+            name: this.name.clone(),
+            looping: this.looping
+        }
+    }
+
+    fun add_cue(cue: Cue) -> Timeline {
+        let mut cues = this.cues.clone()
+        cues.push(cue)
+        // Sort by time
+        cues.sort_by(|a, b| a.time.partial_cmp(&b.time))
+        return Timeline {
+            layers: this.layers.clone(),
+            cues: cues,
+            duration: this.duration,
+            name: this.name.clone(),
+            looping: this.looping
+        }
+    }
+
+    fun clips_at_time(t: f64) -> Vec<Clip> {
+        let mut clips = vec![]
+        for layer in this.layers {
+            if !layer.muted {
+                for clip in layer.clips_at_time(t) {
+                    clips.push(clip)
+                }
+            }
+        }
+        return clips
+    }
+
+    fun cues_at_time(t: f64, tolerance: f64) -> Vec<Cue> {
+        return this.cues.filter(|c| c.enabled && c.matches_time(t, tolerance)).collect()
+    }
+
+    fun cues_in_range(start: f64, end: f64) -> Vec<Cue> {
+        return this.cues.filter(|c| c.enabled && c.time >= start && c.time < end).collect()
+    }
+
+    docs {
+        A timeline is the top-level container for animation composition.
+
+        Timelines contain:
+        - Multiple layers with clips
+        - Cue points for triggering events
+        - Duration and looping settings
+
+        Timelines can be nested via Sequences for complex compositions.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Schedulable {
+    fun schedule(at: f64) -> Self
+
+    docs {
+        Types that can be scheduled at a specific time.
+    }
+}
+
+pub trait Composable {
+    fun compose(other: Self) -> Self
+
+    docs {
+        Types that can be composed/combined with others.
+    }
+}
+
+pub trait Playable {
+    fun get_duration() -> f64
+    fun evaluate(t: f64) -> Vec<(string, f64)>
+
+    docs {
+        Types that can be played back over time.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Schedulable for Clip {
+    fun schedule(at: f64) -> Clip {
+        let duration = this.duration()
+        return Clip {
+            start: at,
+            end: at + duration,
+            animation: this.animation.clone(),
+            name: this.name.clone(),
+            time_offset: this.time_offset,
+            speed: this.speed,
+            enabled: this.enabled
+        }
+    }
+}
+
+impl Composable for Timeline {
+    fun compose(other: Timeline) -> Timeline {
+        return concatenate(this, other)
+    }
+}
+
+impl Playable for Timeline {
+    fun get_duration() -> f64 {
+        return this.duration
+    }
+
+    fun evaluate(t: f64) -> Vec<(string, f64)> {
+        let state = AnimationState {
+            time: t,
+            playing: true,
+            speed: 1.0,
+            direction: 1
+        }
+
+        let mut results = vec![]
+        for clip in this.clips_at_time(t) {
+            let anim_time = clip.animation_time(t)
+            let clip_state = AnimationState {
+                time: anim_time,
+                playing: true,
+                speed: 1.0,
+                direction: 1
+            }
+            let values = evaluate_animation(clip.animation, clip_state)
+            for (name, value) in values {
+                results.push((format!("{}.{}", clip.name, name), value))
+            }
+        }
+        return results
+    }
+}
+
+impl Playable for Clip {
+    fun get_duration() -> f64 {
+        return this.duration()
+    }
+
+    fun evaluate(t: f64) -> Vec<(string, f64)> {
+        if !this.contains_time(t) {
+            return vec![]
+        }
+        let anim_time = this.animation_time(t)
+        let state = AnimationState {
+            time: anim_time,
+            playing: true,
+            speed: 1.0,
+            direction: 1
+        }
+        return evaluate_animation(this.animation, state)
+    }
+}
+
+// ============================================================================
+// CLIP OPERATIONS
+// ============================================================================
+
+pub fun create_clip(animation: Animation, name: string) -> Clip {
+    return Clip {
+        start: 0.0,
+        end: animation.duration,
+        animation: animation,
+        name: name,
+        time_offset: 0.0,
+        speed: 1.0,
+        enabled: true
+    }
+
+    docs {
+        Create a clip from an animation with default settings.
+    }
+}
+
+pub fun trim_clip(clip: Clip, start: f64, end: f64) -> Clip {
+    // Clamp to valid range
+    let trim_start = max(start, 0.0)
+    let trim_end = min(end, clip.duration())
+
+    if trim_start >= trim_end {
+        // Invalid trim, return empty clip
+        return Clip {
+            start: clip.start,
+            end: clip.start,
+            animation: clip.animation.clone(),
+            name: clip.name.clone(),
+            time_offset: clip.time_offset + trim_start,
+            speed: clip.speed,
+            enabled: clip.enabled
+        }
+    }
+
+    let new_duration = trim_end - trim_start
+
+    return Clip {
+        start: clip.start,
+        end: clip.start + new_duration / clip.speed,
+        animation: clip.animation.clone(),
+        name: clip.name.clone(),
+        time_offset: clip.time_offset + trim_start,
+        speed: clip.speed,
+        enabled: clip.enabled
+    }
+
+    docs {
+        Trim a clip to a specific time range within its animation.
+
+        Parameters:
+        - clip: The clip to trim
+        - start: Start time within the clip's animation
+        - end: End time within the clip's animation
+
+        Returns: A new clip with the trimmed range
+    }
+}
+
+pub fun split_clip(clip: Clip, at: f64) -> (Clip, Clip) {
+    // at is in timeline time
+    if at <= clip.start || at >= clip.end {
+        // Can't split outside clip
+        return (clip.clone(), clip.clone())
+    }
+
+    let anim_split_time = clip.animation_time(at)
+
+    let clip_a = Clip {
+        start: clip.start,
+        end: at,
+        animation: clip.animation.clone(),
+        name: format!("{}_a", clip.name),
+        time_offset: clip.time_offset,
+        speed: clip.speed,
+        enabled: clip.enabled
+    }
+
+    let clip_b = Clip {
+        start: at,
+        end: clip.end,
+        animation: clip.animation.clone(),
+        name: format!("{}_b", clip.name),
+        time_offset: anim_split_time,
+        speed: clip.speed,
+        enabled: clip.enabled
+    }
+
+    return (clip_a, clip_b)
+
+    docs {
+        Split a clip into two parts at a specific timeline time.
+    }
+}
+
+pub fun time_stretch_clip(clip: Clip, factor: f64) -> Clip {
+    if factor <= 0.0 {
+        return clip.clone()
+    }
+
+    let new_duration = clip.duration() * factor
+    return Clip {
+        start: clip.start,
+        end: clip.start + new_duration,
+        animation: clip.animation.clone(),
+        name: clip.name.clone(),
+        time_offset: clip.time_offset,
+        speed: clip.speed / factor,
+        enabled: clip.enabled
+    }
+
+    docs {
+        Stretch or compress a clip's duration by a factor.
+        Factor > 1.0 stretches (slower), < 1.0 compresses (faster).
+    }
+}
+
+pub fun reverse_clip(clip: Clip) -> Clip {
+    // Reversing changes how we calculate animation time
+    return Clip {
+        start: clip.start,
+        end: clip.end,
+        animation: clip.animation.clone(),
+        name: format!("{}_reversed", clip.name),
+        time_offset: clip.animation.duration - clip.time_offset - clip.duration() * clip.speed,
+        speed: -clip.speed,
+        enabled: clip.enabled
+    }
+
+    docs {
+        Create a reversed version of the clip.
+    }
+}
+
+// ============================================================================
+// SEQUENCE OPERATIONS
+// ============================================================================
+
+pub fun concatenate(a: Timeline, b: Timeline) -> Timeline {
+    // Place b after a
+    let offset = a.duration
+
+    // Offset all clips in b's layers
+    let mut layers = a.layers.clone()
+    for layer in b.layers {
+        let offset_clips = layer.clips.map(|c| {
+            Clip {
+                start: c.start + offset,
+                end: c.end + offset,
+                animation: c.animation.clone(),
+                name: c.name.clone(),
+                time_offset: c.time_offset,
+                speed: c.speed,
+                enabled: c.enabled
+            }
+        }).collect()
+
+        // Find or create matching layer
+        let mut found = false
+        for i in 0..layers.length {
+            if layers[i].name == layer.name {
+                layers[i] = Layer {
+                    clips: layers[i].clips.clone().extend(offset_clips),
+                    name: layer.name.clone(),
+                    blend_mode: layer.blend_mode,
+                    weight: layer.weight,
+                    muted: layer.muted,
+                    solo: layer.solo
+                }
+                found = true
+                break
+            }
+        }
+        if !found {
+            layers.push(Layer {
+                clips: offset_clips,
+                name: layer.name.clone(),
+                blend_mode: layer.blend_mode,
+                weight: layer.weight,
+                muted: layer.muted,
+                solo: layer.solo
+            })
+        }
+    }
+
+    // Offset b's cues
+    let mut cues = a.cues.clone()
+    for cue in b.cues {
+        cues.push(Cue {
+            time: cue.time + offset,
+            action: cue.action,
+            name: cue.name.clone(),
+            enabled: cue.enabled
+        })
+    }
+    cues.sort_by(|a, b| a.time.partial_cmp(&b.time))
+
+    return Timeline {
+        layers: layers,
+        cues: cues,
+        duration: a.duration + b.duration,
+        name: format!("{}+{}", a.name, b.name),
+        looping: false
+    }
+
+    docs {
+        Concatenate two timelines sequentially (b plays after a).
+    }
+}
+
+pub fun parallel_compose(timelines: Vec<Timeline>) -> Timeline {
+    if timelines.is_empty() {
+        return Timeline {
+            layers: vec![],
+            cues: vec![],
+            duration: 0.0,
+            name: "empty",
+            looping: false
+        }
+    }
+
+    let max_duration = timelines.map(|t| t.duration).max()
+    let mut all_layers = vec![]
+    let mut all_cues = vec![]
+
+    for (i, timeline) in timelines.enumerate() {
+        // Prefix layer names to avoid collision
+        for layer in timeline.layers {
+            all_layers.push(Layer {
+                clips: layer.clips.clone(),
+                name: format!("{}_{}", i, layer.name),
+                blend_mode: layer.blend_mode,
+                weight: layer.weight,
+                muted: layer.muted,
+                solo: layer.solo
+            })
+        }
+
+        // Prefix cue names
+        for cue in timeline.cues {
+            all_cues.push(Cue {
+                time: cue.time,
+                action: cue.action,
+                name: format!("{}_{}", i, cue.name),
+                enabled: cue.enabled
+            })
+        }
+    }
+
+    all_cues.sort_by(|a, b| a.time.partial_cmp(&b.time))
+
+    return Timeline {
+        layers: all_layers,
+        cues: all_cues,
+        duration: max_duration,
+        name: "parallel_composition",
+        looping: false
+    }
+
+    docs {
+        Compose multiple timelines to play in parallel.
+        Duration is the maximum of all timeline durations.
+    }
+}
+
+pub fun sequential_compose(timelines: Vec<Timeline>) -> Timeline {
+    if timelines.is_empty() {
+        return Timeline {
+            layers: vec![],
+            cues: vec![],
+            duration: 0.0,
+            name: "empty",
+            looping: false
+        }
+    }
+
+    let mut result = timelines[0].clone()
+    for i in 1..timelines.length {
+        result = concatenate(result, timelines[i])
+    }
+
+    return result
+
+    docs {
+        Compose multiple timelines to play sequentially.
+        Each timeline plays after the previous one ends.
+    }
+}
+
+pub fun stagger(timelines: Vec<Timeline>, delay: f64) -> Timeline {
+    if timelines.is_empty() {
+        return Timeline {
+            layers: vec![],
+            cues: vec![],
+            duration: 0.0,
+            name: "empty",
+            looping: false
+        }
+    }
+
+    let mut all_layers = vec![]
+    let mut all_cues = vec![]
+    let mut max_end = 0.0
+
+    for (i, timeline) in timelines.enumerate() {
+        let offset = i as f64 * delay
+
+        // Offset layers
+        for layer in timeline.layers {
+            let offset_clips = layer.clips.map(|c| {
+                Clip {
+                    start: c.start + offset,
+                    end: c.end + offset,
+                    animation: c.animation.clone(),
+                    name: c.name.clone(),
+                    time_offset: c.time_offset,
+                    speed: c.speed,
+                    enabled: c.enabled
+                }
+            }).collect()
+
+            all_layers.push(Layer {
+                clips: offset_clips,
+                name: format!("{}_{}", i, layer.name),
+                blend_mode: layer.blend_mode,
+                weight: layer.weight,
+                muted: layer.muted,
+                solo: layer.solo
+            })
+        }
+
+        // Offset cues
+        for cue in timeline.cues {
+            all_cues.push(Cue {
+                time: cue.time + offset,
+                action: cue.action,
+                name: format!("{}_{}", i, cue.name),
+                enabled: cue.enabled
+            })
+        }
+
+        max_end = max(max_end, offset + timeline.duration)
+    }
+
+    all_cues.sort_by(|a, b| a.time.partial_cmp(&b.time))
+
+    return Timeline {
+        layers: all_layers,
+        cues: all_cues,
+        duration: max_end,
+        name: "staggered",
+        looping: false
+    }
+
+    docs {
+        Stagger timelines with a delay between each start.
+        Each timeline starts `delay` seconds after the previous one.
+    }
+}
+
+// ============================================================================
+// TIMELINE OPERATIONS
+// ============================================================================
+
+pub fun create_timeline(name: string, duration: f64) -> Timeline {
+    return Timeline {
+        layers: vec![],
+        cues: vec![],
+        duration: duration,
+        name: name,
+        looping: false
+    }
+
+    docs {
+        Create an empty timeline with a specified duration.
+    }
+}
+
+pub fun add_clip(timeline: Timeline, layer_name: string, clip: Clip) -> Timeline {
+    let mut layers = timeline.layers.clone()
+
+    // Find or create layer
+    let mut found_idx = None
+    for (i, layer) in layers.enumerate() {
+        if layer.name == layer_name {
+            found_idx = Some(i)
+            break
+        }
+    }
+
+    if let Some(idx) = found_idx {
+        layers[idx] = layers[idx].add_clip(clip)
+    } else {
+        // Create new layer
+        layers.push(Layer {
+            clips: vec![clip],
+            name: layer_name,
+            blend_mode: BlendMode::Replace,
+            weight: 1.0,
+            muted: false,
+            solo: false
+        })
+    }
+
+    // Update duration if needed
+    let new_duration = max(timeline.duration, clip.end)
+
+    return Timeline {
+        layers: layers,
+        cues: timeline.cues.clone(),
+        duration: new_duration,
+        name: timeline.name.clone(),
+        looping: timeline.looping
+    }
+
+    docs {
+        Add a clip to a timeline on a specific layer.
+        Creates the layer if it doesn't exist.
+    }
+}
+
+pub fun remove_clip(timeline: Timeline, clip_name: string) -> Timeline {
+    let layers = timeline.layers.map(|layer| {
+        Layer {
+            clips: layer.clips.filter(|c| c.name != clip_name).collect(),
+            name: layer.name.clone(),
+            blend_mode: layer.blend_mode,
+            weight: layer.weight,
+            muted: layer.muted,
+            solo: layer.solo
+        }
+    }).collect()
+
+    return Timeline {
+        layers: layers,
+        cues: timeline.cues.clone(),
+        duration: timeline.duration,
+        name: timeline.name.clone(),
+        looping: timeline.looping
+    }
+
+    docs {
+        Remove a clip from a timeline by name.
+    }
+}
+
+pub fun get_clips_at_time(timeline: Timeline, t: f64) -> Vec<Clip> {
+    return timeline.clips_at_time(t)
+
+    docs {
+        Get all active clips at a specific time.
+    }
+}
+
+pub fun get_timeline_duration(timeline: Timeline) -> f64 {
+    return timeline.duration
+
+    docs {
+        Get the total duration of a timeline.
+    }
+}
+
+// ============================================================================
+// CUE OPERATIONS
+// ============================================================================
+
+pub fun add_cue(timeline: Timeline, cue: Cue) -> Timeline {
+    return timeline.add_cue(cue)
+
+    docs {
+        Add a cue to a timeline.
+    }
+}
+
+pub fun remove_cue(timeline: Timeline, cue_name: string) -> Timeline {
+    let cues = timeline.cues.filter(|c| c.name != cue_name).collect()
+
+    return Timeline {
+        layers: timeline.layers.clone(),
+        cues: cues,
+        duration: timeline.duration,
+        name: timeline.name.clone(),
+        looping: timeline.looping
+    }
+
+    docs {
+        Remove a cue from a timeline by name.
+    }
+}
+
+pub fun get_cues_in_range(timeline: Timeline, start: f64, end: f64) -> Vec<Cue> {
+    return timeline.cues_in_range(start, end)
+
+    docs {
+        Get all cues within a time range.
+    }
+}
+
+// ============================================================================
+// PLAYBACK
+// ============================================================================
+
+pub fun seek(timeline: Timeline, state: AnimationState, time: f64) -> AnimationState {
+    let clamped_time = if timeline.looping && timeline.duration > 0.0 {
+        let t = time % timeline.duration
+        if t < 0.0 { t + timeline.duration } else { t }
+    } else {
+        clamp(time, 0.0, timeline.duration)
+    }
+
+    return AnimationState {
+        time: clamped_time,
+        playing: state.playing,
+        speed: state.speed,
+        direction: state.direction
+    }
+
+    docs {
+        Seek to a specific time in the timeline.
+        Handles looping and clamping.
+    }
+}
+
+pub fun get_state_at_time(timeline: Timeline, t: f64) -> Vec<(string, f64)> {
+    // Handle looping
+    let effective_time = if timeline.looping && timeline.duration > 0.0 {
+        let looped = t % timeline.duration
+        if looped < 0.0 { looped + timeline.duration } else { looped }
+    } else {
+        clamp(t, 0.0, timeline.duration)
+    }
+
+    let mut results = vec![]
+
+    // Evaluate all active clips
+    for clip in timeline.clips_at_time(effective_time) {
+        let values = clip.evaluate(effective_time)
+        for (name, value) in values {
+            results.push((format!("{}/{}", clip.name, name), value))
+        }
+    }
+
+    return results
+
+    docs {
+        Get the animated state at a specific time.
+        Returns all track values from all active clips.
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+fun clamp(value: f64, min: f64, max: f64) -> f64 {
+    if value < min { return min }
+    if value > max { return max }
+    return value
+}
+
+fun max(a: f64, b: f64) -> f64 {
+    if a > b { a } else { b }
+}
+
+fun min(a: f64, b: f64) -> f64 {
+    if a < b { a } else { b }
+}
+
+docs {
+    Animation Spirit - Timeline Module
+
+    Comprehensive timeline sequencing and composition for complex animations.
+
+    Core Types:
+    - Timeline: Top-level container with layers, clips, and cues
+    - Layer: Contains clips with blend mode and weight
+    - Clip: Places an animation within a timeline with timing/speed
+    - Sequence: Multiple timelines played parallel or sequential
+    - Cue: Timed event triggers
+    - CueAction: Actions triggered by cues (events, start/stop, seek, callbacks)
+
+    Traits:
+    - Schedulable: Types that can be scheduled at a time
+    - Composable: Types that can be combined
+    - Playable: Types that can be evaluated over time
+
+    Clip Operations:
+    - create_clip: Create clip from animation
+    - trim_clip: Trim to time range
+    - split_clip: Split at time
+    - time_stretch_clip: Change duration
+    - reverse_clip: Play backward
+
+    Sequence Operations:
+    - concatenate: Play b after a
+    - parallel_compose: Play all simultaneously
+    - sequential_compose: Play in order
+    - stagger: Stagger with delay
+
+    Timeline Operations:
+    - create_timeline: Create empty timeline
+    - add_clip: Add clip to layer
+    - remove_clip: Remove clip by name
+    - add_cue: Add cue point
+    - remove_cue: Remove cue by name
+
+    Playback:
+    - seek: Jump to time
+    - get_state_at_time: Evaluate all tracks at time
+
+    Usage:
+        // Create a timeline
+        let timeline = create_timeline("main", 10.0)
+
+        // Add clips
+        timeline = add_clip(timeline, "transform", position_clip)
+        timeline = add_clip(timeline, "transform", rotation_clip)
+        timeline = add_clip(timeline, "material", color_clip)
+
+        // Add cues
+        timeline = add_cue(timeline, Cue {
+            time: 5.0,
+            action: CueAction::Event { name: "halfway" },
+            name: "midpoint",
+            enabled: true
+        })
+
+        // Compose timelines
+        let intro = create_intro_timeline()
+        let main = create_main_timeline()
+        let outro = create_outro_timeline()
+        let full = sequential_compose(vec![intro, main, outro])
+
+        // Playback
+        let state = get_state_at_time(full, current_time)
+}

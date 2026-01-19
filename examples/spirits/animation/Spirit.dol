@@ -1,0 +1,77 @@
+// Animation Spirit Package - Part of Spirits Jam 2
+// A comprehensive animation and motion toolkit for DOL
+
+spirit Animation {
+    has name: "animation"
+    has version: "0.1.0"
+    has authors: ["VUDO Team <team@univrs.io>"]
+    has license: "MIT"
+
+    has lib: "lib.dol"
+
+    // Dependencies on physics for motion/forces and visual for geometry/colors
+    has dependencies: [
+        "@univrs/physics @ >=0.1.0",
+        "@univrs/visual @ >=0.1.0"
+    ]
+
+    has keywords: [
+        "animation",
+        "motion",
+        "easing",
+        "keyframes",
+        "particles",
+        "timeline",
+        "tweening",
+        "interpolation",
+        "procedural"
+    ]
+
+    has categories: [
+        "graphics",
+        "multimedia",
+        "creative-coding",
+        "game-development"
+    ]
+
+    docs {
+        Animation Spirit - A comprehensive animation and motion toolkit for DOL.
+
+        This Spirit provides primitives and algorithms for:
+        - Keyframe animation with easing functions (linear, cubic, elastic, bounce)
+        - Particle systems with emitters, forces, and lifecycle management
+        - Timeline sequencing for complex animation compositions
+        - Procedural animation utilities
+
+        Built on physics.mechanics for accurate force calculations and
+        visual.geometry for spatial transformations.
+
+        Quick start:
+            use @univrs/animation.{ Animation, Track, Keyframe, EasingFn }
+            use @univrs/animation.keyframes.{ ease_in_quad, evaluate_track }
+            use @univrs/animation.particles.{ Particle, Emitter, ParticleSystem }
+            use @univrs/animation.timeline.{ Timeline, Clip, concatenate }
+
+        Examples:
+            // Create a simple position animation
+            let track = Track {
+                name: "position.x",
+                keyframes: vec![
+                    Keyframe { time: 0.0, value: 0.0, easing: EasingFn::Linear },
+                    Keyframe { time: 1.0, value: 100.0, easing: EasingFn::EaseOut }
+                ]
+            }
+            let value = evaluate_track(track, 0.5)
+
+            // Create a particle emitter
+            let emitter = Emitter {
+                position: Point2D { x: 0.0, y: 0.0 },
+                rate: 10.0,
+                shape: EmitterShape::Circle { radius: 5.0 }
+            }
+            let particles = spawn_burst(emitter, 100)
+
+            // Compose timeline clips
+            let timeline = concatenate(clip_a.timeline, clip_b.timeline)
+    }
+}
