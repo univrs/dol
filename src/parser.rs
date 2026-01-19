@@ -4230,7 +4230,10 @@ impl<'a> Parser<'a> {
             | TokenKind::Type
             | TokenKind::Val
             | TokenKind::Extends
-            | TokenKind::Forall => {
+            | TokenKind::Forall
+            // v0.9.0 Spirit keywords that can be used as identifiers
+            | TokenKind::Spirit
+            | TokenKind::Config => {
                 let lexeme = self.current.lexeme.clone();
                 self.advance();
                 Ok(lexeme)

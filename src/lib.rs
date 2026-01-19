@@ -83,6 +83,9 @@ pub mod transform;
 pub mod typechecker;
 pub mod validator;
 
+// Spirit manifest parsing
+pub mod manifest;
+
 // Hyphal network modules
 pub mod network;
 pub mod swarm;
