@@ -180,6 +180,10 @@ pub struct ModuleDecl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UseDecl {
+    /// Visibility for re-exports (pub use)
+    pub visibility: Visibility,
+    /// Source type (local, registry, git, https)
+    pub source: ImportSource,
     /// Module path to import from
     pub path: Vec<String>,
     /// What items to import
@@ -200,6 +204,40 @@ pub enum UseItems {
     Named(Vec<UseItem>),
     /// Import the module itself: `use module`
     Single,
+}
+
+/// Source type for a use/import declaration.
+///
+/// Determines where the module is resolved from.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ImportSource {
+    /// Local module within the same spirit: `use container`
+    #[default]
+    Local,
+    /// Registry package: `use @univrs/std`
+    Registry {
+        /// Organization name (e.g., "univrs")
+        org: String,
+        /// Package name (e.g., "std")
+        package: String,
+        /// Optional version constraint (e.g., "^1.0")
+        version: Option<String>,
+    },
+    /// Git repository: `use @git:github.com/org/repo`
+    Git {
+        /// Full URL (e.g., "github.com/org/repo")
+        url: String,
+        /// Branch, tag, or commit (e.g., "main", "v1.0.0")
+        reference: Option<String>,
+    },
+    /// HTTP URL: `use @https://example.com/file.dol`
+    Https {
+        /// Full URL to the .dol file
+        url: String,
+        /// Optional SHA256 hash for verification
+        sha256: Option<String>,
+    },
 }
 
 /// A single item in a named import list.

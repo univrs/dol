@@ -289,6 +289,8 @@ pub enum TokenKind {
     Use,
     /// The `spirit` keyword
     Spirit,
+    /// The `config` keyword
+    Config,
 
     // === SEX Keywords (DOL 2.0) ===
     /// The `sex` keyword (side effect marker)
@@ -654,6 +656,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Module => write!(f, "module"),
             TokenKind::Use => write!(f, "use"),
             TokenKind::Spirit => write!(f, "spirit"),
+            TokenKind::Config => write!(f, "config"),
             // DOL 2.0 SEX Keywords
             TokenKind::Sex => write!(f, "sex"),
             TokenKind::Var => write!(f, "var"),
@@ -1345,6 +1348,7 @@ impl<'a> Lexer<'a> {
             "mod" => Some(TokenKind::Module), // Short form of module
             "use" => Some(TokenKind::Use),
             "spirit" => Some(TokenKind::Spirit),
+            "config" => Some(TokenKind::Config),
             // DOL 2.0 SEX keywords
             "sex" => Some(TokenKind::Sex),
             "var" => Some(TokenKind::Var),

@@ -49,6 +49,7 @@
 use crate::ast::*;
 use crate::error::{ValidationError, ValidationWarning};
 use crate::typechecker::{Type, TypeChecker, TypeError};
+use std::collections::HashSet;
 
 /// The result of validating a declaration.
 #[derive(Debug, Clone)]
@@ -171,6 +172,301 @@ pub fn validate_with_options(decl: &Declaration, options: &ValidationOptions) ->
 /// Use [`validate_with_options`] with `typecheck: true` for DOL 2.0 type validation.
 pub fn validate(decl: &Declaration) -> ValidationResult {
     validate_with_options(decl, &ValidationOptions::default())
+}
+
+/// Validates a complete DOL file including module, uses, and declarations.
+///
+/// This performs file-level validation including:
+/// - Module declaration format
+/// - Use declaration validation (visibility, source resolution)
+/// - Declaration validation
+/// - Visibility rules enforcement
+///
+/// # Arguments
+///
+/// * `file` - The parsed DOL file to validate
+///
+/// # Returns
+///
+/// A `FileValidationResult` containing any errors or warnings.
+pub fn validate_file(file: &DolFile) -> FileValidationResult {
+    validate_file_with_options(file, &ValidationOptions::default())
+}
+
+/// Validates a complete DOL file with options.
+pub fn validate_file_with_options(
+    file: &DolFile,
+    options: &ValidationOptions,
+) -> FileValidationResult {
+    let mut result = FileValidationResult::new();
+
+    // Validate module declaration
+    if let Some(ref module) = file.module {
+        validate_module_decl(module, &mut result);
+    }
+
+    // Validate use declarations
+    validate_use_declarations(&file.uses, &mut result);
+
+    // Validate each declaration
+    for decl in &file.declarations {
+        let decl_result = validate_with_options(decl, options);
+        result.declaration_results.push(decl_result);
+    }
+
+    // Cross-reference validation: check that uses reference valid declarations
+    validate_use_references(file, &mut result);
+
+    result
+}
+
+/// Result of validating a complete DOL file.
+#[derive(Debug, Clone)]
+pub struct FileValidationResult {
+    /// Module-level errors
+    pub module_errors: Vec<ValidationError>,
+    /// Module-level warnings
+    pub module_warnings: Vec<ValidationWarning>,
+    /// Validation results for each declaration
+    pub declaration_results: Vec<ValidationResult>,
+}
+
+impl FileValidationResult {
+    /// Creates a new file validation result.
+    fn new() -> Self {
+        Self {
+            module_errors: Vec::new(),
+            module_warnings: Vec::new(),
+            declaration_results: Vec::new(),
+        }
+    }
+
+    /// Returns true if the file is valid (no errors).
+    pub fn is_valid(&self) -> bool {
+        self.module_errors.is_empty() && self.declaration_results.iter().all(|r| r.is_valid())
+    }
+
+    /// Returns true if there are any warnings.
+    pub fn has_warnings(&self) -> bool {
+        !self.module_warnings.is_empty()
+            || self.declaration_results.iter().any(|r| r.has_warnings())
+    }
+
+    /// Collects all errors from the file.
+    pub fn all_errors(&self) -> Vec<&ValidationError> {
+        let mut errors: Vec<&ValidationError> = self.module_errors.iter().collect();
+        for result in &self.declaration_results {
+            errors.extend(result.errors.iter());
+        }
+        errors
+    }
+
+    /// Collects all warnings from the file.
+    pub fn all_warnings(&self) -> Vec<&ValidationWarning> {
+        let mut warnings: Vec<&ValidationWarning> = self.module_warnings.iter().collect();
+        for result in &self.declaration_results {
+            warnings.extend(result.warnings.iter());
+        }
+        warnings
+    }
+
+    fn add_error(&mut self, error: ValidationError) {
+        self.module_errors.push(error);
+    }
+
+    fn add_warning(&mut self, warning: ValidationWarning) {
+        self.module_warnings.push(warning);
+    }
+}
+
+/// Validates a module declaration.
+fn validate_module_decl(module: &ModuleDecl, result: &mut FileValidationResult) {
+    // Module path must not be empty
+    if module.path.is_empty() {
+        result.add_error(ValidationError::InvalidIdentifier {
+            name: "module".to_string(),
+            reason: "module path cannot be empty".to_string(),
+        });
+        return;
+    }
+
+    // Validate each path segment
+    for segment in &module.path {
+        if segment.is_empty() {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: module.path.join("."),
+                reason: "module path segment cannot be empty".to_string(),
+            });
+        } else if !segment.chars().next().unwrap_or('_').is_alphabetic() {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: segment.clone(),
+                reason: "module path segment must start with a letter".to_string(),
+            });
+        }
+    }
+
+    // If version is present, validate it
+    if let Some(ref version) = module.version {
+        if version.major == 0 && version.minor == 0 && version.patch == 0 {
+            result.add_warning(ValidationWarning::NamingConvention {
+                name: module.path.join("."),
+                suggestion:
+                    "module version 0.0.0 is typically reserved; consider starting at 0.0.1"
+                        .to_string(),
+            });
+        }
+    }
+}
+
+/// Validates use declarations.
+fn validate_use_declarations(uses: &[UseDecl], result: &mut FileValidationResult) {
+    let mut seen_imports: HashSet<String> = HashSet::new();
+
+    for use_decl in uses {
+        // Check for duplicate imports
+        let import_key = format_import_key(use_decl);
+        if seen_imports.contains(&import_key) {
+            result.add_warning(ValidationWarning::NamingConvention {
+                name: import_key.clone(),
+                suggestion: "duplicate import; this import was already declared".to_string(),
+            });
+        } else {
+            seen_imports.insert(import_key);
+        }
+
+        // Validate import path
+        validate_import_path(use_decl, result);
+
+        // Validate visibility rules
+        validate_use_visibility(use_decl, result);
+    }
+}
+
+/// Formats an import key for duplicate detection.
+fn format_import_key(use_decl: &UseDecl) -> String {
+    let source_prefix = match &use_decl.source {
+        ImportSource::Local => "local:".to_string(),
+        ImportSource::Registry { org, package, .. } => format!("@{}/{}:", org, package),
+        ImportSource::Git { url, .. } => format!("git:{}:", url),
+        ImportSource::Https { url, .. } => format!("https:{}:", url),
+    };
+    format!("{}{}", source_prefix, use_decl.path.join("."))
+}
+
+/// Validates the import path in a use declaration.
+fn validate_import_path(use_decl: &UseDecl, result: &mut FileValidationResult) {
+    // Registry imports must have valid org/package
+    if let ImportSource::Registry { org, package, .. } = &use_decl.source {
+        if org.is_empty() {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: "registry import".to_string(),
+                reason: "organization name cannot be empty".to_string(),
+            });
+        }
+        if package.is_empty() {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: "registry import".to_string(),
+                reason: "package name cannot be empty".to_string(),
+            });
+        }
+    }
+
+    // Git imports must have a URL
+    if let ImportSource::Git { url, .. } = &use_decl.source {
+        if url.is_empty() {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: "git import".to_string(),
+                reason: "git URL cannot be empty".to_string(),
+            });
+        }
+    }
+
+    // HTTPS imports must have a valid URL
+    if let ImportSource::Https { url, .. } = &use_decl.source {
+        if url.is_empty() {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: "https import".to_string(),
+                reason: "URL cannot be empty".to_string(),
+            });
+        }
+        if !url.starts_with("https://") {
+            result.add_error(ValidationError::InvalidIdentifier {
+                name: url.clone(),
+                reason: "HTTPS import URL must start with https://".to_string(),
+            });
+        }
+    }
+
+    // Validate named items if present
+    if let UseItems::Named(items) = &use_decl.items {
+        let mut seen_names: HashSet<String> = HashSet::new();
+        for item in items {
+            if seen_names.contains(&item.name) {
+                result.add_warning(ValidationWarning::NamingConvention {
+                    name: item.name.clone(),
+                    suggestion: "duplicate item in import list".to_string(),
+                });
+            } else {
+                seen_names.insert(item.name.clone());
+            }
+        }
+    }
+}
+
+/// Validates visibility rules for use declarations.
+fn validate_use_visibility(use_decl: &UseDecl, result: &mut FileValidationResult) {
+    match use_decl.visibility {
+        Visibility::Public => {
+            // Public re-exports are allowed for all import types
+        }
+        Visibility::PubSpirit => {
+            // pub(spirit) re-exports are only meaningful for local imports
+            // For external imports, warn that pub(spirit) has limited utility
+            if !matches!(use_decl.source, ImportSource::Local) {
+                result.add_warning(ValidationWarning::NamingConvention {
+                    name: format_import_key(use_decl),
+                    suggestion: "pub(spirit) visibility on external imports has limited utility; consider using 'pub' instead".to_string(),
+                });
+            }
+        }
+        Visibility::PubParent => {
+            // pub(parent) re-exports make an import visible only to the parent module
+            // This is a valid use case for intermediate re-exports
+        }
+        Visibility::Private => {
+            // Private imports are the default and always valid
+        }
+    }
+}
+
+/// Validates that use references are consistent within the file.
+fn validate_use_references(file: &DolFile, _result: &mut FileValidationResult) {
+    // Collect all declared names in this file
+    let declared_names: HashSet<String> = file
+        .declarations
+        .iter()
+        .map(|d| d.name().to_string())
+        .collect();
+
+    // Check that local re-exports actually exist
+    for use_decl in &file.uses {
+        // For local re-exports, the path should reference something
+        // This is a soft check since the referenced module might be in another file
+        if matches!(
+            use_decl.visibility,
+            Visibility::Public | Visibility::PubSpirit | Visibility::PubParent
+        ) && matches!(use_decl.source, ImportSource::Local)
+        {
+            let full_path = use_decl.path.join(".");
+            if !full_path.is_empty() && !declared_names.contains(&full_path) {
+                // This is just informational - the import might reference another module
+                // _result.add_warning(ValidationWarning::NamingConvention {
+                //     name: full_path,
+                //     suggestion: "re-exported item not found in this file".to_string(),
+                // });
+            }
+        }
+    }
 }
 
 /// Validates the exegesis block.
@@ -790,5 +1086,227 @@ mod tests {
 
         let options = ValidationOptions { typecheck: false };
         assert!(!options.typecheck);
+    }
+
+    // === File Validation Tests ===
+
+    fn make_use_decl(visibility: Visibility, source: ImportSource, path: Vec<&str>) -> UseDecl {
+        UseDecl {
+            visibility,
+            source,
+            path: path.into_iter().map(|s| s.to_string()).collect(),
+            items: UseItems::Single,
+            alias: None,
+            span: Span::default(),
+        }
+    }
+
+    #[test]
+    fn test_validate_file_empty() {
+        let file = DolFile {
+            module: None,
+            uses: vec![],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_file_with_module() {
+        let file = DolFile {
+            module: Some(ModuleDecl {
+                path: vec!["container".to_string()],
+                version: None,
+                span: Span::default(),
+            }),
+            uses: vec![],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_file_with_versioned_module() {
+        let file = DolFile {
+            module: Some(ModuleDecl {
+                path: vec!["container".to_string(), "lib".to_string()],
+                version: Some(Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    suffix: None,
+                }),
+                span: Span::default(),
+            }),
+            uses: vec![],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_file_with_zero_version_warning() {
+        let file = DolFile {
+            module: Some(ModuleDecl {
+                path: vec!["test".to_string()],
+                version: Some(Version {
+                    major: 0,
+                    minor: 0,
+                    patch: 0,
+                    suffix: None,
+                }),
+                span: Span::default(),
+            }),
+            uses: vec![],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid()); // Still valid, just warning
+        assert!(result.has_warnings());
+    }
+
+    #[test]
+    fn test_validate_local_use() {
+        let file = DolFile {
+            module: None,
+            uses: vec![make_use_decl(
+                Visibility::Private,
+                ImportSource::Local,
+                vec!["container", "state"],
+            )],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_pub_use() {
+        let file = DolFile {
+            module: None,
+            uses: vec![make_use_decl(
+                Visibility::Public,
+                ImportSource::Local,
+                vec!["container", "Container"],
+            )],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_registry_use() {
+        let file = DolFile {
+            module: None,
+            uses: vec![make_use_decl(
+                Visibility::Private,
+                ImportSource::Registry {
+                    org: "univrs".to_string(),
+                    package: "std".to_string(),
+                    version: None,
+                },
+                vec!["io"],
+            )],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_duplicate_use_warning() {
+        let file = DolFile {
+            module: None,
+            uses: vec![
+                make_use_decl(Visibility::Private, ImportSource::Local, vec!["container"]),
+                make_use_decl(Visibility::Private, ImportSource::Local, vec!["container"]),
+            ],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid()); // Still valid, just warning
+        assert!(result.has_warnings());
+    }
+
+    #[test]
+    fn test_validate_empty_registry_org_error() {
+        let file = DolFile {
+            module: None,
+            uses: vec![make_use_decl(
+                Visibility::Private,
+                ImportSource::Registry {
+                    org: "".to_string(),
+                    package: "std".to_string(),
+                    version: None,
+                },
+                vec![],
+            )],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_https_url_format() {
+        // Valid HTTPS URL
+        let file = DolFile {
+            module: None,
+            uses: vec![make_use_decl(
+                Visibility::Private,
+                ImportSource::Https {
+                    url: "https://example.com/module.dol".to_string(),
+                    sha256: None,
+                },
+                vec![],
+            )],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_https_missing_protocol_error() {
+        let file = DolFile {
+            module: None,
+            uses: vec![make_use_decl(
+                Visibility::Private,
+                ImportSource::Https {
+                    url: "example.com/module.dol".to_string(), // Missing https://
+                    sha256: None,
+                },
+                vec![],
+            )],
+            declarations: vec![],
+        };
+        let result = validate_file(&file);
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_file_validation_result_all_errors() {
+        let mut result = FileValidationResult::new();
+        result.add_error(ValidationError::InvalidIdentifier {
+            name: "test".to_string(),
+            reason: "test error".to_string(),
+        });
+        let errors = result.all_errors();
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn test_file_validation_result_all_warnings() {
+        let mut result = FileValidationResult::new();
+        result.add_warning(ValidationWarning::ShortExegesis {
+            length: 5,
+            span: Span::default(),
+        });
+        let warnings = result.all_warnings();
+        assert_eq!(warnings.len(), 1);
     }
 }

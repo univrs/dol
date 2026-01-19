@@ -2834,3 +2834,151 @@ exegesis { Returns 1 if a != b. }
         .expect("Call failed");
     assert_eq!(result.first().and_then(|v| v.i64()), Some(1));
 }
+
+// ============================================
+// Gene Constructor Tests
+// ============================================
+
+/// Test that gene constructors are exported and callable
+#[test]
+fn test_gene_constructor_export() {
+    let source = r#"
+        /// A 2D point gene
+        gene Point {
+            has x: Int64
+            has y: Int64
+        }
+
+        /// Function that uses a Point
+        pub fun get_point_sum() -> Int64 {
+            let p = Point { x: 10, y: 20 }
+            p.x + p.y
+        }
+    "#;
+
+    let file = parse_dol_file(source).expect("Parse failed");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile_file(&file).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+
+    // Test the regular function that uses struct literals
+    let result = wasm_module.call("get_point_sum", &[]).expect("Call failed");
+    assert_eq!(result.first().and_then(|v| v.i64()), Some(30));
+
+    // The constructor new_Point should be exported
+    // It takes two i64 parameters (x, y) and returns i32 (pointer)
+    let result = wasm_module
+        .call("new_Point", &[100i64.into(), 200i64.into()])
+        .expect("Call new_Point failed");
+
+    // Should return a valid pointer (non-null)
+    let ptr = result
+        .first()
+        .and_then(|v| v.i32())
+        .expect("Expected i32 pointer result");
+    assert!(ptr >= 0, "Pointer should be non-negative");
+}
+
+/// Test gene constructor with different field types
+#[test]
+fn test_gene_constructor_with_floats() {
+    let source = r#"
+        /// A 2D vector with float components
+        gene Vector2D {
+            has dx: Float64
+            has dy: Float64
+        }
+
+        /// Create and use a vector
+        pub fun test_vector() -> Float64 {
+            let v = Vector2D { dx: 3.0, dy: 4.0 }
+            v.dx + v.dy
+        }
+    "#;
+
+    let file = parse_dol_file(source).expect("Parse failed");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile_file(&file).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+
+    // Test the function
+    let result = wasm_module.call("test_vector", &[]).expect("Call failed");
+    let sum = result.first().and_then(|v| v.f64()).expect("Expected f64");
+    assert!((sum - 7.0).abs() < 0.0001, "Expected 7.0, got {}", sum);
+
+    // Call constructor directly with f64 parameters
+    // Note: wasmtime uses f64 bits for F64 args
+    let result = wasm_module.call(
+        "new_Vector2D",
+        &[
+            wasmtime::Val::F64(1.5f64.to_bits()),
+            wasmtime::Val::F64(2.5f64.to_bits()),
+        ],
+    );
+
+    // Constructor should work
+    assert!(
+        result.is_ok(),
+        "new_Vector2D constructor should be callable: {:?}",
+        result.err()
+    );
+}
+
+/// Test multiple genes with constructors
+#[test]
+fn test_multiple_gene_constructors() {
+    let source = r#"
+        /// A 2D point
+        gene Point {
+            has x: Int64
+            has y: Int64
+        }
+
+        /// A 3D point
+        gene Point3D {
+            has x: Int64
+            has y: Int64
+            has z: Int64
+        }
+
+        /// Sum coordinates of both points
+        pub fun test_both() -> Int64 {
+            let p2 = Point { x: 1, y: 2 }
+            let p3 = Point3D { x: 10, y: 20, z: 30 }
+            p2.x + p2.y + p3.x + p3.y + p3.z
+        }
+    "#;
+
+    let file = parse_dol_file(source).expect("Parse failed");
+
+    let mut compiler = WasmCompiler::new();
+    let wasm_bytes = compiler.compile_file(&file).expect("Compilation failed");
+
+    let runtime = WasmRuntime::new().expect("Failed to create runtime");
+    let mut wasm_module = runtime.load(&wasm_bytes).expect("Failed to load WASM");
+
+    // Test the combined function
+    let result = wasm_module.call("test_both", &[]).expect("Call failed");
+    assert_eq!(
+        result.first().and_then(|v| v.i64()),
+        Some(63),
+        "1+2+10+20+30 = 63"
+    );
+
+    // Both constructors should be exported
+    let result = wasm_module
+        .call("new_Point", &[5i64.into(), 6i64.into()])
+        .expect("new_Point should be exported");
+    assert!(result.first().and_then(|v| v.i32()).is_some());
+
+    let result = wasm_module
+        .call("new_Point3D", &[1i64.into(), 2i64.into(), 3i64.into()])
+        .expect("new_Point3D should be exported");
+    assert!(result.first().and_then(|v| v.i32()).is_some());
+}
