@@ -60,4 +60,4 @@ compiler-progress/
 effect-v2-results/
 identity-progress/
 vm-progress/
-docs/tutorials/
+# docs/tutorials/ - now tracked for Spirits Jam tutorials
