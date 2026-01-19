@@ -60,6 +60,14 @@ pub enum EvalResult {
         /// Whether module uses memory
         has_memory: bool,
     },
+
+    /// Spirit was loaded
+    SpiritLoaded {
+        /// Spirit name
+        name: String,
+        /// Number of declarations loaded
+        declarations: usize,
+    },
 }
 
 /// Evaluator for DOL expressions and declarations.

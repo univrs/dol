@@ -41,8 +41,24 @@ pub use session::{ReplSession, SessionConfig};
 use crate::ast::Declaration;
 use crate::codegen::compile_to_rust_via_hir;
 use crate::error::ParseError;
+use crate::manifest::{parse_spirit_manifest, SpiritManifest};
 use crate::parser::Parser;
 use crate::transform::TreeShaking;
+
+use std::path::{Path, PathBuf};
+
+/// A loaded Spirit in the REPL.
+#[derive(Debug, Clone)]
+pub struct LoadedSpirit {
+    /// The Spirit manifest
+    pub manifest: SpiritManifest,
+    /// Path to the Spirit directory
+    pub path: PathBuf,
+    /// Loaded DOL declarations from the Spirit
+    pub declarations: Vec<Declaration>,
+    /// Source texts for the declarations
+    pub source_texts: Vec<String>,
+}
 
 /// Spirit REPL - Interactive DOL evaluation environment.
 ///
@@ -70,6 +86,12 @@ pub struct SpiritRepl {
 
     /// Evaluator for expression execution
     evaluator: ReplEvaluator,
+
+    /// Loaded spirits
+    spirits: Vec<LoadedSpirit>,
+
+    /// Currently active spirit (for :reload)
+    current_spirit: Option<String>,
 }
 
 impl Default for SpiritRepl {
@@ -89,6 +111,8 @@ impl SpiritRepl {
             context: ReplContext::new(),
             history: Vec::new(),
             evaluator: ReplEvaluator::new(),
+            spirits: Vec::new(),
+            current_spirit: None,
         }
     }
 
@@ -108,6 +132,8 @@ impl SpiritRepl {
             context: ReplContext::new(),
             history: Vec::new(),
             evaluator,
+            spirits: Vec::new(),
+            current_spirit: None,
         }
     }
 
@@ -226,6 +252,20 @@ impl SpiritRepl {
                     Err(ReplError::Command("Usage: :load <file.dol>".to_string()))
                 }
             }
+
+            ":load-spirit" | ":spirit" => {
+                if let Some(path) = args {
+                    self.load_spirit(path)
+                } else {
+                    Err(ReplError::Command(
+                        "Usage: :load-spirit <path/to/spirit>".to_string(),
+                    ))
+                }
+            }
+
+            ":spirits" => self.list_spirits(),
+
+            ":reload" => self.reload_current_spirit(),
 
             _ => Err(ReplError::Command(format!("Unknown command: {}", command))),
         }
@@ -468,6 +508,184 @@ pub fun dolReplEval() -> {} {{
         )))
     }
 
+    /// Load a Spirit from a directory containing Spirit.dol.
+    ///
+    /// This loads the Spirit manifest and its entry point file.
+    fn load_spirit(&mut self, path: &str) -> Result<EvalResult, ReplError> {
+        let spirit_path = Path::new(path);
+
+        // Check if path is a directory or a Spirit.dol file
+        let (spirit_dir, manifest_path) = if spirit_path.is_dir() {
+            (spirit_path.to_path_buf(), spirit_path.join("Spirit.dol"))
+        } else if spirit_path
+            .file_name()
+            .map(|n| n == "Spirit.dol")
+            .unwrap_or(false)
+        {
+            (
+                spirit_path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+                spirit_path.to_path_buf(),
+            )
+        } else {
+            return Err(ReplError::Command(format!(
+                "Expected a Spirit directory or Spirit.dol file, got: {}",
+                path
+            )));
+        };
+
+        // Read and parse the Spirit manifest
+        let manifest_source =
+            std::fs::read_to_string(&manifest_path).map_err(|e| ReplError::Io(e.to_string()))?;
+
+        let manifest =
+            parse_spirit_manifest(&manifest_source).map_err(|e| ReplError::Parse(e.to_string()))?;
+
+        let spirit_name = manifest.name.clone();
+
+        // Check if spirit is already loaded
+        if self.spirits.iter().any(|s| s.manifest.name == spirit_name) {
+            // Reload the spirit - remove old version first
+            self.spirits.retain(|s| s.manifest.name != spirit_name);
+        }
+
+        let mut loaded_decls = Vec::new();
+        let mut loaded_sources = Vec::new();
+
+        // Load the entry point file (defaults to "lib.dol")
+        let entry_path = spirit_dir.join(&manifest.config.entry);
+        if entry_path.exists() {
+            let entry_source =
+                std::fs::read_to_string(&entry_path).map_err(|e| ReplError::Io(e.to_string()))?;
+
+            let file = crate::parse_dol_file(&entry_source)
+                .map_err(|e| ReplError::Parse(e.to_string()))?;
+
+            for decl in file.declarations {
+                // Add to session declarations too
+                let kind = match &decl {
+                    Declaration::Gene(_) => "gene",
+                    Declaration::Trait(_) => "trait",
+                    Declaration::Constraint(_) => "constraint",
+                    Declaration::System(_) => "system",
+                    Declaration::Evolution(_) => "evolution",
+                    Declaration::Function(_) => "function",
+                    Declaration::Const(_) => "const",
+                    Declaration::SexVar(_) => "var",
+                };
+                self.context.add_declaration(decl.name(), kind);
+                self.declarations.push(decl.clone());
+                self.source_texts.push(entry_source.clone());
+
+                loaded_decls.push(decl);
+                loaded_sources.push(entry_source.clone());
+            }
+        }
+
+        // Also load any additional module files based on exports
+        // Module names map to src/<name>.dol
+        for module_export in &manifest.modules {
+            let module_path = spirit_dir
+                .join("src")
+                .join(format!("{}.dol", module_export.name));
+            if module_path.exists() {
+                let module_source = std::fs::read_to_string(&module_path)
+                    .map_err(|e| ReplError::Io(e.to_string()))?;
+
+                let file = crate::parse_dol_file(&module_source)
+                    .map_err(|e| ReplError::Parse(e.to_string()))?;
+
+                for decl in file.declarations {
+                    let kind = match &decl {
+                        Declaration::Gene(_) => "gene",
+                        Declaration::Trait(_) => "trait",
+                        Declaration::Constraint(_) => "constraint",
+                        Declaration::System(_) => "system",
+                        Declaration::Evolution(_) => "evolution",
+                        Declaration::Function(_) => "function",
+                        Declaration::Const(_) => "const",
+                        Declaration::SexVar(_) => "var",
+                    };
+                    self.context.add_declaration(decl.name(), kind);
+                    self.declarations.push(decl.clone());
+                    self.source_texts.push(module_source.clone());
+
+                    loaded_decls.push(decl);
+                    loaded_sources.push(module_source.clone());
+                }
+            }
+        }
+
+        let decl_count = loaded_decls.len();
+
+        // Store the loaded spirit
+        self.spirits.push(LoadedSpirit {
+            manifest,
+            path: spirit_dir,
+            declarations: loaded_decls,
+            source_texts: loaded_sources,
+        });
+
+        // Set as current spirit
+        self.current_spirit = Some(spirit_name.clone());
+
+        Ok(EvalResult::SpiritLoaded {
+            name: spirit_name,
+            declarations: decl_count,
+        })
+    }
+
+    /// List all loaded spirits.
+    fn list_spirits(&self) -> Result<EvalResult, ReplError> {
+        if self.spirits.is_empty() {
+            return Ok(EvalResult::Message("No spirits loaded".to_string()));
+        }
+
+        let mut output = String::from("Loaded Spirits:\n");
+        for spirit in &self.spirits {
+            let is_current = self
+                .current_spirit
+                .as_ref()
+                .map(|c| c == &spirit.manifest.name)
+                .unwrap_or(false);
+            let marker = if is_current { " *" } else { "" };
+            output.push_str(&format!(
+                "  {} @ {}{}\n    Path: {}\n    Declarations: {}\n",
+                spirit.manifest.name,
+                spirit.manifest.version,
+                marker,
+                spirit.path.display(),
+                spirit.declarations.len()
+            ));
+        }
+
+        if self.current_spirit.is_some() {
+            output.push_str("\n(* = current spirit)");
+        }
+
+        Ok(EvalResult::Message(output))
+    }
+
+    /// Reload the currently active spirit.
+    fn reload_current_spirit(&mut self) -> Result<EvalResult, ReplError> {
+        match &self.current_spirit {
+            Some(name) => {
+                // Find the spirit's path
+                let spirit_path = self
+                    .spirits
+                    .iter()
+                    .find(|s| &s.manifest.name == name)
+                    .map(|s| s.path.clone())
+                    .ok_or_else(|| ReplError::NotFound(name.clone()))?;
+
+                // Reload it
+                self.load_spirit(&spirit_path.to_string_lossy())
+            }
+            None => Err(ReplError::Command(
+                "No spirit loaded. Use :load-spirit <path> first.".to_string(),
+            )),
+        }
+    }
+
     /// Build DOL source from accumulated declarations.
     fn build_source(&self) -> String {
         // Use the stored original source texts for accurate compilation
@@ -539,16 +757,21 @@ const HELP_TEXT: &str = r#"
 Spirit REPL - Interactive DOL Environment
 
 Commands:
-  :help, :h, :?     Show this help
-  :quit, :q, :exit  Exit the REPL
-  :clear, :reset    Clear all declarations
-  :list, :ls        List defined declarations
-  :type <name>      Show type info for a declaration
-  :emit, :rust      Emit Rust code for session
-  :wasm             Compile to WASM and show info
-  :shake            Run tree shaking analysis
-  :history          Show input history
-  :load <file>      Load declarations from file
+  :help, :h, :?       Show this help
+  :quit, :q, :exit    Exit the REPL
+  :clear, :reset      Clear all declarations
+  :list, :ls          List defined declarations
+  :type <name>        Show type info for a declaration
+  :emit, :rust        Emit Rust code for session
+  :wasm               Compile to WASM and show info
+  :shake              Run tree shaking analysis
+  :history            Show input history
+  :load <file>        Load declarations from file
+
+Spirit Management:
+  :load-spirit <path> Load a Spirit from directory
+  :spirits            List loaded Spirits
+  :reload             Hot-reload current Spirit
 
 Input Types:
   - Declarations: gene, trait, constraint, system, fun
@@ -558,6 +781,8 @@ Examples:
   gene Point { point has x: Int64; point has y: Int64 }
   fun add(a: Int64, b: Int64) -> Int64 { a + b }
   :type Point
+  :load-spirit ./my-spirit/
+  :spirits
   :emit
 "#;
 
@@ -1318,5 +1543,80 @@ mod tests {
         let repl = SpiritRepl::with_config(config);
 
         assert_eq!(repl.config().name, "my-session");
+    }
+
+    // ==================== Spirit Loading ====================
+
+    #[test]
+    fn test_repl_spirits_empty() {
+        let mut repl = SpiritRepl::new();
+        let result = repl.eval(":spirits");
+        match result {
+            Ok(EvalResult::Message(msg)) => {
+                assert!(msg.contains("No spirits loaded"));
+            }
+            _ => panic!("Expected message about no spirits"),
+        }
+    }
+
+    #[test]
+    fn test_repl_load_spirit_no_arg() {
+        let mut repl = SpiritRepl::new();
+        let result = repl.eval(":load-spirit");
+        assert!(matches!(result, Err(ReplError::Command(_))));
+    }
+
+    #[test]
+    fn test_repl_load_spirit_nonexistent() {
+        let mut repl = SpiritRepl::new();
+        let result = repl.eval(":load-spirit /nonexistent/spirit");
+        assert!(matches!(
+            result,
+            Err(ReplError::Command(_)) | Err(ReplError::Io(_))
+        ));
+    }
+
+    #[test]
+    fn test_repl_reload_no_spirit() {
+        let mut repl = SpiritRepl::new();
+        let result = repl.eval(":reload");
+        assert!(matches!(result, Err(ReplError::Command(_))));
+    }
+
+    #[test]
+    fn test_repl_spirit_alias() {
+        let mut repl = SpiritRepl::new();
+        // :spirit should work as an alias for :load-spirit
+        let result = repl.eval(":spirit");
+        assert!(matches!(result, Err(ReplError::Command(_))));
+    }
+
+    #[test]
+    fn test_loaded_spirit_struct() {
+        // Test the LoadedSpirit struct directly
+        let manifest_source = r#"
+spirit test_spirit @ 1.0.0
+docs "A test spirit"
+"#;
+        let manifest = parse_spirit_manifest(manifest_source).expect("should parse");
+
+        let loaded = LoadedSpirit {
+            manifest,
+            path: PathBuf::from("/test/path"),
+            declarations: Vec::new(),
+            source_texts: Vec::new(),
+        };
+
+        assert_eq!(loaded.manifest.name, "test_spirit");
+        assert_eq!(loaded.path.to_string_lossy(), "/test/path");
+    }
+
+    #[test]
+    fn test_eval_result_spirit_loaded() {
+        let result = EvalResult::SpiritLoaded {
+            name: "my-spirit".to_string(),
+            declarations: 5,
+        };
+        assert!(matches!(result, EvalResult::SpiritLoaded { .. }));
     }
 }
