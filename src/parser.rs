@@ -124,14 +124,13 @@ impl<'a> Parser<'a> {
         // Parse use declarations
         let mut uses = Vec::new();
         loop {
-            // Handle pub use
+            // Handle pub use (re-exports)
             if self.current.kind == TokenKind::Pub && self.peek().kind == TokenKind::Use {
                 self.advance(); // consume pub
-                let use_decl = self.parse_use_decl()?;
-                // Mark as public (you may need to add a visibility field to UseDecl)
+                let use_decl = self.parse_use_decl(Visibility::Public)?;
                 uses.push(use_decl);
             } else if self.current.kind == TokenKind::Use {
-                uses.push(self.parse_use_decl()?);
+                uses.push(self.parse_use_decl(Visibility::Private)?);
             } else {
                 break;
             }
@@ -576,17 +575,21 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a use declaration: use path::to::module::{items}
-    fn parse_use_decl(&mut self) -> Result<UseDecl, ParseError> {
+    ///
+    /// Supports import sources:
+    /// - Local: `use container`
+    /// - Registry: `use @univrs/std`
+    /// - Git: `use @git:github.com/org/repo`
+    /// - HTTPS: `use @https://example.com/file.dol`
+    fn parse_use_decl(&mut self, visibility: Visibility) -> Result<UseDecl, ParseError> {
         let start_span = self.current.span;
         self.expect(TokenKind::Use)?;
 
-        // Parse path with :: or . separators (both supported for DOL compatibility)
-        // The lexer may produce qualified identifiers like "dol.token" as single tokens
-        let mut path = Vec::new();
-        let ident = self.expect_identifier()?;
-        // Split qualified identifiers into path components
-        path.extend(ident.split('.').map(|s| s.to_string()));
+        // Parse import source prefix
+        let (source, mut path) = self.parse_import_source()?;
 
+        // Continue parsing path with :: or . separators
+        // Use expect_identifier_or_keyword to allow keywords like "state" in paths
         while self.current.kind == TokenKind::PathSep || self.current.kind == TokenKind::Dot {
             self.advance();
             if self.current.kind == TokenKind::LeftBrace {
@@ -595,7 +598,7 @@ impl<'a> Parser<'a> {
             if self.current.kind == TokenKind::Star {
                 break; // Glob import
             }
-            let ident = self.expect_identifier()?;
+            let ident = self.expect_identifier_or_keyword()?;
             path.extend(ident.split('.').map(|s| s.to_string()));
         }
 
@@ -639,11 +642,130 @@ impl<'a> Parser<'a> {
         let span = start_span.merge(&self.previous.span);
 
         Ok(UseDecl {
+            visibility,
+            source,
             path,
             items,
             alias,
             span,
         })
+    }
+
+    /// Parses the import source prefix and initial path.
+    ///
+    /// Returns (ImportSource, initial_path_components)
+    fn parse_import_source(&mut self) -> Result<(ImportSource, Vec<String>), ParseError> {
+        // Check for @ prefix indicating external source
+        if self.current.kind == TokenKind::At {
+            self.advance(); // consume @
+
+            let prefix = self.expect_identifier()?;
+
+            // Check for special prefixes
+            if prefix == "git" && self.current.kind == TokenKind::Colon {
+                // @git:github.com/org/repo
+                self.advance(); // consume :
+                let url = self.parse_url_path()?;
+                let reference = if self.current.kind == TokenKind::Colon {
+                    self.advance();
+                    Some(self.expect_identifier()?)
+                } else {
+                    None
+                };
+                return Ok((ImportSource::Git { url, reference }, Vec::new()));
+            } else if prefix == "https" && self.current.kind == TokenKind::Colon {
+                // @https://example.com/file.dol
+                self.advance(); // consume :
+                                // Expect // after https:
+                if self.current.lexeme == "/" {
+                    self.advance();
+                    self.advance(); // consume //
+                }
+                let url = format!("https://{}", self.parse_url_path()?);
+                return Ok((ImportSource::Https { url, sha256: None }, Vec::new()));
+            } else {
+                // @org/package format - this is a registry import
+                // prefix is the org name
+                let org = prefix;
+                self.expect(TokenKind::Slash)?;
+                let full_ident = self.expect_identifier()?;
+
+                // Split the identifier - first segment is package, rest goes to path
+                // e.g., "std.io.println" -> package="std", path=["io", "println"]
+                let segments: Vec<&str> = full_ident.split('.').collect();
+                let package = segments[0].to_string();
+                let path: Vec<String> = segments[1..].iter().map(|s| s.to_string()).collect();
+
+                // Optional version constraint after colon
+                let version = if self.current.kind == TokenKind::Colon {
+                    self.advance();
+                    // Version could be a string like "^1.0" or just identifier
+                    if self.current.kind == TokenKind::String {
+                        let v = self.current.lexeme.trim_matches('"').to_string();
+                        self.advance();
+                        Some(v)
+                    } else {
+                        Some(self.expect_identifier()?)
+                    }
+                } else {
+                    None
+                };
+
+                // Return the path segments that come after the package name
+                return Ok((
+                    ImportSource::Registry {
+                        org,
+                        package,
+                        version,
+                    },
+                    path,
+                ));
+            }
+        }
+
+        // Local import - parse initial path segment only
+        // The main loop in parse_use_decl will handle additional segments
+        // Use expect_identifier_or_keyword to allow keywords like "state" as module names
+        let mut path = Vec::new();
+        let ident = self.expect_identifier_or_keyword()?;
+        path.extend(ident.split('.').map(|s| s.to_string()));
+
+        Ok((ImportSource::Local, path))
+    }
+
+    /// Parses a URL-like path (for git: and https: sources).
+    fn parse_url_path(&mut self) -> Result<String, ParseError> {
+        let mut parts = Vec::new();
+
+        // Collect path segments separated by / and .
+        loop {
+            if self.current.kind == TokenKind::Identifier {
+                parts.push(self.current.lexeme.to_string());
+                self.advance();
+            } else {
+                break;
+            }
+
+            if self.current.kind == TokenKind::Slash {
+                parts.push("/".to_string());
+                self.advance();
+            } else if self.current.kind == TokenKind::Dot {
+                parts.push(".".to_string());
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        if parts.is_empty() {
+            return Err(ParseError::UnexpectedToken {
+                expected: "URL path".to_string(),
+                found: format!("'{}'", self.current.lexeme),
+                span: self.current.span,
+            });
+        }
+
+        Ok(parts.join(""))
     }
     /// Parses a gene declaration.
     fn parse_gene(&mut self) -> Result<Declaration, ParseError> {

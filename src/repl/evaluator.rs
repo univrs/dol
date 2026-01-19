@@ -131,6 +131,10 @@ impl ReplEvaluator {
             .map_err(|e| EvalError::Compile(e.message))
     }
 
+    /// Compile DOL source to WASM bytecode.
+    ///
+    /// This is a stub when the `wasm-compile` feature is not enabled.
+    /// Enable the feature to use actual WASM compilation.
     #[cfg(not(feature = "wasm-compile"))]
     pub fn compile_to_wasm(&mut self, _source: &str) -> Result<Vec<u8>, EvalError> {
         Err(EvalError::Feature(

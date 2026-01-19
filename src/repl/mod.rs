@@ -475,6 +475,7 @@ pub fun dolReplEval() -> {} {{
     }
 
     /// Count functions in declarations.
+    #[allow(dead_code)]
     fn count_functions(&self) -> usize {
         self.declarations
             .iter()
@@ -575,6 +576,7 @@ fn declaration_kind_name(decl: &Declaration) -> &'static str {
 }
 
 // Extension trait for Statement to generate DOL string
+#[allow(dead_code)]
 trait StatementExt {
     fn to_dol_string(&self) -> String;
 }
