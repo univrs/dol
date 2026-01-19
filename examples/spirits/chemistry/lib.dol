@@ -1,0 +1,177 @@
+// =============================================================================
+// Chemistry Spirit - Library Entry Point
+// DOL v0.9.0
+// =============================================================================
+
+module chemistry @ 0.9.0
+
+docs {
+    Chemistry Spirit library entry point.
+
+    This module re-exports all public chemistry modules for convenient access.
+    Users can either import the entire chemistry namespace or specific modules.
+
+    Example usage:
+        // Import entire chemistry library
+        use local::chemistry
+
+        // Or import specific modules
+        use local::chemistry::elements
+        use local::chemistry::molecules
+        use local::chemistry::reactions
+}
+
+// ---------------------------------------------------------------------------
+// Re-exports from submodules
+// ---------------------------------------------------------------------------
+
+use local::elements
+use local::molecules
+use local::reactions
+
+// ---------------------------------------------------------------------------
+// Physical Constants for Chemistry
+// ---------------------------------------------------------------------------
+
+docs {
+    Avogadro's number (particles/mol).
+}
+
+pub const AVOGADRO: f64 = 6.02214076e23
+
+docs {
+    Universal gas constant (J/(mol*K)).
+}
+
+pub const GAS_CONSTANT: f64 = 8.314462618
+
+docs {
+    Boltzmann constant (J/K).
+}
+
+pub const BOLTZMANN: f64 = 1.380649e-23
+
+docs {
+    Planck's constant (J*s).
+}
+
+pub const PLANCK: f64 = 6.62607015e-34
+
+docs {
+    Elementary charge (C).
+}
+
+pub const ELEMENTARY_CHARGE: f64 = 1.602176634e-19
+
+docs {
+    Electron mass (kg).
+}
+
+pub const ELECTRON_MASS: f64 = 9.1093837015e-31
+
+docs {
+    Atomic mass unit (kg).
+}
+
+pub const ATOMIC_MASS_UNIT: f64 = 1.66053906660e-27
+
+docs {
+    Bohr radius (m).
+}
+
+pub const BOHR_RADIUS: f64 = 5.29177210903e-11
+
+docs {
+    Rydberg constant (m^-1).
+}
+
+pub const RYDBERG: f64 = 10973731.568160
+
+docs {
+    Standard temperature (K).
+}
+
+pub const STANDARD_TEMP: f64 = 298.15
+
+docs {
+    Standard pressure (Pa).
+}
+
+pub const STANDARD_PRESSURE: f64 = 100000.0
+
+docs {
+    Faraday constant (C/mol).
+}
+
+pub const FARADAY: f64 = 96485.33212
+
+// ---------------------------------------------------------------------------
+// Common Energy Conversions
+// ---------------------------------------------------------------------------
+
+docs {
+    Joules per kilocalorie.
+}
+
+pub const J_PER_KCAL: f64 = 4184.0
+
+docs {
+    Joules per electron volt.
+}
+
+pub const J_PER_EV: f64 = 1.602176634e-19
+
+docs {
+    kJ/mol per eV.
+}
+
+pub const KJ_PER_MOL_PER_EV: f64 = 96.485
+
+// ---------------------------------------------------------------------------
+// Utility Types
+// ---------------------------------------------------------------------------
+
+docs {
+    Result type for chemistry calculations that may fail.
+}
+
+pub gen ChemistryResult<T> {
+    has value: Option<T>
+    has error: Option<string>
+    has warning: Option<string>
+}
+
+docs {
+    Create a successful chemistry result.
+}
+
+pub fun ok<T>(value: T) -> ChemistryResult<T> {
+    return ChemistryResult {
+        value: Some(value),
+        error: None,
+        warning: None
+    }
+}
+
+docs {
+    Create an error chemistry result.
+}
+
+pub fun err<T>(message: string) -> ChemistryResult<T> {
+    return ChemistryResult {
+        value: None,
+        error: Some(message),
+        warning: None
+    }
+}
+
+docs {
+    Check if a chemistry result is successful.
+}
+
+pub fun is_ok<T>(result: ChemistryResult<T>) -> bool {
+    match result.value {
+        Some(_) => true,
+        None => false
+    }
+}

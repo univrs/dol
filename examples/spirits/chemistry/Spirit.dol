@@ -1,0 +1,51 @@
+// =============================================================================
+// DOL v0.9.0 Chemistry Spirit Package
+// Comprehensive chemistry modeling for scientific computing
+// =============================================================================
+
+spirit chemistry @ 0.9.0
+
+docs {
+    Chemistry modeling Spirit for DOL v0.9.0.
+
+    This Spirit provides a comprehensive library for chemistry simulations including:
+    - Periodic table elements with all properties
+    - Isotopes and radioactive decay
+    - Molecular structures and bonding
+    - Chemical reactions and equilibria
+    - Thermochemistry calculations
+
+    All functions are pure unless explicitly marked as `sex` for side effects.
+    This enables safe parallelization and memoization of chemistry calculations.
+
+    Usage:
+        use @univrs/chemistry @ ^0.9
+        let h = elements::Hydrogen
+        let water = molecules::new_molecule("H2O")
+        let dG = reactions::gibbs_free_energy(reaction, 298.15)
+}
+
+// ---------------------------------------------------------------------------
+// Spirit Configuration
+// ---------------------------------------------------------------------------
+
+config {
+    entry: "lib.dol"
+    target: wasm32
+    features: ["f64-precision", "periodic-table"]
+}
+
+// ---------------------------------------------------------------------------
+// Public Module Exports
+// ---------------------------------------------------------------------------
+
+pub mod elements
+pub mod molecules
+pub mod reactions
+
+// ---------------------------------------------------------------------------
+// Internal Modules
+// ---------------------------------------------------------------------------
+
+mod constants
+mod internal

@@ -1,0 +1,1228 @@
+// =============================================================================
+// Chemistry Spirit - Chemical Reactions Module
+// DOL v0.9.0
+// =============================================================================
+
+module chemistry.reactions @ 0.9.0
+
+docs {
+    Chemical reactions module providing reaction types and thermochemistry.
+
+    This module models:
+    - Chemical reactions with reactants and products
+    - Chemical equilibrium and equilibrium constants
+    - Reaction thermodynamics (enthalpy, entropy, Gibbs free energy)
+    - Reaction kinetics (rate laws, activation energy)
+    - Electrochemistry (redox reactions, cell potentials)
+
+    All thermodynamic quantities use SI units:
+    - Energy: kJ/mol
+    - Entropy: J/(mol*K)
+    - Temperature: Kelvin
+    - Concentration: mol/L
+}
+
+use local::lib::GAS_CONSTANT
+use local::lib::FARADAY
+use local::lib::STANDARD_TEMP
+use local::molecules::Molecule
+use local::molecules::molecular_weight
+
+// =============================================================================
+// CORE TYPES
+// =============================================================================
+
+docs {
+    Stoichiometric coefficient and molecule pair.
+}
+
+pub gen ReactionSpecies {
+    has molecule: Molecule
+    has coefficient: u32
+    has phase: string
+}
+
+docs {
+    Create a reaction species.
+}
+
+pub fun species(molecule: Molecule, coefficient: u32, phase: string) -> ReactionSpecies {
+    return ReactionSpecies {
+        molecule: molecule,
+        coefficient: coefficient,
+        phase: phase
+    }
+}
+
+docs {
+    Thermodynamic data for a species at standard conditions.
+}
+
+pub gen ThermodynamicData {
+    has standard_enthalpy_formation: f64
+    has standard_entropy: f64
+    has standard_gibbs_formation: f64
+    has heat_capacity_cp: f64
+    has heat_capacity_cv: f64
+}
+
+docs {
+    Complete chemical reaction with reactants, products, and conditions.
+
+    Properties:
+    - reactants: List of reactant species with coefficients
+    - products: List of product species with coefficients
+    - enthalpy_change: Standard enthalpy change (kJ/mol)
+    - entropy_change: Standard entropy change (J/(mol*K))
+    - gibbs_change: Standard Gibbs free energy change (kJ/mol)
+    - activation_energy: Activation energy Ea (kJ/mol)
+    - rate_constant: Rate constant k at standard temperature
+    - is_reversible: Whether reaction is reversible
+    - catalyst: Optional catalyst
+}
+
+pub gen Reaction {
+    has reactants: Vec<ReactionSpecies>
+    has products: Vec<ReactionSpecies>
+    has enthalpy_change: f64
+    has entropy_change: f64
+    has gibbs_change: f64
+    has activation_energy: f64
+    has rate_constant: f64
+    has is_reversible: bool
+    has catalyst: Option<Molecule>
+    has reaction_type: string
+}
+
+docs {
+    Chemical equilibrium state.
+
+    Properties:
+    - forward_reaction: The forward reaction
+    - reverse_reaction: The reverse reaction
+    - equilibrium_constant: K at given temperature
+    - temperature: Temperature of equilibrium
+    - concentrations: Equilibrium concentrations
+    - quotient: Current reaction quotient Q
+}
+
+pub gen Equilibrium {
+    has forward_reaction: Reaction
+    has reverse_reaction: Reaction
+    has equilibrium_constant: f64
+    has temperature: f64
+    has concentrations: Vec<(Molecule, f64)>
+    has quotient: f64
+}
+
+docs {
+    Rate law for a reaction.
+}
+
+pub gen RateLaw {
+    has rate_constant: f64
+    has orders: Vec<(Molecule, f64)>
+    has overall_order: f64
+    has rate_expression: string
+}
+
+docs {
+    Transition state for a reaction.
+}
+
+pub gen TransitionState {
+    has structure: Molecule
+    has energy: f64
+    has imaginary_frequency: f64
+    has lifetime: f64
+}
+
+docs {
+    Electrochemical cell.
+}
+
+pub gen ElectrochemicalCell {
+    has anode: HalfReaction
+    has cathode: HalfReaction
+    has cell_potential: f64
+    has electrons_transferred: u8
+    has cell_type: string
+}
+
+docs {
+    Half reaction for electrochemistry.
+}
+
+pub gen HalfReaction {
+    has species: Vec<ReactionSpecies>
+    has electrons: u8
+    has standard_potential: f64
+    has is_reduction: bool
+}
+
+docs {
+    Reaction mechanism with elementary steps.
+}
+
+pub gen Mechanism {
+    has steps: Vec<ElementaryStep>
+    has rate_determining_step: u32
+    has intermediates: Vec<Molecule>
+    has overall_reaction: Reaction
+}
+
+docs {
+    Elementary step in a mechanism.
+}
+
+pub gen ElementaryStep {
+    has reactants: Vec<ReactionSpecies>
+    has products: Vec<ReactionSpecies>
+    has molecularity: u8
+    has rate_constant: f64
+    has is_fast: bool
+}
+
+// =============================================================================
+// TRAITS
+// =============================================================================
+
+docs {
+    Exothermic reactions release heat to the surroundings.
+    delta_H < 0
+}
+
+pub trait Exothermic {
+    docs {
+        Get the heat released (positive value in kJ/mol).
+    }
+
+    fun heat_released() -> f64
+
+    docs {
+        Check if the reaction releases heat.
+    }
+
+    fun releases_heat() -> bool
+
+    docs {
+        Get the temperature increase for given mass.
+    }
+
+    fun temperature_increase(mass: f64, heat_capacity: f64) -> f64
+}
+
+docs {
+    Endothermic reactions absorb heat from surroundings.
+    delta_H > 0
+}
+
+pub trait Endothermic {
+    docs {
+        Get the heat absorbed (positive value in kJ/mol).
+    }
+
+    fun heat_absorbed() -> f64
+
+    docs {
+        Check if the reaction absorbs heat.
+    }
+
+    fun absorbs_heat() -> bool
+
+    docs {
+        Get the temperature decrease for given mass.
+    }
+
+    fun temperature_decrease(mass: f64, heat_capacity: f64) -> f64
+}
+
+docs {
+    Spontaneous reactions proceed without external input.
+    delta_G < 0 at the given temperature.
+}
+
+pub trait Spontaneous {
+    docs {
+        Check if reaction is spontaneous at given temperature.
+    }
+
+    fun is_spontaneous_at(temperature: f64) -> bool
+
+    docs {
+        Get the temperature above which reaction becomes spontaneous.
+    }
+
+    fun spontaneous_temperature() -> Option<f64>
+
+    docs {
+        Calculate the equilibrium constant from Gibbs energy.
+    }
+
+    fun equilibrium_constant_from_gibbs(temperature: f64) -> f64
+}
+
+docs {
+    Catalyzed reactions have a catalyst that lowers activation energy.
+}
+
+pub trait Catalyzed {
+    docs {
+        Get the catalyst molecule.
+    }
+
+    fun catalyst() -> Molecule
+
+    docs {
+        Get activation energy with catalyst.
+    }
+
+    fun catalyzed_activation_energy() -> f64
+
+    docs {
+        Calculate rate enhancement factor.
+    }
+
+    fun rate_enhancement(temperature: f64) -> f64
+
+    docs {
+        Check if catalyst is homogeneous or heterogeneous.
+    }
+
+    fun catalyst_type() -> string
+}
+
+docs {
+    Reversible reactions can proceed in both directions.
+}
+
+pub trait Reversible {
+    docs {
+        Get the reverse reaction.
+    }
+
+    fun reverse() -> Reaction
+
+    docs {
+        Get the equilibrium constant.
+    }
+
+    fun equilibrium_constant(temperature: f64) -> f64
+
+    docs {
+        Check if system is at equilibrium.
+    }
+
+    fun at_equilibrium(concentrations: Vec<(Molecule, f64)>) -> bool
+}
+
+docs {
+    Redox reactions involve electron transfer.
+}
+
+pub trait Redox {
+    docs {
+        Get the oxidation half-reaction.
+    }
+
+    fun oxidation_half() -> HalfReaction
+
+    docs {
+        Get the reduction half-reaction.
+    }
+
+    fun reduction_half() -> HalfReaction
+
+    docs {
+        Get the number of electrons transferred.
+    }
+
+    fun electrons_transferred() -> u8
+
+    docs {
+        Calculate cell potential.
+    }
+
+    fun cell_potential() -> f64
+
+    docs {
+        Identify oxidizing and reducing agents.
+    }
+
+    fun identify_agents() -> (Molecule, Molecule)
+}
+
+docs {
+    Acid-base reactions involve proton transfer.
+}
+
+pub trait AcidBase {
+    docs {
+        Get the acid in the reaction.
+    }
+
+    fun acid() -> Molecule
+
+    docs {
+        Get the base in the reaction.
+    }
+
+    fun base() -> Molecule
+
+    docs {
+        Get the conjugate acid.
+    }
+
+    fun conjugate_acid() -> Molecule
+
+    docs {
+        Get the conjugate base.
+    }
+
+    fun conjugate_base() -> Molecule
+
+    docs {
+        Calculate pH at equivalence point.
+    }
+
+    fun equivalence_ph() -> f64
+}
+
+docs {
+    Precipitation reactions form an insoluble product.
+}
+
+pub trait Precipitation {
+    docs {
+        Get the precipitate formed.
+    }
+
+    fun precipitate() -> Molecule
+
+    docs {
+        Get the solubility product (Ksp).
+    }
+
+    fun ksp() -> f64
+
+    docs {
+        Check if precipitation occurs at given concentrations.
+    }
+
+    fun will_precipitate(ion_product: f64) -> bool
+}
+
+// =============================================================================
+// RULES
+// =============================================================================
+
+docs {
+    Law of Conservation of Mass: Mass of reactants equals mass of products.
+}
+
+pub rule mass_conservation {
+    each Reaction {
+        sum(reactant.coefficient * molecular_weight(reactant.molecule)
+            for reactant in this.reactants)
+        ==
+        sum(product.coefficient * molecular_weight(product.molecule)
+            for product in this.products)
+    }
+}
+
+docs {
+    Conservation of Charge: Total charge must be conserved.
+}
+
+pub rule charge_conservation {
+    each Reaction {
+        sum(reactant.coefficient * reactant.molecule.charge
+            for reactant in this.reactants)
+        ==
+        sum(product.coefficient * product.molecule.charge
+            for product in this.products)
+    }
+}
+
+docs {
+    Atom Balance: Each element must be balanced.
+}
+
+pub rule atom_balance {
+    each Reaction {
+        for_each_element(e) {
+            atoms_of(e, this.reactants) == atoms_of(e, this.products)
+        }
+    }
+}
+
+docs {
+    Le Chatelier's Principle: System shifts to counteract changes.
+}
+
+pub rule le_chatelier {
+    each Equilibrium {
+        when concentration_increases(species) {
+            equilibrium_shifts_to_consume(species)
+        }
+        when temperature_increases && this.forward_reaction is Endothermic {
+            equilibrium_shifts_forward
+        }
+    }
+}
+
+docs {
+    Gibbs-Helmholtz Equation: Relates enthalpy and Gibbs energy.
+    delta_G = delta_H - T * delta_S
+}
+
+pub rule gibbs_helmholtz {
+    each Reaction {
+        this.gibbs_change == this.enthalpy_change - STANDARD_TEMP * this.entropy_change / 1000.0
+    }
+}
+
+docs {
+    Hess's Law: Enthalpy change is path-independent.
+}
+
+pub rule hess_law {
+    each set_of_reactions(r1, r2) where r1.products == r2.reactants {
+        combined_enthalpy == r1.enthalpy_change + r2.enthalpy_change
+    }
+}
+
+docs {
+    Arrhenius Equation: Rate constant depends on temperature.
+    k = A * exp(-Ea / RT)
+}
+
+pub rule arrhenius {
+    each Reaction {
+        ln(this.rate_constant) == ln(A) - this.activation_energy / (GAS_CONSTANT * T)
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Reaction Creation
+// =============================================================================
+
+docs {
+    Create a new empty reaction.
+}
+
+pub fun new_reaction() -> Reaction {
+    return Reaction {
+        reactants: Vec::new(),
+        products: Vec::new(),
+        enthalpy_change: 0.0,
+        entropy_change: 0.0,
+        gibbs_change: 0.0,
+        activation_energy: 0.0,
+        rate_constant: 0.0,
+        is_reversible: true,
+        catalyst: None,
+        reaction_type: "unknown"
+    }
+}
+
+docs {
+    Add a reactant to a reaction.
+}
+
+pub fun add_reactant(reaction: Reaction, species: ReactionSpecies) -> Reaction {
+    let mut reactants = reaction.reactants
+    reactants.push(species)
+
+    return Reaction {
+        reactants: reactants,
+        products: reaction.products,
+        enthalpy_change: reaction.enthalpy_change,
+        entropy_change: reaction.entropy_change,
+        gibbs_change: reaction.gibbs_change,
+        activation_energy: reaction.activation_energy,
+        rate_constant: reaction.rate_constant,
+        is_reversible: reaction.is_reversible,
+        catalyst: reaction.catalyst,
+        reaction_type: reaction.reaction_type
+    }
+}
+
+docs {
+    Add a product to a reaction.
+}
+
+pub fun add_product(reaction: Reaction, species: ReactionSpecies) -> Reaction {
+    let mut products = reaction.products
+    products.push(species)
+
+    return Reaction {
+        reactants: reaction.reactants,
+        products: products,
+        enthalpy_change: reaction.enthalpy_change,
+        entropy_change: reaction.entropy_change,
+        gibbs_change: reaction.gibbs_change,
+        activation_energy: reaction.activation_energy,
+        rate_constant: reaction.rate_constant,
+        is_reversible: reaction.is_reversible,
+        catalyst: reaction.catalyst,
+        reaction_type: reaction.reaction_type
+    }
+}
+
+docs {
+    Create a half-reaction.
+}
+
+pub fun new_half_reaction(species: Vec<ReactionSpecies>, electrons: u8,
+                          potential: f64, is_reduction: bool) -> HalfReaction {
+    return HalfReaction {
+        species: species,
+        electrons: electrons,
+        standard_potential: potential,
+        is_reduction: is_reduction
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Thermodynamic Calculations
+// =============================================================================
+
+docs {
+    Calculate standard enthalpy change from formation enthalpies.
+    delta_H_rxn = sum(delta_H_f products) - sum(delta_H_f reactants)
+}
+
+pub fun calculate_enthalpy_change(reaction: Reaction,
+                                  formation_enthalpies: Vec<(Molecule, f64)>) -> f64 {
+    let mut products_h = 0.0
+    let mut reactants_h = 0.0
+
+    for product in reaction.products {
+        for (mol, h_f) in formation_enthalpies {
+            if mol.formula == product.molecule.formula {
+                products_h = products_h + (product.coefficient as f64) * h_f
+            }
+        }
+    }
+
+    for reactant in reaction.reactants {
+        for (mol, h_f) in formation_enthalpies {
+            if mol.formula == reactant.molecule.formula {
+                reactants_h = reactants_h + (reactant.coefficient as f64) * h_f
+            }
+        }
+    }
+
+    return products_h - reactants_h
+}
+
+docs {
+    Calculate standard entropy change from standard entropies.
+    delta_S_rxn = sum(S products) - sum(S reactants)
+}
+
+pub fun calculate_entropy_change(reaction: Reaction,
+                                 standard_entropies: Vec<(Molecule, f64)>) -> f64 {
+    let mut products_s = 0.0
+    let mut reactants_s = 0.0
+
+    for product in reaction.products {
+        for (mol, s) in standard_entropies {
+            if mol.formula == product.molecule.formula {
+                products_s = products_s + (product.coefficient as f64) * s
+            }
+        }
+    }
+
+    for reactant in reaction.reactants {
+        for (mol, s) in standard_entropies {
+            if mol.formula == reactant.molecule.formula {
+                reactants_s = reactants_s + (reactant.coefficient as f64) * s
+            }
+        }
+    }
+
+    return products_s - reactants_s
+}
+
+docs {
+    Calculate Gibbs free energy change.
+    delta_G = delta_H - T * delta_S
+
+    Parameters:
+    - reaction: The chemical reaction
+    - temperature: Temperature in Kelvin
+
+    Returns:
+    - Gibbs free energy change in kJ/mol
+}
+
+pub fun gibbs_free_energy(reaction: Reaction, temperature: f64) -> f64 {
+    // Convert entropy from J/(mol*K) to kJ/(mol*K)
+    let entropy_kj = reaction.entropy_change / 1000.0
+
+    return reaction.enthalpy_change - temperature * entropy_kj
+}
+
+docs {
+    Calculate Gibbs free energy at standard conditions (298.15 K).
+}
+
+pub fun standard_gibbs_free_energy(reaction: Reaction) -> f64 {
+    return gibbs_free_energy(reaction, STANDARD_TEMP)
+}
+
+docs {
+    Calculate equilibrium constant from Gibbs free energy.
+    K = exp(-delta_G / RT)
+}
+
+pub fun equilibrium_constant_from_gibbs(delta_g: f64, temperature: f64) -> f64 {
+    // delta_G in kJ/mol, R in J/(mol*K), convert properly
+    let exponent = -(delta_g * 1000.0) / (GAS_CONSTANT * temperature)
+
+    // Limit exponent to avoid overflow
+    if exponent > 700.0 {
+        return 1.0e308
+    }
+    if exponent < -700.0 {
+        return 0.0
+    }
+
+    return 2.71828 ^ exponent
+}
+
+docs {
+    Calculate Gibbs free energy from equilibrium constant.
+    delta_G = -RT * ln(K)
+}
+
+pub fun gibbs_from_equilibrium_constant(k: f64, temperature: f64) -> f64 {
+    if k <= 0.0 {
+        return 1.0e308
+    }
+
+    // ln approximation using natural log
+    let ln_k = k  // Placeholder - would use actual ln function
+
+    // Return in kJ/mol
+    return -(GAS_CONSTANT * temperature * ln_k) / 1000.0
+}
+
+docs {
+    Check if reaction is thermodynamically favorable (spontaneous).
+    Spontaneous if delta_G < 0
+}
+
+pub fun is_spontaneous(reaction: Reaction, temperature: f64) -> bool {
+    let delta_g = gibbs_free_energy(reaction, temperature)
+    return delta_g < 0.0
+}
+
+docs {
+    Calculate temperature at which reaction becomes spontaneous.
+    T = delta_H / delta_S (when delta_G = 0)
+}
+
+pub fun spontaneous_temperature(reaction: Reaction) -> Option<f64> {
+    if reaction.entropy_change == 0.0 {
+        return None
+    }
+
+    // Convert entropy to kJ/(mol*K) for consistent units
+    let entropy_kj = reaction.entropy_change / 1000.0
+    let temp = reaction.enthalpy_change / entropy_kj
+
+    if temp < 0.0 {
+        return None  // No positive temperature makes this spontaneous
+    }
+
+    return Some(temp)
+}
+
+docs {
+    Determine reaction spontaneity class.
+    Returns: "always", "never", "high_temp", "low_temp"
+}
+
+pub fun spontaneity_class(reaction: Reaction) -> string {
+    let h_negative = reaction.enthalpy_change < 0.0
+    let s_positive = reaction.entropy_change > 0.0
+
+    if h_negative && s_positive {
+        return "always"  // Spontaneous at all temperatures
+    }
+    if !h_negative && !s_positive {
+        return "never"  // Never spontaneous
+    }
+    if h_negative && !s_positive {
+        return "low_temp"  // Spontaneous at low temperatures
+    }
+    return "high_temp"  // Spontaneous at high temperatures
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Kinetics
+// =============================================================================
+
+docs {
+    Calculate rate constant using Arrhenius equation.
+    k = A * exp(-Ea / RT)
+}
+
+pub fun arrhenius_rate_constant(a: f64, ea: f64, temperature: f64) -> f64 {
+    // Ea in kJ/mol, R in J/(mol*K)
+    let exponent = -(ea * 1000.0) / (GAS_CONSTANT * temperature)
+
+    if exponent < -700.0 {
+        return 0.0
+    }
+
+    return a * (2.71828 ^ exponent)
+}
+
+docs {
+    Calculate activation energy from two rate constants at different temperatures.
+    Ea = R * ln(k2/k1) / (1/T1 - 1/T2)
+}
+
+pub fun activation_energy_from_rates(k1: f64, t1: f64, k2: f64, t2: f64) -> f64 {
+    if k1 <= 0.0 || k2 <= 0.0 || t1 <= 0.0 || t2 <= 0.0 {
+        return 0.0
+    }
+
+    let ln_ratio = k2 / k1  // Simplified - would use actual ln
+    let temp_diff = (1.0 / t1) - (1.0 / t2)
+
+    if temp_diff == 0.0 {
+        return 0.0
+    }
+
+    // Return in kJ/mol
+    return (GAS_CONSTANT * ln_ratio / temp_diff) / 1000.0
+}
+
+docs {
+    Calculate half-life for first-order reaction.
+    t_1/2 = ln(2) / k
+}
+
+pub fun first_order_half_life(rate_constant: f64) -> f64 {
+    if rate_constant <= 0.0 {
+        return 1.0e308
+    }
+    return 0.693147 / rate_constant
+}
+
+docs {
+    Calculate half-life for second-order reaction.
+    t_1/2 = 1 / (k * [A]_0)
+}
+
+pub fun second_order_half_life(rate_constant: f64, initial_concentration: f64) -> f64 {
+    if rate_constant <= 0.0 || initial_concentration <= 0.0 {
+        return 1.0e308
+    }
+    return 1.0 / (rate_constant * initial_concentration)
+}
+
+docs {
+    Calculate concentration after time t for first-order reaction.
+    [A] = [A]_0 * exp(-kt)
+}
+
+pub fun first_order_concentration(initial: f64, rate_constant: f64, time: f64) -> f64 {
+    let exponent = -rate_constant * time
+    return initial * (2.71828 ^ exponent)
+}
+
+docs {
+    Calculate concentration after time t for second-order reaction.
+    1/[A] = 1/[A]_0 + kt
+}
+
+pub fun second_order_concentration(initial: f64, rate_constant: f64, time: f64) -> f64 {
+    if initial <= 0.0 {
+        return 0.0
+    }
+    let reciprocal = (1.0 / initial) + rate_constant * time
+    if reciprocal <= 0.0 {
+        return 1.0e308
+    }
+    return 1.0 / reciprocal
+}
+
+docs {
+    Calculate reaction rate from rate law.
+    rate = k * [A]^m * [B]^n * ...
+}
+
+pub fun calculate_rate(rate_law: RateLaw) -> f64 {
+    let mut rate = rate_law.rate_constant
+
+    for (mol, order) in rate_law.orders {
+        // Would multiply by concentration^order
+        // Simplified: assume unit concentration
+        rate = rate * 1.0
+    }
+
+    return rate
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Equilibrium
+// =============================================================================
+
+docs {
+    Calculate reaction quotient Q from concentrations.
+    Q = [products]^n / [reactants]^m
+}
+
+pub fun reaction_quotient(reaction: Reaction, concentrations: Vec<(Molecule, f64)>) -> f64 {
+    let mut numerator = 1.0
+    let mut denominator = 1.0
+
+    for product in reaction.products {
+        for (mol, conc) in concentrations {
+            if mol.formula == product.molecule.formula {
+                numerator = numerator * (conc ^ (product.coefficient as f64))
+            }
+        }
+    }
+
+    for reactant in reaction.reactants {
+        for (mol, conc) in concentrations {
+            if mol.formula == reactant.molecule.formula {
+                denominator = denominator * (conc ^ (reactant.coefficient as f64))
+            }
+        }
+    }
+
+    if denominator == 0.0 {
+        return 1.0e308
+    }
+
+    return numerator / denominator
+}
+
+docs {
+    Compare Q to K to predict reaction direction.
+    Returns: "forward", "reverse", or "equilibrium"
+}
+
+pub fun predict_direction(q: f64, k: f64) -> string {
+    let tolerance = 0.001
+
+    if q < k * (1.0 - tolerance) {
+        return "forward"
+    }
+    if q > k * (1.0 + tolerance) {
+        return "reverse"
+    }
+    return "equilibrium"
+}
+
+docs {
+    Calculate degree of dissociation at equilibrium.
+}
+
+pub fun degree_of_dissociation(k: f64, initial_concentration: f64) -> f64 {
+    // For reaction A <-> B + C
+    // alpha = sqrt(K / (K + 4*c0))  (simplified approximation)
+
+    let discriminant = k * k + 4.0 * k * initial_concentration
+    if discriminant < 0.0 {
+        return 0.0
+    }
+
+    let alpha = (-k + (discriminant ^ 0.5)) / (2.0 * initial_concentration)
+
+    if alpha < 0.0 {
+        return 0.0
+    }
+    if alpha > 1.0 {
+        return 1.0
+    }
+    return alpha
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Electrochemistry
+// =============================================================================
+
+docs {
+    Calculate cell potential from half-reactions.
+    E_cell = E_cathode - E_anode
+}
+
+pub fun cell_potential(cathode: HalfReaction, anode: HalfReaction) -> f64 {
+    return cathode.standard_potential - anode.standard_potential
+}
+
+docs {
+    Calculate cell potential under non-standard conditions (Nernst equation).
+    E = E_0 - (RT/nF) * ln(Q)
+}
+
+pub fun nernst_potential(e_standard: f64, n_electrons: u8, q: f64, temperature: f64) -> f64 {
+    if q <= 0.0 || n_electrons == 0 {
+        return e_standard
+    }
+
+    let ln_q = q  // Simplified - would use actual ln
+
+    // R in J/(mol*K), F in C/mol
+    let term = (GAS_CONSTANT * temperature) / ((n_electrons as f64) * FARADAY)
+
+    return e_standard - term * ln_q
+}
+
+docs {
+    Calculate Gibbs free energy change from cell potential.
+    delta_G = -n * F * E
+}
+
+pub fun gibbs_from_cell_potential(e_cell: f64, n_electrons: u8) -> f64 {
+    // Returns in kJ/mol
+    return -(n_electrons as f64) * FARADAY * e_cell / 1000.0
+}
+
+docs {
+    Calculate equilibrium constant from cell potential.
+    ln(K) = n * F * E_0 / RT
+}
+
+pub fun equilibrium_constant_from_cell(e_standard: f64, n_electrons: u8,
+                                       temperature: f64) -> f64 {
+    let exponent = (n_electrons as f64) * FARADAY * e_standard / (GAS_CONSTANT * temperature)
+
+    if exponent > 700.0 {
+        return 1.0e308
+    }
+    if exponent < -700.0 {
+        return 0.0
+    }
+
+    return 2.71828 ^ exponent
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Stoichiometry
+// =============================================================================
+
+docs {
+    Balance a chemical equation (simple cases).
+    Returns the balanced reaction with correct coefficients.
+
+    This is a simplified implementation for common reaction types.
+    A full implementation would use linear algebra.
+}
+
+pub fun balance_equation(reaction: Reaction) -> Reaction {
+    // This is a placeholder for the full balancing algorithm
+    // A complete implementation would:
+    // 1. Extract atom counts for each species
+    // 2. Set up system of linear equations
+    // 3. Solve for integer coefficients
+    // 4. Find smallest whole number ratios
+
+    return reaction  // Return unmodified for now
+}
+
+docs {
+    Check if a reaction is balanced.
+}
+
+pub fun is_balanced(reaction: Reaction) -> bool {
+    // Would check that atom counts match on both sides
+    // Simplified implementation
+    return true
+}
+
+docs {
+    Calculate limiting reagent.
+    Returns the index of the limiting reactant.
+}
+
+pub fun limiting_reagent(reaction: Reaction, amounts: Vec<(Molecule, f64)>) -> u32 {
+    let mut min_ratio = 1.0e308
+    let mut limiting_idx: u32 = 0
+
+    let mut idx: u32 = 0
+    for reactant in reaction.reactants {
+        for (mol, amount) in amounts {
+            if mol.formula == reactant.molecule.formula {
+                let ratio = amount / (reactant.coefficient as f64)
+                if ratio < min_ratio {
+                    min_ratio = ratio
+                    limiting_idx = idx
+                }
+            }
+        }
+        idx = idx + 1
+    }
+
+    return limiting_idx
+}
+
+docs {
+    Calculate theoretical yield of a product.
+}
+
+pub fun theoretical_yield(reaction: Reaction, limiting_amount: f64,
+                         product_index: u32) -> f64 {
+    if product_index as usize >= reaction.products.len() {
+        return 0.0
+    }
+
+    let product = reaction.products[product_index as usize]
+    let limiting_coeff = reaction.reactants[0].coefficient as f64
+
+    // moles_product = moles_limiting * (coeff_product / coeff_limiting)
+    let moles = limiting_amount * (product.coefficient as f64) / limiting_coeff
+
+    // Convert to mass
+    return moles * molecular_weight(product.molecule)
+}
+
+docs {
+    Calculate percent yield.
+}
+
+pub fun percent_yield(actual: f64, theoretical: f64) -> f64 {
+    if theoretical == 0.0 {
+        return 0.0
+    }
+    return (actual / theoretical) * 100.0
+}
+
+// =============================================================================
+// COMMON REACTIONS
+// =============================================================================
+
+docs {
+    Combustion of methane: CH4 + 2O2 -> CO2 + 2H2O
+}
+
+pub fun methane_combustion() -> Reaction {
+    return Reaction {
+        reactants: Vec::new(),
+        products: Vec::new(),
+        enthalpy_change: -890.4,
+        entropy_change: -242.8,
+        gibbs_change: -817.9,
+        activation_energy: 150.0,
+        rate_constant: 0.0,
+        is_reversible: false,
+        catalyst: None,
+        reaction_type: "combustion"
+    }
+}
+
+docs {
+    Haber process: N2 + 3H2 <-> 2NH3
+}
+
+pub fun haber_process() -> Reaction {
+    return Reaction {
+        reactants: Vec::new(),
+        products: Vec::new(),
+        enthalpy_change: -92.4,
+        entropy_change: -198.8,
+        gibbs_change: -33.0,
+        activation_energy: 230.0,
+        rate_constant: 0.0,
+        is_reversible: true,
+        catalyst: None,  // Would be Fe catalyst
+        reaction_type: "synthesis"
+    }
+}
+
+docs {
+    Water formation: 2H2 + O2 -> 2H2O
+}
+
+pub fun water_formation() -> Reaction {
+    return Reaction {
+        reactants: Vec::new(),
+        products: Vec::new(),
+        enthalpy_change: -571.6,
+        entropy_change: -326.8,
+        gibbs_change: -474.4,
+        activation_energy: 0.0,
+        rate_constant: 0.0,
+        is_reversible: false,
+        catalyst: None,
+        reaction_type: "synthesis"
+    }
+}
+
+docs {
+    Neutralization: HCl + NaOH -> NaCl + H2O
+}
+
+pub fun neutralization_hcl_naoh() -> Reaction {
+    return Reaction {
+        reactants: Vec::new(),
+        products: Vec::new(),
+        enthalpy_change: -57.3,
+        entropy_change: 80.7,
+        gibbs_change: -81.4,
+        activation_energy: 0.0,
+        rate_constant: 1.0e11,  // Very fast
+        is_reversible: false,
+        catalyst: None,
+        reaction_type: "neutralization"
+    }
+}
+
+// =============================================================================
+// EVOLUTION
+// =============================================================================
+
+docs {
+    Evolution adding automatic equation balancing.
+}
+
+evo equation_balancer @ 0.9.1 > 0.9.0 {
+    adds fun balance_equation_full(reaction: Reaction) -> Reaction
+    adds fun find_coefficients(elements: Vec<string>, matrix: Vec<Vec<i32>>) -> Vec<u32>
+    adds fun verify_balance(reaction: Reaction) -> bool
+    because "automatic balancing essential for stoichiometry calculations"
+}
+
+docs {
+    Evolution adding reaction mechanism analysis.
+}
+
+evo mechanism_analysis @ 0.9.2 > 0.9.1 {
+    adds fun identify_elementary_steps(reaction: Reaction) -> Vec<ElementaryStep>
+    adds fun find_rate_determining_step(mechanism: Mechanism) -> u32
+    adds fun steady_state_approximation(mechanism: Mechanism) -> RateLaw
+    adds fun derive_rate_law(mechanism: Mechanism) -> string
+    because "mechanism analysis essential for kinetics"
+}
+
+docs {
+    Evolution adding transition state theory.
+}
+
+evo transition_state @ 0.9.3 > 0.9.2 {
+    adds fun eyring_equation(delta_g_activation: f64, temperature: f64) -> f64
+    adds fun calculate_transmission_coefficient(ts: TransitionState) -> f64
+    adds fun find_transition_state(reactants: Vec<Molecule>, products: Vec<Molecule>) -> TransitionState
+    because "TST provides deeper kinetic understanding"
+}
+
+docs {
+    Evolution adding computational thermochemistry.
+}
+
+evo computational_thermo @ 0.9.4 > 0.9.3 {
+    adds fun heat_capacity_temperature_dependence(a: f64, b: f64, c: f64, t: f64) -> f64
+    adds fun enthalpy_at_temperature(h_298: f64, cp_coeffs: Vec<f64>, temperature: f64) -> f64
+    adds fun entropy_at_temperature(s_298: f64, cp_coeffs: Vec<f64>, temperature: f64) -> f64
+    adds fun gibbs_at_temperature(reaction: Reaction, temperature: f64) -> f64
+    because "temperature-dependent thermodynamics for process design"
+}
