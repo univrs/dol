@@ -428,8 +428,8 @@ mod tests {
     fn test_wasm_value_display() {
         assert_eq!(format!("{}", WasmValue::I32(42)), "42");
         assert_eq!(format!("{}", WasmValue::I64(100)), "100");
-        assert_eq!(format!("{}", WasmValue::F32(3.14)), "3.14");
-        assert_eq!(format!("{}", WasmValue::F64(2.718)), "2.718");
+        assert_eq!(format!("{}", WasmValue::F32(1.5)), "1.5");
+        assert_eq!(format!("{}", WasmValue::F64(2.5)), "2.5");
     }
 
     #[test]
