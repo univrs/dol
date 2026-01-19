@@ -85,6 +85,8 @@ pub mod validator;
 
 // Spirit manifest parsing
 pub mod manifest;
+// System manifest parsing
+pub mod system;
 
 // Hyphal network modules
 pub mod network;
