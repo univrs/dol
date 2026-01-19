@@ -1,0 +1,695 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOL Spirits Jam 2: Digital Arts & Creative Expression
+# claude-flow @v3alpha hive-mind swarm configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Create complete Spirit packages modeling artistic forms with digital primitives:
+#   1. Exercise ALL DOL language features comprehensively
+#   2. Reuse scientific Spirits (physics waves, chemistry colors, biology genetics)
+#   3. Model digital art forms: visual, music, animation, generative
+#   4. Document REPL, CLI, and Rust→WASM workflows
+#   5. Discover bugs through creative edge cases
+#
+# Philosophy: "The Art of Life in Digital Form"
+#   - Creative spirits expressing DNA for artistic expression
+#   - Scientific foundations enabling artistic creation
+#   - Digital primitives → Rust → WASM → Beautiful output
+#
+# Target: DOL v0.9.0 Art Spirit packages with full documentation
+# Repository: github.com/univrs/dol
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: "3.0"
+name: spirits-jam2-digital-arts
+description: |
+  Create comprehensive Spirit packages for digital art forms, building on
+  scientific Spirits to enable creative expression through DOL v0.9.0.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GLOBAL CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+config:
+  workspace: ~/repos/univrs-dol
+  max_concurrent_agents: 8
+  checkpoint_interval: 20
+  validation_required: true
+  branch: feature/spirits-jam2
+
+  environment:
+    RUST_BACKTRACE: "1"
+    DOL_SPEC_VERSION: "0.9.0"
+    WASM_TARGET: "wasm32-unknown-unknown"
+
+  artifacts:
+    - path: examples/spirits/
+      type: spirit-packages
+    - path: docs/tutorials/
+      type: documentation
+    - path: tests/integration/
+      type: tests
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REUSABLE SCIENTIFIC FOUNDATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# From Physics Spirit:
+#   - waves.dol: Sound synthesis, light/color waves, interference
+#   - mechanics.dol: Motion, forces, particle systems
+#   - quantum.dol: Randomness, probability for generative art
+#
+# From Chemistry Spirit:
+#   - elements.dol: Material properties for rendering
+#   - molecules.dol: Color mixing as molecular bonds
+#   - reactions.dol: Color transformations, state changes
+#
+# From Biology Spirit:
+#   - genetics.dol: Evolutionary art, genetic algorithms
+#   - cells.dol: Cellular automata inspiration
+#   - ecosystems.dol: Multi-agent art systems
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ART SPIRIT PACKAGES TO CREATE
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 1. VISUAL Spirit - Color, geometry, fractals, patterns
+# 2. MUSIC Spirit - Sound synthesis, harmony, rhythm, composition
+# 3. ANIMATION Spirit - Motion, easing, keyframes, particles
+# 4. GENERATIVE Spirit - L-systems, noise, cellular automata, evolutionary art
+# 5. TYPOGRAPHY Spirit - Glyphs, fonts, text layout, calligraphy
+#
+# Each Spirit will:
+#   - Import from scientific Spirits where applicable
+#   - Use ALL declaration types (gen, fun, trait, rule, evo, docs)
+#   - Include comprehensive examples
+#   - Compile to WASM for browser-based art
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+phases:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # PHASE 1: VISUAL ARTS SPIRIT
+  # Color theory, geometry, fractals, patterns
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  - id: phase-1-visual
+    name: "Visual Arts Spirit Package"
+    description: "Create comprehensive visual arts modeling Spirit"
+    priority: critical
+
+    objectives:
+      - Model color spaces (RGB, HSL, HSV, CMYK, LAB)
+      - Implement 2D/3D geometry primitives
+      - Create fractal generators (Mandelbrot, Julia, Sierpinski)
+      - Build pattern systems (tessellations, tilings)
+      - Reuse physics waves for light/interference patterns
+
+    agents:
+      - id: visual-artist
+        name: "Visual Arts Agent"
+        role: architect
+
+        tasks:
+          - id: visual-spirit-manifest
+            name: "Create visual Spirit.dol"
+            priority: critical
+            description: |
+              Create examples/spirits/visual/Spirit.dol:
+
+              ```dol
+              spirit visual @ 0.9.0
+
+              docs {
+                  Visual arts Spirit for DOL v0.9.0.
+                  Digital primitives for color, geometry, and pattern generation.
+
+                  Builds on physics (waves, light) and chemistry (color mixing).
+              }
+
+              config {
+                entry: "lib.dol"
+                target: wasm32
+                features: ["f64-precision", "simd"]
+              }
+
+              use @univrs/physics @ ^0.9
+              use @univrs/chemistry @ ^0.9
+
+              pub mod color
+              pub mod geometry
+              pub mod fractal
+              pub mod pattern
+              mod internal
+              ```
+
+          - id: visual-color
+            name: "Color theory module"
+            priority: critical
+            description: |
+              Create color.dol with:
+
+              - gen RGB { r, g, b: u8 }
+              - gen RGBA { r, g, b, a: u8 }
+              - gen HSL { h: f64, s: f64, l: f64 }
+              - gen HSV { h: f64, s: f64, v: f64 }
+              - gen CMYK { c, m, y, k: f64 }
+              - gen LAB { l, a, b: f64 }
+              - gen ColorGradient { stops: Vec<(f64, RGB)> }
+              - gen Palette { colors: Vec<RGB>, name: string }
+              - trait Blendable { blend(other: Self, t: f64) -> Self }
+              - trait Complementary { complement() -> Self }
+              - rule ColorWheel { complementary at 180 degrees }
+              - fun rgb_to_hsl(c: RGB) -> HSL
+              - fun hsl_to_rgb(c: HSL) -> RGB
+              - fun lerp_color(a: RGB, b: RGB, t: f64) -> RGB
+              - fun harmonious_palette(base: HSL, scheme: string) -> Palette
+
+              Include named colors (CSS colors) as constants.
+
+          - id: visual-geometry
+            name: "Geometry primitives module"
+            priority: high
+            description: |
+              Create geometry.dol with:
+
+              - gen Point2D { x, y: f64 }
+              - gen Point3D { x, y, z: f64 }
+              - gen Line { start, end: Point2D }
+              - gen Circle { center: Point2D, radius: f64 }
+              - gen Ellipse { center: Point2D, rx, ry: f64, rotation: f64 }
+              - gen Rectangle { origin: Point2D, width, height: f64 }
+              - gen Polygon { vertices: Vec<Point2D> }
+              - gen BezierCurve { points: Vec<Point2D> }
+              - gen Path { segments: Vec<PathSegment> }
+              - trait Transformable { translate, rotate, scale }
+              - trait Drawable { to_path() -> Path }
+              - rule GoldenRatio { phi = 1.618033988749895 }
+              - fun distance(a: Point2D, b: Point2D) -> f64
+              - fun bezier_point(curve: BezierCurve, t: f64) -> Point2D
+              - fun golden_spiral(turns: u32) -> Path
+
+          - id: visual-fractal
+            name: "Fractal generators module"
+            priority: high
+            description: |
+              Create fractal.dol with:
+
+              - gen Complex { re, im: f64 }
+              - gen MandelbrotConfig { max_iter: u32, escape_radius: f64 }
+              - gen JuliaConfig { c: Complex, max_iter: u32 }
+              - gen FractalResult { iterations: u32, escaped: bool }
+              - gen LSystem { axiom: string, rules: Vec<(char, string)>, angle: f64 }
+              - trait SelfSimilar { iterate() -> Self }
+              - trait Zoomable { zoom(center: Complex, factor: f64) }
+              - rule FractalDimension { D = log(N) / log(s) }
+              - fun mandelbrot(c: Complex, config: MandelbrotConfig) -> FractalResult
+              - fun julia(z: Complex, config: JuliaConfig) -> FractalResult
+              - fun sierpinski_triangle(depth: u32) -> Vec<Polygon>
+              - fun koch_snowflake(depth: u32) -> Path
+              - fun lsystem_interpret(sys: LSystem, depth: u32) -> Path
+
+          - id: visual-pattern
+            name: "Pattern generation module"
+            priority: medium
+            description: |
+              Create pattern.dol with:
+
+              - gen Tile { shape: Polygon, color: RGB }
+              - gen Tessellation { tiles: Vec<Tile>, rule: string }
+              - gen Grid { rows, cols: u32, cell_size: f64 }
+              - gen Noise2D { seed: u64, octaves: u32, persistence: f64 }
+              - trait Tileable { can_tile() -> bool }
+              - trait Periodic { period() -> (f64, f64) }
+              - rule WallpaperGroup { 17 plane symmetry groups }
+              - fun perlin_noise(x: f64, y: f64, config: Noise2D) -> f64
+              - fun simplex_noise(x: f64, y: f64, seed: u64) -> f64
+              - fun voronoi(points: Vec<Point2D>, query: Point2D) -> u32
+              - fun regular_tiling(n: u32) -> Tessellation
+              - fun penrose_tiling(depth: u32) -> Tessellation
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # PHASE 2: MUSIC SPIRIT
+  # Sound synthesis, harmony, rhythm, composition
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  - id: phase-2-music
+    name: "Music Spirit Package"
+    description: "Create comprehensive music and sound modeling Spirit"
+    priority: high
+
+    depends_on:
+      - phase-1-visual
+
+    objectives:
+      - Model sound waves and synthesis (reuse physics waves)
+      - Implement music theory (scales, chords, intervals)
+      - Create rhythm and timing systems
+      - Build composition structures (melody, harmony)
+      - Generate audio data for WASM playback
+
+    agents:
+      - id: music-composer
+        name: "Music Composer Agent"
+        role: architect
+
+        tasks:
+          - id: music-synthesis
+            name: "Sound synthesis module"
+            priority: critical
+            description: |
+              Create synthesis.dol with:
+
+              - gen Oscillator { waveform: Waveform, frequency: f64, amplitude: f64 }
+              - gen Waveform { Sine, Square, Sawtooth, Triangle, Noise }
+              - gen Envelope { attack, decay, sustain, release: f64 }
+              - gen Filter { type: FilterType, cutoff: f64, resonance: f64 }
+              - gen AudioBuffer { samples: Vec<f64>, sample_rate: u32 }
+              - trait Playable { to_samples(duration: f64, rate: u32) -> AudioBuffer }
+              - trait Modulatable { modulate(source: Oscillator) -> Self }
+              - rule Nyquist { sample_rate >= 2 * max_frequency }
+              - fun sine_wave(freq: f64, t: f64) -> f64
+              - fun generate_samples(osc: Oscillator, env: Envelope, dur: f64) -> AudioBuffer
+              - fun apply_filter(buf: AudioBuffer, filter: Filter) -> AudioBuffer
+              - fun mix_buffers(a: AudioBuffer, b: AudioBuffer) -> AudioBuffer
+
+              Reuse physics.waves for wave mathematics.
+
+          - id: music-theory
+            name: "Music theory module"
+            priority: high
+            description: |
+              Create theory.dol with:
+
+              - gen Note { pitch: u8, octave: i8, duration: f64 }
+              - gen Interval { semitones: i8, name: string }
+              - gen Scale { root: Note, intervals: Vec<Interval>, name: string }
+              - gen Chord { root: Note, notes: Vec<Note>, name: string }
+              - gen Key { tonic: Note, mode: Mode }
+              - gen Mode { Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Locrian }
+              - trait Transposable { transpose(semitones: i8) -> Self }
+              - trait Invertible { invert() -> Self }
+              - rule OctaveEquivalence { note + 12 semitones = same pitch class }
+              - rule CircleOfFifths { progression by perfect fifths }
+              - fun note_to_frequency(note: Note) -> f64
+              - fun frequency_to_note(freq: f64) -> Note
+              - fun build_scale(root: Note, mode: Mode) -> Scale
+              - fun chord_from_scale(scale: Scale, degree: u8) -> Chord
+
+          - id: music-rhythm
+            name: "Rhythm and timing module"
+            priority: high
+            description: |
+              Create rhythm.dol with:
+
+              - gen TimeSignature { beats_per_measure: u8, beat_value: u8 }
+              - gen Tempo { bpm: f64 }
+              - gen Duration { beats: f64, tied: bool }
+              - gen Rest { duration: Duration }
+              - gen Beat { position: f64, accent: f64 }
+              - gen Measure { beats: Vec<Beat>, time_sig: TimeSignature }
+              - gen RhythmPattern { hits: Vec<bool>, length: u32 }
+              - trait Quantizable { quantize(grid: f64) -> Self }
+              - rule MetronomeMark { tempo = beats per minute }
+              - fun beats_to_seconds(beats: f64, tempo: Tempo) -> f64
+              - fun euclidean_rhythm(hits: u32, steps: u32) -> RhythmPattern
+              - fun swing(pattern: RhythmPattern, amount: f64) -> RhythmPattern
+
+          - id: music-composition
+            name: "Composition module"
+            priority: medium
+            description: |
+              Create composition.dol with:
+
+              - gen Melody { notes: Vec<Note>, rhythm: Vec<Duration> }
+              - gen Phrase { melody: Melody, measures: u32 }
+              - gen Section { phrases: Vec<Phrase>, name: string }
+              - gen Song { sections: Vec<Section>, tempo: Tempo, key: Key }
+              - gen Voice { instrument: string, melody: Melody }
+              - gen Score { voices: Vec<Voice>, tempo: Tempo }
+              - trait Arrangeable { arrange(structure: Vec<string>) -> Song }
+              - fun generate_melody(scale: Scale, length: u32, seed: u64) -> Melody
+              - fun harmonize(melody: Melody, key: Key) -> Vec<Chord>
+              - fun arpeggiate(chord: Chord, pattern: string) -> Melody
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # PHASE 3: ANIMATION SPIRIT
+  # Motion, easing, keyframes, particles
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  - id: phase-3-animation
+    name: "Animation Spirit Package"
+    description: "Create comprehensive animation and motion Spirit"
+    priority: high
+
+    depends_on:
+      - phase-1-visual
+
+    objectives:
+      - Model keyframe animation with easing
+      - Implement particle systems (reuse physics mechanics)
+      - Create timeline and sequencing
+      - Build procedural animation tools
+      - Support physics-based animation
+
+    agents:
+      - id: animator
+        name: "Animation Agent"
+        role: architect
+
+        tasks:
+          - id: animation-keyframes
+            name: "Keyframe animation module"
+            priority: critical
+            description: |
+              Create keyframes.dol with:
+
+              - gen Keyframe<T> { time: f64, value: T, easing: EasingFn }
+              - gen EasingFn { Linear, EaseIn, EaseOut, EaseInOut, Cubic, Bounce, Elastic }
+              - gen Track<T> { keyframes: Vec<Keyframe<T>>, name: string }
+              - gen Animation { tracks: Vec<Track<f64>>, duration: f64, loop: bool }
+              - gen AnimationState { time: f64, playing: bool, speed: f64 }
+              - trait Interpolatable { lerp(other: Self, t: f64) -> Self }
+              - trait Animatable { animate(anim: Animation, t: f64) -> Self }
+              - rule TweenContinuity { C1 continuity for smooth motion }
+              - fun ease_in_quad(t: f64) -> f64
+              - fun ease_out_cubic(t: f64) -> f64
+              - fun ease_in_out_elastic(t: f64) -> f64
+              - fun evaluate_track(track: Track<f64>, t: f64) -> f64
+              - fun bezier_easing(p1: Point2D, p2: Point2D, t: f64) -> f64
+
+          - id: animation-particles
+            name: "Particle systems module"
+            priority: high
+            description: |
+              Create particles.dol with:
+
+              - gen Particle { position, velocity: Point2D, life: f64, color: RGB }
+              - gen Emitter { position: Point2D, rate: f64, shape: EmitterShape }
+              - gen EmitterShape { Point, Line, Circle, Rectangle }
+              - gen ParticleSystem { emitters: Vec<Emitter>, particles: Vec<Particle> }
+              - gen Force { direction: Point2D, strength: f64 }
+              - trait Emittable { emit(count: u32) -> Vec<Particle> }
+              - trait Updateable { update(dt: f64) -> Self }
+              - rule ParticleLifecycle { spawn -> update -> die }
+              - fun update_particle(p: Particle, forces: Vec<Force>, dt: f64) -> Particle
+              - fun spawn_burst(emitter: Emitter, count: u32) -> Vec<Particle>
+              - fun apply_gravity(sys: ParticleSystem, g: f64) -> ParticleSystem
+              - fun apply_wind(sys: ParticleSystem, wind: Point2D) -> ParticleSystem
+
+              Reuse physics.mechanics for force calculations.
+
+          - id: animation-timeline
+            name: "Timeline and sequencing module"
+            priority: medium
+            description: |
+              Create timeline.dol with:
+
+              - gen Timeline { clips: Vec<Clip>, duration: f64 }
+              - gen Clip { start: f64, end: f64, animation: Animation }
+              - gen Sequence { timelines: Vec<Timeline>, parallel: bool }
+              - gen Cue { time: f64, action: string }
+              - trait Schedulable { schedule(at: f64) -> Self }
+              - trait Composable { compose(other: Self) -> Self }
+              - fun trim_clip(clip: Clip, start: f64, end: f64) -> Clip
+              - fun concatenate(a: Timeline, b: Timeline) -> Timeline
+              - fun parallel_compose(timelines: Vec<Timeline>) -> Timeline
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # PHASE 4: GENERATIVE SPIRIT
+  # L-systems, noise, cellular automata, evolutionary art
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  - id: phase-4-generative
+    name: "Generative Art Spirit Package"
+    description: "Create generative and procedural art Spirit"
+    priority: high
+
+    depends_on:
+      - phase-1-visual
+      - phase-2-music
+
+    objectives:
+      - Implement L-systems for plant/organic forms
+      - Create noise functions (Perlin, Simplex, Worley)
+      - Build cellular automata (Game of Life, Wolfram)
+      - Implement genetic/evolutionary algorithms
+      - Reuse biology genetics for evolutionary art
+
+    agents:
+      - id: generative-artist
+        name: "Generative Art Agent"
+        role: architect
+
+        tasks:
+          - id: generative-lsystems
+            name: "L-systems module"
+            priority: critical
+            description: |
+              Create lsystems.dol with:
+
+              - gen LSystem { axiom: string, rules: Vec<ProductionRule> }
+              - gen ProductionRule { predecessor: char, successor: string, probability: f64 }
+              - gen TurtleState { position: Point2D, angle: f64, pen_down: bool }
+              - gen TurtleGraphics { states: Vec<TurtleState>, line_length: f64 }
+              - trait Growable { grow(iterations: u32) -> string }
+              - trait Renderable { render(turtle: TurtleGraphics) -> Path }
+              - rule DOL { deterministic, context-free }
+              - rule StochasticL { probabilistic rule selection }
+              - fun apply_rules(sys: LSystem, input: string) -> string
+              - fun turtle_interpret(commands: string, config: TurtleGraphics) -> Path
+              - fun tree_lsystem(branching_angle: f64) -> LSystem
+              - fun koch_curve_lsystem() -> LSystem
+              - fun plant_lsystem(complexity: u32) -> LSystem
+
+          - id: generative-noise
+            name: "Noise functions module"
+            priority: high
+            description: |
+              Create noise.dol with:
+
+              - gen NoiseConfig { seed: u64, octaves: u32, lacunarity: f64, persistence: f64 }
+              - gen NoiseField2D { width, height: u32, values: Vec<f64> }
+              - gen NoiseField3D { width, height, depth: u32, values: Vec<f64> }
+              - trait NoiseSampler { sample(x: f64, y: f64) -> f64 }
+              - trait Tileable { make_tileable(width: f64, height: f64) -> Self }
+              - fun perlin_2d(x: f64, y: f64, config: NoiseConfig) -> f64
+              - fun simplex_2d(x: f64, y: f64, seed: u64) -> f64
+              - fun worley_2d(x: f64, y: f64, seed: u64) -> f64
+              - fun fbm(x: f64, y: f64, config: NoiseConfig) -> f64
+              - fun turbulence(x: f64, y: f64, config: NoiseConfig) -> f64
+              - fun domain_warp(x: f64, y: f64, config: NoiseConfig) -> (f64, f64)
+
+          - id: generative-cellular
+            name: "Cellular automata module"
+            priority: high
+            description: |
+              Create cellular.dol with:
+
+              - gen CellGrid { width, height: u32, cells: Vec<bool> }
+              - gen Rule1D { rule_number: u8 }
+              - gen Rule2D { birth: Vec<u8>, survival: Vec<u8> }
+              - gen GameOfLife is Rule2D { birth: [3], survival: [2, 3] }
+              - gen HighLife is Rule2D { birth: [3, 6], survival: [2, 3] }
+              - trait Evolvable { step() -> Self }
+              - trait Seedable { seed(pattern: string) -> Self }
+              - rule WolframRule { 8-bit elementary CA encoding }
+              - fun wolfram_step(row: Vec<bool>, rule: Rule1D) -> Vec<bool>
+              - fun conway_step(grid: CellGrid) -> CellGrid
+              - fun randomize_grid(width: u32, height: u32, density: f64) -> CellGrid
+              - fun glider() -> CellGrid
+              - fun gosper_gun() -> CellGrid
+
+          - id: generative-evolutionary
+            name: "Evolutionary art module"
+            priority: medium
+            description: |
+              Create evolutionary.dol with:
+
+              - gen Genome { genes: Vec<f64>, fitness: f64 }
+              - gen Population { individuals: Vec<Genome>, generation: u32 }
+              - gen SelectionMethod { Tournament, Roulette, Rank }
+              - gen CrossoverMethod { SinglePoint, TwoPoint, Uniform }
+              - gen MutationMethod { Gaussian, Uniform, Swap }
+              - trait Evolvable { mutate(rate: f64) -> Self, crossover(other: Self) -> Self }
+              - trait Evaluatable { evaluate() -> f64 }
+              - rule SurvivalOfFittest { higher fitness = more offspring }
+              - fun select(pop: Population, method: SelectionMethod) -> Genome
+              - fun crossover(a: Genome, b: Genome, method: CrossoverMethod) -> Genome
+              - fun mutate(genome: Genome, rate: f64, method: MutationMethod) -> Genome
+              - fun evolve_generation(pop: Population) -> Population
+              - fun generate_art_genome(params: u32) -> Genome
+
+              Reuse biology.genetics for DNA-like encoding.
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # PHASE 5: DOCUMENTATION & TUTORIALS
+  # Art-specific workflow guides
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  - id: phase-5-documentation
+    name: "Art Documentation & Tutorials"
+    description: "Create art-specific documentation"
+    priority: high
+
+    depends_on:
+      - phase-1-visual
+      - phase-2-music
+      - phase-3-animation
+      - phase-4-generative
+
+    objectives:
+      - REPL tutorial with generative art examples
+      - Browser canvas rendering guide
+      - Web Audio API integration guide
+      - Gallery of example artworks
+
+    agents:
+      - id: art-docs-writer
+        name: "Art Documentation Agent"
+        role: specialist
+
+        tasks:
+          - id: art-repl-tutorial
+            name: "Art REPL tutorial"
+            priority: critical
+            description: |
+              Create docs/tutorials/art-repl-guide.md:
+
+              1. Loading art Spirits in REPL
+              2. Creating colors and gradients interactively
+              3. Generating fractals and patterns
+              4. Synthesizing sounds
+              5. Creating animations step-by-step
+              6. Exporting to canvas/audio formats
+
+          - id: browser-canvas-guide
+            name: "Browser canvas integration"
+            priority: high
+            description: |
+              Create docs/tutorials/art-canvas-guide.md:
+
+              1. Compiling visual Spirit to WASM
+              2. Loading WASM in browser
+              3. Rendering to HTML5 Canvas
+              4. Handling user interaction
+              5. Animation loop with requestAnimationFrame
+              6. Exporting images
+
+          - id: web-audio-guide
+            name: "Web Audio API integration"
+            priority: high
+            description: |
+              Create docs/tutorials/art-audio-guide.md:
+
+              1. Compiling music Spirit to WASM
+              2. Connecting to Web Audio API
+              3. Real-time synthesis
+              4. Sequencing and playback
+              5. Audio visualization
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # PHASE 6: EDGE CASE TESTING
+  # Art-specific edge cases
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  - id: phase-6-edge-cases
+    name: "Art Edge Case Testing"
+    description: "Test art-specific edge cases"
+    priority: high
+
+    depends_on:
+      - phase-5-documentation
+
+    objectives:
+      - Test color space conversions at boundaries
+      - Test audio buffer edge cases (clipping, aliasing)
+      - Test animation timing precision
+      - Test noise tiling seamlessness
+      - Document discovered bugs
+
+    agents:
+      - id: art-edge-tester
+        name: "Art Edge Case Tester"
+        role: specialist
+
+        tasks:
+          - id: color-edge-cases
+            name: "Color edge cases"
+            priority: high
+            description: |
+              Test color.dol edge cases:
+              - RGB values at 0 and 255
+              - HSL hue wrapping at 0/360
+              - LAB gamut clipping
+              - Gradient interpolation with alpha
+              - Color blindness simulation
+
+          - id: audio-edge-cases
+            name: "Audio edge cases"
+            priority: high
+            description: |
+              Test synthesis.dol edge cases:
+              - Frequencies at Nyquist limit
+              - Sample buffer overflow
+              - Envelope with zero attack
+              - Filter resonance at extremes
+              - Very long/short audio buffers
+
+          - id: animation-edge-cases
+            name: "Animation edge cases"
+            priority: high
+            description: |
+              Test keyframes.dol edge cases:
+              - Keyframes at same time
+              - Very small time deltas
+              - Infinite loop detection
+              - Easing at t=0 and t=1
+              - Empty animation tracks
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COORDINATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+coordination:
+  strategy: hive-mind
+
+  checkpoints:
+    - after: phase-1-visual
+      validation:
+        - ls examples/spirits/visual/Spirit.dol
+        - cargo run --bin dol-parse -- examples/spirits/visual/
+
+    - after: phase-2-music
+      validation:
+        - ls examples/spirits/music/Spirit.dol
+
+    - after: phase-3-animation
+      validation:
+        - ls examples/spirits/animation/Spirit.dol
+
+    - after: phase-4-generative
+      validation:
+        - ls examples/spirits/generative/Spirit.dol
+
+    - after: phase-5-documentation
+      validation:
+        - ls docs/tutorials/art-*.md
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUCCESS CRITERIA
+# ═══════════════════════════════════════════════════════════════════════════════
+
+success_criteria:
+  - description: "All Art Spirit packages parse"
+    command: |
+      for spirit in visual music animation generative; do
+        cargo run --bin dol-parse -- examples/spirits/$spirit/Spirit.dol || exit 1
+      done
+
+  - description: "Art documentation complete"
+    files:
+      - docs/tutorials/art-repl-guide.md
+      - docs/tutorials/art-canvas-guide.md
+      - docs/tutorials/art-audio-guide.md
