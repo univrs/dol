@@ -1,0 +1,60 @@
+// =============================================================================
+// DOL v0.9.0 Biology Spirit Package
+// Comprehensive biology modeling for scientific computing
+// =============================================================================
+
+spirit biology @ 0.9.0
+
+docs {
+    Biology modeling Spirit for DOL v0.9.0.
+
+    This Spirit provides a comprehensive library for biology simulations including:
+    - Cellular biology (cells, organelles, cell division)
+    - Genetics (DNA, RNA, proteins, transcription, translation)
+    - Ecosystems (species, populations, food webs, predator-prey dynamics)
+
+    All functions are pure unless explicitly marked as `sex` for side effects.
+    This enables safe parallelization and memoization of biology calculations.
+
+    Dependencies:
+    - physics Spirit for thermodynamic calculations
+    - chemistry Spirit for molecular structures
+
+    Usage:
+        use @univrs/biology @ ^0.9
+        let cell = cells::Eukaryote::new()
+        let dna = genetics::new_dna("ATCGATCG")
+        let eco = ecosystems::new_ecosystem("rainforest")
+}
+
+// ---------------------------------------------------------------------------
+// Spirit Configuration
+// ---------------------------------------------------------------------------
+
+config {
+    entry: "lib.dol"
+    target: wasm32
+    features: ["f64-precision", "genetics"]
+}
+
+// ---------------------------------------------------------------------------
+// External Spirit Dependencies
+// ---------------------------------------------------------------------------
+
+use @univrs/physics @ ^0.9
+use @univrs/chemistry @ ^0.9
+
+// ---------------------------------------------------------------------------
+// Public Module Exports
+// ---------------------------------------------------------------------------
+
+pub mod cells
+pub mod genetics
+pub mod ecosystems
+
+// ---------------------------------------------------------------------------
+// Internal Modules
+// ---------------------------------------------------------------------------
+
+mod constants
+mod internal

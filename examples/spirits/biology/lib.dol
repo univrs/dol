@@ -1,0 +1,230 @@
+// =============================================================================
+// Biology Spirit - Library Entry Point
+// DOL v0.9.0
+// =============================================================================
+
+module biology @ 0.9.0
+
+docs {
+    Biology Spirit library entry point.
+
+    This module re-exports all public biology modules for convenient access.
+    Users can either import the entire biology namespace or specific modules.
+
+    Example usage:
+        // Import entire biology library
+        use local::biology
+
+        // Or import specific modules
+        use local::biology::cells
+        use local::biology::genetics
+        use local::biology::ecosystems
+}
+
+// ---------------------------------------------------------------------------
+// Re-exports from submodules
+// ---------------------------------------------------------------------------
+
+use local::cells
+use local::genetics
+use local::ecosystems
+
+// ---------------------------------------------------------------------------
+// Biological Constants
+// ---------------------------------------------------------------------------
+
+docs {
+    Avogadro's number (particles/mol) - for molecular calculations.
+}
+
+pub const AVOGADRO: f64 = 6.02214076e23
+
+docs {
+    Universal gas constant (J/(mol*K)).
+}
+
+pub const GAS_CONSTANT: f64 = 8.314462618
+
+docs {
+    Boltzmann constant (J/K).
+}
+
+pub const BOLTZMANN: f64 = 1.380649e-23
+
+docs {
+    Standard body temperature (K) - human homeostatic temperature.
+}
+
+pub const BODY_TEMP_K: f64 = 310.15
+
+docs {
+    Standard body temperature (Celsius).
+}
+
+pub const BODY_TEMP_C: f64 = 37.0
+
+docs {
+    Number of base pairs in human genome (approximate).
+}
+
+pub const HUMAN_GENOME_BP: u64 = 3200000000
+
+docs {
+    Average cell diameter in micrometers.
+}
+
+pub const AVG_CELL_DIAMETER_UM: f64 = 10.0
+
+docs {
+    Mitochondrial membrane potential (mV).
+}
+
+pub const MITOCHONDRIAL_POTENTIAL_MV: f64 = -180.0
+
+docs {
+    ATP hydrolysis free energy under standard conditions (kJ/mol).
+}
+
+pub const ATP_HYDROLYSIS_KJ: f64 = -30.5
+
+docs {
+    Planck's constant for quantum biology (J*s).
+}
+
+pub const PLANCK: f64 = 6.62607015e-34
+
+// ---------------------------------------------------------------------------
+// Codon Table Constants
+// ---------------------------------------------------------------------------
+
+docs {
+    Number of possible codons (4^3).
+}
+
+pub const NUM_CODONS: u8 = 64
+
+docs {
+    Number of standard amino acids.
+}
+
+pub const NUM_AMINO_ACIDS: u8 = 20
+
+docs {
+    Stop codons in standard genetic code.
+}
+
+pub const STOP_CODONS: Vec<string> = vec!["UAA", "UAG", "UGA"]
+
+docs {
+    Start codon (Methionine).
+}
+
+pub const START_CODON: string = "AUG"
+
+// ---------------------------------------------------------------------------
+// Ecological Constants
+// ---------------------------------------------------------------------------
+
+docs {
+    Earth's carrying capacity for humans (estimated billions).
+}
+
+pub const EARTH_CARRYING_CAPACITY_BILLIONS: f64 = 10.0
+
+docs {
+    Average species extinction rate (species per million species per year).
+}
+
+pub const BACKGROUND_EXTINCTION_RATE: f64 = 0.1
+
+docs {
+    Shannon diversity index for maximum biodiversity in typical ecosystem.
+}
+
+pub const MAX_SHANNON_INDEX: f64 = 5.0
+
+// ---------------------------------------------------------------------------
+// Utility Types
+// ---------------------------------------------------------------------------
+
+docs {
+    Result type for biology calculations that may fail.
+}
+
+pub gen BiologyResult<T> {
+    has value: Option<T>
+    has error: Option<string>
+    has warning: Option<string>
+}
+
+docs {
+    Create a successful biology result.
+}
+
+pub fun ok<T>(value: T) -> BiologyResult<T> {
+    return BiologyResult {
+        value: Some(value),
+        error: None,
+        warning: None
+    }
+}
+
+docs {
+    Create an error biology result.
+}
+
+pub fun err<T>(message: string) -> BiologyResult<T> {
+    return BiologyResult {
+        value: None,
+        error: Some(message),
+        warning: None
+    }
+}
+
+docs {
+    Check if a biology result is successful.
+}
+
+pub fun is_ok<T>(result: BiologyResult<T>) -> bool {
+    match result.value {
+        Some(_) => true,
+        None => false
+    }
+}
+
+docs {
+    3D position for biological structures (micrometers).
+}
+
+pub gen Position3D {
+    has x: f64
+    has y: f64
+    has z: f64
+}
+
+docs {
+    Create a position at origin.
+}
+
+pub fun origin() -> Position3D {
+    return Position3D { x: 0.0, y: 0.0, z: 0.0 }
+}
+
+docs {
+    Create a position at given coordinates.
+}
+
+pub fun position(x: f64, y: f64, z: f64) -> Position3D {
+    return Position3D { x: x, y: y, z: z }
+}
+
+docs {
+    Calculate distance between two positions.
+}
+
+pub fun distance(p1: Position3D, p2: Position3D) -> f64 {
+    let dx = p2.x - p1.x
+    let dy = p2.y - p1.y
+    let dz = p2.z - p1.z
+    return (dx * dx + dy * dy + dz * dz)
+}
