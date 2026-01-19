@@ -1,0 +1,152 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Library Entry Point
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics @ 0.9.0
+
+docs {
+    Physics Spirit library entry point.
+
+    This module re-exports all public physics modules for convenient access.
+    Users can either import the entire physics namespace or specific modules.
+
+    Example usage:
+        // Import entire physics library
+        use local::physics
+
+        // Or import specific modules
+        use local::physics::particles
+        use local::physics::mechanics
+        use local::physics::thermodynamics
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Re-exports from submodules
+// ─────────────────────────────────────────────────────────────────────────────
+
+use local::particles
+use local::mechanics
+use local::thermodynamics
+use local::waves
+use local::quantum
+use local::constants
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Physical Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+docs {
+    Speed of light in vacuum (m/s).
+}
+
+pub const SPEED_OF_LIGHT: f64 = 299792458.0
+
+docs {
+    Planck's constant (J·s).
+}
+
+pub const PLANCK_CONSTANT: f64 = 6.62607015e-34
+
+docs {
+    Reduced Planck's constant (ħ = h/2π) in J·s.
+}
+
+pub const HBAR: f64 = 1.054571817e-34
+
+docs {
+    Elementary charge (Coulombs).
+}
+
+pub const ELEMENTARY_CHARGE: f64 = 1.602176634e-19
+
+docs {
+    Boltzmann constant (J/K).
+}
+
+pub const BOLTZMANN_CONSTANT: f64 = 1.380649e-23
+
+docs {
+    Avogadro's number (particles/mol).
+}
+
+pub const AVOGADRO_NUMBER: f64 = 6.02214076e23
+
+docs {
+    Universal gas constant (J/(mol·K)).
+}
+
+pub const GAS_CONSTANT: f64 = 8.314462618
+
+docs {
+    Gravitational constant (m³/(kg·s²)).
+}
+
+pub const GRAVITATIONAL_CONSTANT: f64 = 6.67430e-11
+
+docs {
+    Electron mass (kg).
+}
+
+pub const ELECTRON_MASS: f64 = 9.1093837015e-31
+
+docs {
+    Proton mass (kg).
+}
+
+pub const PROTON_MASS: f64 = 1.67262192369e-27
+
+docs {
+    Neutron mass (kg).
+}
+
+pub const NEUTRON_MASS: f64 = 1.67492749804e-27
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utility Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+docs {
+    Result type for physics calculations that may fail.
+}
+
+pub gen PhysicsResult<T> {
+    has value: Option<T>
+    has error: Option<string>
+    has warning: Option<string>
+}
+
+docs {
+    Create a successful physics result.
+}
+
+pub fun ok<T>(value: T) -> PhysicsResult<T> {
+    return PhysicsResult {
+        value: Some(value),
+        error: None,
+        warning: None
+    }
+}
+
+docs {
+    Create an error physics result.
+}
+
+pub fun err<T>(message: string) -> PhysicsResult<T> {
+    return PhysicsResult {
+        value: None,
+        error: Some(message),
+        warning: None
+    }
+}
+
+docs {
+    Check if a physics result is successful.
+}
+
+pub fun is_ok<T>(result: PhysicsResult<T>) -> bool {
+    match result.value {
+        Some(_) => true,
+        None => false
+    }
+}

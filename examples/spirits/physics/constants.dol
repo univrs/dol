@@ -1,0 +1,228 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Physical Constants Module
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics.constants @ 0.9.0
+
+docs {
+    Physical constants for scientific calculations.
+
+    All constants are in SI units unless otherwise noted.
+    Values are from CODATA 2018 recommended values.
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNDAMENTAL CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Speed of light in vacuum (m/s).
+    Exact value by definition since 2019.
+}
+
+pub const C: f64 = 299792458.0
+
+docs {
+    Planck constant (J·s).
+    Exact value by definition since 2019.
+}
+
+pub const H: f64 = 6.62607015e-34
+
+docs {
+    Reduced Planck constant ℏ = h/(2π) (J·s).
+}
+
+pub const HBAR: f64 = 1.054571817e-34
+
+docs {
+    Elementary charge (C).
+    Exact value by definition since 2019.
+}
+
+pub const E: f64 = 1.602176634e-19
+
+docs {
+    Boltzmann constant (J/K).
+    Exact value by definition since 2019.
+}
+
+pub const K_B: f64 = 1.380649e-23
+
+docs {
+    Avogadro constant (mol⁻¹).
+    Exact value by definition since 2019.
+}
+
+pub const N_A: f64 = 6.02214076e23
+
+docs {
+    Newtonian constant of gravitation (m³/(kg·s²)).
+}
+
+pub const G: f64 = 6.67430e-11
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ELECTROMAGNETIC CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Vacuum electric permittivity ε₀ (F/m).
+}
+
+pub const EPSILON_0: f64 = 8.8541878128e-12
+
+docs {
+    Vacuum magnetic permeability μ₀ (H/m).
+}
+
+pub const MU_0: f64 = 1.25663706212e-6
+
+docs {
+    Coulomb constant k_e = 1/(4πε₀) (N·m²/C²).
+}
+
+pub const K_E: f64 = 8.9875517923e9
+
+docs {
+    Fine-structure constant α (dimensionless).
+}
+
+pub const ALPHA: f64 = 7.2973525693e-3
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ATOMIC AND PARTICLE CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Electron mass (kg).
+}
+
+pub const M_E: f64 = 9.1093837015e-31
+
+docs {
+    Proton mass (kg).
+}
+
+pub const M_P: f64 = 1.67262192369e-27
+
+docs {
+    Neutron mass (kg).
+}
+
+pub const M_N: f64 = 1.67492749804e-27
+
+docs {
+    Atomic mass unit (kg).
+}
+
+pub const U: f64 = 1.66053906660e-27
+
+docs {
+    Bohr radius (m).
+}
+
+pub const A_0: f64 = 5.29177210903e-11
+
+docs {
+    Electron volt (J).
+}
+
+pub const EV: f64 = 1.602176634e-19
+
+docs {
+    Rydberg constant (m⁻¹).
+}
+
+pub const R_INF: f64 = 10973731.568160
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// THERMODYNAMIC CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Molar gas constant R = N_A · k_B (J/(mol·K)).
+}
+
+pub const R: f64 = 8.314462618
+
+docs {
+    Stefan-Boltzmann constant (W/(m²·K⁴)).
+}
+
+pub const SIGMA: f64 = 5.670374419e-8
+
+docs {
+    Standard atmosphere (Pa).
+}
+
+pub const ATM: f64 = 101325.0
+
+docs {
+    Standard temperature (K).
+}
+
+pub const T_STD: f64 = 273.15
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MATHEMATICAL CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Pi.
+}
+
+pub const PI: f64 = 3.14159265358979323846
+
+docs {
+    Euler's number e.
+}
+
+pub const EULER: f64 = 2.71828182845904523536
+
+docs {
+    Square root of 2.
+}
+
+pub const SQRT2: f64 = 1.41421356237309504880
+
+docs {
+    Square root of 3.
+}
+
+pub const SQRT3: f64 = 1.73205080756887729353
+
+docs {
+    Golden ratio φ.
+}
+
+pub const PHI: f64 = 1.61803398874989484820
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONVERSION FACTORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Joules per electron volt.
+}
+
+pub const J_PER_EV: f64 = 1.602176634e-19
+
+docs {
+    Electron volts per Joule.
+}
+
+pub const EV_PER_J: f64 = 6.241509074e18
+
+docs {
+    Meters per Angstrom.
+}
+
+pub const M_PER_ANGSTROM: f64 = 1.0e-10
+
+docs {
+    Kelvin per degree Celsius offset.
+}
+
+pub const KELVIN_OFFSET: f64 = 273.15

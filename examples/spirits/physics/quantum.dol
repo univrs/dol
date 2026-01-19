@@ -1,0 +1,859 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Quantum Mechanics Module
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics.quantum @ 0.9.0
+
+docs {
+    Quantum mechanics module for quantum state modeling and computation.
+
+    This module provides:
+    - Quantum states and wavefunctions
+    - Observables and measurements
+    - Qubits and quantum gates
+    - Entanglement
+    - Fundamental quantum rules
+
+    All calculations use natural units where appropriate.
+    Complex numbers are represented as pairs (real, imaginary).
+}
+
+use local::lib::HBAR
+use local::lib::PLANCK_CONSTANT
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Complex number for quantum amplitudes.
+    z = real + i * imaginary
+}
+
+pub gen Complex {
+    has real: f64
+    has imaginary: f64
+}
+
+docs {
+    Quantum state vector (simplified for 2-level systems).
+    |ψ⟩ = α|0⟩ + β|1⟩
+    Stores probability amplitudes as complex numbers.
+}
+
+pub gen QuantumState {
+    has amplitudes: Vec<Complex>
+    has dimension: u32
+    has is_normalized: bool
+}
+
+docs {
+    Qubit - fundamental unit of quantum information.
+    |ψ⟩ = α|0⟩ + β|1⟩ where |α|² + |β|² = 1
+}
+
+pub gen Qubit {
+    has alpha: Complex
+    has beta: Complex
+}
+
+docs {
+    Observable (Hermitian operator) represented by eigenvalues.
+}
+
+pub gen Observable {
+    has name: string
+    has eigenvalues: Vec<f64>
+    has eigenstates: Vec<QuantumState>
+}
+
+docs {
+    Measurement result after collapsing a quantum state.
+}
+
+pub gen MeasurementResult {
+    has eigenvalue: f64
+    has probability: f64
+    has collapsed_state: QuantumState
+}
+
+docs {
+    Quantum gate (unitary operator) for state transformation.
+}
+
+pub gen QuantumGate {
+    has name: string
+    has matrix_elements: Vec<Complex>
+    has dimension: u32
+}
+
+docs {
+    Entangled pair of qubits.
+}
+
+pub gen EntangledPair {
+    has qubit1: Qubit
+    has qubit2: Qubit
+    has correlation: f64
+    has bell_state: string
+}
+
+docs {
+    Uncertainty relation for conjugate observables.
+}
+
+pub gen UncertaintyRelation {
+    has observable1: Observable
+    has observable2: Observable
+    has uncertainty1: f64
+    has uncertainty2: f64
+    has commutator_bound: f64
+}
+
+docs {
+    Spin state for spin-1/2 particles.
+}
+
+pub gen SpinState {
+    has spin_up_amplitude: Complex
+    has spin_down_amplitude: Complex
+    has measurement_axis: Vec<f64>
+}
+
+docs {
+    Harmonic oscillator quantum state.
+}
+
+pub gen HarmonicOscillatorState {
+    has energy_level: u32
+    has energy: f64
+    has angular_frequency: f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAITS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Quantum states that can be measured.
+}
+
+pub trait Measurable {
+    docs {
+        Perform a measurement with the given observable.
+    }
+
+    fun measure(observable: Observable) -> MeasurementResult
+
+    docs {
+        Collapse the state after measurement.
+    }
+
+    fun collapse(eigenstate_index: u32) -> QuantumState
+}
+
+docs {
+    Quantum states that can be transformed by gates.
+}
+
+pub trait Transformable {
+    docs {
+        Apply a quantum gate to the state.
+    }
+
+    fun apply_gate(gate: QuantumGate) -> Transformable
+
+    docs {
+        Apply a sequence of gates.
+    }
+
+    fun apply_circuit(gates: Vec<QuantumGate>) -> Transformable
+}
+
+docs {
+    Systems that can be entangled.
+}
+
+pub trait Entangleable {
+    docs {
+        Entangle with another quantum system.
+    }
+
+    fun entangle_with(other: Entangleable) -> EntangledPair
+
+    docs {
+        Check if currently entangled.
+    }
+
+    fun is_entangled() -> bool
+}
+
+docs {
+    States that must satisfy normalization.
+}
+
+pub trait Normalizable {
+    docs {
+        Normalize the state.
+    }
+
+    fun normalize() -> Normalizable
+
+    docs {
+        Check if the state is normalized.
+    }
+
+    fun is_normalized() -> bool
+
+    docs {
+        Calculate the norm.
+    }
+
+    fun norm() -> f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RULES (QUANTUM POSTULATES)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Normalization: Quantum states must have unit norm.
+    ⟨ψ|ψ⟩ = Σ|aᵢ|² = 1
+}
+
+pub rule normalization {
+    each QuantumState {
+        sum(amplitude_squared) == 1.0
+    }
+}
+
+docs {
+    Born Rule: Probability = |amplitude|²
+    P(eigenvalue) = |⟨eigenstate|ψ⟩|²
+}
+
+pub rule born_rule {
+    each measurement {
+        probability == amplitude.magnitude_squared()
+    }
+}
+
+docs {
+    Heisenberg Uncertainty Principle.
+    Δx · Δp ≥ ℏ/2
+}
+
+pub rule uncertainty_principle {
+    each conjugate_pair(x: Observable, p: Observable) {
+        uncertainty_x * uncertainty_p >= HBAR / 2.0
+    }
+}
+
+docs {
+    Unitarity: Quantum evolution preserves probability.
+    U†U = I
+}
+
+pub rule unitarity {
+    each QuantumGate {
+        this.adjoint() * this == identity()
+    }
+}
+
+docs {
+    No-cloning theorem: Unknown quantum states cannot be copied.
+}
+
+pub rule no_cloning {
+    each QuantumState {
+        cannot create_copy(this) if this.is_unknown
+    }
+}
+
+docs {
+    Superposition principle: Linear combinations are valid states.
+}
+
+pub rule superposition {
+    each (state1: QuantumState, state2: QuantumState) {
+        alpha * state1 + beta * state2 is_valid QuantumState
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPLEX NUMBER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a complex number from real and imaginary parts.
+}
+
+pub fun complex(real: f64, imag: f64) -> Complex {
+    return Complex { real: real, imaginary: imag }
+}
+
+docs {
+    Create a real number as complex.
+}
+
+pub fun real(r: f64) -> Complex {
+    return Complex { real: r, imaginary: 0.0 }
+}
+
+docs {
+    Create a pure imaginary number.
+}
+
+pub fun imag(i: f64) -> Complex {
+    return Complex { real: 0.0, imaginary: i }
+}
+
+docs {
+    Add two complex numbers.
+}
+
+pub fun complex_add(a: Complex, b: Complex) -> Complex {
+    return Complex {
+        real: a.real + b.real,
+        imaginary: a.imaginary + b.imaginary
+    }
+}
+
+docs {
+    Subtract complex numbers.
+}
+
+pub fun complex_sub(a: Complex, b: Complex) -> Complex {
+    return Complex {
+        real: a.real - b.real,
+        imaginary: a.imaginary - b.imaginary
+    }
+}
+
+docs {
+    Multiply two complex numbers.
+    (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+}
+
+pub fun complex_mul(a: Complex, b: Complex) -> Complex {
+    return Complex {
+        real: a.real * b.real - a.imaginary * b.imaginary,
+        imaginary: a.real * b.imaginary + a.imaginary * b.real
+    }
+}
+
+docs {
+    Complex conjugate.
+    (a + bi)* = a - bi
+}
+
+pub fun conjugate(z: Complex) -> Complex {
+    return Complex { real: z.real, imaginary: -z.imaginary }
+}
+
+docs {
+    Magnitude squared of complex number.
+    |z|² = a² + b²
+}
+
+pub fun magnitude_squared(z: Complex) -> f64 {
+    return z.real * z.real + z.imaginary * z.imaginary
+}
+
+docs {
+    Magnitude (modulus) of complex number.
+    |z| = sqrt(a² + b²)
+}
+
+pub fun magnitude(z: Complex) -> f64 {
+    return (z.real * z.real + z.imaginary * z.imaginary)
+}
+
+docs {
+    Scale complex number by real scalar.
+}
+
+pub fun complex_scale(z: Complex, s: f64) -> Complex {
+    return Complex {
+        real: z.real * s,
+        imaginary: z.imaginary * s
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// QUBIT FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create the |0⟩ state.
+}
+
+pub fun qubit_zero() -> Qubit {
+    return Qubit {
+        alpha: real(1.0),
+        beta: real(0.0)
+    }
+}
+
+docs {
+    Create the |1⟩ state.
+}
+
+pub fun qubit_one() -> Qubit {
+    return Qubit {
+        alpha: real(0.0),
+        beta: real(1.0)
+    }
+}
+
+docs {
+    Create the |+⟩ state (equal superposition).
+    |+⟩ = (|0⟩ + |1⟩) / √2
+}
+
+pub fun qubit_plus() -> Qubit {
+    let sqrt2_inv = 0.7071067811865476
+    return Qubit {
+        alpha: real(sqrt2_inv),
+        beta: real(sqrt2_inv)
+    }
+}
+
+docs {
+    Create the |-⟩ state.
+    |-⟩ = (|0⟩ - |1⟩) / √2
+}
+
+pub fun qubit_minus() -> Qubit {
+    let sqrt2_inv = 0.7071067811865476
+    return Qubit {
+        alpha: real(sqrt2_inv),
+        beta: real(-sqrt2_inv)
+    }
+}
+
+docs {
+    Create a custom qubit state.
+}
+
+pub fun qubit_from_amplitudes(alpha: Complex, beta: Complex) -> Qubit {
+    return Qubit { alpha: alpha, beta: beta }
+}
+
+docs {
+    Check if qubit is normalized.
+}
+
+pub fun qubit_is_normalized(q: Qubit) -> bool {
+    let norm_sq = magnitude_squared(q.alpha) + magnitude_squared(q.beta)
+    let diff = norm_sq - 1.0
+    return diff < 0.0001 && diff > -0.0001
+}
+
+docs {
+    Normalize a qubit.
+}
+
+pub fun normalize_qubit(q: Qubit) -> Qubit {
+    let norm_sq = magnitude_squared(q.alpha) + magnitude_squared(q.beta)
+    if norm_sq == 0.0 {
+        return qubit_zero()
+    }
+    let norm = norm_sq
+    return Qubit {
+        alpha: complex_scale(q.alpha, 1.0 / norm),
+        beta: complex_scale(q.beta, 1.0 / norm)
+    }
+}
+
+docs {
+    Get probability of measuring |0⟩.
+}
+
+pub fun prob_zero(q: Qubit) -> f64 {
+    return magnitude_squared(q.alpha)
+}
+
+docs {
+    Get probability of measuring |1⟩.
+}
+
+pub fun prob_one(q: Qubit) -> f64 {
+    return magnitude_squared(q.beta)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// QUANTUM GATES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Apply Pauli-X gate (NOT gate).
+    X|0⟩ = |1⟩, X|1⟩ = |0⟩
+}
+
+pub fun apply_x(q: Qubit) -> Qubit {
+    return Qubit {
+        alpha: q.beta,
+        beta: q.alpha
+    }
+}
+
+docs {
+    Apply Pauli-Y gate.
+    Y = -i·X·Z
+}
+
+pub fun apply_y(q: Qubit) -> Qubit {
+    return Qubit {
+        alpha: complex_mul(imag(-1.0), q.beta),
+        beta: complex_mul(imag(1.0), q.alpha)
+    }
+}
+
+docs {
+    Apply Pauli-Z gate.
+    Z|0⟩ = |0⟩, Z|1⟩ = -|1⟩
+}
+
+pub fun apply_z(q: Qubit) -> Qubit {
+    return Qubit {
+        alpha: q.alpha,
+        beta: complex_scale(q.beta, -1.0)
+    }
+}
+
+docs {
+    Apply Hadamard gate.
+    H|0⟩ = |+⟩, H|1⟩ = |-⟩
+}
+
+pub fun apply_hadamard(q: Qubit) -> Qubit {
+    let sqrt2_inv = 0.7071067811865476
+    return Qubit {
+        alpha: complex_scale(complex_add(q.alpha, q.beta), sqrt2_inv),
+        beta: complex_scale(complex_sub(q.alpha, q.beta), sqrt2_inv)
+    }
+}
+
+docs {
+    Apply S gate (phase gate, √Z).
+    S|0⟩ = |0⟩, S|1⟩ = i|1⟩
+}
+
+pub fun apply_s(q: Qubit) -> Qubit {
+    return Qubit {
+        alpha: q.alpha,
+        beta: complex_mul(imag(1.0), q.beta)
+    }
+}
+
+docs {
+    Apply T gate (π/8 gate).
+    T|0⟩ = |0⟩, T|1⟩ = e^(iπ/4)|1⟩
+}
+
+pub fun apply_t(q: Qubit) -> Qubit {
+    let sqrt2_inv = 0.7071067811865476
+    let phase = complex(sqrt2_inv, sqrt2_inv)
+    return Qubit {
+        alpha: q.alpha,
+        beta: complex_mul(phase, q.beta)
+    }
+}
+
+docs {
+    Apply rotation around X axis by angle theta.
+    Rx(θ) = exp(-i·θ·X/2)
+}
+
+pub fun apply_rx(q: Qubit, theta: f64) -> Qubit {
+    let cos_half = (theta / 2.0)
+    let sin_half = (theta / 2.0)
+
+    return Qubit {
+        alpha: complex_add(
+            complex_scale(q.alpha, cos_half),
+            complex_mul(imag(-sin_half), q.beta)
+        ),
+        beta: complex_add(
+            complex_mul(imag(-sin_half), q.alpha),
+            complex_scale(q.beta, cos_half)
+        )
+    }
+}
+
+docs {
+    Apply rotation around Z axis by angle theta.
+    Rz(θ) = exp(-i·θ·Z/2)
+}
+
+pub fun apply_rz(q: Qubit, theta: f64) -> Qubit {
+    let half_theta = theta / 2.0
+    let phase_neg = complex(half_theta, -half_theta)
+    let phase_pos = complex(half_theta, half_theta)
+
+    return Qubit {
+        alpha: complex_mul(phase_neg, q.alpha),
+        beta: complex_mul(phase_pos, q.beta)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTANGLEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a Bell state |Φ+⟩ = (|00⟩ + |11⟩) / √2
+}
+
+pub fun bell_phi_plus() -> EntangledPair {
+    let sqrt2_inv = 0.7071067811865476
+    return EntangledPair {
+        qubit1: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(sqrt2_inv)
+        },
+        qubit2: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(sqrt2_inv)
+        },
+        correlation: 1.0,
+        bell_state: "phi_plus"
+    }
+}
+
+docs {
+    Create a Bell state |Φ-⟩ = (|00⟩ - |11⟩) / √2
+}
+
+pub fun bell_phi_minus() -> EntangledPair {
+    let sqrt2_inv = 0.7071067811865476
+    return EntangledPair {
+        qubit1: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(-sqrt2_inv)
+        },
+        qubit2: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(-sqrt2_inv)
+        },
+        correlation: 1.0,
+        bell_state: "phi_minus"
+    }
+}
+
+docs {
+    Create a Bell state |Ψ+⟩ = (|01⟩ + |10⟩) / √2
+}
+
+pub fun bell_psi_plus() -> EntangledPair {
+    let sqrt2_inv = 0.7071067811865476
+    return EntangledPair {
+        qubit1: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(sqrt2_inv)
+        },
+        qubit2: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(-sqrt2_inv)
+        },
+        correlation: -1.0,
+        bell_state: "psi_plus"
+    }
+}
+
+docs {
+    Create a Bell state |Ψ-⟩ = (|01⟩ - |10⟩) / √2 (singlet state)
+}
+
+pub fun bell_psi_minus() -> EntangledPair {
+    let sqrt2_inv = 0.7071067811865476
+    return EntangledPair {
+        qubit1: Qubit {
+            alpha: real(sqrt2_inv),
+            beta: real(-sqrt2_inv)
+        },
+        qubit2: Qubit {
+            alpha: real(-sqrt2_inv),
+            beta: real(sqrt2_inv)
+        },
+        correlation: -1.0,
+        bell_state: "psi_minus"
+    }
+}
+
+docs {
+    Entangle two qubits using CNOT.
+}
+
+pub fun entangle(control: Qubit, target: Qubit) -> EntangledPair {
+    let h_control = apply_hadamard(control)
+
+    return EntangledPair {
+        qubit1: h_control,
+        qubit2: target,
+        correlation: 1.0,
+        bell_state: "custom"
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MEASUREMENT AND OBSERVABLES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create the Z observable (computational basis measurement).
+}
+
+pub fun observable_z() -> Observable {
+    return Observable {
+        name: "Z",
+        eigenvalues: vec![1.0, -1.0],
+        eigenstates: vec![]
+    }
+}
+
+docs {
+    Create the X observable.
+}
+
+pub fun observable_x() -> Observable {
+    return Observable {
+        name: "X",
+        eigenvalues: vec![1.0, -1.0],
+        eigenstates: vec![]
+    }
+}
+
+docs {
+    Calculate expectation value of Z for a qubit.
+    ⟨Z⟩ = |α|² - |β|²
+}
+
+pub fun expectation_z(q: Qubit) -> f64 {
+    return magnitude_squared(q.alpha) - magnitude_squared(q.beta)
+}
+
+docs {
+    Calculate expectation value of X for a qubit.
+    ⟨X⟩ = 2·Re(α*·β)
+}
+
+pub fun expectation_x(q: Qubit) -> f64 {
+    let alpha_conj = conjugate(q.alpha)
+    let product = complex_mul(alpha_conj, q.beta)
+    return 2.0 * product.real
+}
+
+docs {
+    Calculate uncertainty (standard deviation) for an observable.
+    Δ² = ⟨O²⟩ - ⟨O⟩²
+}
+
+pub fun uncertainty(expectation: f64, expectation_squared: f64) -> f64 {
+    let variance = expectation_squared - expectation * expectation
+    if variance < 0.0 {
+        return 0.0
+    }
+    return variance
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// QUANTUM HARMONIC OSCILLATOR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate energy of quantum harmonic oscillator level.
+    E_n = ℏω(n + 1/2)
+}
+
+pub fun oscillator_energy(n: u32, omega: f64) -> f64 {
+    return HBAR * omega * ((n as f64) + 0.5)
+}
+
+docs {
+    Create a harmonic oscillator state at energy level n.
+}
+
+pub fun oscillator_state(n: u32, omega: f64) -> HarmonicOscillatorState {
+    return HarmonicOscillatorState {
+        energy_level: n,
+        energy: oscillator_energy(n, omega),
+        angular_frequency: omega
+    }
+}
+
+docs {
+    Calculate zero-point energy.
+    E_0 = ℏω/2
+}
+
+pub fun zero_point_energy(omega: f64) -> f64 {
+    return 0.5 * HBAR * omega
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARTICLE IN A BOX
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate energy level for particle in 1D box.
+    E_n = n²π²ℏ² / (2mL²)
+}
+
+pub fun box_energy_1d(n: u32, mass: f64, length: f64) -> f64 {
+    if mass == 0.0 || length == 0.0 {
+        return 0.0
+    }
+    let pi = 3.14159265359
+    let n_f = n as f64
+    return (n_f * n_f * pi * pi * HBAR * HBAR) / (2.0 * mass * length * length)
+}
+
+docs {
+    Calculate energy level for particle in 3D box.
+    E = (π²ℏ²/2m)(nx²/Lx² + ny²/Ly² + nz²/Lz²)
+}
+
+pub fun box_energy_3d(nx: u32, ny: u32, nz: u32, mass: f64, lx: f64, ly: f64, lz: f64) -> f64 {
+    if mass == 0.0 {
+        return 0.0
+    }
+    let pi = 3.14159265359
+    let prefactor = (pi * pi * HBAR * HBAR) / (2.0 * mass)
+
+    let term_x = if lx != 0.0 { (nx as f64) * (nx as f64) / (lx * lx) } else { 0.0 }
+    let term_y = if ly != 0.0 { (ny as f64) * (ny as f64) / (ly * ly) } else { 0.0 }
+    let term_z = if lz != 0.0 { (nz as f64) * (nz as f64) / (lz * lz) } else { 0.0 }
+
+    return prefactor * (term_x + term_y + term_z)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVOLUTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Evolution adding multi-qubit support.
+}
+
+evo quantum_multibit @ 0.9.1 > 0.9.0 {
+    adds gen QubitRegister { qubits: Vec<Qubit>, size: u32 }
+    adds fun tensor_product(q1: Qubit, q2: Qubit) -> QubitRegister
+    adds fun apply_cnot(register: QubitRegister, control: u32, target: u32) -> QubitRegister
+    adds fun apply_toffoli(register: QubitRegister, c1: u32, c2: u32, target: u32) -> QubitRegister
+    because "multi-qubit operations needed for quantum algorithms"
+}
+
+docs {
+    Evolution adding quantum algorithm primitives.
+}
+
+evo quantum_algorithms @ 0.9.2 > 0.9.1 {
+    adds fun qft(register: QubitRegister) -> QubitRegister
+    adds fun inverse_qft(register: QubitRegister) -> QubitRegister
+    adds fun grover_oracle(register: QubitRegister, target: u64) -> QubitRegister
+    adds fun grover_diffusion(register: QubitRegister) -> QubitRegister
+    because "QFT and Grover's algorithm are fundamental quantum primitives"
+}

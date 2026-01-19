@@ -1,0 +1,721 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Wave Mechanics Module
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics.waves @ 0.9.0
+
+docs {
+    Wave mechanics module for oscillations and wave phenomena.
+
+    This module provides:
+    - Wave types (traveling, standing, transverse, longitudinal)
+    - Wave properties (amplitude, frequency, wavelength, phase)
+    - Wave superposition and interference
+    - Doppler effect
+    - Diffraction and refraction
+
+    All calculations use SI units:
+    - Wavelength: meters (m)
+    - Frequency: Hertz (Hz)
+    - Period: seconds (s)
+    - Velocity: m/s
+    - Amplitude: meters (for mechanical waves)
+}
+
+use local::lib::SPEED_OF_LIGHT
+use local::mechanics::Vector3
+use local::mechanics::vec_add
+use local::mechanics::vec_scale
+use local::mechanics::vec_magnitude
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    General wave with fundamental properties.
+}
+
+pub gen Wave {
+    has amplitude: f64
+    has frequency: f64
+    has wavelength: f64
+    has phase: f64
+    has velocity: f64
+}
+
+docs {
+    Standing wave with fixed nodes and antinodes.
+}
+
+pub gen StandingWave is Wave {
+    has nodes: Vec<f64>
+    has antinodes: Vec<f64>
+    has harmonic_number: u32
+    has fundamental_frequency: f64
+}
+
+docs {
+    Traveling wave propagating in a direction.
+}
+
+pub gen TravelingWave is Wave {
+    has direction: Vector3
+    has wave_number: f64
+    has angular_frequency: f64
+}
+
+docs {
+    Transverse wave (oscillation perpendicular to propagation).
+}
+
+pub gen TransverseWave is Wave {
+    has polarization_direction: Vector3
+    has propagation_direction: Vector3
+}
+
+docs {
+    Longitudinal wave (oscillation parallel to propagation).
+}
+
+pub gen LongitudinalWave is Wave {
+    has propagation_direction: Vector3
+    has compression_factor: f64
+}
+
+docs {
+    Electromagnetic wave (transverse, self-propagating).
+}
+
+pub gen ElectromagneticWave {
+    has wavelength: f64
+    has frequency: f64
+    has electric_field_amplitude: f64
+    has magnetic_field_amplitude: f64
+    has intensity: f64
+    has polarization: f64
+}
+
+docs {
+    Sound wave in a medium.
+}
+
+pub gen SoundWave {
+    has frequency: f64
+    has amplitude: f64
+    has speed: f64
+    has medium_density: f64
+    has pressure_amplitude: f64
+    has intensity: f64
+}
+
+docs {
+    Wave packet (localized wave).
+}
+
+pub gen WavePacket {
+    has central_frequency: f64
+    has bandwidth: f64
+    has group_velocity: f64
+    has phase_velocity: f64
+    has position: f64
+}
+
+docs {
+    Interference pattern from two sources.
+}
+
+pub gen InterferencePattern {
+    has source1: Wave
+    has source2: Wave
+    has path_difference: f64
+    has phase_difference: f64
+    has resultant_amplitude: f64
+}
+
+docs {
+    Diffraction through an aperture.
+}
+
+pub gen DiffractionPattern {
+    has incident_wave: Wave
+    has aperture_width: f64
+    has observation_distance: f64
+    has central_maximum_width: f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAITS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Waves that can superpose to form new waves.
+}
+
+pub trait Superposable {
+    docs {
+        Superpose with another wave.
+    }
+
+    fun superpose(other: Wave) -> Wave
+
+    docs {
+        Calculate superposition at a specific point.
+    }
+
+    fun displacement_at(x: f64, t: f64) -> f64
+}
+
+docs {
+    Waves that can interfere constructively or destructively.
+}
+
+pub trait Interference {
+    docs {
+        Check if interference is constructive at a point.
+    }
+
+    fun is_constructive(path_difference: f64) -> bool
+
+    docs {
+        Check if interference is destructive at a point.
+    }
+
+    fun is_destructive(path_difference: f64) -> bool
+
+    docs {
+        Calculate interference intensity.
+    }
+
+    fun interference_intensity(phase_diff: f64) -> f64
+}
+
+docs {
+    Waves that can diffract around obstacles.
+}
+
+pub trait Diffractive {
+    docs {
+        Calculate diffraction angle for single slit.
+    }
+
+    fun single_slit_minima(order: i32, slit_width: f64) -> f64
+
+    docs {
+        Calculate diffraction intensity pattern.
+    }
+
+    fun diffraction_intensity(angle: f64, slit_width: f64) -> f64
+}
+
+docs {
+    Waves that can be polarized.
+}
+
+pub trait Polarizable {
+    docs {
+        Apply linear polarization.
+    }
+
+    fun polarize(angle: f64) -> Polarizable
+
+    docs {
+        Calculate transmitted intensity through polarizer.
+    }
+
+    fun malus_law(angle: f64) -> f64
+}
+
+docs {
+    Waves subject to Doppler effect.
+}
+
+pub trait DopplerShiftable {
+    docs {
+        Calculate observed frequency with Doppler shift.
+    }
+
+    fun doppler_frequency(source_velocity: f64, observer_velocity: f64) -> f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RULES (WAVE LAWS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Wave equation: The relationship between wave properties.
+    v = f * λ (velocity = frequency * wavelength)
+}
+
+pub rule wave_equation {
+    each Wave {
+        this.velocity == this.frequency * this.wavelength
+    }
+}
+
+docs {
+    Principle of superposition: Waves add linearly.
+}
+
+pub rule superposition_principle {
+    each superposition(w1: Wave, w2: Wave) {
+        resultant.displacement == w1.displacement + w2.displacement
+    }
+}
+
+docs {
+    Energy conservation in wave propagation.
+}
+
+pub rule energy_conservation {
+    each Wave {
+        this.intensity proportional_to this.amplitude * this.amplitude
+    }
+}
+
+docs {
+    Huygens' principle: Every point on a wavefront is a source.
+}
+
+pub rule huygens_principle {
+    each wavefront {
+        new_wavefront == envelope_of(secondary_wavelets)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURE FUNCTIONS - WAVE CREATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a wave from frequency and velocity.
+}
+
+pub fun new_wave(amplitude: f64, frequency: f64, velocity: f64) -> Wave {
+    let wavelength = velocity / frequency
+    return Wave {
+        amplitude: amplitude,
+        frequency: frequency,
+        wavelength: wavelength,
+        phase: 0.0,
+        velocity: velocity
+    }
+}
+
+docs {
+    Create a wave from wavelength and velocity.
+}
+
+pub fun wave_from_wavelength(amplitude: f64, wavelength: f64, velocity: f64) -> Wave {
+    let frequency = velocity / wavelength
+    return Wave {
+        amplitude: amplitude,
+        frequency: frequency,
+        wavelength: wavelength,
+        phase: 0.0,
+        velocity: velocity
+    }
+}
+
+docs {
+    Create a standing wave on a string of given length.
+}
+
+pub fun standing_wave(length: f64, harmonic: u32, velocity: f64) -> StandingWave {
+    let wavelength = (2.0 * length) / (harmonic as f64)
+    let frequency = velocity / wavelength
+    let fundamental = velocity / (2.0 * length)
+
+    let mut nodes = Vec::new()
+    let mut antinodes = Vec::new()
+
+    for i in 0..(harmonic + 1) {
+        nodes.push((i as f64) * length / (harmonic as f64))
+    }
+
+    for i in 0..harmonic {
+        antinodes.push(((i as f64) + 0.5) * length / (harmonic as f64))
+    }
+
+    return StandingWave {
+        amplitude: 1.0,
+        frequency: frequency,
+        wavelength: wavelength,
+        phase: 0.0,
+        velocity: velocity,
+        nodes: nodes,
+        antinodes: antinodes,
+        harmonic_number: harmonic,
+        fundamental_frequency: fundamental
+    }
+}
+
+docs {
+    Create a traveling wave.
+}
+
+pub fun traveling_wave(amplitude: f64, frequency: f64, velocity: f64, direction: Vector3) -> TravelingWave {
+    let wavelength = velocity / frequency
+    let k = 2.0 * 3.14159265359 / wavelength
+    let omega = 2.0 * 3.14159265359 * frequency
+
+    return TravelingWave {
+        amplitude: amplitude,
+        frequency: frequency,
+        wavelength: wavelength,
+        phase: 0.0,
+        velocity: velocity,
+        direction: direction,
+        wave_number: k,
+        angular_frequency: omega
+    }
+}
+
+docs {
+    Create an electromagnetic wave of given wavelength.
+}
+
+pub fun em_wave(wavelength: f64) -> ElectromagneticWave {
+    let frequency = SPEED_OF_LIGHT / wavelength
+    let e0 = 1.0
+    let b0 = e0 / SPEED_OF_LIGHT
+    let intensity = 0.5 * 8.854e-12 * SPEED_OF_LIGHT * e0 * e0
+
+    return ElectromagneticWave {
+        wavelength: wavelength,
+        frequency: frequency,
+        electric_field_amplitude: e0,
+        magnetic_field_amplitude: b0,
+        intensity: intensity,
+        polarization: 0.0
+    }
+}
+
+docs {
+    Create a sound wave in air at 20°C.
+}
+
+pub fun sound_wave_in_air(frequency: f64, amplitude: f64) -> SoundWave {
+    let speed = 343.0
+    let density = 1.2
+    let intensity = 0.5 * density * speed * amplitude * amplitude * (2.0 * 3.14159265359 * frequency) * (2.0 * 3.14159265359 * frequency)
+    let pressure_amp = density * speed * 2.0 * 3.14159265359 * frequency * amplitude
+
+    return SoundWave {
+        frequency: frequency,
+        amplitude: amplitude,
+        speed: speed,
+        medium_density: density,
+        pressure_amplitude: pressure_amp,
+        intensity: intensity
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURE FUNCTIONS - WAVE CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate wave period from frequency.
+    T = 1 / f
+}
+
+pub fun period(wave: Wave) -> f64 {
+    if wave.frequency == 0.0 {
+        return 1.0e308
+    }
+    return 1.0 / wave.frequency
+}
+
+docs {
+    Calculate wave number (spatial frequency).
+    k = 2π / λ
+}
+
+pub fun wave_number(wave: Wave) -> f64 {
+    if wave.wavelength == 0.0 {
+        return 1.0e308
+    }
+    return 2.0 * 3.14159265359 / wave.wavelength
+}
+
+docs {
+    Calculate angular frequency.
+    ω = 2π * f
+}
+
+pub fun angular_frequency(wave: Wave) -> f64 {
+    return 2.0 * 3.14159265359 * wave.frequency
+}
+
+docs {
+    Calculate wave displacement at position x and time t.
+    y(x,t) = A * sin(kx - ωt + φ)
+}
+
+pub fun displacement(wave: Wave, x: f64, t: f64) -> f64 {
+    let k = wave_number(wave)
+    let omega = angular_frequency(wave)
+    let arg = k * x - omega * t + wave.phase
+    return wave.amplitude * arg
+}
+
+docs {
+    Calculate wave energy density.
+    u = (1/2) * ρ * ω² * A²
+}
+
+pub fun energy_density(wave: Wave, medium_density: f64) -> f64 {
+    let omega = angular_frequency(wave)
+    return 0.5 * medium_density * omega * omega * wave.amplitude * wave.amplitude
+}
+
+docs {
+    Calculate wave intensity (power per unit area).
+    I = (1/2) * ρ * v * ω² * A²
+}
+
+pub fun intensity(wave: Wave, medium_density: f64) -> f64 {
+    return energy_density(wave, medium_density) * wave.velocity
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERFERENCE AND SUPERPOSITION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Superpose two waves of the same frequency.
+}
+
+pub fun superpose_waves(w1: Wave, w2: Wave) -> Wave {
+    let phi1 = w1.phase
+    let phi2 = w2.phase
+    let a1 = w1.amplitude
+    let a2 = w2.amplitude
+
+    let a_result_sq = a1 * a1 + a2 * a2 + 2.0 * a1 * a2 * (phi2 - phi1)
+    let a_result = if a_result_sq > 0.0 { a_result_sq } else { 0.0 }
+
+    return Wave {
+        amplitude: a_result,
+        frequency: w1.frequency,
+        wavelength: w1.wavelength,
+        phase: 0.0,
+        velocity: w1.velocity
+    }
+}
+
+docs {
+    Calculate resultant amplitude from two interfering waves.
+}
+
+pub fun interference_amplitude(a1: f64, a2: f64, phase_diff: f64) -> f64 {
+    let result_sq = a1 * a1 + a2 * a2 + 2.0 * a1 * a2 * phase_diff
+    if result_sq < 0.0 {
+        return 0.0
+    }
+    return result_sq
+}
+
+docs {
+    Check if path difference gives constructive interference.
+    Constructive when Δ = nλ (n integer)
+}
+
+pub fun is_constructive(path_diff: f64, wavelength: f64) -> bool {
+    if wavelength == 0.0 {
+        return false
+    }
+    let n = path_diff / wavelength
+    let fraction = n - (n as i64 as f64)
+    return fraction < 0.1 || fraction > 0.9
+}
+
+docs {
+    Check if path difference gives destructive interference.
+    Destructive when Δ = (n + 1/2)λ
+}
+
+pub fun is_destructive(path_diff: f64, wavelength: f64) -> bool {
+    if wavelength == 0.0 {
+        return false
+    }
+    let n = path_diff / wavelength
+    let fraction = n - (n as i64 as f64)
+    return fraction > 0.4 && fraction < 0.6
+}
+
+docs {
+    Calculate fringe separation in double-slit interference.
+    Δy = λL / d (wavelength * screen_distance / slit_separation)
+}
+
+pub fun fringe_separation(wavelength: f64, screen_distance: f64, slit_separation: f64) -> f64 {
+    if slit_separation == 0.0 {
+        return 1.0e308
+    }
+    return wavelength * screen_distance / slit_separation
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DOPPLER EFFECT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate Doppler shifted frequency.
+    f' = f * (v + v_observer) / (v + v_source)
+    Positive velocities: moving toward each other
+}
+
+pub fun doppler_shift(wave: Wave, v_source: f64, v_observer: f64) -> f64 {
+    let denominator = wave.velocity + v_source
+    if denominator == 0.0 {
+        return 1.0e308
+    }
+    return wave.frequency * (wave.velocity + v_observer) / denominator
+}
+
+docs {
+    Calculate Doppler shifted wave (returns new wave).
+}
+
+pub fun doppler_wave(wave: Wave, v_source: f64, v_observer: f64) -> Wave {
+    let new_frequency = doppler_shift(wave, v_source, v_observer)
+    let new_wavelength = wave.velocity / new_frequency
+
+    return Wave {
+        amplitude: wave.amplitude,
+        frequency: new_frequency,
+        wavelength: new_wavelength,
+        phase: wave.phase,
+        velocity: wave.velocity
+    }
+}
+
+docs {
+    Calculate relativistic Doppler shift for EM waves.
+    f' = f * sqrt((1 + β) / (1 - β)) where β = v/c
+}
+
+pub fun relativistic_doppler(frequency: f64, relative_velocity: f64) -> f64 {
+    let beta = relative_velocity / SPEED_OF_LIGHT
+
+    if beta >= 1.0 || beta <= -1.0 {
+        return 0.0
+    }
+
+    let factor = (1.0 + beta) / (1.0 - beta)
+    return frequency * factor
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DIFFRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate single-slit diffraction minimum angles.
+    sin(θ) = m * λ / a (m = ±1, ±2, ...)
+}
+
+pub fun single_slit_minimum_angle(order: i32, wavelength: f64, slit_width: f64) -> f64 {
+    if slit_width == 0.0 {
+        return 0.0
+    }
+    let sin_theta = (order as f64) * wavelength / slit_width
+    if sin_theta > 1.0 || sin_theta < -1.0 {
+        return 0.0
+    }
+    return sin_theta
+}
+
+docs {
+    Calculate diffraction grating maximum angles.
+    d * sin(θ) = m * λ
+}
+
+pub fun grating_maximum_angle(order: i32, wavelength: f64, grating_spacing: f64) -> f64 {
+    if grating_spacing == 0.0 {
+        return 0.0
+    }
+    let sin_theta = (order as f64) * wavelength / grating_spacing
+    if sin_theta > 1.0 || sin_theta < -1.0 {
+        return 0.0
+    }
+    return sin_theta
+}
+
+docs {
+    Calculate Rayleigh criterion for resolution.
+    θ_min ≈ 1.22 * λ / D
+}
+
+pub fun rayleigh_resolution(wavelength: f64, aperture_diameter: f64) -> f64 {
+    if aperture_diameter == 0.0 {
+        return 1.0e308
+    }
+    return 1.22 * wavelength / aperture_diameter
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REFRACTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate refraction angle using Snell's Law.
+    n1 * sin(θ1) = n2 * sin(θ2)
+}
+
+pub fun snells_law(n1: f64, n2: f64, angle_incidence: f64) -> f64 {
+    if n2 == 0.0 {
+        return 0.0
+    }
+    let sin_refracted = n1 * angle_incidence / n2
+    if sin_refracted > 1.0 {
+        return 1.5707963268
+    }
+    if sin_refracted < -1.0 {
+        return -1.5707963268
+    }
+    return sin_refracted
+}
+
+docs {
+    Calculate critical angle for total internal reflection.
+    sin(θc) = n2 / n1 (requires n1 > n2)
+}
+
+pub fun critical_angle(n1: f64, n2: f64) -> f64 {
+    if n1 <= n2 || n1 == 0.0 {
+        return 0.0
+    }
+    let sin_critical = n2 / n1
+    return sin_critical
+}
+
+docs {
+    Check if total internal reflection occurs.
+}
+
+pub fun is_total_internal_reflection(n1: f64, n2: f64, angle: f64) -> bool {
+    if n1 <= n2 {
+        return false
+    }
+    let critical = critical_angle(n1, n2)
+    return angle > critical
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVOLUTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Evolution adding Fourier analysis support.
+}
+
+evo wave_fourier @ 0.9.1 > 0.9.0 {
+    adds gen FourierComponent { frequency: f64, amplitude: f64, phase: f64 }
+    adds fun decompose(wave: Wave) -> Vec<FourierComponent>
+    adds fun synthesize(components: Vec<FourierComponent>) -> Wave
+    because "Fourier analysis essential for signal processing"
+}
