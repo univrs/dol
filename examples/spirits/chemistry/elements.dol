@@ -1,0 +1,1331 @@
+// =============================================================================
+// Chemistry Spirit - Periodic Table Elements Module
+// DOL v0.9.0
+// =============================================================================
+
+module chemistry.elements @ 0.9.0
+
+docs {
+    Periodic table elements module providing fundamental element types and properties.
+
+    This module models:
+    - All chemical elements with their properties
+    - Isotopes with mass numbers and stability
+    - Element classifications (metals, nonmetals, noble gases)
+    - Electronic configurations and shell structures
+    - Periodic trends (electronegativity, ionization energy, etc.)
+
+    All atomic data is from IUPAC 2021 values.
+}
+
+use local::lib::AVOGADRO
+use local::lib::ATOMIC_MASS_UNIT
+use local::lib::BOHR_RADIUS
+
+// =============================================================================
+// CORE TYPES
+// =============================================================================
+
+docs {
+    Electron shell configuration with principal quantum number.
+}
+
+pub gen ElectronShell {
+    has n: u8
+    has electrons: u8
+    has max_electrons: u8
+    has subshells: string
+}
+
+docs {
+    Electronic configuration of an element.
+}
+
+pub gen ElectronConfig {
+    has shells: Vec<ElectronShell>
+    has valence_electrons: u8
+    has core_electrons: u8
+    has notation: string
+}
+
+docs {
+    Oxidation states an element can exhibit.
+}
+
+pub gen OxidationStates {
+    has common: Vec<i8>
+    has possible: Vec<i8>
+    has most_stable: i8
+}
+
+docs {
+    Physical properties of an element.
+}
+
+pub gen PhysicalProperties {
+    has melting_point: Option<f64>
+    has boiling_point: Option<f64>
+    has density: Option<f64>
+    has phase_at_stp: string
+    has crystal_structure: Option<string>
+}
+
+docs {
+    Chemical element with all properties.
+
+    Properties include:
+    - atomic_number: Number of protons (Z)
+    - symbol: 1-2 letter chemical symbol
+    - name: Full element name
+    - atomic_mass: Standard atomic weight (u)
+    - electron_config: Electronic configuration
+    - electronegativity: Pauling scale (dimensionless)
+    - ionization_energy: First ionization energy (kJ/mol)
+    - electron_affinity: Electron affinity (kJ/mol)
+    - atomic_radius: Atomic radius (pm)
+    - group: Periodic table group (1-18)
+    - period: Periodic table period (1-7)
+    - block: Orbital block (s, p, d, f)
+    - category: Element category
+}
+
+pub gen Element {
+    has atomic_number: u8
+    has symbol: string
+    has name: string
+    has atomic_mass: f64
+    has electron_config: ElectronConfig
+    has electronegativity: Option<f64>
+    has ionization_energy: f64
+    has electron_affinity: f64
+    has atomic_radius: f64
+    has covalent_radius: f64
+    has van_der_waals_radius: Option<f64>
+    has group: u8
+    has period: u8
+    has block: string
+    has category: string
+    has oxidation_states: OxidationStates
+    has physical: PhysicalProperties
+}
+
+docs {
+    Isotope of an element with specific neutron count.
+
+    Properties:
+    - element: Base element reference
+    - mass_number: Total nucleons (A = Z + N)
+    - neutron_count: Number of neutrons
+    - atomic_mass: Precise isotopic mass (u)
+    - abundance: Natural abundance (0-1)
+    - half_life: Radioactive half-life (seconds), None if stable
+    - decay_mode: Type of radioactive decay, None if stable
+    - spin: Nuclear spin quantum number
+}
+
+pub gen Isotope {
+    has element: Element
+    has mass_number: u16
+    has neutron_count: u16
+    has atomic_mass: f64
+    has abundance: f64
+    has half_life: Option<f64>
+    has decay_mode: Option<string>
+    has spin: string
+    has is_stable: bool
+}
+
+// =============================================================================
+// TRAITS
+// =============================================================================
+
+docs {
+    Metal elements with characteristic properties.
+    Metals conduct electricity, are malleable, and form cations.
+}
+
+pub trait Metal {
+    docs {
+        Calculate electrical conductivity at given temperature.
+    }
+
+    fun conductivity(temperature: f64) -> f64
+
+    docs {
+        Check if the element is malleable.
+    }
+
+    fun is_malleable() -> bool
+
+    docs {
+        Check if the element is ductile.
+    }
+
+    fun is_ductile() -> bool
+
+    docs {
+        Get typical cation charge when forming ionic compounds.
+    }
+
+    fun cation_charge() -> i8
+
+    docs {
+        Calculate work function (eV).
+    }
+
+    fun work_function() -> f64
+}
+
+docs {
+    Nonmetal elements with characteristic properties.
+    Nonmetals are poor conductors, often form anions or covalent bonds.
+}
+
+pub trait Nonmetal {
+    docs {
+        Check if the element is brittle in solid form.
+    }
+
+    fun is_brittle() -> bool
+
+    docs {
+        Get typical anion charge when forming ionic compounds.
+    }
+
+    fun anion_charge() -> i8
+
+    docs {
+        Check if the element forms covalent bonds preferentially.
+    }
+
+    fun prefers_covalent() -> bool
+
+    docs {
+        Get common molecular forms (e.g., O2, N2, P4).
+    }
+
+    fun molecular_forms() -> Vec<string>
+}
+
+docs {
+    Metalloid elements with intermediate properties.
+    Metalloids show both metallic and nonmetallic behavior.
+}
+
+pub trait Metalloid {
+    docs {
+        Check if the element acts as a semiconductor.
+    }
+
+    fun is_semiconductor() -> bool
+
+    docs {
+        Get band gap energy (eV) if semiconductor.
+    }
+
+    fun band_gap() -> Option<f64>
+
+    docs {
+        Check if behavior is more metallic or nonmetallic.
+    }
+
+    fun metallic_character() -> f64
+}
+
+docs {
+    Noble gas elements with complete valence shells.
+    Noble gases are chemically inert under normal conditions.
+}
+
+pub trait Noble {
+    docs {
+        Check if the element is chemically inert.
+    }
+
+    fun is_inert() -> bool
+
+    docs {
+        Get the complete valence shell electron count.
+    }
+
+    fun valence_shell_full() -> u8
+
+    docs {
+        Check if the element can form compounds (Kr, Xe, Rn).
+    }
+
+    fun can_form_compounds() -> bool
+
+    docs {
+        Get known compound examples if any.
+    }
+
+    fun known_compounds() -> Vec<string>
+}
+
+docs {
+    Alkali metal elements (Group 1).
+}
+
+pub trait AlkaliMetal {
+    docs {
+        Get reactivity with water (violent for heavier elements).
+    }
+
+    fun water_reactivity() -> string
+
+    docs {
+        Get flame test color.
+    }
+
+    fun flame_color() -> string
+}
+
+docs {
+    Alkaline earth metal elements (Group 2).
+}
+
+pub trait AlkalineEarthMetal {
+    docs {
+        Get hydroxide solubility.
+    }
+
+    fun hydroxide_solubility() -> f64
+}
+
+docs {
+    Halogen elements (Group 17).
+}
+
+pub trait Halogen {
+    docs {
+        Get standard reduction potential (V).
+    }
+
+    fun reduction_potential() -> f64
+
+    docs {
+        Get diatomic bond length (pm).
+    }
+
+    fun bond_length() -> f64
+
+    docs {
+        Get diatomic molecule color.
+    }
+
+    fun diatomic_color() -> string
+}
+
+docs {
+    Transition metal elements (d-block).
+}
+
+pub trait TransitionMetal {
+    docs {
+        Get number of unpaired d electrons.
+    }
+
+    fun unpaired_d_electrons() -> u8
+
+    docs {
+        Check if element forms colored compounds.
+    }
+
+    fun forms_colored_compounds() -> bool
+
+    docs {
+        Get common oxidation states.
+    }
+
+    fun common_oxidation_states() -> Vec<i8>
+}
+
+docs {
+    Radioactive elements that undergo nuclear decay.
+}
+
+pub trait Radioactive {
+    docs {
+        Get the primary decay mode.
+    }
+
+    fun decay_mode() -> string
+
+    docs {
+        Get the half-life in seconds.
+    }
+
+    fun half_life() -> f64
+
+    docs {
+        Get the daughter nuclide after decay.
+    }
+
+    fun daughter_nuclide() -> string
+
+    docs {
+        Calculate activity (Bq) for given number of atoms.
+    }
+
+    fun activity(num_atoms: f64) -> f64
+}
+
+// =============================================================================
+// RULES
+// =============================================================================
+
+docs {
+    Octet Rule: Most main-group elements seek 8 valence electrons.
+    This is a guideline, not absolute (exceptions: H, Li, Be, B, etc.).
+}
+
+pub rule octet_rule {
+    each Element where this.block == "s" || this.block == "p" {
+        stable_valence == 8 || this.atomic_number <= 4
+    }
+}
+
+docs {
+    Aufbau Principle: Electrons fill orbitals from lowest to highest energy.
+    Order: 1s, 2s, 2p, 3s, 3p, 4s, 3d, 4p, 5s, 4d, 5p, 6s, 4f, 5d, 6p, 7s, 5f, 6d, 7p
+}
+
+pub rule aufbau_principle {
+    each Element {
+        electrons_fill_in_energy_order(this.electron_config)
+    }
+}
+
+docs {
+    Pauli Exclusion Principle: No two electrons have identical quantum numbers.
+    Maximum 2 electrons per orbital with opposite spins.
+}
+
+pub rule pauli_exclusion {
+    each ElectronShell {
+        this.electrons <= this.max_electrons
+    }
+}
+
+docs {
+    Hund's Rule: Electrons occupy degenerate orbitals singly before pairing.
+}
+
+pub rule hunds_rule {
+    each subshell {
+        electrons_maximize_spin_before_pairing
+    }
+}
+
+docs {
+    Periodic Trends: Electronegativity increases left-to-right, decreases top-to-bottom.
+}
+
+pub rule electronegativity_trend {
+    each pair(e1: Element, e2: Element) where e1.period == e2.period {
+        e1.group < e2.group implies e1.electronegativity < e2.electronegativity
+    }
+}
+
+docs {
+    Periodic Trends: Atomic radius decreases left-to-right, increases top-to-bottom.
+}
+
+pub rule atomic_radius_trend {
+    each pair(e1: Element, e2: Element) where e1.period == e2.period {
+        e1.group < e2.group implies e1.atomic_radius > e2.atomic_radius
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Element Creation
+// =============================================================================
+
+docs {
+    Create an electron configuration from shorthand notation.
+}
+
+pub fun parse_electron_config(notation: string) -> ElectronConfig {
+    return ElectronConfig {
+        shells: Vec::new(),
+        valence_electrons: 0,
+        core_electrons: 0,
+        notation: notation
+    }
+}
+
+docs {
+    Create default physical properties.
+}
+
+pub fun default_physical() -> PhysicalProperties {
+    return PhysicalProperties {
+        melting_point: None,
+        boiling_point: None,
+        density: None,
+        phase_at_stp: "unknown",
+        crystal_structure: None
+    }
+}
+
+docs {
+    Create default oxidation states.
+}
+
+pub fun default_oxidation() -> OxidationStates {
+    return OxidationStates {
+        common: Vec::new(),
+        possible: Vec::new(),
+        most_stable: 0
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Calculations
+// =============================================================================
+
+docs {
+    Calculate the number of neutrons from mass number.
+}
+
+pub fun neutron_count(element: Element, mass_number: u16) -> u16 {
+    return mass_number - (element.atomic_number as u16)
+}
+
+docs {
+    Calculate first ionization energy using effective nuclear charge.
+    Uses simplified formula: IE ~ 13.6 * (Z_eff / n)^2 eV
+}
+
+pub fun ionization_energy(element: Element, level: u8) -> f64 {
+    let z_eff = effective_nuclear_charge(element)
+    let n = element.period as f64
+
+    if n == 0.0 {
+        return 0.0
+    }
+
+    let ie_ev = 13.6 * (z_eff / n) * (z_eff / n)
+    return ie_ev * 96.485
+}
+
+docs {
+    Calculate effective nuclear charge using Slater's rules (simplified).
+}
+
+pub fun effective_nuclear_charge(element: Element) -> f64 {
+    let z = element.atomic_number as f64
+    let shielding = (element.electron_config.core_electrons as f64) * 0.85
+                  + (element.electron_config.valence_electrons as f64 - 1.0) * 0.35
+
+    let z_eff = z - shielding
+    if z_eff < 1.0 {
+        return 1.0
+    }
+    return z_eff
+}
+
+docs {
+    Calculate electron affinity from empirical trends.
+    More negative = more energy released.
+}
+
+pub fun electron_affinity(element: Element) -> f64 {
+    return element.electron_affinity
+}
+
+docs {
+    Calculate atomic radius in picometers.
+}
+
+pub fun atomic_radius(element: Element) -> f64 {
+    return element.atomic_radius
+}
+
+docs {
+    Calculate covalent radius in picometers.
+}
+
+pub fun covalent_radius(element: Element) -> f64 {
+    return element.covalent_radius
+}
+
+docs {
+    Calculate molar mass from atomic mass (g/mol).
+}
+
+pub fun molar_mass(element: Element) -> f64 {
+    return element.atomic_mass
+}
+
+docs {
+    Calculate number of atoms in a given mass (grams).
+}
+
+pub fun atoms_in_mass(element: Element, mass_grams: f64) -> f64 {
+    let moles = mass_grams / element.atomic_mass
+    return moles * AVOGADRO
+}
+
+docs {
+    Calculate mass of n atoms in grams.
+}
+
+pub fun mass_of_atoms(element: Element, num_atoms: f64) -> f64 {
+    let moles = num_atoms / AVOGADRO
+    return moles * element.atomic_mass
+}
+
+docs {
+    Check if element is in a specific group.
+}
+
+pub fun is_in_group(element: Element, group: u8) -> bool {
+    return element.group == group
+}
+
+docs {
+    Check if element is in a specific period.
+}
+
+pub fun is_in_period(element: Element, period: u8) -> bool {
+    return element.period == period
+}
+
+docs {
+    Check if element is a metal.
+}
+
+pub fun is_metal(element: Element) -> bool {
+    let category = element.category
+    return category == "alkali metal"
+        || category == "alkaline earth metal"
+        || category == "transition metal"
+        || category == "post-transition metal"
+        || category == "lanthanide"
+        || category == "actinide"
+}
+
+docs {
+    Check if element is a nonmetal.
+}
+
+pub fun is_nonmetal(element: Element) -> bool {
+    return element.category == "nonmetal" || element.category == "halogen"
+}
+
+docs {
+    Check if element is a noble gas.
+}
+
+pub fun is_noble_gas(element: Element) -> bool {
+    return element.category == "noble gas"
+}
+
+docs {
+    Check if element is a metalloid.
+}
+
+pub fun is_metalloid(element: Element) -> bool {
+    return element.category == "metalloid"
+}
+
+docs {
+    Check if element is radioactive (all isotopes unstable).
+}
+
+pub fun is_radioactive(element: Element) -> bool {
+    return element.atomic_number >= 84
+}
+
+docs {
+    Get the most common isotope of an element.
+}
+
+pub fun most_common_isotope(element: Element) -> Isotope {
+    let mass_number = (element.atomic_mass + 0.5) as u16
+    let neutrons = mass_number - (element.atomic_number as u16)
+    let is_stable = element.atomic_number < 84
+
+    return Isotope {
+        element: element,
+        mass_number: mass_number,
+        neutron_count: neutrons,
+        atomic_mass: element.atomic_mass,
+        abundance: 1.0,
+        half_life: if is_stable { None } else { Some(1.0e10) },
+        decay_mode: if is_stable { None } else { Some("alpha") },
+        spin: "0+",
+        is_stable: is_stable
+    }
+}
+
+docs {
+    Create an isotope with specific mass number.
+}
+
+pub fun create_isotope(element: Element, mass_number: u16, abundance: f64,
+                       half_life: Option<f64>, decay_mode: Option<string>) -> Isotope {
+    let neutrons = mass_number - (element.atomic_number as u16)
+    let is_stable = match half_life {
+        Some(_) => false,
+        None => true
+    }
+
+    return Isotope {
+        element: element,
+        mass_number: mass_number,
+        neutron_count: neutrons,
+        atomic_mass: mass_number as f64,
+        abundance: abundance,
+        half_life: half_life,
+        decay_mode: decay_mode,
+        spin: "unknown",
+        is_stable: is_stable
+    }
+}
+
+docs {
+    Calculate radioactive decay: N(t) = N0 * e^(-lambda * t)
+    Returns remaining atoms after time t (seconds).
+}
+
+pub fun radioactive_decay(isotope: Isotope, initial_atoms: f64, time: f64) -> f64 {
+    match isotope.half_life {
+        Some(half_life) => {
+            let lambda = 0.693147 / half_life
+            let remaining = initial_atoms * (2.71828 ^ (-lambda * time))
+            return remaining
+        },
+        None => {
+            return initial_atoms
+        }
+    }
+}
+
+docs {
+    Calculate half-lives elapsed.
+}
+
+pub fun half_lives_elapsed(isotope: Isotope, time: f64) -> f64 {
+    match isotope.half_life {
+        Some(half_life) => {
+            return time / half_life
+        },
+        None => {
+            return 0.0
+        }
+    }
+}
+
+docs {
+    Calculate binding energy per nucleon (MeV).
+    Uses semi-empirical mass formula (simplified).
+}
+
+pub fun binding_energy_per_nucleon(isotope: Isotope) -> f64 {
+    let a = isotope.mass_number as f64
+    let z = isotope.element.atomic_number as f64
+    let n = isotope.neutron_count as f64
+
+    // Volume term
+    let av = 15.75
+    let volume = av * a
+
+    // Surface term
+    let as_ = 17.8
+    let surface = as_ * (a ^ 0.6667)
+
+    // Coulomb term
+    let ac = 0.711
+    let coulomb = ac * z * (z - 1.0) / (a ^ 0.3333)
+
+    // Asymmetry term
+    let aa = 23.7
+    let asymmetry = aa * ((n - z) * (n - z)) / a
+
+    // Total binding energy
+    let be = volume - surface - coulomb - asymmetry
+
+    return be / a
+}
+
+// =============================================================================
+// ELEMENT DATA - First 20 Elements
+// =============================================================================
+
+docs {
+    Hydrogen - lightest element, most abundant in universe.
+}
+
+pub fun hydrogen() -> Element {
+    return Element {
+        atomic_number: 1,
+        symbol: "H",
+        name: "Hydrogen",
+        atomic_mass: 1.008,
+        electron_config: parse_electron_config("1s1"),
+        electronegativity: Some(2.20),
+        ionization_energy: 1312.0,
+        electron_affinity: -72.8,
+        atomic_radius: 53.0,
+        covalent_radius: 31.0,
+        van_der_waals_radius: Some(120.0),
+        group: 1,
+        period: 1,
+        block: "s",
+        category: "nonmetal",
+        oxidation_states: OxidationStates {
+            common: vec![-1, 1],
+            possible: vec![-1, 1],
+            most_stable: 1
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(13.99),
+            boiling_point: Some(20.271),
+            density: Some(0.00008988),
+            phase_at_stp: "gas",
+            crystal_structure: Some("hexagonal")
+        }
+    }
+}
+
+docs {
+    Helium - noble gas, second lightest element.
+}
+
+pub fun helium() -> Element {
+    return Element {
+        atomic_number: 2,
+        symbol: "He",
+        name: "Helium",
+        atomic_mass: 4.0026,
+        electron_config: parse_electron_config("1s2"),
+        electronegativity: None,
+        ionization_energy: 2372.3,
+        electron_affinity: 0.0,
+        atomic_radius: 31.0,
+        covalent_radius: 28.0,
+        van_der_waals_radius: Some(140.0),
+        group: 18,
+        period: 1,
+        block: "s",
+        category: "noble gas",
+        oxidation_states: OxidationStates {
+            common: vec![0],
+            possible: vec![0],
+            most_stable: 0
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(0.95),
+            boiling_point: Some(4.222),
+            density: Some(0.0001785),
+            phase_at_stp: "gas",
+            crystal_structure: Some("hexagonal")
+        }
+    }
+}
+
+docs {
+    Lithium - lightest metal, alkali metal.
+}
+
+pub fun lithium() -> Element {
+    return Element {
+        atomic_number: 3,
+        symbol: "Li",
+        name: "Lithium",
+        atomic_mass: 6.94,
+        electron_config: parse_electron_config("[He] 2s1"),
+        electronegativity: Some(0.98),
+        ionization_energy: 520.2,
+        electron_affinity: -59.6,
+        atomic_radius: 167.0,
+        covalent_radius: 128.0,
+        van_der_waals_radius: Some(182.0),
+        group: 1,
+        period: 2,
+        block: "s",
+        category: "alkali metal",
+        oxidation_states: OxidationStates {
+            common: vec![1],
+            possible: vec![1],
+            most_stable: 1
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(453.65),
+            boiling_point: Some(1603.0),
+            density: Some(0.534),
+            phase_at_stp: "solid",
+            crystal_structure: Some("bcc")
+        }
+    }
+}
+
+docs {
+    Carbon - basis of organic chemistry.
+}
+
+pub fun carbon() -> Element {
+    return Element {
+        atomic_number: 6,
+        symbol: "C",
+        name: "Carbon",
+        atomic_mass: 12.011,
+        electron_config: parse_electron_config("[He] 2s2 2p2"),
+        electronegativity: Some(2.55),
+        ionization_energy: 1086.5,
+        electron_affinity: -121.8,
+        atomic_radius: 77.0,
+        covalent_radius: 77.0,
+        van_der_waals_radius: Some(170.0),
+        group: 14,
+        period: 2,
+        block: "p",
+        category: "nonmetal",
+        oxidation_states: OxidationStates {
+            common: vec![-4, 4],
+            possible: vec![-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            most_stable: 4
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(3823.0),
+            boiling_point: Some(4098.0),
+            density: Some(2.267),
+            phase_at_stp: "solid",
+            crystal_structure: Some("hexagonal")
+        }
+    }
+}
+
+docs {
+    Nitrogen - major component of atmosphere.
+}
+
+pub fun nitrogen() -> Element {
+    return Element {
+        atomic_number: 7,
+        symbol: "N",
+        name: "Nitrogen",
+        atomic_mass: 14.007,
+        electron_config: parse_electron_config("[He] 2s2 2p3"),
+        electronegativity: Some(3.04),
+        ionization_energy: 1402.3,
+        electron_affinity: -7.0,
+        atomic_radius: 71.0,
+        covalent_radius: 71.0,
+        van_der_waals_radius: Some(155.0),
+        group: 15,
+        period: 2,
+        block: "p",
+        category: "nonmetal",
+        oxidation_states: OxidationStates {
+            common: vec![-3, 3, 5],
+            possible: vec![-3, -2, -1, 1, 2, 3, 4, 5],
+            most_stable: -3
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(63.15),
+            boiling_point: Some(77.355),
+            density: Some(0.001251),
+            phase_at_stp: "gas",
+            crystal_structure: Some("hexagonal")
+        }
+    }
+}
+
+docs {
+    Oxygen - essential for respiration.
+}
+
+pub fun oxygen() -> Element {
+    return Element {
+        atomic_number: 8,
+        symbol: "O",
+        name: "Oxygen",
+        atomic_mass: 15.999,
+        electron_config: parse_electron_config("[He] 2s2 2p4"),
+        electronegativity: Some(3.44),
+        ionization_energy: 1313.9,
+        electron_affinity: -141.0,
+        atomic_radius: 66.0,
+        covalent_radius: 66.0,
+        van_der_waals_radius: Some(152.0),
+        group: 16,
+        period: 2,
+        block: "p",
+        category: "nonmetal",
+        oxidation_states: OxidationStates {
+            common: vec![-2],
+            possible: vec![-2, -1, 1, 2],
+            most_stable: -2
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(54.36),
+            boiling_point: Some(90.188),
+            density: Some(0.001429),
+            phase_at_stp: "gas",
+            crystal_structure: Some("cubic")
+        }
+    }
+}
+
+docs {
+    Fluorine - most electronegative element.
+}
+
+pub fun fluorine() -> Element {
+    return Element {
+        atomic_number: 9,
+        symbol: "F",
+        name: "Fluorine",
+        atomic_mass: 18.998,
+        electron_config: parse_electron_config("[He] 2s2 2p5"),
+        electronegativity: Some(3.98),
+        ionization_energy: 1681.0,
+        electron_affinity: -328.0,
+        atomic_radius: 64.0,
+        covalent_radius: 64.0,
+        van_der_waals_radius: Some(147.0),
+        group: 17,
+        period: 2,
+        block: "p",
+        category: "halogen",
+        oxidation_states: OxidationStates {
+            common: vec![-1],
+            possible: vec![-1],
+            most_stable: -1
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(53.48),
+            boiling_point: Some(85.03),
+            density: Some(0.001696),
+            phase_at_stp: "gas",
+            crystal_structure: Some("cubic")
+        }
+    }
+}
+
+docs {
+    Neon - noble gas used in signs.
+}
+
+pub fun neon() -> Element {
+    return Element {
+        atomic_number: 10,
+        symbol: "Ne",
+        name: "Neon",
+        atomic_mass: 20.180,
+        electron_config: parse_electron_config("[He] 2s2 2p6"),
+        electronegativity: None,
+        ionization_energy: 2080.7,
+        electron_affinity: 0.0,
+        atomic_radius: 38.0,
+        covalent_radius: 58.0,
+        van_der_waals_radius: Some(154.0),
+        group: 18,
+        period: 2,
+        block: "p",
+        category: "noble gas",
+        oxidation_states: OxidationStates {
+            common: vec![0],
+            possible: vec![0],
+            most_stable: 0
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(24.56),
+            boiling_point: Some(27.104),
+            density: Some(0.0009002),
+            phase_at_stp: "gas",
+            crystal_structure: Some("fcc")
+        }
+    }
+}
+
+docs {
+    Sodium - alkali metal, essential for life.
+}
+
+pub fun sodium() -> Element {
+    return Element {
+        atomic_number: 11,
+        symbol: "Na",
+        name: "Sodium",
+        atomic_mass: 22.990,
+        electron_config: parse_electron_config("[Ne] 3s1"),
+        electronegativity: Some(0.93),
+        ionization_energy: 495.8,
+        electron_affinity: -52.8,
+        atomic_radius: 190.0,
+        covalent_radius: 166.0,
+        van_der_waals_radius: Some(227.0),
+        group: 1,
+        period: 3,
+        block: "s",
+        category: "alkali metal",
+        oxidation_states: OxidationStates {
+            common: vec![1],
+            possible: vec![-1, 1],
+            most_stable: 1
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(370.95),
+            boiling_point: Some(1156.0),
+            density: Some(0.968),
+            phase_at_stp: "solid",
+            crystal_structure: Some("bcc")
+        }
+    }
+}
+
+docs {
+    Chlorine - halogen, strong oxidizer.
+}
+
+pub fun chlorine() -> Element {
+    return Element {
+        atomic_number: 17,
+        symbol: "Cl",
+        name: "Chlorine",
+        atomic_mass: 35.45,
+        electron_config: parse_electron_config("[Ne] 3s2 3p5"),
+        electronegativity: Some(3.16),
+        ionization_energy: 1251.2,
+        electron_affinity: -349.0,
+        atomic_radius: 99.0,
+        covalent_radius: 102.0,
+        van_der_waals_radius: Some(175.0),
+        group: 17,
+        period: 3,
+        block: "p",
+        category: "halogen",
+        oxidation_states: OxidationStates {
+            common: vec![-1, 1, 3, 5, 7],
+            possible: vec![-1, 1, 2, 3, 4, 5, 6, 7],
+            most_stable: -1
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(171.6),
+            boiling_point: Some(239.11),
+            density: Some(0.003214),
+            phase_at_stp: "gas",
+            crystal_structure: Some("orthorhombic")
+        }
+    }
+}
+
+docs {
+    Argon - noble gas, third most abundant in atmosphere.
+}
+
+pub fun argon() -> Element {
+    return Element {
+        atomic_number: 18,
+        symbol: "Ar",
+        name: "Argon",
+        atomic_mass: 39.948,
+        electron_config: parse_electron_config("[Ne] 3s2 3p6"),
+        electronegativity: None,
+        ionization_energy: 1520.6,
+        electron_affinity: 0.0,
+        atomic_radius: 71.0,
+        covalent_radius: 106.0,
+        van_der_waals_radius: Some(188.0),
+        group: 18,
+        period: 3,
+        block: "p",
+        category: "noble gas",
+        oxidation_states: OxidationStates {
+            common: vec![0],
+            possible: vec![0],
+            most_stable: 0
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(83.81),
+            boiling_point: Some(87.302),
+            density: Some(0.001784),
+            phase_at_stp: "gas",
+            crystal_structure: Some("fcc")
+        }
+    }
+}
+
+docs {
+    Iron - transition metal, essential for blood.
+}
+
+pub fun iron() -> Element {
+    return Element {
+        atomic_number: 26,
+        symbol: "Fe",
+        name: "Iron",
+        atomic_mass: 55.845,
+        electron_config: parse_electron_config("[Ar] 3d6 4s2"),
+        electronegativity: Some(1.83),
+        ionization_energy: 762.5,
+        electron_affinity: -15.7,
+        atomic_radius: 156.0,
+        covalent_radius: 132.0,
+        van_der_waals_radius: None,
+        group: 8,
+        period: 4,
+        block: "d",
+        category: "transition metal",
+        oxidation_states: OxidationStates {
+            common: vec![2, 3],
+            possible: vec![-2, -1, 1, 2, 3, 4, 5, 6],
+            most_stable: 3
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(1811.0),
+            boiling_point: Some(3134.0),
+            density: Some(7.874),
+            phase_at_stp: "solid",
+            crystal_structure: Some("bcc")
+        }
+    }
+}
+
+docs {
+    Copper - transition metal, excellent conductor.
+}
+
+pub fun copper() -> Element {
+    return Element {
+        atomic_number: 29,
+        symbol: "Cu",
+        name: "Copper",
+        atomic_mass: 63.546,
+        electron_config: parse_electron_config("[Ar] 3d10 4s1"),
+        electronegativity: Some(1.90),
+        ionization_energy: 745.5,
+        electron_affinity: -118.4,
+        atomic_radius: 145.0,
+        covalent_radius: 132.0,
+        van_der_waals_radius: Some(140.0),
+        group: 11,
+        period: 4,
+        block: "d",
+        category: "transition metal",
+        oxidation_states: OxidationStates {
+            common: vec![1, 2],
+            possible: vec![1, 2, 3, 4],
+            most_stable: 2
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(1357.77),
+            boiling_point: Some(2835.0),
+            density: Some(8.96),
+            phase_at_stp: "solid",
+            crystal_structure: Some("fcc")
+        }
+    }
+}
+
+docs {
+    Gold - noble metal, highly valued.
+}
+
+pub fun gold() -> Element {
+    return Element {
+        atomic_number: 79,
+        symbol: "Au",
+        name: "Gold",
+        atomic_mass: 196.967,
+        electron_config: parse_electron_config("[Xe] 4f14 5d10 6s1"),
+        electronegativity: Some(2.54),
+        ionization_energy: 890.1,
+        electron_affinity: -222.8,
+        atomic_radius: 174.0,
+        covalent_radius: 136.0,
+        van_der_waals_radius: Some(166.0),
+        group: 11,
+        period: 6,
+        block: "d",
+        category: "transition metal",
+        oxidation_states: OxidationStates {
+            common: vec![1, 3],
+            possible: vec![-1, 1, 2, 3, 5],
+            most_stable: 3
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(1337.33),
+            boiling_point: Some(3243.0),
+            density: Some(19.3),
+            phase_at_stp: "solid",
+            crystal_structure: Some("fcc")
+        }
+    }
+}
+
+docs {
+    Uranium - radioactive actinide, used in nuclear power.
+}
+
+pub fun uranium() -> Element {
+    return Element {
+        atomic_number: 92,
+        symbol: "U",
+        name: "Uranium",
+        atomic_mass: 238.029,
+        electron_config: parse_electron_config("[Rn] 5f3 6d1 7s2"),
+        electronegativity: Some(1.38),
+        ionization_energy: 597.6,
+        electron_affinity: -50.9,
+        atomic_radius: 175.0,
+        covalent_radius: 196.0,
+        van_der_waals_radius: Some(186.0),
+        group: 3,
+        period: 7,
+        block: "f",
+        category: "actinide",
+        oxidation_states: OxidationStates {
+            common: vec![4, 6],
+            possible: vec![2, 3, 4, 5, 6],
+            most_stable: 6
+        },
+        physical: PhysicalProperties {
+            melting_point: Some(1405.3),
+            boiling_point: Some(4404.0),
+            density: Some(19.1),
+            phase_at_stp: "solid",
+            crystal_structure: Some("orthorhombic")
+        }
+    }
+}
+
+// =============================================================================
+// EVOLUTION
+// =============================================================================
+
+docs {
+    Evolution adding complete periodic table (all 118 elements).
+}
+
+evo complete_periodic_table @ 0.9.1 > 0.9.0 {
+    adds fun beryllium() -> Element
+    adds fun boron() -> Element
+    adds fun magnesium() -> Element
+    adds fun aluminum() -> Element
+    adds fun silicon() -> Element
+    adds fun phosphorus() -> Element
+    adds fun sulfur() -> Element
+    adds fun potassium() -> Element
+    adds fun calcium() -> Element
+    adds fun get_element(atomic_number: u8) -> Element
+    adds fun get_element_by_symbol(symbol: string) -> Option<Element>
+    because "full periodic table required for comprehensive chemistry"
+}
+
+docs {
+    Evolution adding isotope database with natural abundances.
+}
+
+evo isotope_database @ 0.9.2 > 0.9.1 {
+    adds gen IsotopeData { isotopes: Vec<Isotope>, weighted_mass: f64 }
+    adds fun get_isotopes(element: Element) -> Vec<Isotope>
+    adds fun natural_abundance(isotope: Isotope) -> f64
+    adds fun calculate_weighted_mass(isotopes: Vec<Isotope>) -> f64
+    because "isotope data essential for mass spectrometry and nuclear chemistry"
+}

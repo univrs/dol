@@ -1,0 +1,1118 @@
+// =============================================================================
+// Biology Spirit - Cellular Biology Module
+// DOL v0.9.0
+// =============================================================================
+
+module biology.cells @ 0.9.0
+
+docs {
+    Cellular biology module providing cell types, organelles, and processes.
+
+    This module models:
+    - Cell structure (membrane, cytoplasm, nucleus)
+    - Cell types (prokaryotes, eukaryotes)
+    - Organelles (mitochondria, ribosomes, chloroplasts, etc.)
+    - Cell division (mitosis, meiosis)
+    - Cellular metabolism (ATP production, respiration)
+
+    All measurements use SI units unless otherwise specified.
+    Dimensions are typically in micrometers (um).
+}
+
+use local::lib::Position3D
+use local::lib::origin
+use local::lib::ATP_HYDROLYSIS_KJ
+use local::lib::MITOCHONDRIAL_POTENTIAL_MV
+
+// =============================================================================
+// CORE TYPES - Membranes and Structures
+// =============================================================================
+
+docs {
+    Phospholipid bilayer membrane.
+
+    Properties:
+    - thickness: Membrane thickness (nm)
+    - surface_area: Total surface area (um^2)
+    - fluidity: Membrane fluidity index (0-1)
+    - potential: Membrane potential (mV)
+    - proteins: Embedded membrane proteins
+}
+
+pub gen Membrane {
+    has thickness: f64
+    has surface_area: f64
+    has fluidity: f64
+    has potential: f64
+    has protein_count: u32
+    has cholesterol_percentage: f64
+    has is_selectively_permeable: bool
+}
+
+docs {
+    Create a standard plasma membrane.
+}
+
+pub fun plasma_membrane(surface_area: f64) -> Membrane {
+    return Membrane {
+        thickness: 7.5,
+        surface_area: surface_area,
+        fluidity: 0.5,
+        potential: -70.0,
+        protein_count: 1000,
+        cholesterol_percentage: 20.0,
+        is_selectively_permeable: true
+    }
+}
+
+docs {
+    Cytoplasm - gel-like substance filling the cell.
+
+    Properties:
+    - volume: Total volume (um^3)
+    - ph: Cytoplasmic pH
+    - viscosity: Relative viscosity
+    - ionic_strength: Ionic concentration (mM)
+}
+
+pub gen Cytoplasm {
+    has volume: f64
+    has ph: f64
+    has viscosity: f64
+    has ionic_strength: f64
+    has water_percentage: f64
+    has protein_concentration: f64
+}
+
+docs {
+    Create standard cytoplasm.
+}
+
+pub fun standard_cytoplasm(volume: f64) -> Cytoplasm {
+    return Cytoplasm {
+        volume: volume,
+        ph: 7.2,
+        viscosity: 2.0,
+        ionic_strength: 150.0,
+        water_percentage: 70.0,
+        protein_concentration: 200.0
+    }
+}
+
+// =============================================================================
+// ORGANELLES
+// =============================================================================
+
+docs {
+    Generic organelle with common properties.
+
+    Properties:
+    - name: Organelle name
+    - function: Primary function
+    - diameter: Size in micrometers
+    - copy_number: Number per cell
+    - is_membrane_bound: Whether bounded by membrane
+}
+
+pub gen Organelle {
+    has name: string
+    has function: string
+    has diameter: f64
+    has copy_number: u32
+    has is_membrane_bound: bool
+    has position: Position3D
+}
+
+docs {
+    Nucleus - contains genetic material in eukaryotes.
+
+    Properties:
+    - diameter: Nuclear diameter (um)
+    - chromosome_count: Number of chromosomes
+    - nuclear_envelope: Double membrane
+    - nucleolus_count: Number of nucleoli
+    - dna_content: Total DNA in base pairs
+}
+
+pub gen Nucleus {
+    has diameter: f64
+    has chromosome_count: u32
+    has envelope: Membrane
+    has nucleolus_count: u8
+    has dna_content: u64
+    has is_in_interphase: bool
+    has nuclear_pore_count: u32
+}
+
+docs {
+    Create a human cell nucleus.
+}
+
+pub fun human_nucleus() -> Nucleus {
+    return Nucleus {
+        diameter: 6.0,
+        chromosome_count: 46,
+        envelope: Membrane {
+            thickness: 40.0,
+            surface_area: 113.0,
+            fluidity: 0.3,
+            potential: 0.0,
+            protein_count: 3000,
+            cholesterol_percentage: 10.0,
+            is_selectively_permeable: true
+        },
+        nucleolus_count: 2,
+        dna_content: 3200000000,
+        is_in_interphase: true,
+        nuclear_pore_count: 2000
+    }
+}
+
+docs {
+    Mitochondrion - powerhouse of the cell.
+
+    Properties:
+    - length: Length in micrometers
+    - diameter: Width in micrometers
+    - cristae_count: Number of inner membrane folds
+    - atp_production_rate: ATP molecules per second
+    - membrane_potential: Inner membrane potential (mV)
+    - mtdna_copies: Copies of mitochondrial DNA
+}
+
+pub gen Mitochondrion {
+    has length: f64
+    has diameter: f64
+    has cristae_count: u32
+    has atp_production_rate: f64
+    has membrane_potential: f64
+    has mtdna_copies: u8
+    has is_active: bool
+    has outer_membrane: Membrane
+    has inner_membrane: Membrane
+}
+
+docs {
+    Create a standard mitochondrion.
+}
+
+pub fun new_mitochondrion() -> Mitochondrion {
+    return Mitochondrion {
+        length: 2.0,
+        diameter: 0.5,
+        cristae_count: 20,
+        atp_production_rate: 100.0,
+        membrane_potential: MITOCHONDRIAL_POTENTIAL_MV,
+        mtdna_copies: 5,
+        is_active: true,
+        outer_membrane: Membrane {
+            thickness: 7.0,
+            surface_area: 3.14,
+            fluidity: 0.6,
+            potential: 0.0,
+            protein_count: 100,
+            cholesterol_percentage: 5.0,
+            is_selectively_permeable: true
+        },
+        inner_membrane: Membrane {
+            thickness: 7.0,
+            surface_area: 15.7,
+            fluidity: 0.4,
+            potential: -180.0,
+            protein_count: 500,
+            cholesterol_percentage: 0.0,
+            is_selectively_permeable: true
+        }
+    }
+}
+
+docs {
+    Ribosome - protein synthesis machinery.
+
+    Properties:
+    - type_name: 70S (prokaryote) or 80S (eukaryote)
+    - is_membrane_bound: Attached to ER or free
+    - translation_rate: Amino acids per second
+}
+
+pub gen Ribosome {
+    has type_name: string
+    has is_membrane_bound: bool
+    has translation_rate: f64
+    has is_active: bool
+    has mrna_attached: bool
+}
+
+docs {
+    Create a eukaryotic ribosome.
+}
+
+pub fun eukaryotic_ribosome() -> Ribosome {
+    return Ribosome {
+        type_name: "80S",
+        is_membrane_bound: false,
+        translation_rate: 6.0,
+        is_active: false,
+        mrna_attached: false
+    }
+}
+
+docs {
+    Create a prokaryotic ribosome.
+}
+
+pub fun prokaryotic_ribosome() -> Ribosome {
+    return Ribosome {
+        type_name: "70S",
+        is_membrane_bound: false,
+        translation_rate: 20.0,
+        is_active: false,
+        mrna_attached: false
+    }
+}
+
+docs {
+    Chloroplast - site of photosynthesis.
+
+    Properties:
+    - diameter: Size in micrometers
+    - thylakoid_count: Number of thylakoid stacks (grana)
+    - chlorophyll_content: Chlorophyll molecules
+    - photosynthesis_rate: CO2 fixed per hour
+}
+
+pub gen Chloroplast {
+    has diameter: f64
+    has thylakoid_count: u32
+    has chlorophyll_content: f64
+    has photosynthesis_rate: f64
+    has stroma_volume: f64
+    has outer_membrane: Membrane
+    has inner_membrane: Membrane
+    has cpDNA_copies: u8
+}
+
+docs {
+    Create a standard chloroplast.
+}
+
+pub fun new_chloroplast() -> Chloroplast {
+    return Chloroplast {
+        diameter: 5.0,
+        thylakoid_count: 50,
+        chlorophyll_content: 1.0e9,
+        photosynthesis_rate: 1000.0,
+        stroma_volume: 20.0,
+        outer_membrane: plasma_membrane(78.5),
+        inner_membrane: plasma_membrane(100.0),
+        cpDNA_copies: 100
+    }
+}
+
+docs {
+    Endoplasmic reticulum - protein and lipid synthesis network.
+}
+
+pub gen EndoplasmicReticulum {
+    has type_name: string
+    has surface_area: f64
+    has is_rough: bool
+    has ribosome_count: u32
+    has is_continuous_with_nuclear_envelope: bool
+}
+
+docs {
+    Create rough endoplasmic reticulum.
+}
+
+pub fun rough_er(surface_area: f64) -> EndoplasmicReticulum {
+    return EndoplasmicReticulum {
+        type_name: "rough",
+        surface_area: surface_area,
+        is_rough: true,
+        ribosome_count: 10000,
+        is_continuous_with_nuclear_envelope: true
+    }
+}
+
+docs {
+    Create smooth endoplasmic reticulum.
+}
+
+pub fun smooth_er(surface_area: f64) -> EndoplasmicReticulum {
+    return EndoplasmicReticulum {
+        type_name: "smooth",
+        surface_area: surface_area,
+        is_rough: false,
+        ribosome_count: 0,
+        is_continuous_with_nuclear_envelope: false
+    }
+}
+
+docs {
+    Golgi apparatus - protein modification and sorting.
+}
+
+pub gen GolgiApparatus {
+    has cisternae_count: u8
+    has surface_area: f64
+    has is_polarized: bool
+    has vesicle_production_rate: f64
+}
+
+docs {
+    Create a standard Golgi apparatus.
+}
+
+pub fun new_golgi() -> GolgiApparatus {
+    return GolgiApparatus {
+        cisternae_count: 6,
+        surface_area: 100.0,
+        is_polarized: true,
+        vesicle_production_rate: 10.0
+    }
+}
+
+docs {
+    Lysosome - digestive organelle.
+}
+
+pub gen Lysosome {
+    has diameter: f64
+    has ph: f64
+    has enzyme_count: u32
+    has is_active: bool
+}
+
+docs {
+    Create a standard lysosome.
+}
+
+pub fun new_lysosome() -> Lysosome {
+    return Lysosome {
+        diameter: 0.5,
+        ph: 4.8,
+        enzyme_count: 50,
+        is_active: true
+    }
+}
+
+// =============================================================================
+// CELL TYPES
+// =============================================================================
+
+docs {
+    Base cell type with common properties.
+
+    Properties:
+    - membrane: Plasma membrane
+    - cytoplasm: Cell cytoplasm
+    - diameter: Cell diameter (um)
+    - volume: Cell volume (um^3)
+    - surface_area: Cell surface area (um^2)
+    - is_alive: Whether cell is living
+}
+
+pub gen Cell {
+    has membrane: Membrane
+    has cytoplasm: Cytoplasm
+    has diameter: f64
+    has volume: f64
+    has surface_area: f64
+    has is_alive: bool
+    has age_hours: f64
+    has generation: u32
+}
+
+docs {
+    Prokaryotic cell - no membrane-bound nucleus.
+
+    Characteristics:
+    - Circular DNA in nucleoid region
+    - No membrane-bound organelles
+    - Smaller size (0.2-10 um)
+    - Cell wall (usually)
+    - 70S ribosomes
+}
+
+pub gen Prokaryote is Cell {
+    has nucleoid_dna: string
+    has plasmids: Vec<string>
+    has ribosomes: Vec<Ribosome>
+    has has_cell_wall: bool
+    has cell_wall_type: string
+    has flagella_count: u8
+    has pili_count: u16
+    has is_gram_positive: bool
+}
+
+docs {
+    Create a standard prokaryotic cell (E. coli-like).
+}
+
+pub fun new_prokaryote() -> Prokaryote {
+    let diameter = 1.0
+    let volume = 0.52
+    let surface_area = 3.14
+
+    return Prokaryote {
+        membrane: plasma_membrane(surface_area),
+        cytoplasm: standard_cytoplasm(volume),
+        diameter: diameter,
+        volume: volume,
+        surface_area: surface_area,
+        is_alive: true,
+        age_hours: 0.0,
+        generation: 1,
+        nucleoid_dna: "",
+        plasmids: Vec::new(),
+        ribosomes: vec![prokaryotic_ribosome(); 20000],
+        has_cell_wall: true,
+        cell_wall_type: "peptidoglycan",
+        flagella_count: 6,
+        pili_count: 100,
+        is_gram_positive: false
+    }
+}
+
+docs {
+    Eukaryotic cell - has membrane-bound nucleus and organelles.
+
+    Characteristics:
+    - True nucleus with linear DNA
+    - Membrane-bound organelles
+    - Larger size (10-100 um)
+    - 80S ribosomes
+    - Cytoskeleton
+}
+
+pub gen Eukaryote is Cell {
+    has nucleus: Nucleus
+    has mitochondria: Vec<Mitochondrion>
+    has ribosomes: Vec<Ribosome>
+    has endoplasmic_reticulum: Vec<EndoplasmicReticulum>
+    has golgi: Vec<GolgiApparatus>
+    has lysosomes: Vec<Lysosome>
+    has has_cell_wall: bool
+    has has_chloroplasts: bool
+    has chloroplasts: Vec<Chloroplast>
+    has centrioles: u8
+}
+
+docs {
+    Create a standard animal cell.
+}
+
+pub fun new_animal_cell() -> Eukaryote {
+    let diameter = 20.0
+    let volume = 4188.79
+    let surface_area = 1256.64
+
+    return Eukaryote {
+        membrane: plasma_membrane(surface_area),
+        cytoplasm: standard_cytoplasm(volume),
+        diameter: diameter,
+        volume: volume,
+        surface_area: surface_area,
+        is_alive: true,
+        age_hours: 0.0,
+        generation: 1,
+        nucleus: human_nucleus(),
+        mitochondria: vec![new_mitochondrion(); 1000],
+        ribosomes: vec![eukaryotic_ribosome(); 10000000],
+        endoplasmic_reticulum: vec![rough_er(200.0), smooth_er(150.0)],
+        golgi: vec![new_golgi()],
+        lysosomes: vec![new_lysosome(); 300],
+        has_cell_wall: false,
+        has_chloroplasts: false,
+        chloroplasts: Vec::new(),
+        centrioles: 2
+    }
+}
+
+docs {
+    Create a standard plant cell.
+}
+
+pub fun new_plant_cell() -> Eukaryote {
+    let diameter = 50.0
+    let volume = 65449.85
+    let surface_area = 7853.98
+
+    return Eukaryote {
+        membrane: plasma_membrane(surface_area),
+        cytoplasm: standard_cytoplasm(volume),
+        diameter: diameter,
+        volume: volume,
+        surface_area: surface_area,
+        is_alive: true,
+        age_hours: 0.0,
+        generation: 1,
+        nucleus: human_nucleus(),
+        mitochondria: vec![new_mitochondrion(); 100],
+        ribosomes: vec![eukaryotic_ribosome(); 5000000],
+        endoplasmic_reticulum: vec![rough_er(300.0), smooth_er(200.0)],
+        golgi: vec![new_golgi()],
+        lysosomes: Vec::new(),
+        has_cell_wall: true,
+        has_chloroplasts: true,
+        chloroplasts: vec![new_chloroplast(); 50],
+        centrioles: 0
+    }
+}
+
+// =============================================================================
+// TRAITS
+// =============================================================================
+
+docs {
+    Trait for cells capable of division.
+}
+
+pub trait Divides {
+    docs {
+        Perform mitotic division (produces 2 identical cells).
+    }
+
+    fun mitosis() -> (Cell, Cell)
+
+    docs {
+        Perform meiotic division (produces 4 haploid cells).
+    }
+
+    fun meiosis() -> Vec<Cell>
+
+    docs {
+        Check if cell is in a dividing state.
+    }
+
+    fun is_dividing() -> bool
+
+    docs {
+        Get current cell cycle phase.
+    }
+
+    fun cell_cycle_phase() -> string
+
+    docs {
+        Calculate time to next division (hours).
+    }
+
+    fun division_time() -> f64
+}
+
+docs {
+    Trait for cells with metabolism.
+}
+
+pub trait Metabolizes {
+    docs {
+        Calculate ATP production rate (molecules/second).
+    }
+
+    fun atp_production() -> f64
+
+    docs {
+        Calculate oxygen consumption rate (molecules/second).
+    }
+
+    fun oxygen_consumption() -> f64
+
+    docs {
+        Calculate glucose consumption rate (molecules/second).
+    }
+
+    fun glucose_consumption() -> f64
+
+    docs {
+        Perform cellular respiration.
+    }
+
+    fun respire(glucose: f64, oxygen: f64) -> f64
+
+    docs {
+        Get metabolic rate relative to basal.
+    }
+
+    fun metabolic_rate() -> f64
+}
+
+docs {
+    Trait for cells capable of photosynthesis.
+}
+
+pub trait Photosynthetic {
+    docs {
+        Perform photosynthesis.
+        Returns glucose produced per hour.
+    }
+
+    fun photosynthesize(light_intensity: f64, co2: f64) -> f64
+
+    docs {
+        Calculate oxygen production rate.
+    }
+
+    fun oxygen_production(light_intensity: f64) -> f64
+
+    docs {
+        Check if light reactions are active.
+    }
+
+    fun is_photosynthetically_active() -> bool
+
+    docs {
+        Get chlorophyll content.
+    }
+
+    fun chlorophyll_content() -> f64
+}
+
+docs {
+    Trait for cells capable of movement.
+}
+
+pub trait Motile {
+    docs {
+        Move in a direction.
+    }
+
+    fun move_to(position: Position3D) -> Cell
+
+    docs {
+        Get current velocity (um/s).
+    }
+
+    fun velocity() -> f64
+
+    docs {
+        Check if cell is capable of movement.
+    }
+
+    fun can_move() -> bool
+
+    docs {
+        Perform chemotaxis toward attractant.
+    }
+
+    fun chemotaxis(gradient: f64) -> Position3D
+}
+
+docs {
+    Trait for cells that can undergo programmed death.
+}
+
+pub trait Apoptotic {
+    docs {
+        Initiate apoptosis.
+    }
+
+    fun initiate_apoptosis() -> bool
+
+    docs {
+        Check if cell is undergoing apoptosis.
+    }
+
+    fun is_apoptotic() -> bool
+
+    docs {
+        Get apoptosis stage.
+    }
+
+    fun apoptosis_stage() -> string
+
+    docs {
+        Form apoptotic bodies.
+    }
+
+    fun form_apoptotic_bodies() -> Vec<Organelle>
+}
+
+docs {
+    Trait for cells that can differentiate.
+}
+
+pub trait Differentiates {
+    docs {
+        Differentiate into a specific cell type.
+    }
+
+    fun differentiate(target_type: string) -> Cell
+
+    docs {
+        Check potency level (totipotent, pluripotent, multipotent, unipotent).
+    }
+
+    fun potency() -> string
+
+    docs {
+        Get list of possible differentiation targets.
+    }
+
+    fun differentiation_targets() -> Vec<string>
+}
+
+// =============================================================================
+// RULES
+// =============================================================================
+
+docs {
+    Cell Theory: All living organisms are composed of cells.
+    All cells arise from pre-existing cells.
+}
+
+pub rule cell_theory {
+    each Cell {
+        this.generation >= 1
+    }
+}
+
+docs {
+    Membrane Integrity: Living cells must have intact membranes.
+}
+
+pub rule membrane_integrity {
+    each Cell where this.is_alive {
+        this.membrane.surface_area > 0.0 &&
+        this.membrane.is_selectively_permeable
+    }
+}
+
+docs {
+    Volume Constraint: Cell volume must be positive and finite.
+}
+
+pub rule volume_constraint {
+    each Cell {
+        this.volume > 0.0 && this.volume < 1.0e12
+    }
+}
+
+docs {
+    Prokaryote Structure: Prokaryotes lack membrane-bound nucleus.
+}
+
+pub rule prokaryote_structure {
+    each Prokaryote {
+        this.nucleoid_dna != "" &&
+        this.ribosomes[0].type_name == "70S"
+    }
+}
+
+docs {
+    Eukaryote Structure: Eukaryotes have membrane-bound nucleus.
+}
+
+pub rule eukaryote_structure {
+    each Eukaryote {
+        this.nucleus.diameter > 0.0 &&
+        this.nucleus.chromosome_count > 0 &&
+        this.ribosomes[0].type_name == "80S"
+    }
+}
+
+docs {
+    Energy Conservation: ATP production requires substrate.
+}
+
+pub rule energy_conservation {
+    each Mitochondrion {
+        this.atp_production_rate >= 0.0 &&
+        this.is_active implies this.membrane_potential < 0.0
+    }
+}
+
+docs {
+    Surface Area to Volume Ratio: Cells must maintain viable SA:V ratio.
+    Smaller cells have better SA:V ratios for nutrient exchange.
+}
+
+pub rule surface_area_volume {
+    each Cell {
+        let ratio = this.surface_area / this.volume
+        ratio > 0.01 && ratio < 100.0
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Cell Calculations
+// =============================================================================
+
+docs {
+    Calculate surface area to volume ratio.
+}
+
+pub fun surface_to_volume_ratio(cell: Cell) -> f64 {
+    if cell.volume == 0.0 {
+        return 0.0
+    }
+    return cell.surface_area / cell.volume
+}
+
+docs {
+    Calculate cell volume from diameter (assuming spherical).
+}
+
+pub fun volume_from_diameter(diameter: f64) -> f64 {
+    let radius = diameter / 2.0
+    return (4.0 / 3.0) * 3.14159 * radius * radius * radius
+}
+
+docs {
+    Calculate surface area from diameter (assuming spherical).
+}
+
+pub fun surface_area_from_diameter(diameter: f64) -> f64 {
+    let radius = diameter / 2.0
+    return 4.0 * 3.14159 * radius * radius
+}
+
+docs {
+    Calculate total ATP production for a eukaryotic cell.
+}
+
+pub fun total_atp_production(cell: Eukaryote) -> f64 {
+    let mut total = 0.0
+    for mito in cell.mitochondria {
+        if mito.is_active {
+            total = total + mito.atp_production_rate
+        }
+    }
+    return total
+}
+
+docs {
+    Calculate total ribosome count.
+}
+
+pub fun ribosome_count(cell: Eukaryote) -> u64 {
+    return cell.ribosomes.len() as u64
+}
+
+docs {
+    Calculate total photosynthesis rate for a plant cell.
+}
+
+pub fun total_photosynthesis_rate(cell: Eukaryote) -> f64 {
+    if !cell.has_chloroplasts {
+        return 0.0
+    }
+
+    let mut total = 0.0
+    for chloro in cell.chloroplasts {
+        total = total + chloro.photosynthesis_rate
+    }
+    return total
+}
+
+docs {
+    Calculate cellular respiration energy yield.
+    Glucose + 6O2 -> 6CO2 + 6H2O + ~30-32 ATP
+}
+
+pub fun respiration_atp_yield(glucose_molecules: f64) -> f64 {
+    return glucose_molecules * 30.0
+}
+
+docs {
+    Calculate glycolysis energy yield (cytoplasmic, anaerobic).
+    Glucose -> 2 Pyruvate + 2 ATP + 2 NADH
+}
+
+pub fun glycolysis_atp_yield(glucose_molecules: f64) -> f64 {
+    return glucose_molecules * 2.0
+}
+
+docs {
+    Calculate Krebs cycle energy yield per glucose.
+    2 Acetyl-CoA -> 6 NADH + 2 FADH2 + 2 ATP
+}
+
+pub fun krebs_cycle_yield(glucose_molecules: f64) -> f64 {
+    return glucose_molecules * 2.0
+}
+
+docs {
+    Calculate electron transport chain ATP yield.
+    Uses chemiosmotic theory.
+}
+
+pub fun etc_atp_yield(nadh: f64, fadh2: f64) -> f64 {
+    return nadh * 2.5 + fadh2 * 1.5
+}
+
+docs {
+    Estimate cell cycle duration based on cell type (hours).
+}
+
+pub fun cell_cycle_duration(cell_type: string) -> f64 {
+    match cell_type {
+        "bacteria" => 0.33,
+        "yeast" => 1.5,
+        "mammalian" => 24.0,
+        "plant" => 48.0,
+        _ => 24.0
+    }
+}
+
+docs {
+    Calculate membrane potential using Goldman equation (simplified).
+}
+
+pub fun membrane_potential(k_in: f64, k_out: f64, na_in: f64, na_out: f64) -> f64 {
+    let pk = 1.0
+    let pna = 0.04
+
+    let numerator = pk * k_out + pna * na_out
+    let denominator = pk * k_in + pna * na_in
+
+    if denominator == 0.0 {
+        return 0.0
+    }
+
+    // Nernst factor at 37C: RT/F * ln(10) = 61.5 mV
+    return 61.5 * (numerator / denominator)
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Cell Division
+// =============================================================================
+
+docs {
+    Simulate mitotic division of a cell.
+    Returns two daughter cells with identical genetic material.
+}
+
+pub fun divide_mitosis(cell: Cell) -> (Cell, Cell) {
+    let daughter = Cell {
+        membrane: plasma_membrane(cell.surface_area),
+        cytoplasm: standard_cytoplasm(cell.volume / 2.0),
+        diameter: cell.diameter * 0.8,
+        volume: cell.volume / 2.0,
+        surface_area: cell.surface_area / 2.0,
+        is_alive: true,
+        age_hours: 0.0,
+        generation: cell.generation + 1
+    }
+
+    return (daughter, daughter)
+}
+
+docs {
+    Calculate number of cells after n divisions.
+}
+
+pub fun cells_after_divisions(initial: u64, divisions: u32) -> u64 {
+    return initial * (2 ^ divisions)
+}
+
+docs {
+    Calculate generation time from growth rate.
+}
+
+pub fun generation_time(growth_rate: f64) -> f64 {
+    if growth_rate == 0.0 {
+        return 1.0e308
+    }
+    return 0.693147 / growth_rate
+}
+
+docs {
+    Check if cell is in G1 phase based on age.
+}
+
+pub fun is_in_g1(age_hours: f64, cycle_duration: f64) -> bool {
+    let phase_time = age_hours % cycle_duration
+    let g1_duration = cycle_duration * 0.4
+    return phase_time < g1_duration
+}
+
+docs {
+    Check if cell is in S phase (DNA synthesis).
+}
+
+pub fun is_in_s_phase(age_hours: f64, cycle_duration: f64) -> bool {
+    let phase_time = age_hours % cycle_duration
+    let g1_duration = cycle_duration * 0.4
+    let s_duration = cycle_duration * 0.3
+    return phase_time >= g1_duration && phase_time < (g1_duration + s_duration)
+}
+
+docs {
+    Check if cell is in G2 phase.
+}
+
+pub fun is_in_g2(age_hours: f64, cycle_duration: f64) -> bool {
+    let phase_time = age_hours % cycle_duration
+    let g1_s_duration = cycle_duration * 0.7
+    let g2_duration = cycle_duration * 0.2
+    return phase_time >= g1_s_duration && phase_time < (g1_s_duration + g2_duration)
+}
+
+docs {
+    Check if cell is in M phase (mitosis).
+}
+
+pub fun is_in_mitosis(age_hours: f64, cycle_duration: f64) -> bool {
+    let phase_time = age_hours % cycle_duration
+    let g1_s_g2_duration = cycle_duration * 0.9
+    return phase_time >= g1_s_g2_duration
+}
+
+docs {
+    Get current cell cycle phase name.
+}
+
+pub fun get_cell_cycle_phase(age_hours: f64, cycle_duration: f64) -> string {
+    if is_in_g1(age_hours, cycle_duration) {
+        return "G1"
+    }
+    if is_in_s_phase(age_hours, cycle_duration) {
+        return "S"
+    }
+    if is_in_g2(age_hours, cycle_duration) {
+        return "G2"
+    }
+    return "M"
+}
+
+// =============================================================================
+// EVOLUTION
+// =============================================================================
+
+docs {
+    Evolution adding stem cell modeling.
+}
+
+evo stem_cells @ 0.9.1 > 0.9.0 {
+    adds gen StemCell is Eukaryote { potency: string, niche: string }
+    adds fun create_stem_cell(potency: string) -> StemCell
+    adds fun differentiate_stem_cell(cell: StemCell, target: string) -> Eukaryote
+    adds fun self_renew(cell: StemCell) -> (StemCell, StemCell)
+    because "stem cell biology essential for regenerative medicine"
+}
+
+docs {
+    Evolution adding cell signaling pathways.
+}
+
+evo cell_signaling @ 0.9.2 > 0.9.1 {
+    adds gen Receptor { ligand: string, pathway: string }
+    adds gen SignalCascade { steps: Vec<string>, target: string }
+    adds fun bind_ligand(receptor: Receptor, ligand: string) -> bool
+    adds fun transduce_signal(cascade: SignalCascade) -> string
+    adds fun apoptosis_pathway(cell: Cell) -> bool
+    because "signaling pathways control cell fate decisions"
+}
+
+docs {
+    Evolution adding organelle dynamics.
+}
+
+evo organelle_dynamics @ 0.9.3 > 0.9.2 {
+    adds fun mitochondrial_fission(mito: Mitochondrion) -> (Mitochondrion, Mitochondrion)
+    adds fun mitochondrial_fusion(m1: Mitochondrion, m2: Mitochondrion) -> Mitochondrion
+    adds fun autophagy(cell: Eukaryote, organelle: Organelle) -> Eukaryote
+    adds fun endocytosis(cell: Cell, cargo: f64) -> Cell
+    because "organelle dynamics essential for cellular homeostasis"
+}

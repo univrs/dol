@@ -1,0 +1,1403 @@
+// =============================================================================
+// Biology Spirit - Ecosystem Dynamics Module
+// DOL v0.9.0
+// =============================================================================
+
+module biology.ecosystems @ 0.9.0
+
+docs {
+    Ecosystem dynamics module providing species, populations, and ecological modeling.
+
+    This module models:
+    - Species and their traits
+    - Populations and population dynamics
+    - Ecosystems and biomes
+    - Food webs and trophic levels
+    - Predator-prey dynamics (Lotka-Volterra)
+    - Biodiversity metrics
+
+    All time units are in years unless otherwise specified.
+    Population sizes are in number of individuals.
+}
+
+use local::lib::EARTH_CARRYING_CAPACITY_BILLIONS
+use local::lib::BACKGROUND_EXTINCTION_RATE
+use local::lib::MAX_SHANNON_INDEX
+
+// =============================================================================
+// CORE TYPES - Species
+// =============================================================================
+
+docs {
+    Trophic level in food web.
+}
+
+pub gen TrophicLevel {
+    has level: u8
+    has name: string
+    has energy_efficiency: f64
+}
+
+docs {
+    Create producer trophic level.
+}
+
+pub fun producer_level() -> TrophicLevel {
+    return TrophicLevel {
+        level: 1,
+        name: "producer",
+        energy_efficiency: 1.0
+    }
+}
+
+docs {
+    Create primary consumer trophic level.
+}
+
+pub fun primary_consumer_level() -> TrophicLevel {
+    return TrophicLevel {
+        level: 2,
+        name: "primary consumer",
+        energy_efficiency: 0.10
+    }
+}
+
+docs {
+    Create secondary consumer trophic level.
+}
+
+pub fun secondary_consumer_level() -> TrophicLevel {
+    return TrophicLevel {
+        level: 3,
+        name: "secondary consumer",
+        energy_efficiency: 0.10
+    }
+}
+
+docs {
+    Create tertiary consumer (apex predator) trophic level.
+}
+
+pub fun tertiary_consumer_level() -> TrophicLevel {
+    return TrophicLevel {
+        level: 4,
+        name: "tertiary consumer",
+        energy_efficiency: 0.10
+    }
+}
+
+docs {
+    Create decomposer trophic level.
+}
+
+pub fun decomposer_level() -> TrophicLevel {
+    return TrophicLevel {
+        level: 0,
+        name: "decomposer",
+        energy_efficiency: 0.40
+    }
+}
+
+docs {
+    Species - a group of organisms capable of interbreeding.
+
+    Properties:
+    - name: Scientific name (Genus species)
+    - common_name: Common name
+    - traits: Phenotypic traits
+    - trophic_level: Position in food chain
+    - habitat: Preferred habitat type
+    - diet: Dietary classification
+    - lifespan: Average lifespan in years
+    - generation_time: Time between generations
+}
+
+pub gen Species {
+    has name: string
+    has common_name: string
+    has traits: Vec<string>
+    has trophic_level: TrophicLevel
+    has habitat: string
+    has diet: string
+    has average_lifespan_years: f64
+    has generation_time_years: f64
+    has is_endangered: bool
+    has conservation_status: string
+    has genome_size_mb: f64
+}
+
+docs {
+    Create a new species.
+}
+
+pub fun new_species(name: string, common_name: string, trophic: TrophicLevel) -> Species {
+    return Species {
+        name: name,
+        common_name: common_name,
+        traits: Vec::new(),
+        trophic_level: trophic,
+        habitat: "unknown",
+        diet: "unknown",
+        average_lifespan_years: 10.0,
+        generation_time_years: 2.0,
+        is_endangered: false,
+        conservation_status: "LC",
+        genome_size_mb: 1000.0
+    }
+}
+
+docs {
+    Create a producer species (plant/autotroph).
+}
+
+pub fun new_producer(name: string, common_name: string) -> Species {
+    return Species {
+        name: name,
+        common_name: common_name,
+        traits: vec!["photosynthetic", "sessile", "autotrophic"],
+        trophic_level: producer_level(),
+        habitat: "terrestrial",
+        diet: "autotroph",
+        average_lifespan_years: 50.0,
+        generation_time_years: 5.0,
+        is_endangered: false,
+        conservation_status: "LC",
+        genome_size_mb: 500.0
+    }
+}
+
+docs {
+    Create a consumer species (herbivore/carnivore).
+}
+
+pub fun new_consumer(name: string, common_name: string, level: TrophicLevel, diet: string) -> Species {
+    return Species {
+        name: name,
+        common_name: common_name,
+        traits: vec!["heterotrophic", "mobile"],
+        trophic_level: level,
+        habitat: "terrestrial",
+        diet: diet,
+        average_lifespan_years: 15.0,
+        generation_time_years: 3.0,
+        is_endangered: false,
+        conservation_status: "LC",
+        genome_size_mb: 3000.0
+    }
+}
+
+docs {
+    Create a decomposer species.
+}
+
+pub fun new_decomposer(name: string, common_name: string) -> Species {
+    return Species {
+        name: name,
+        common_name: common_name,
+        traits: vec!["heterotrophic", "saprotrophic"],
+        trophic_level: decomposer_level(),
+        habitat: "soil",
+        diet: "detritivore",
+        average_lifespan_years: 1.0,
+        generation_time_years: 0.1,
+        is_endangered: false,
+        conservation_status: "LC",
+        genome_size_mb: 50.0
+    }
+}
+
+// =============================================================================
+// CORE TYPES - Population
+// =============================================================================
+
+docs {
+    Population - a group of organisms of the same species in an area.
+
+    Properties:
+    - species: The species of this population
+    - size: Current number of individuals
+    - growth_rate: Intrinsic rate of increase (r)
+    - carrying_capacity: Maximum sustainable population (K)
+    - birth_rate: Births per individual per year
+    - death_rate: Deaths per individual per year
+    - age_structure: Distribution across age classes
+}
+
+pub gen Population {
+    has species: Species
+    has size: u64
+    has growth_rate: f64
+    has carrying_capacity: u64
+    has birth_rate: f64
+    has death_rate: f64
+    has density: f64
+    has area_km2: f64
+    has is_growing: bool
+    has generation: u32
+}
+
+docs {
+    Create a new population.
+}
+
+pub fun new_population(species: Species, initial_size: u64, carrying_capacity: u64) -> Population {
+    let area = 100.0
+    let density = (initial_size as f64) / area
+
+    return Population {
+        species: species,
+        size: initial_size,
+        growth_rate: 0.1,
+        carrying_capacity: carrying_capacity,
+        birth_rate: 0.15,
+        death_rate: 0.05,
+        density: density,
+        area_km2: area,
+        is_growing: true,
+        generation: 1
+    }
+}
+
+docs {
+    Create a population with specific growth parameters.
+}
+
+pub fun population_with_rates(species: Species, size: u64, birth_rate: f64, death_rate: f64, k: u64) -> Population {
+    let area = 100.0
+    let r = birth_rate - death_rate
+
+    return Population {
+        species: species,
+        size: size,
+        growth_rate: r,
+        carrying_capacity: k,
+        birth_rate: birth_rate,
+        death_rate: death_rate,
+        density: (size as f64) / area,
+        area_km2: area,
+        is_growing: r > 0.0,
+        generation: 1
+    }
+}
+
+// =============================================================================
+// CORE TYPES - Resource
+// =============================================================================
+
+docs {
+    Resource - abiotic or biotic resource in ecosystem.
+}
+
+pub gen Resource {
+    has name: string
+    has resource_type: string
+    has quantity: f64
+    has renewal_rate: f64
+    has is_limiting: bool
+    has units: string
+}
+
+docs {
+    Create a new resource.
+}
+
+pub fun new_resource(name: string, resource_type: string, quantity: f64, renewal_rate: f64) -> Resource {
+    return Resource {
+        name: name,
+        resource_type: resource_type,
+        quantity: quantity,
+        renewal_rate: renewal_rate,
+        is_limiting: false,
+        units: "arbitrary"
+    }
+}
+
+docs {
+    Create a water resource.
+}
+
+pub fun water_resource(quantity: f64) -> Resource {
+    return Resource {
+        name: "water",
+        resource_type: "abiotic",
+        quantity: quantity,
+        renewal_rate: 0.5,
+        is_limiting: false,
+        units: "liters"
+    }
+}
+
+docs {
+    Create a sunlight resource.
+}
+
+pub fun sunlight_resource(intensity: f64) -> Resource {
+    return Resource {
+        name: "sunlight",
+        resource_type: "abiotic",
+        quantity: intensity,
+        renewal_rate: 1.0,
+        is_limiting: false,
+        units: "W/m2"
+    }
+}
+
+// =============================================================================
+// CORE TYPES - Food Web
+// =============================================================================
+
+docs {
+    Trophic interaction between species.
+}
+
+pub gen TrophicInteraction {
+    has predator: Species
+    has prey: Species
+    has interaction_strength: f64
+    has attack_rate: f64
+    has handling_time: f64
+}
+
+docs {
+    Create a predator-prey interaction.
+}
+
+pub fun predation(predator: Species, prey: Species, strength: f64) -> TrophicInteraction {
+    return TrophicInteraction {
+        predator: predator,
+        prey: prey,
+        interaction_strength: strength,
+        attack_rate: 0.01,
+        handling_time: 0.1
+    }
+}
+
+docs {
+    Food Web - network of trophic interactions.
+
+    Properties:
+    - producers: Autotroph species (plants, algae)
+    - consumers: Heterotroph species (herbivores, carnivores)
+    - decomposers: Detritivores and decomposers
+    - interactions: All trophic interactions
+}
+
+pub gen FoodWeb {
+    has producers: Vec<Species>
+    has consumers: Vec<Species>
+    has decomposers: Vec<Species>
+    has interactions: Vec<TrophicInteraction>
+    has connectance: f64
+    has num_trophic_levels: u8
+}
+
+docs {
+    Create a new food web.
+}
+
+pub fun new_food_web() -> FoodWeb {
+    return FoodWeb {
+        producers: Vec::new(),
+        consumers: Vec::new(),
+        decomposers: Vec::new(),
+        interactions: Vec::new(),
+        connectance: 0.0,
+        num_trophic_levels: 0
+    }
+}
+
+docs {
+    Add a producer to the food web.
+}
+
+pub fun add_producer(web: FoodWeb, species: Species) -> FoodWeb {
+    let mut producers = web.producers
+    producers.push(species)
+
+    return FoodWeb {
+        producers: producers,
+        consumers: web.consumers,
+        decomposers: web.decomposers,
+        interactions: web.interactions,
+        connectance: calculate_connectance_internal(
+            producers.len() as u32 + web.consumers.len() as u32 + web.decomposers.len() as u32,
+            web.interactions.len() as u32
+        ),
+        num_trophic_levels: web.num_trophic_levels
+    }
+}
+
+docs {
+    Add a consumer to the food web.
+}
+
+pub fun add_consumer(web: FoodWeb, species: Species) -> FoodWeb {
+    let mut consumers = web.consumers
+    consumers.push(species)
+
+    let max_level = if species.trophic_level.level > web.num_trophic_levels {
+        species.trophic_level.level
+    } else {
+        web.num_trophic_levels
+    }
+
+    return FoodWeb {
+        producers: web.producers,
+        consumers: consumers,
+        decomposers: web.decomposers,
+        interactions: web.interactions,
+        connectance: web.connectance,
+        num_trophic_levels: max_level
+    }
+}
+
+docs {
+    Add a trophic interaction to the food web.
+}
+
+pub fun add_interaction(web: FoodWeb, interaction: TrophicInteraction) -> FoodWeb {
+    let mut interactions = web.interactions
+    interactions.push(interaction)
+
+    let total_species = web.producers.len() as u32 + web.consumers.len() as u32 + web.decomposers.len() as u32
+
+    return FoodWeb {
+        producers: web.producers,
+        consumers: web.consumers,
+        decomposers: web.decomposers,
+        interactions: interactions,
+        connectance: calculate_connectance_internal(total_species, interactions.len() as u32),
+        num_trophic_levels: web.num_trophic_levels
+    }
+}
+
+// =============================================================================
+// CORE TYPES - Ecosystem
+// =============================================================================
+
+docs {
+    Ecosystem - community of organisms interacting with their environment.
+
+    Properties:
+    - name: Ecosystem name
+    - biome: Major biome type
+    - species: All species in ecosystem
+    - populations: Population data for each species
+    - resources: Available resources
+    - food_web: Trophic structure
+    - area: Total area in km^2
+    - climate: Climate parameters
+}
+
+pub gen Climate {
+    has avg_temperature_c: f64
+    has avg_precipitation_mm: f64
+    has seasonality: f64
+    has latitude: f64
+}
+
+pub gen Ecosystem {
+    has name: string
+    has biome: string
+    has species: Vec<Species>
+    has populations: Vec<Population>
+    has resources: Vec<Resource>
+    has food_web: FoodWeb
+    has area_km2: f64
+    has climate: Climate
+    has primary_productivity: f64
+    has biodiversity_index: f64
+}
+
+docs {
+    Create a new ecosystem.
+}
+
+pub fun new_ecosystem(name: string, biome: string, area: f64) -> Ecosystem {
+    return Ecosystem {
+        name: name,
+        biome: biome,
+        species: Vec::new(),
+        populations: Vec::new(),
+        resources: Vec::new(),
+        food_web: new_food_web(),
+        area_km2: area,
+        climate: Climate {
+            avg_temperature_c: 20.0,
+            avg_precipitation_mm: 1000.0,
+            seasonality: 0.5,
+            latitude: 45.0
+        },
+        primary_productivity: 1000.0,
+        biodiversity_index: 0.0
+    }
+}
+
+docs {
+    Create a tropical rainforest ecosystem.
+}
+
+pub fun tropical_rainforest(name: string, area: f64) -> Ecosystem {
+    return Ecosystem {
+        name: name,
+        biome: "tropical rainforest",
+        species: Vec::new(),
+        populations: Vec::new(),
+        resources: vec![
+            water_resource(5000.0),
+            sunlight_resource(200.0)
+        ],
+        food_web: new_food_web(),
+        area_km2: area,
+        climate: Climate {
+            avg_temperature_c: 27.0,
+            avg_precipitation_mm: 2500.0,
+            seasonality: 0.1,
+            latitude: 5.0
+        },
+        primary_productivity: 2200.0,
+        biodiversity_index: 4.5
+    }
+}
+
+docs {
+    Create a temperate forest ecosystem.
+}
+
+pub fun temperate_forest(name: string, area: f64) -> Ecosystem {
+    return Ecosystem {
+        name: name,
+        biome: "temperate forest",
+        species: Vec::new(),
+        populations: Vec::new(),
+        resources: vec![
+            water_resource(1200.0),
+            sunlight_resource(150.0)
+        ],
+        food_web: new_food_web(),
+        area_km2: area,
+        climate: Climate {
+            avg_temperature_c: 12.0,
+            avg_precipitation_mm: 1000.0,
+            seasonality: 0.7,
+            latitude: 45.0
+        },
+        primary_productivity: 1200.0,
+        biodiversity_index: 3.0
+    }
+}
+
+docs {
+    Create a grassland/savanna ecosystem.
+}
+
+pub fun grassland(name: string, area: f64) -> Ecosystem {
+    return Ecosystem {
+        name: name,
+        biome: "grassland",
+        species: Vec::new(),
+        populations: Vec::new(),
+        resources: vec![
+            water_resource(600.0),
+            sunlight_resource: (180.0)
+        ],
+        food_web: new_food_web(),
+        area_km2: area,
+        climate: Climate {
+            avg_temperature_c: 22.0,
+            avg_precipitation_mm: 600.0,
+            seasonality: 0.6,
+            latitude: 20.0
+        },
+        primary_productivity: 900.0,
+        biodiversity_index: 2.5
+    }
+}
+
+docs {
+    Add a species and population to ecosystem.
+}
+
+pub fun add_species_to_ecosystem(eco: Ecosystem, species: Species, population_size: u64) -> Ecosystem {
+    let mut species_list = eco.species
+    species_list.push(species)
+
+    let mut populations = eco.populations
+    let pop = new_population(species, population_size, population_size * 10)
+    populations.push(pop)
+
+    let diversity = calculate_shannon_index(populations)
+
+    return Ecosystem {
+        name: eco.name,
+        biome: eco.biome,
+        species: species_list,
+        populations: populations,
+        resources: eco.resources,
+        food_web: eco.food_web,
+        area_km2: eco.area_km2,
+        climate: eco.climate,
+        primary_productivity: eco.primary_productivity,
+        biodiversity_index: diversity
+    }
+}
+
+// =============================================================================
+// TRAITS
+// =============================================================================
+
+docs {
+    Trait for producer organisms (autotrophs).
+    Producers capture energy from sunlight or chemical sources.
+}
+
+pub trait Producer {
+    docs {
+        Perform photosynthesis or chemosynthesis.
+        Returns energy captured (kJ per individual per day).
+    }
+
+    fun photosynthesize(light: f64, co2: f64, water: f64) -> f64
+
+    docs {
+        Get net primary productivity (g C per m^2 per year).
+    }
+
+    fun net_primary_productivity() -> f64
+
+    docs {
+        Get gross primary productivity.
+    }
+
+    fun gross_primary_productivity() -> f64
+
+    docs {
+        Get respiration rate.
+    }
+
+    fun respiration_rate() -> f64
+}
+
+docs {
+    Trait for consumer organisms (heterotrophs).
+    Consumers obtain energy by eating other organisms.
+}
+
+pub trait Consumer {
+    docs {
+        Consume prey species.
+        Returns energy obtained (kJ).
+    }
+
+    fun consume(prey: Species, amount: f64) -> f64
+
+    docs {
+        Get assimilation efficiency (fraction of consumed energy absorbed).
+    }
+
+    fun assimilation_efficiency() -> f64
+
+    docs {
+        Get production efficiency (fraction of assimilated energy converted to biomass).
+    }
+
+    fun production_efficiency() -> f64
+
+    docs {
+        Get metabolic rate (kJ per day).
+    }
+
+    fun metabolic_rate() -> f64
+
+    docs {
+        Get functional response type (Type I, II, or III).
+    }
+
+    fun functional_response_type() -> string
+}
+
+docs {
+    Trait for decomposer organisms.
+    Decomposers break down dead organic matter.
+}
+
+pub trait Decomposer {
+    docs {
+        Decompose organic matter.
+        Returns nutrients released.
+    }
+
+    fun decompose(organic_matter: f64) -> f64
+
+    docs {
+        Get decomposition rate.
+    }
+
+    fun decomposition_rate() -> f64
+
+    docs {
+        Get nutrient cycling efficiency.
+    }
+
+    fun nutrient_cycling_efficiency() -> f64
+}
+
+docs {
+    Trait for competing populations.
+}
+
+pub trait Competes {
+    docs {
+        Calculate competition coefficient (alpha).
+    }
+
+    fun competition_coefficient(other: Species) -> f64
+
+    docs {
+        Determine competition outcome.
+    }
+
+    fun competition_outcome(other: Population) -> string
+
+    docs {
+        Check for competitive exclusion.
+    }
+
+    fun is_competitively_excluded(other: Population) -> bool
+}
+
+docs {
+    Trait for populations that exhibit density dependence.
+}
+
+pub trait DensityDependent {
+    docs {
+        Calculate density-dependent growth rate.
+    }
+
+    fun density_dependent_growth(current_density: f64) -> f64
+
+    docs {
+        Get Allee effect threshold (if any).
+    }
+
+    fun allee_threshold() -> Option<f64>
+
+    docs {
+        Check if population is at carrying capacity.
+    }
+
+    fun at_carrying_capacity() -> bool
+}
+
+// =============================================================================
+// RULES
+// =============================================================================
+
+docs {
+    Energy Flow: Energy decreases at each trophic level.
+    Only ~10% of energy transfers between levels.
+}
+
+pub rule energy_transfer_efficiency {
+    each TrophicInteraction {
+        this.interaction_strength <= 0.20
+    }
+}
+
+docs {
+    Carrying Capacity: Population cannot exceed carrying capacity long-term.
+}
+
+pub rule carrying_capacity {
+    each Population {
+        // Population may temporarily exceed K but will decline
+        this.size <= this.carrying_capacity * 2
+    }
+}
+
+docs {
+    Trophic Pyramid: Lower levels must support upper levels.
+    Biomass decreases with trophic level.
+}
+
+pub rule trophic_pyramid {
+    each FoodWeb {
+        sum_biomass(this.producers) > sum_biomass(this.consumers)
+    }
+}
+
+docs {
+    Conservation of Matter: Nutrients cycle within ecosystem.
+}
+
+pub rule nutrient_cycling {
+    each Ecosystem {
+        nutrients_in == nutrients_out + nutrients_stored
+    }
+}
+
+docs {
+    Species-Area Relationship: More area supports more species.
+    S = c * A^z where z is typically 0.1-0.4
+}
+
+pub rule species_area {
+    each Ecosystem {
+        this.species.len() <= species_area_prediction(this.area_km2)
+    }
+}
+
+docs {
+    Competitive Exclusion: Complete competitors cannot coexist.
+    Gause's Law.
+}
+
+pub rule competitive_exclusion {
+    each pair (p1, p2) in same_niche {
+        p1.species != p2.species implies one_will_dominate(p1, p2)
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Population Dynamics
+// =============================================================================
+
+docs {
+    Calculate exponential population growth.
+    dN/dt = rN
+
+    Parameters:
+    - n: Current population size
+    - r: Intrinsic rate of increase
+
+    Returns:
+    - Population change per time unit
+}
+
+pub fun exponential_growth(n: f64, r: f64) -> f64 {
+    return r * n
+}
+
+docs {
+    Calculate population after exponential growth.
+    N(t) = N0 * e^(rt)
+}
+
+pub fun exponential_population(n0: f64, r: f64, t: f64) -> f64 {
+    return n0 * (2.71828 ^ (r * t))
+}
+
+docs {
+    Calculate logistic population growth.
+    dN/dt = rN(1 - N/K)
+
+    Parameters:
+    - n: Current population size
+    - r: Intrinsic rate of increase
+    - k: Carrying capacity
+
+    Returns:
+    - Population change per time unit
+}
+
+pub fun logistic_growth(n: f64, r: f64, k: f64) -> f64 {
+    if k == 0.0 {
+        return 0.0
+    }
+    return r * n * (1.0 - n / k)
+}
+
+docs {
+    Calculate population after logistic growth.
+    N(t) = K / (1 + ((K-N0)/N0) * e^(-rt))
+}
+
+pub fun logistic_population(n0: f64, r: f64, k: f64, t: f64) -> f64 {
+    if n0 == 0.0 {
+        return 0.0
+    }
+
+    let exp_term = 2.71828 ^ (-r * t)
+    let denominator = 1.0 + ((k - n0) / n0) * exp_term
+
+    if denominator == 0.0 {
+        return k
+    }
+
+    return k / denominator
+}
+
+docs {
+    Calculate doubling time for exponentially growing population.
+    t_d = ln(2) / r
+}
+
+pub fun doubling_time(r: f64) -> f64 {
+    if r <= 0.0 {
+        return 1.0e308  // Infinity
+    }
+    return 0.693147 / r
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Lotka-Volterra Predator-Prey Model
+// =============================================================================
+
+docs {
+    Lotka-Volterra predator-prey model.
+
+    Models the dynamics of two interacting populations:
+    - Prey population (N): grows exponentially in absence of predators
+    - Predator population (P): declines in absence of prey
+
+    Equations:
+    - dN/dt = rN - aNP (prey growth minus predation)
+    - dP/dt = baNP - mP (predator growth from predation minus mortality)
+
+    Parameters:
+    - prey: Current prey population
+    - predator: Current predator population
+
+    Returns:
+    - Tuple of (new prey population, new predator population) after dt
+}
+
+pub fun lotka_volterra(prey: Population, predator: Population) -> (Population, Population) {
+    // Model parameters
+    let r = prey.growth_rate           // Prey intrinsic growth rate
+    let a = 0.01                        // Predation rate (attack rate)
+    let b = 0.02                        // Conversion efficiency (prey to predator)
+    let m = predator.death_rate        // Predator mortality rate
+    let dt = 0.1                        // Time step
+
+    let n = prey.size as f64
+    let p = predator.size as f64
+
+    // Lotka-Volterra equations
+    // dN/dt = rN - aNP
+    let dn_dt = r * n - a * n * p
+
+    // dP/dt = baNP - mP
+    let dp_dt = b * a * n * p - m * p
+
+    // Euler integration
+    let new_n = n + dn_dt * dt
+    let new_p = p + dp_dt * dt
+
+    // Ensure populations don't go negative
+    let final_n = if new_n > 0.0 { new_n as u64 } else { 0 }
+    let final_p = if new_p > 0.0 { new_p as u64 } else { 0 }
+
+    let new_prey = Population {
+        species: prey.species,
+        size: final_n,
+        growth_rate: prey.growth_rate,
+        carrying_capacity: prey.carrying_capacity,
+        birth_rate: prey.birth_rate,
+        death_rate: prey.death_rate,
+        density: (final_n as f64) / prey.area_km2,
+        area_km2: prey.area_km2,
+        is_growing: dn_dt > 0.0,
+        generation: prey.generation
+    }
+
+    let new_predator = Population {
+        species: predator.species,
+        size: final_p,
+        growth_rate: predator.growth_rate,
+        carrying_capacity: predator.carrying_capacity,
+        birth_rate: predator.birth_rate,
+        death_rate: predator.death_rate,
+        density: (final_p as f64) / predator.area_km2,
+        area_km2: predator.area_km2,
+        is_growing: dp_dt > 0.0,
+        generation: predator.generation
+    }
+
+    return (new_prey, new_predator)
+}
+
+docs {
+    Calculate prey population change rate (Lotka-Volterra).
+    dN/dt = rN - aNP
+}
+
+pub fun prey_growth_rate(n: f64, p: f64, r: f64, a: f64) -> f64 {
+    return r * n - a * n * p
+}
+
+docs {
+    Calculate predator population change rate (Lotka-Volterra).
+    dP/dt = baNP - mP
+}
+
+pub fun predator_growth_rate(n: f64, p: f64, a: f64, b: f64, m: f64) -> f64 {
+    return b * a * n * p - m * p
+}
+
+docs {
+    Calculate equilibrium prey population.
+    N* = m / (ba)
+}
+
+pub fun prey_equilibrium(m: f64, b: f64, a: f64) -> f64 {
+    if b * a == 0.0 {
+        return 1.0e308
+    }
+    return m / (b * a)
+}
+
+docs {
+    Calculate equilibrium predator population.
+    P* = r / a
+}
+
+pub fun predator_equilibrium(r: f64, a: f64) -> f64 {
+    if a == 0.0 {
+        return 1.0e308
+    }
+    return r / a
+}
+
+docs {
+    Simulate Lotka-Volterra for multiple time steps.
+}
+
+pub fun simulate_predator_prey(prey: Population, predator: Population, steps: u32) -> Vec<(u64, u64)> {
+    let mut results: Vec<(u64, u64)> = Vec::new()
+    let mut current_prey = prey
+    let mut current_predator = predator
+
+    results.push((current_prey.size, current_predator.size))
+
+    for i in 0..steps {
+        let (new_prey, new_pred) = lotka_volterra(current_prey, current_predator)
+        current_prey = new_prey
+        current_predator = new_pred
+        results.push((current_prey.size, current_predator.size))
+    }
+
+    return results
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Competition
+// =============================================================================
+
+docs {
+    Lotka-Volterra competition model.
+
+    dN1/dt = r1*N1*(1 - (N1 + a12*N2)/K1)
+    dN2/dt = r2*N2*(1 - (N2 + a21*N1)/K2)
+
+    Parameters:
+    - n1, n2: Population sizes
+    - r1, r2: Growth rates
+    - k1, k2: Carrying capacities
+    - a12: Effect of species 2 on species 1
+    - a21: Effect of species 1 on species 2
+
+    Returns:
+    - Tuple of growth rates (dN1/dt, dN2/dt)
+}
+
+pub fun competition_model(n1: f64, n2: f64, r1: f64, r2: f64,
+                          k1: f64, k2: f64, a12: f64, a21: f64) -> (f64, f64) {
+    let dn1_dt = r1 * n1 * (1.0 - (n1 + a12 * n2) / k1)
+    let dn2_dt = r2 * n2 * (1.0 - (n2 + a21 * n1) / k2)
+
+    return (dn1_dt, dn2_dt)
+}
+
+docs {
+    Predict outcome of interspecific competition.
+    Based on comparison of carrying capacities and competition coefficients.
+}
+
+pub fun competition_outcome(k1: f64, k2: f64, a12: f64, a21: f64) -> string {
+    // Species 1 wins if: K1 > K2/a21 AND K1/a12 > K2
+    // Species 2 wins if: K2 > K1/a12 AND K2/a21 > K1
+    // Coexistence if: K1 > K2*a12 AND K2 > K1*a21
+    // Unstable if: K1 < K2*a12 AND K2 < K1*a21
+
+    let sp1_wins = k1 > k2 / a21 && k1 / a12 > k2
+    let sp2_wins = k2 > k1 / a12 && k2 / a21 > k1
+    let coexist = k1 > k2 * a12 && k2 > k1 * a21
+
+    if coexist {
+        return "coexistence"
+    }
+    if sp1_wins {
+        return "species_1_wins"
+    }
+    if sp2_wins {
+        return "species_2_wins"
+    }
+    return "unstable_equilibrium"
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Biodiversity Metrics
+// =============================================================================
+
+docs {
+    Calculate Shannon diversity index (H').
+    H' = -sum(pi * ln(pi))
+
+    Higher values indicate greater diversity.
+}
+
+pub fun shannon_diversity(populations: Vec<Population>) -> f64 {
+    let mut total: u64 = 0
+    for pop in populations {
+        total = total + pop.size
+    }
+
+    if total == 0 {
+        return 0.0
+    }
+
+    let mut h = 0.0
+    for pop in populations {
+        if pop.size > 0 {
+            let pi = (pop.size as f64) / (total as f64)
+            h = h - pi * ln(pi)
+        }
+    }
+
+    return h
+}
+
+docs {
+    Calculate Simpson's diversity index (D).
+    D = 1 - sum(pi^2)
+
+    Higher values indicate greater diversity.
+}
+
+pub fun simpson_diversity(populations: Vec<Population>) -> f64 {
+    let mut total: u64 = 0
+    for pop in populations {
+        total = total + pop.size
+    }
+
+    if total == 0 {
+        return 0.0
+    }
+
+    let mut sum_pi_squared = 0.0
+    for pop in populations {
+        let pi = (pop.size as f64) / (total as f64)
+        sum_pi_squared = sum_pi_squared + pi * pi
+    }
+
+    return 1.0 - sum_pi_squared
+}
+
+docs {
+    Calculate species richness (number of species).
+}
+
+pub fun species_richness(populations: Vec<Population>) -> u32 {
+    let mut count: u32 = 0
+    for pop in populations {
+        if pop.size > 0 {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+docs {
+    Calculate species evenness (Pielou's J).
+    J = H' / ln(S)
+
+    Where S is species richness.
+}
+
+pub fun species_evenness(populations: Vec<Population>) -> f64 {
+    let s = species_richness(populations) as f64
+    if s <= 1.0 {
+        return 1.0
+    }
+
+    let h = shannon_diversity(populations)
+    return h / ln(s)
+}
+
+docs {
+    Calculate Shannon index (internal helper).
+}
+
+pub fun calculate_shannon_index(populations: Vec<Population>) -> f64 {
+    return shannon_diversity(populations)
+}
+
+docs {
+    Estimate species count from area using species-area relationship.
+    S = c * A^z
+
+    Typical z values: 0.1-0.4 (0.25 is common for islands)
+}
+
+pub fun species_area_prediction(area_km2: f64) -> u32 {
+    let c = 10.0  // Species constant (varies by ecosystem)
+    let z = 0.25  // Species-area exponent
+
+    let s = c * (area_km2 ^ z)
+    return s as u32
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Energy Flow
+// =============================================================================
+
+docs {
+    Calculate energy transfer between trophic levels.
+    Typically only ~10% of energy transfers.
+}
+
+pub fun energy_transfer(input_energy: f64, efficiency: f64) -> f64 {
+    return input_energy * efficiency
+}
+
+docs {
+    Calculate trophic level energy from primary productivity.
+}
+
+pub fun trophic_energy(primary_productivity: f64, trophic_level: u8) -> f64 {
+    if trophic_level == 1 {
+        return primary_productivity
+    }
+
+    let efficiency = 0.10  // 10% transfer efficiency
+    let mut energy = primary_productivity
+
+    for i in 2..(trophic_level + 1) {
+        energy = energy * efficiency
+    }
+
+    return energy
+}
+
+docs {
+    Calculate net primary productivity.
+    NPP = GPP - Respiration
+}
+
+pub fun net_primary_productivity(gpp: f64, respiration: f64) -> f64 {
+    return gpp - respiration
+}
+
+docs {
+    Calculate biomass pyramid.
+    Returns energy available at each trophic level.
+}
+
+pub fun biomass_pyramid(primary_productivity: f64, max_level: u8) -> Vec<f64> {
+    let mut pyramid: Vec<f64> = Vec::new()
+
+    for level in 1..(max_level + 1) {
+        pyramid.push(trophic_energy(primary_productivity, level))
+    }
+
+    return pyramid
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+docs {
+    Natural logarithm approximation.
+}
+
+pub fun ln(x: f64) -> f64 {
+    if x <= 0.0 {
+        return -1.0e308
+    }
+    // Using Taylor series approximation for ln(x)
+    // ln(x) = 2 * (y + y^3/3 + y^5/5 + ...) where y = (x-1)/(x+1)
+    let y = (x - 1.0) / (x + 1.0)
+    let y2 = y * y
+    return 2.0 * (y + y * y2 / 3.0 + y * y2 * y2 / 5.0 + y * y2 * y2 * y2 / 7.0)
+}
+
+docs {
+    Calculate food web connectance.
+    C = L / S^2 where L is links and S is species.
+}
+
+pub fun calculate_connectance_internal(num_species: u32, num_links: u32) -> f64 {
+    if num_species == 0 {
+        return 0.0
+    }
+    return (num_links as f64) / ((num_species * num_species) as f64)
+}
+
+docs {
+    Calculate food web connectance for a FoodWeb.
+}
+
+pub fun food_web_connectance(web: FoodWeb) -> f64 {
+    let total_species = web.producers.len() + web.consumers.len() + web.decomposers.len()
+    let links = web.interactions.len()
+    return calculate_connectance_internal(total_species as u32, links as u32)
+}
+
+// =============================================================================
+// EVOLUTION
+// =============================================================================
+
+docs {
+    Evolution adding metapopulation dynamics.
+}
+
+evo metapopulation @ 0.9.1 > 0.9.0 {
+    adds gen Patch { id: u32, population: Population, area: f64, is_occupied: bool }
+    adds gen Metapopulation { patches: Vec<Patch>, dispersal_rate: f64 }
+    adds fun colonization_rate(patches: Vec<Patch>) -> f64
+    adds fun extinction_rate(patch: Patch) -> f64
+    adds fun levins_model(metapop: Metapopulation) -> f64
+    because "metapopulation dynamics essential for conservation"
+}
+
+docs {
+    Evolution adding island biogeography.
+}
+
+evo island_biogeography @ 0.9.2 > 0.9.1 {
+    adds gen Island { distance_from_mainland: f64, area: f64, species: Vec<Species> }
+    adds fun immigration_rate(island: Island) -> f64
+    adds fun extinction_rate_island(island: Island) -> f64
+    adds fun equilibrium_species(island: Island) -> u32
+    adds fun turnover_rate(island: Island) -> f64
+    because "island biogeography theory fundamental to ecology"
+}
+
+docs {
+    Evolution adding climate change impacts.
+}
+
+evo climate_change @ 0.9.3 > 0.9.2 {
+    adds gen ClimateScenario { temp_change: f64, precip_change: f64, years: u32 }
+    adds fun project_range_shift(species: Species, scenario: ClimateScenario) -> f64
+    adds fun extinction_risk(species: Species, scenario: ClimateScenario) -> f64
+    adds fun phenology_shift(species: Species, temp_change: f64) -> f64
+    adds fun biome_shift(ecosystem: Ecosystem, scenario: ClimateScenario) -> string
+    because "climate change impacts critical for conservation planning"
+}
+
+docs {
+    Evolution adding ecosystem services valuation.
+}
+
+evo ecosystem_services @ 0.9.4 > 0.9.3 {
+    adds gen EcosystemService { name: string, value_per_hectare: f64, category: string }
+    adds fun carbon_sequestration_value(ecosystem: Ecosystem) -> f64
+    adds fun water_filtration_value(ecosystem: Ecosystem) -> f64
+    adds fun pollination_value(ecosystem: Ecosystem) -> f64
+    adds fun total_ecosystem_value(ecosystem: Ecosystem) -> f64
+    because "ecosystem services quantification supports conservation economics"
+}

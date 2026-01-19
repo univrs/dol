@@ -1,0 +1,648 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Thermodynamics Module
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics.thermodynamics @ 0.9.0
+
+docs {
+    Thermodynamics module for heat, energy, and state modeling.
+
+    This module provides:
+    - Thermodynamic state variables (T, P, V, S, U, H, G)
+    - Phase states and transitions
+    - Ideal gas modeling
+    - Heat engines and cycles
+    - Laws of thermodynamics
+
+    All calculations use SI units:
+    - Temperature: Kelvin (K)
+    - Pressure: Pascals (Pa)
+    - Volume: cubic meters (m³)
+    - Energy: Joules (J)
+    - Entropy: J/K
+}
+
+use local::lib::GAS_CONSTANT
+use local::lib::BOLTZMANN_CONSTANT
+use local::lib::AVOGADRO_NUMBER
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Phase of matter.
+}
+
+pub gen Phase {
+    has state: string
+}
+
+docs {
+    Create a solid phase.
+}
+
+pub fun phase_solid() -> Phase {
+    return Phase { state: "solid" }
+}
+
+docs {
+    Create a liquid phase.
+}
+
+pub fun phase_liquid() -> Phase {
+    return Phase { state: "liquid" }
+}
+
+docs {
+    Create a gas phase.
+}
+
+pub fun phase_gas() -> Phase {
+    return Phase { state: "gas" }
+}
+
+docs {
+    Create a plasma phase.
+}
+
+pub fun phase_plasma() -> Phase {
+    return Phase { state: "plasma" }
+}
+
+docs {
+    Complete thermodynamic state with all state variables.
+}
+
+pub gen ThermodynamicState {
+    has temperature: f64
+    has pressure: f64
+    has volume: f64
+    has entropy: f64
+    has internal_energy: f64
+    has enthalpy: f64
+    has gibbs_free_energy: f64
+    has phase: Phase
+}
+
+docs {
+    Ideal gas state with additional properties.
+}
+
+pub gen IdealGas {
+    has temperature: f64
+    has pressure: f64
+    has volume: f64
+    has moles: f64
+    has gas_constant: f64
+    has molar_mass: f64
+    has cv: f64
+    has cp: f64
+}
+
+docs {
+    Phase transition between two states.
+}
+
+pub gen PhaseTransition {
+    has initial_phase: Phase
+    has final_phase: Phase
+    has transition_temperature: f64
+    has latent_heat: f64
+}
+
+docs {
+    Heat transfer parameters.
+}
+
+pub gen HeatTransfer {
+    has rate: f64
+    has temperature_difference: f64
+    has thermal_conductivity: f64
+    has area: f64
+    has thickness: f64
+}
+
+docs {
+    Heat engine operating between two reservoirs.
+}
+
+pub gen HeatEngine {
+    has hot_reservoir_temp: f64
+    has cold_reservoir_temp: f64
+    has heat_in: f64
+    has work_out: f64
+    has heat_out: f64
+    has efficiency: f64
+}
+
+docs {
+    Carnot cycle step.
+}
+
+pub gen CarnotStep {
+    has step_type: string
+    has initial_state: ThermodynamicState
+    has final_state: ThermodynamicState
+    has heat_transferred: f64
+    has work_done: f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAITS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Reversible processes that can be run in reverse.
+}
+
+pub trait Reversible {
+    docs {
+        Reverse the process, returning to the initial state.
+    }
+
+    fun reverse() -> Reversible
+
+    docs {
+        Calculate entropy change (should be zero for reversible processes).
+    }
+
+    fun entropy_change() -> f64
+}
+
+docs {
+    Irreversible processes with entropy increase.
+}
+
+pub trait Irreversible {
+    docs {
+        Calculate the entropy increase of the universe.
+    }
+
+    fun entropy_increase() -> f64
+
+    docs {
+        Check if the process is spontaneous.
+    }
+
+    fun is_spontaneous() -> bool
+}
+
+docs {
+    Processes at constant temperature.
+}
+
+pub trait Isothermal {
+    docs {
+        Get the constant temperature.
+    }
+
+    fun temperature() -> f64
+
+    docs {
+        Calculate work done in isothermal process.
+    }
+
+    fun isothermal_work(v1: f64, v2: f64) -> f64
+}
+
+docs {
+    Processes at constant pressure.
+}
+
+pub trait Isobaric {
+    docs {
+        Get the constant pressure.
+    }
+
+    fun pressure() -> f64
+
+    docs {
+        Calculate work done in isobaric process.
+    }
+
+    fun isobaric_work(v1: f64, v2: f64) -> f64
+}
+
+docs {
+    Processes at constant volume.
+}
+
+pub trait Isochoric {
+    docs {
+        Get the constant volume.
+    }
+
+    fun volume() -> f64
+}
+
+docs {
+    Adiabatic processes (no heat exchange).
+}
+
+pub trait Adiabatic {
+    docs {
+        Calculate final temperature after adiabatic process.
+    }
+
+    fun final_temperature(v1: f64, v2: f64, gamma: f64) -> f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RULES (THERMODYNAMIC LAWS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Zeroth Law: Thermal equilibrium is transitive.
+    If A is in equilibrium with B, and B with C, then A is in equilibrium with C.
+}
+
+pub rule zeroth_law {
+    each thermal_contact(a: ThermodynamicState, b: ThermodynamicState) {
+        equilibrium(a, b) implies a.temperature == b.temperature
+    }
+}
+
+docs {
+    First Law: Conservation of energy.
+    ΔU = Q - W (change in internal energy = heat added - work done)
+}
+
+pub rule first_law {
+    each process {
+        delta_internal_energy == heat_added - work_done
+    }
+}
+
+docs {
+    Second Law: Entropy never decreases in isolated systems.
+    ΔS ≥ 0 for any spontaneous process.
+}
+
+pub rule second_law {
+    each isolated_system {
+        delta_entropy >= 0.0
+    }
+}
+
+docs {
+    Third Law: Entropy approaches zero as temperature approaches absolute zero.
+}
+
+pub rule third_law {
+    each system {
+        as temperature approaches 0.0, entropy approaches 0.0
+    }
+}
+
+docs {
+    Ideal Gas Law: PV = nRT
+}
+
+pub rule ideal_gas_law {
+    each IdealGas {
+        this.pressure * this.volume == this.moles * this.gas_constant * this.temperature
+    }
+}
+
+docs {
+    Carnot efficiency limit: No engine more efficient than Carnot.
+}
+
+pub rule carnot_efficiency_limit {
+    each HeatEngine {
+        this.efficiency <= 1.0 - (this.cold_reservoir_temp / this.hot_reservoir_temp)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURE FUNCTIONS - STATE CREATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a thermodynamic state at standard conditions (STP).
+}
+
+pub fun standard_state() -> ThermodynamicState {
+    return ThermodynamicState {
+        temperature: 273.15,
+        pressure: 101325.0,
+        volume: 0.0224,
+        entropy: 0.0,
+        internal_energy: 0.0,
+        enthalpy: 0.0,
+        gibbs_free_energy: 0.0,
+        phase: phase_gas()
+    }
+}
+
+docs {
+    Create an ideal gas state from P, V, n.
+}
+
+pub fun new_ideal_gas(pressure: f64, volume: f64, moles: f64) -> IdealGas {
+    let temperature = (pressure * volume) / (moles * GAS_CONSTANT)
+
+    return IdealGas {
+        temperature: temperature,
+        pressure: pressure,
+        volume: volume,
+        moles: moles,
+        gas_constant: GAS_CONSTANT,
+        molar_mass: 0.0,
+        cv: 1.5 * GAS_CONSTANT,
+        cp: 2.5 * GAS_CONSTANT
+    }
+}
+
+docs {
+    Create an ideal monatomic gas (3 DOF).
+}
+
+pub fun monatomic_gas(pressure: f64, volume: f64, moles: f64) -> IdealGas {
+    let gas = new_ideal_gas(pressure, volume, moles)
+    return IdealGas {
+        temperature: gas.temperature,
+        pressure: pressure,
+        volume: volume,
+        moles: moles,
+        gas_constant: GAS_CONSTANT,
+        molar_mass: gas.molar_mass,
+        cv: 1.5 * GAS_CONSTANT,
+        cp: 2.5 * GAS_CONSTANT
+    }
+}
+
+docs {
+    Create an ideal diatomic gas (5 DOF at room temp).
+}
+
+pub fun diatomic_gas(pressure: f64, volume: f64, moles: f64) -> IdealGas {
+    let gas = new_ideal_gas(pressure, volume, moles)
+    return IdealGas {
+        temperature: gas.temperature,
+        pressure: pressure,
+        volume: volume,
+        moles: moles,
+        gas_constant: GAS_CONSTANT,
+        molar_mass: gas.molar_mass,
+        cv: 2.5 * GAS_CONSTANT,
+        cp: 3.5 * GAS_CONSTANT
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURE FUNCTIONS - CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate pressure from ideal gas law.
+    P = nRT / V
+}
+
+pub fun calculate_pressure(moles: f64, temperature: f64, volume: f64) -> f64 {
+    if volume == 0.0 {
+        return 1.0e308
+    }
+    return (moles * GAS_CONSTANT * temperature) / volume
+}
+
+docs {
+    Calculate volume from ideal gas law.
+    V = nRT / P
+}
+
+pub fun calculate_volume(moles: f64, temperature: f64, pressure: f64) -> f64 {
+    if pressure == 0.0 {
+        return 1.0e308
+    }
+    return (moles * GAS_CONSTANT * temperature) / pressure
+}
+
+docs {
+    Calculate temperature from ideal gas law.
+    T = PV / nR
+}
+
+pub fun calculate_temperature(pressure: f64, volume: f64, moles: f64) -> f64 {
+    if moles == 0.0 {
+        return 0.0
+    }
+    return (pressure * volume) / (moles * GAS_CONSTANT)
+}
+
+docs {
+    Calculate heat capacity ratio (gamma = Cp/Cv).
+}
+
+pub fun heat_capacity_ratio(gas: IdealGas) -> f64 {
+    if gas.cv == 0.0 {
+        return 1.0
+    }
+    return gas.cp / gas.cv
+}
+
+docs {
+    Calculate internal energy of ideal gas.
+    U = n * Cv * T
+}
+
+pub fun internal_energy(gas: IdealGas) -> f64 {
+    return gas.moles * gas.cv * gas.temperature
+}
+
+docs {
+    Calculate enthalpy of ideal gas.
+    H = U + PV = n * Cp * T
+}
+
+pub fun enthalpy(gas: IdealGas) -> f64 {
+    return gas.moles * gas.cp * gas.temperature
+}
+
+docs {
+    Calculate entropy change for isothermal expansion.
+    ΔS = nR * ln(V2/V1)
+}
+
+pub fun entropy_change_isothermal(moles: f64, v1: f64, v2: f64) -> f64 {
+    if v1 <= 0.0 || v2 <= 0.0 {
+        return 0.0
+    }
+    let ratio = v2 / v1
+    return moles * GAS_CONSTANT * ratio
+}
+
+docs {
+    Calculate work done in isothermal expansion.
+    W = nRT * ln(V2/V1)
+}
+
+pub fun work_isothermal(gas: IdealGas, v_final: f64) -> f64 {
+    if gas.volume <= 0.0 || v_final <= 0.0 {
+        return 0.0
+    }
+    let ratio = v_final / gas.volume
+    return gas.moles * GAS_CONSTANT * gas.temperature * ratio
+}
+
+docs {
+    Calculate work done in isobaric process.
+    W = P * (V2 - V1)
+}
+
+pub fun work_isobaric(pressure: f64, v1: f64, v2: f64) -> f64 {
+    return pressure * (v2 - v1)
+}
+
+docs {
+    Calculate heat added in isobaric process.
+    Q = n * Cp * ΔT
+}
+
+pub fun heat_isobaric(gas: IdealGas, t_final: f64) -> f64 {
+    return gas.moles * gas.cp * (t_final - gas.temperature)
+}
+
+docs {
+    Calculate final temperature in adiabatic process.
+    T2 = T1 * (V1/V2)^(γ-1)
+}
+
+pub fun adiabatic_temperature(gas: IdealGas, v_final: f64) -> f64 {
+    if v_final == 0.0 {
+        return 1.0e308
+    }
+    let gamma = heat_capacity_ratio(gas)
+    let ratio = gas.volume / v_final
+    return gas.temperature * ratio
+}
+
+docs {
+    Calculate final pressure in adiabatic process.
+    P2 = P1 * (V1/V2)^γ
+}
+
+pub fun adiabatic_pressure(gas: IdealGas, v_final: f64) -> f64 {
+    if v_final == 0.0 {
+        return 1.0e308
+    }
+    let gamma = heat_capacity_ratio(gas)
+    let ratio = gas.volume / v_final
+    return gas.pressure * ratio
+}
+
+docs {
+    Calculate Carnot efficiency.
+    η = 1 - Tc/Th
+}
+
+pub fun carnot_efficiency(t_hot: f64, t_cold: f64) -> f64 {
+    if t_hot <= 0.0 {
+        return 0.0
+    }
+    return 1.0 - (t_cold / t_hot)
+}
+
+docs {
+    Calculate heat transfer rate (Fourier's Law).
+    Q/t = k * A * ΔT / L
+}
+
+pub fun heat_transfer_rate(conductivity: f64, area: f64, temp_diff: f64, thickness: f64) -> f64 {
+    if thickness == 0.0 {
+        return 1.0e308
+    }
+    return conductivity * area * temp_diff / thickness
+}
+
+docs {
+    Calculate mean free path of gas molecules.
+    λ = kT / (√2 * π * d² * P)
+}
+
+pub fun mean_free_path(temperature: f64, pressure: f64, diameter: f64) -> f64 {
+    if pressure == 0.0 || diameter == 0.0 {
+        return 1.0e308
+    }
+    let sqrt2 = 1.41421356237
+    let pi = 3.14159265359
+    return (BOLTZMANN_CONSTANT * temperature) / (sqrt2 * pi * diameter * diameter * pressure)
+}
+
+docs {
+    Calculate RMS speed of gas molecules.
+    v_rms = sqrt(3RT/M)
+}
+
+pub fun rms_speed(temperature: f64, molar_mass: f64) -> f64 {
+    if molar_mass == 0.0 {
+        return 1.0e308
+    }
+    return (3.0 * GAS_CONSTANT * temperature / molar_mass)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE TRANSITIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Calculate heat required for phase transition.
+    Q = m * L (mass * latent heat)
+}
+
+pub fun phase_transition_heat(mass: f64, latent_heat: f64) -> f64 {
+    return mass * latent_heat
+}
+
+docs {
+    Determine phase at given temperature and pressure (for water).
+}
+
+pub fun water_phase(temperature: f64, pressure: f64) -> Phase {
+    let t_celsius = temperature - 273.15
+
+    if temperature < 273.15 && pressure > 611.657 {
+        return phase_solid()
+    }
+    if temperature >= 273.15 && temperature < 373.15 && pressure >= 101325.0 {
+        return phase_liquid()
+    }
+    return phase_gas()
+}
+
+docs {
+    Check if state is at a phase boundary.
+}
+
+pub fun at_phase_boundary(state: ThermodynamicState, transition: PhaseTransition) -> bool {
+    let temp_diff = state.temperature - transition.transition_temperature
+    return temp_diff < 0.01 && temp_diff > -0.01
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVOLUTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Evolution adding real gas support (van der Waals).
+}
+
+evo real_gas @ 0.9.1 > 0.9.0 {
+    adds gen VanDerWaalsGas { a: f64, b: f64 }
+    adds fun van_der_waals_pressure(gas: VanDerWaalsGas, v: f64, t: f64) -> f64
+    adds fun compressibility_factor(gas: IdealGas) -> f64
+    because "real gases deviate from ideal behavior at high pressures"
+}
+
+docs {
+    Evolution adding statistical mechanics support.
+}
+
+evo statistical_thermo @ 0.9.2 > 0.9.1 {
+    adds gen Ensemble { microstates: u64, macrostate: ThermodynamicState }
+    adds fun boltzmann_entropy(microstates: u64) -> f64
+    adds fun partition_function(energy_levels: Vec<f64>, temperature: f64) -> f64
+    because "statistical mechanics connects microscopic and macroscopic"
+}

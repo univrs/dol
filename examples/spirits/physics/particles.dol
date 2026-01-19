@@ -1,0 +1,558 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Particle Physics Module
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics.particles @ 0.9.0
+
+docs {
+    Particle physics module providing fundamental particle types and properties.
+
+    This module models:
+    - Elementary particles (electrons, protons, neutrons, photons)
+    - Particle properties (mass, charge, spin, position, velocity)
+    - Particle classifications (fermions, bosons)
+    - Conservation laws
+    - Kinematic calculations
+
+    All calculations use SI units unless otherwise specified.
+}
+
+use local::lib::SPEED_OF_LIGHT
+use local::lib::ELECTRON_MASS
+use local::lib::PROTON_MASS
+use local::lib::NEUTRON_MASS
+use local::lib::ELEMENTARY_CHARGE
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    3D position vector in meters.
+}
+
+pub gen Position {
+    has x: f64
+    has y: f64
+    has z: f64
+}
+
+docs {
+    3D velocity vector in meters per second.
+}
+
+pub gen Velocity {
+    has vx: f64
+    has vy: f64
+    has vz: f64
+}
+
+docs {
+    3D momentum vector in kg·m/s.
+}
+
+pub gen Momentum {
+    has px: f64
+    has py: f64
+    has pz: f64
+}
+
+docs {
+    Spin quantum number (can be half-integer for fermions).
+    Represented as twice the spin value to avoid floating point.
+    e.g., spin-1/2 is represented as spin_twice = 1
+}
+
+pub gen Spin {
+    has spin_twice: i32
+}
+
+docs {
+    Base particle type with fundamental properties.
+
+    All particles have:
+    - mass: Rest mass in kilograms
+    - charge: Electric charge in Coulombs
+    - spin: Spin quantum number
+    - position: Current position in 3D space
+    - velocity: Current velocity in 3D space
+}
+
+pub gen Particle {
+    has mass: f64
+    has charge: f64
+    has spin: Spin
+    has position: Position
+    has velocity: Velocity
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SPECIFIC PARTICLES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Electron - fundamental lepton with negative charge.
+
+    Properties:
+    - Mass: 9.109e-31 kg
+    - Charge: -1.602e-19 C
+    - Spin: 1/2 (fermion)
+}
+
+pub gen Electron is Particle {
+    has lepton_number: i8
+    has generation: u8
+}
+
+docs {
+    Proton - composite baryon with positive charge.
+
+    Properties:
+    - Mass: 1.673e-27 kg
+    - Charge: +1.602e-19 C
+    - Spin: 1/2 (fermion)
+    - Composition: 2 up quarks, 1 down quark
+}
+
+pub gen Proton is Particle {
+    has baryon_number: i8
+    has up_quarks: u8
+    has down_quarks: u8
+}
+
+docs {
+    Neutron - electrically neutral baryon.
+
+    Properties:
+    - Mass: 1.675e-27 kg
+    - Charge: 0 C
+    - Spin: 1/2 (fermion)
+    - Composition: 1 up quark, 2 down quarks
+}
+
+pub gen Neutron is Particle {
+    has baryon_number: i8
+    has up_quarks: u8
+    has down_quarks: u8
+    has is_stable: bool
+}
+
+docs {
+    Photon - massless gauge boson carrying electromagnetic force.
+
+    Properties:
+    - Mass: 0 kg
+    - Charge: 0 C
+    - Spin: 1 (boson)
+    - Always travels at speed of light
+}
+
+pub gen Photon {
+    has wavelength: f64
+    has frequency: f64
+    has energy: f64
+    has polarization: f64
+    has direction: Velocity
+}
+
+docs {
+    Neutrino - nearly massless lepton with no charge.
+}
+
+pub gen Neutrino is Particle {
+    has lepton_number: i8
+    has flavor: string
+    has is_antineutrino: bool
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAITS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Fermionic particles obey the Pauli exclusion principle.
+    They have half-integer spin (1/2, 3/2, 5/2, ...).
+}
+
+pub trait Fermionic {
+    docs {
+        Check if the particle has half-integer spin.
+    }
+
+    fun has_half_integer_spin() -> bool
+
+    docs {
+        Get the fermion's spin multiplicity (2s + 1).
+    }
+
+    fun spin_multiplicity() -> i32
+}
+
+docs {
+    Bosonic particles do not obey Pauli exclusion.
+    They have integer spin (0, 1, 2, ...).
+}
+
+pub trait Bosonic {
+    docs {
+        Check if the particle has integer spin.
+    }
+
+    fun has_integer_spin() -> bool
+
+    docs {
+        Check if the boson can mediate a fundamental force.
+    }
+
+    fun is_gauge_boson() -> bool
+}
+
+docs {
+    Charged particles interact electromagnetically.
+}
+
+pub trait Charged {
+    docs {
+        Get the particle's electric charge.
+    }
+
+    fun get_charge() -> f64
+
+    docs {
+        Check if the particle is positively charged.
+    }
+
+    fun is_positive() -> bool
+
+    docs {
+        Check if the particle is negatively charged.
+    }
+
+    fun is_negative() -> bool
+}
+
+docs {
+    Massive particles have rest mass.
+}
+
+pub trait Massive {
+    docs {
+        Get the particle's rest mass.
+    }
+
+    fun get_mass() -> f64
+
+    docs {
+        Calculate rest energy (E = mc²).
+    }
+
+    fun rest_energy() -> f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RULES (CONSERVATION LAWS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Conservation of electric charge in all interactions.
+    Total charge before = total charge after.
+}
+
+pub rule conservation_of_charge {
+    each interaction {
+        sum(initial.charges) == sum(final.charges)
+    }
+}
+
+docs {
+    Conservation of baryon number in standard model processes.
+}
+
+pub rule conservation_of_baryon_number {
+    each interaction {
+        sum(initial.baryon_numbers) == sum(final.baryon_numbers)
+    }
+}
+
+docs {
+    Conservation of lepton number (per generation in SM).
+}
+
+pub rule conservation_of_lepton_number {
+    each interaction {
+        sum(initial.lepton_numbers) == sum(final.lepton_numbers)
+    }
+}
+
+docs {
+    Conservation of energy-momentum in all interactions.
+}
+
+pub rule conservation_of_four_momentum {
+    each interaction {
+        initial.energy + initial.momentum == final.energy + final.momentum
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURE FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a new electron at the origin at rest.
+}
+
+pub fun new_electron() -> Electron {
+    return Electron {
+        mass: ELECTRON_MASS,
+        charge: -ELEMENTARY_CHARGE,
+        spin: Spin { spin_twice: 1 },
+        position: Position { x: 0.0, y: 0.0, z: 0.0 },
+        velocity: Velocity { vx: 0.0, vy: 0.0, vz: 0.0 },
+        lepton_number: 1,
+        generation: 1
+    }
+}
+
+docs {
+    Create a new proton at the origin at rest.
+}
+
+pub fun new_proton() -> Proton {
+    return Proton {
+        mass: PROTON_MASS,
+        charge: ELEMENTARY_CHARGE,
+        spin: Spin { spin_twice: 1 },
+        position: Position { x: 0.0, y: 0.0, z: 0.0 },
+        velocity: Velocity { vx: 0.0, vy: 0.0, vz: 0.0 },
+        baryon_number: 1,
+        up_quarks: 2,
+        down_quarks: 1
+    }
+}
+
+docs {
+    Create a new neutron at the origin at rest.
+}
+
+pub fun new_neutron() -> Neutron {
+    return Neutron {
+        mass: NEUTRON_MASS,
+        charge: 0.0,
+        spin: Spin { spin_twice: 1 },
+        position: Position { x: 0.0, y: 0.0, z: 0.0 },
+        velocity: Velocity { vx: 0.0, vy: 0.0, vz: 0.0 },
+        baryon_number: 1,
+        up_quarks: 1,
+        down_quarks: 2,
+        is_stable: false
+    }
+}
+
+docs {
+    Create a photon with specified wavelength.
+    Automatically calculates frequency and energy.
+}
+
+pub fun new_photon(wavelength: f64) -> Photon {
+    let frequency = SPEED_OF_LIGHT / wavelength
+    let energy = 6.62607015e-34 * frequency
+
+    return Photon {
+        wavelength: wavelength,
+        frequency: frequency,
+        energy: energy,
+        polarization: 0.0,
+        direction: Velocity { vx: SPEED_OF_LIGHT, vy: 0.0, vz: 0.0 }
+    }
+}
+
+docs {
+    Calculate the magnitude of velocity (speed).
+}
+
+pub fun speed(v: Velocity) -> f64 {
+    return (v.vx * v.vx + v.vy * v.vy + v.vz * v.vz)
+}
+
+docs {
+    Calculate the classical momentum of a particle.
+    p = m * v
+}
+
+pub fun calculate_momentum(p: Particle) -> Momentum {
+    return Momentum {
+        px: p.mass * p.velocity.vx,
+        py: p.mass * p.velocity.vy,
+        pz: p.mass * p.velocity.vz
+    }
+}
+
+docs {
+    Calculate the magnitude of momentum.
+}
+
+pub fun momentum_magnitude(m: Momentum) -> f64 {
+    return (m.px * m.px + m.py * m.py + m.pz * m.pz)
+}
+
+docs {
+    Calculate the classical kinetic energy of a particle.
+    KE = (1/2) * m * v²
+}
+
+pub fun kinetic_energy(p: Particle) -> f64 {
+    let v_squared = p.velocity.vx * p.velocity.vx
+                  + p.velocity.vy * p.velocity.vy
+                  + p.velocity.vz * p.velocity.vz
+    return 0.5 * p.mass * v_squared
+}
+
+docs {
+    Calculate the rest energy of a particle.
+    E₀ = m * c²
+}
+
+pub fun rest_energy(p: Particle) -> f64 {
+    return p.mass * SPEED_OF_LIGHT * SPEED_OF_LIGHT
+}
+
+docs {
+    Calculate the relativistic total energy.
+    E² = (pc)² + (mc²)²
+}
+
+pub fun relativistic_energy(p: Particle) -> f64 {
+    let rest_e = rest_energy(p)
+    let mom = calculate_momentum(p)
+    let mom_mag = momentum_magnitude(mom)
+    let pc = mom_mag * SPEED_OF_LIGHT
+
+    return (pc * pc + rest_e * rest_e)
+}
+
+docs {
+    Calculate the Lorentz factor (gamma) for a particle.
+    γ = 1 / sqrt(1 - v²/c²)
+}
+
+pub fun lorentz_factor(p: Particle) -> f64 {
+    let v_squared = p.velocity.vx * p.velocity.vx
+                  + p.velocity.vy * p.velocity.vy
+                  + p.velocity.vz * p.velocity.vz
+    let beta_squared = v_squared / (SPEED_OF_LIGHT * SPEED_OF_LIGHT)
+
+    if beta_squared >= 1.0 {
+        return 1.0e308
+    }
+
+    return 1.0 / (1.0 - beta_squared)
+}
+
+docs {
+    Calculate the de Broglie wavelength of a particle.
+    λ = h / p
+}
+
+pub fun de_broglie_wavelength(p: Particle) -> f64 {
+    let mom = calculate_momentum(p)
+    let mom_mag = momentum_magnitude(mom)
+
+    if mom_mag == 0.0 {
+        return 1.0e308
+    }
+
+    return 6.62607015e-34 / mom_mag
+}
+
+docs {
+    Update particle position based on velocity over time dt.
+}
+
+pub fun update_position(p: Particle, dt: f64) -> Particle {
+    return Particle {
+        mass: p.mass,
+        charge: p.charge,
+        spin: p.spin,
+        position: Position {
+            x: p.position.x + p.velocity.vx * dt,
+            y: p.position.y + p.velocity.vy * dt,
+            z: p.position.z + p.velocity.vz * dt
+        },
+        velocity: p.velocity
+    }
+}
+
+docs {
+    Calculate the distance between two particles.
+}
+
+pub fun distance(p1: Particle, p2: Particle) -> f64 {
+    let dx = p2.position.x - p1.position.x
+    let dy = p2.position.y - p1.position.y
+    let dz = p2.position.z - p1.position.z
+
+    return (dx * dx + dy * dy + dz * dz)
+}
+
+docs {
+    Calculate the Coulomb force magnitude between two charged particles.
+    F = k * |q1 * q2| / r²
+}
+
+pub fun coulomb_force(p1: Particle, p2: Particle) -> f64 {
+    let k = 8.9875517923e9
+    let r = distance(p1, p2)
+
+    if r == 0.0 {
+        return 1.0e308
+    }
+
+    let q_product = p1.charge * p2.charge
+    if q_product < 0.0 {
+        return -k * (-q_product) / (r * r)
+    } else {
+        return k * q_product / (r * r)
+    }
+}
+
+docs {
+    Check if a particle is relativistic (v > 0.1c).
+}
+
+pub fun is_relativistic(p: Particle) -> bool {
+    let v_squared = p.velocity.vx * p.velocity.vx
+                  + p.velocity.vy * p.velocity.vy
+                  + p.velocity.vz * p.velocity.vz
+    let threshold = 0.01 * SPEED_OF_LIGHT * SPEED_OF_LIGHT
+
+    return v_squared > threshold
+}
+
+docs {
+    Check if two particles can annihilate (particle-antiparticle pair).
+}
+
+pub fun can_annihilate(p1: Particle, p2: Particle) -> bool {
+    let same_mass = (p1.mass - p2.mass) < 1.0e-35 && (p1.mass - p2.mass) > -1.0e-35
+    let opposite_charge = (p1.charge + p2.charge) < 1.0e-25 && (p1.charge + p2.charge) > -1.0e-25
+
+    return same_mass && opposite_charge && p1.charge != 0.0
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVOLUTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Evolution adding antimatter support to the particle system.
+}
+
+evo particle_antimatter @ 0.9.1 > 0.9.0 {
+    adds gen Positron is Particle { lepton_number: i8 }
+    adds gen Antiproton is Particle { baryon_number: i8 }
+    adds fun create_positron() -> Positron
+    adds fun annihilation_energy(p1: Particle, p2: Particle) -> f64
+    because "antimatter modeling required for high-energy physics"
+}

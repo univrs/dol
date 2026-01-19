@@ -1,0 +1,777 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Physics Spirit - Classical Mechanics Module
+// DOL v0.9.0
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module physics.mechanics @ 0.9.0
+
+docs {
+    Classical mechanics module for Newtonian physics simulations.
+
+    This module provides:
+    - Vector mathematics (3D vectors, dot/cross products)
+    - Force modeling and composition
+    - Rigid body dynamics
+    - Collision detection and resolution
+    - Conservation laws
+
+    All calculations use SI units:
+    - Length: meters (m)
+    - Mass: kilograms (kg)
+    - Time: seconds (s)
+    - Force: Newtons (N)
+    - Energy: Joules (J)
+}
+
+use local::lib::GRAVITATIONAL_CONSTANT
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VECTOR TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    3D vector for positions, velocities, forces, etc.
+}
+
+pub gen Vector3 {
+    has x: f64
+    has y: f64
+    has z: f64
+}
+
+docs {
+    2D vector for planar mechanics.
+}
+
+pub gen Vector2 {
+    has x: f64
+    has y: f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORCE AND MOTION TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Force vector with associated point of application.
+}
+
+pub gen Force {
+    has direction: Vector3
+    has magnitude: f64
+    has point_of_application: Vector3
+}
+
+docs {
+    Torque (moment) about an axis.
+}
+
+pub gen Torque {
+    has axis: Vector3
+    has magnitude: f64
+}
+
+docs {
+    Linear acceleration vector.
+}
+
+pub gen Acceleration {
+    has ax: f64
+    has ay: f64
+    has az: f64
+}
+
+docs {
+    Angular velocity about an axis.
+}
+
+pub gen AngularVelocity {
+    has omega_x: f64
+    has omega_y: f64
+    has omega_z: f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RIGID BODY TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Rigid body with mass distribution and dynamics state.
+}
+
+pub gen RigidBody {
+    has mass: f64
+    has moment_of_inertia: f64
+    has center_of_mass: Vector3
+    has velocity: Vector3
+    has angular_velocity: AngularVelocity
+    has orientation: f64
+}
+
+docs {
+    Point mass (idealized particle with mass).
+}
+
+pub gen PointMass {
+    has mass: f64
+    has position: Vector3
+    has velocity: Vector3
+}
+
+docs {
+    Spring connecting two points.
+}
+
+pub gen Spring {
+    has stiffness: f64
+    has rest_length: f64
+    has damping: f64
+    has anchor1: Vector3
+    has anchor2: Vector3
+}
+
+docs {
+    Collision result between two bodies.
+}
+
+pub gen CollisionResult {
+    has occurred: bool
+    has normal: Vector3
+    has penetration_depth: f64
+    has impulse: f64
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAITS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Objects that can be moved by forces.
+}
+
+pub trait Movable {
+    docs {
+        Apply a force to the object.
+    }
+
+    fun apply_force(force: Force) -> Movable
+
+    docs {
+        Update position based on current velocity.
+    }
+
+    fun update_position(dt: f64) -> Movable
+}
+
+docs {
+    Objects that can rotate.
+}
+
+pub trait Rotatable {
+    docs {
+        Apply a torque to the object.
+    }
+
+    fun apply_torque(torque: Torque) -> Rotatable
+
+    docs {
+        Update orientation based on angular velocity.
+    }
+
+    fun update_orientation(dt: f64) -> Rotatable
+}
+
+docs {
+    Objects that can collide with other objects.
+}
+
+pub trait Collidable {
+    docs {
+        Check for collision with another object.
+    }
+
+    fun collides_with(other: Collidable) -> CollisionResult
+
+    docs {
+        Get bounding radius for collision detection.
+    }
+
+    fun bounding_radius() -> f64
+}
+
+docs {
+    Objects affected by gravity.
+}
+
+pub trait GravityAffected {
+    docs {
+        Calculate gravitational force from another massive object.
+    }
+
+    fun gravitational_force_from(other: GravityAffected) -> Force
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RULES (PHYSICAL LAWS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Newton's Second Law: F = ma
+    The net force on an object equals its mass times acceleration.
+}
+
+pub rule newtons_second_law {
+    each RigidBody {
+        this.acceleration == this.net_force / this.mass
+    }
+}
+
+docs {
+    Newton's Third Law: Action-reaction pairs.
+    For every force, there is an equal and opposite reaction force.
+}
+
+pub rule newtons_third_law {
+    each interaction(a: RigidBody, b: RigidBody) {
+        force_on_a == -force_on_b
+    }
+}
+
+docs {
+    Conservation of linear momentum in isolated systems.
+}
+
+pub rule conservation_of_momentum {
+    each isolated_system {
+        sum(mass * velocity) == constant
+    }
+}
+
+docs {
+    Conservation of angular momentum in isolated systems.
+}
+
+pub rule conservation_of_angular_momentum {
+    each isolated_system {
+        sum(moment_of_inertia * angular_velocity) == constant
+    }
+}
+
+docs {
+    Conservation of mechanical energy in conservative systems.
+}
+
+pub rule conservation_of_mechanical_energy {
+    each conservative_system {
+        kinetic_energy + potential_energy == constant
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VECTOR FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a zero vector.
+}
+
+pub fun zero_vector() -> Vector3 {
+    return Vector3 { x: 0.0, y: 0.0, z: 0.0 }
+}
+
+docs {
+    Create a unit vector along the x-axis.
+}
+
+pub fun unit_x() -> Vector3 {
+    return Vector3 { x: 1.0, y: 0.0, z: 0.0 }
+}
+
+docs {
+    Create a unit vector along the y-axis.
+}
+
+pub fun unit_y() -> Vector3 {
+    return Vector3 { x: 0.0, y: 1.0, z: 0.0 }
+}
+
+docs {
+    Create a unit vector along the z-axis.
+}
+
+pub fun unit_z() -> Vector3 {
+    return Vector3 { x: 0.0, y: 0.0, z: 1.0 }
+}
+
+docs {
+    Add two vectors.
+}
+
+pub fun vec_add(a: Vector3, b: Vector3) -> Vector3 {
+    return Vector3 {
+        x: a.x + b.x,
+        y: a.y + b.y,
+        z: a.z + b.z
+    }
+}
+
+docs {
+    Subtract vector b from vector a.
+}
+
+pub fun vec_sub(a: Vector3, b: Vector3) -> Vector3 {
+    return Vector3 {
+        x: a.x - b.x,
+        y: a.y - b.y,
+        z: a.z - b.z
+    }
+}
+
+docs {
+    Scale a vector by a scalar.
+}
+
+pub fun vec_scale(v: Vector3, s: f64) -> Vector3 {
+    return Vector3 {
+        x: v.x * s,
+        y: v.y * s,
+        z: v.z * s
+    }
+}
+
+docs {
+    Negate a vector.
+}
+
+pub fun vec_negate(v: Vector3) -> Vector3 {
+    return Vector3 { x: -v.x, y: -v.y, z: -v.z }
+}
+
+docs {
+    Compute the dot product of two vectors.
+}
+
+pub fun vec_dot(a: Vector3, b: Vector3) -> f64 {
+    return a.x * b.x + a.y * b.y + a.z * b.z
+}
+
+docs {
+    Compute the cross product of two vectors.
+}
+
+pub fun vec_cross(a: Vector3, b: Vector3) -> Vector3 {
+    return Vector3 {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x
+    }
+}
+
+docs {
+    Compute the squared magnitude of a vector.
+}
+
+pub fun vec_magnitude_squared(v: Vector3) -> f64 {
+    return v.x * v.x + v.y * v.y + v.z * v.z
+}
+
+docs {
+    Compute the magnitude (length) of a vector.
+}
+
+pub fun vec_magnitude(v: Vector3) -> f64 {
+    return (v.x * v.x + v.y * v.y + v.z * v.z)
+}
+
+docs {
+    Normalize a vector to unit length.
+}
+
+pub fun vec_normalize(v: Vector3) -> Vector3 {
+    let mag = vec_magnitude(v)
+    if mag == 0.0 {
+        return zero_vector()
+    }
+    return vec_scale(v, 1.0 / mag)
+}
+
+docs {
+    Compute the distance between two points.
+}
+
+pub fun vec_distance(a: Vector3, b: Vector3) -> f64 {
+    return vec_magnitude(vec_sub(b, a))
+}
+
+docs {
+    Compute the angle between two vectors in radians.
+}
+
+pub fun vec_angle(a: Vector3, b: Vector3) -> f64 {
+    let dot = vec_dot(a, b)
+    let mag_a = vec_magnitude(a)
+    let mag_b = vec_magnitude(b)
+
+    if mag_a == 0.0 || mag_b == 0.0 {
+        return 0.0
+    }
+
+    let cos_angle = dot / (mag_a * mag_b)
+    return cos_angle
+}
+
+docs {
+    Project vector a onto vector b.
+}
+
+pub fun vec_project(a: Vector3, b: Vector3) -> Vector3 {
+    let b_mag_sq = vec_magnitude_squared(b)
+    if b_mag_sq == 0.0 {
+        return zero_vector()
+    }
+    let scalar = vec_dot(a, b) / b_mag_sq
+    return vec_scale(b, scalar)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORCE FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a force from a direction vector and magnitude.
+}
+
+pub fun create_force(direction: Vector3, magnitude: f64) -> Force {
+    return Force {
+        direction: vec_normalize(direction),
+        magnitude: magnitude,
+        point_of_application: zero_vector()
+    }
+}
+
+docs {
+    Get the force vector (direction * magnitude).
+}
+
+pub fun force_vector(f: Force) -> Vector3 {
+    return vec_scale(f.direction, f.magnitude)
+}
+
+docs {
+    Add two forces (vector addition).
+}
+
+pub fun force_add(f1: Force, f2: Force) -> Force {
+    let v1 = force_vector(f1)
+    let v2 = force_vector(f2)
+    let result = vec_add(v1, v2)
+    let mag = vec_magnitude(result)
+
+    return Force {
+        direction: vec_normalize(result),
+        magnitude: mag,
+        point_of_application: f1.point_of_application
+    }
+}
+
+docs {
+    Calculate the gravitational force between two masses.
+    F = G * m1 * m2 / r²
+}
+
+pub fun gravitational_force(m1: f64, m2: f64, r: f64) -> f64 {
+    if r == 0.0 {
+        return 1.0e308
+    }
+    return GRAVITATIONAL_CONSTANT * m1 * m2 / (r * r)
+}
+
+docs {
+    Calculate gravitational force vector between two point masses.
+}
+
+pub fun gravity_between(p1: PointMass, p2: PointMass) -> Force {
+    let direction = vec_sub(p2.position, p1.position)
+    let distance = vec_magnitude(direction)
+
+    if distance == 0.0 {
+        return create_force(zero_vector(), 0.0)
+    }
+
+    let magnitude = gravitational_force(p1.mass, p2.mass, distance)
+
+    return Force {
+        direction: vec_normalize(direction),
+        magnitude: magnitude,
+        point_of_application: p1.position
+    }
+}
+
+docs {
+    Calculate spring force (Hooke's Law).
+    F = -k * (x - x0)
+}
+
+pub fun spring_force(spring: Spring) -> Force {
+    let displacement = vec_sub(spring.anchor2, spring.anchor1)
+    let current_length = vec_magnitude(displacement)
+    let extension = current_length - spring.rest_length
+    let magnitude = -spring.stiffness * extension
+
+    return Force {
+        direction: vec_normalize(displacement),
+        magnitude: magnitude,
+        point_of_application: spring.anchor1
+    }
+}
+
+docs {
+    Calculate drag force.
+    F = -0.5 * rho * v² * C_d * A
+}
+
+pub fun drag_force(velocity: Vector3, drag_coefficient: f64, area: f64, fluid_density: f64) -> Force {
+    let speed_sq = vec_magnitude_squared(velocity)
+    let speed = vec_magnitude(velocity)
+
+    if speed == 0.0 {
+        return create_force(zero_vector(), 0.0)
+    }
+
+    let magnitude = 0.5 * fluid_density * speed_sq * drag_coefficient * area
+
+    return Force {
+        direction: vec_scale(vec_normalize(velocity), -1.0),
+        magnitude: magnitude,
+        point_of_application: zero_vector()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RIGID BODY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Create a rigid body at rest at the origin.
+}
+
+pub fun new_rigid_body(mass: f64, moment_of_inertia: f64) -> RigidBody {
+    return RigidBody {
+        mass: mass,
+        moment_of_inertia: moment_of_inertia,
+        center_of_mass: zero_vector(),
+        velocity: zero_vector(),
+        angular_velocity: AngularVelocity { omega_x: 0.0, omega_y: 0.0, omega_z: 0.0 },
+        orientation: 0.0
+    }
+}
+
+docs {
+    Calculate the acceleration of a rigid body from net force.
+    a = F / m
+}
+
+pub fun calculate_acceleration(body: RigidBody, net_force: Force) -> Acceleration {
+    let f = force_vector(net_force)
+    return Acceleration {
+        ax: f.x / body.mass,
+        ay: f.y / body.mass,
+        az: f.z / body.mass
+    }
+}
+
+docs {
+    Update rigid body velocity using acceleration over time dt.
+}
+
+pub fun update_velocity(body: RigidBody, accel: Acceleration, dt: f64) -> RigidBody {
+    return RigidBody {
+        mass: body.mass,
+        moment_of_inertia: body.moment_of_inertia,
+        center_of_mass: body.center_of_mass,
+        velocity: Vector3 {
+            x: body.velocity.x + accel.ax * dt,
+            y: body.velocity.y + accel.ay * dt,
+            z: body.velocity.z + accel.az * dt
+        },
+        angular_velocity: body.angular_velocity,
+        orientation: body.orientation
+    }
+}
+
+docs {
+    Update rigid body position using velocity over time dt.
+}
+
+pub fun update_position(body: RigidBody, dt: f64) -> RigidBody {
+    return RigidBody {
+        mass: body.mass,
+        moment_of_inertia: body.moment_of_inertia,
+        center_of_mass: Vector3 {
+            x: body.center_of_mass.x + body.velocity.x * dt,
+            y: body.center_of_mass.y + body.velocity.y * dt,
+            z: body.center_of_mass.z + body.velocity.z * dt
+        },
+        velocity: body.velocity,
+        angular_velocity: body.angular_velocity,
+        orientation: body.orientation
+    }
+}
+
+docs {
+    Calculate kinetic energy of a rigid body.
+    KE = (1/2) * m * v² + (1/2) * I * ω²
+}
+
+pub fun kinetic_energy(body: RigidBody) -> f64 {
+    let linear_ke = 0.5 * body.mass * vec_magnitude_squared(body.velocity)
+    let omega_sq = body.angular_velocity.omega_x * body.angular_velocity.omega_x
+                 + body.angular_velocity.omega_y * body.angular_velocity.omega_y
+                 + body.angular_velocity.omega_z * body.angular_velocity.omega_z
+    let rotational_ke = 0.5 * body.moment_of_inertia * omega_sq
+
+    return linear_ke + rotational_ke
+}
+
+docs {
+    Calculate linear momentum of a rigid body.
+    p = m * v
+}
+
+pub fun linear_momentum(body: RigidBody) -> Vector3 {
+    return vec_scale(body.velocity, body.mass)
+}
+
+docs {
+    Calculate angular momentum of a rigid body.
+    L = I * ω
+}
+
+pub fun angular_momentum(body: RigidBody) -> Vector3 {
+    return Vector3 {
+        x: body.moment_of_inertia * body.angular_velocity.omega_x,
+        y: body.moment_of_inertia * body.angular_velocity.omega_y,
+        z: body.moment_of_inertia * body.angular_velocity.omega_z
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLLISION FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Check for collision between two point masses (sphere collision).
+}
+
+pub fun check_collision(p1: PointMass, r1: f64, p2: PointMass, r2: f64) -> CollisionResult {
+    let distance = vec_distance(p1.position, p2.position)
+    let combined_radius = r1 + r2
+
+    if distance < combined_radius {
+        let normal = vec_normalize(vec_sub(p2.position, p1.position))
+        return CollisionResult {
+            occurred: true,
+            normal: normal,
+            penetration_depth: combined_radius - distance,
+            impulse: 0.0
+        }
+    }
+
+    return CollisionResult {
+        occurred: false,
+        normal: zero_vector(),
+        penetration_depth: 0.0,
+        impulse: 0.0
+    }
+}
+
+docs {
+    Perform elastic collision between two point masses.
+    Returns updated velocities preserving momentum and energy.
+}
+
+pub fun elastic_collision(p1: PointMass, p2: PointMass) -> (PointMass, PointMass) {
+    let m1 = p1.mass
+    let m2 = p2.mass
+    let v1 = p1.velocity
+    let v2 = p2.velocity
+
+    let normal = vec_normalize(vec_sub(p2.position, p1.position))
+    let relative_vel = vec_sub(v1, v2)
+    let vel_along_normal = vec_dot(relative_vel, normal)
+
+    if vel_along_normal > 0.0 {
+        return (p1, p2)
+    }
+
+    let e = 1.0
+    let j = -(1.0 + e) * vel_along_normal / (1.0 / m1 + 1.0 / m2)
+
+    let impulse = vec_scale(normal, j)
+
+    let new_p1 = PointMass {
+        mass: m1,
+        position: p1.position,
+        velocity: vec_add(v1, vec_scale(impulse, 1.0 / m1))
+    }
+
+    let new_p2 = PointMass {
+        mass: m2,
+        position: p2.position,
+        velocity: vec_sub(v2, vec_scale(impulse, 1.0 / m2))
+    }
+
+    return (new_p1, new_p2)
+}
+
+docs {
+    Perform inelastic collision with coefficient of restitution.
+}
+
+pub fun inelastic_collision(p1: PointMass, p2: PointMass, restitution: f64) -> (PointMass, PointMass) {
+    let m1 = p1.mass
+    let m2 = p2.mass
+    let v1 = p1.velocity
+    let v2 = p2.velocity
+
+    let normal = vec_normalize(vec_sub(p2.position, p1.position))
+    let relative_vel = vec_sub(v1, v2)
+    let vel_along_normal = vec_dot(relative_vel, normal)
+
+    if vel_along_normal > 0.0 {
+        return (p1, p2)
+    }
+
+    let j = -(1.0 + restitution) * vel_along_normal / (1.0 / m1 + 1.0 / m2)
+
+    let impulse = vec_scale(normal, j)
+
+    let new_p1 = PointMass {
+        mass: m1,
+        position: p1.position,
+        velocity: vec_add(v1, vec_scale(impulse, 1.0 / m1))
+    }
+
+    let new_p2 = PointMass {
+        mass: m2,
+        position: p2.position,
+        velocity: vec_sub(v2, vec_scale(impulse, 1.0 / m2))
+    }
+
+    return (new_p1, new_p2)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVOLUTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+docs {
+    Evolution adding rotational dynamics enhancements.
+}
+
+evo mechanics_rotation @ 0.9.1 > 0.9.0 {
+    adds gen Quaternion { w: f64, x: f64, y: f64, z: f64 }
+    adds fun quaternion_multiply(q1: Quaternion, q2: Quaternion) -> Quaternion
+    adds fun rotate_vector(v: Vector3, q: Quaternion) -> Vector3
+    because "quaternions avoid gimbal lock in 3D rotations"
+}

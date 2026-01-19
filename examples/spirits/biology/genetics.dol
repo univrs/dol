@@ -1,0 +1,1308 @@
+// =============================================================================
+// Biology Spirit - Genetics Module
+// DOL v0.9.0
+// =============================================================================
+
+module biology.genetics @ 0.9.0
+
+docs {
+    Genetics module providing DNA, RNA, and protein synthesis modeling.
+
+    This module models:
+    - Nucleotides and nucleic acids (DNA, RNA)
+    - Genes and chromosomes
+    - Proteins and amino acids
+    - Central Dogma: DNA -> RNA -> Protein
+    - Transcription and translation processes
+    - Genetic code and codon table
+
+    Sequences use standard single-letter codes:
+    - DNA: A, T, G, C
+    - RNA: A, U, G, C
+    - Protein: Single-letter amino acid codes (A, R, N, D, C, etc.)
+}
+
+use local::lib::NUM_CODONS
+use local::lib::NUM_AMINO_ACIDS
+use local::lib::START_CODON
+use local::lib::STOP_CODONS
+use local::lib::HUMAN_GENOME_BP
+
+// =============================================================================
+// CORE TYPES - Nucleotides
+// =============================================================================
+
+docs {
+    Nucleotide - building block of nucleic acids.
+
+    Properties:
+    - base: Nitrogenous base (A, T, G, C for DNA; A, U, G, C for RNA)
+    - sugar: Deoxyribose (DNA) or Ribose (RNA)
+    - phosphate: Whether phosphate group is attached
+}
+
+pub gen Nucleotide {
+    has base: char
+    has sugar: string
+    has has_phosphate: bool
+    has position: u64
+}
+
+docs {
+    Create a DNA nucleotide.
+}
+
+pub fun dna_nucleotide(base: char, position: u64) -> Nucleotide {
+    return Nucleotide {
+        base: base,
+        sugar: "deoxyribose",
+        has_phosphate: true,
+        position: position
+    }
+}
+
+docs {
+    Create an RNA nucleotide.
+}
+
+pub fun rna_nucleotide(base: char, position: u64) -> Nucleotide {
+    return Nucleotide {
+        base: base,
+        sugar: "ribose",
+        has_phosphate: true,
+        position: position
+    }
+}
+
+// =============================================================================
+// CORE TYPES - DNA
+// =============================================================================
+
+docs {
+    DNA - double-stranded nucleic acid carrying genetic information.
+
+    Properties:
+    - sequence: 5' to 3' strand sequence (A, T, G, C)
+    - length: Number of base pairs
+    - gc_content: Percentage of G-C base pairs
+    - is_circular: Linear or circular (e.g., plasmids)
+    - methylation_sites: Positions of methylated bases
+}
+
+pub gen DNA {
+    has sequence: string
+    has length: u64
+    has gc_content: f64
+    has is_circular: bool
+    has is_double_stranded: bool
+    has methylation_sites: Vec<u64>
+    has origin_of_replication: Option<u64>
+}
+
+docs {
+    Create a new DNA molecule from sequence.
+}
+
+pub fun new_dna(sequence: string) -> DNA {
+    let length = sequence.len() as u64
+    let gc = calculate_gc_content(sequence)
+
+    return DNA {
+        sequence: sequence,
+        length: length,
+        gc_content: gc,
+        is_circular: false,
+        is_double_stranded: true,
+        methylation_sites: Vec::new(),
+        origin_of_replication: Some(0)
+    }
+}
+
+docs {
+    Create circular DNA (plasmid).
+}
+
+pub fun new_plasmid(sequence: string) -> DNA {
+    let length = sequence.len() as u64
+    let gc = calculate_gc_content(sequence)
+
+    return DNA {
+        sequence: sequence,
+        length: length,
+        gc_content: gc,
+        is_circular: true,
+        is_double_stranded: true,
+        methylation_sites: Vec::new(),
+        origin_of_replication: Some(0)
+    }
+}
+
+// =============================================================================
+// CORE TYPES - RNA
+// =============================================================================
+
+docs {
+    RNA type enumeration.
+}
+
+pub gen RNAType {
+    has name: string
+    has abbreviation: string
+    has function: string
+}
+
+docs {
+    Create mRNA type.
+}
+
+pub fun mrna_type() -> RNAType {
+    return RNAType {
+        name: "messenger RNA",
+        abbreviation: "mRNA",
+        function: "carries genetic code to ribosome"
+    }
+}
+
+docs {
+    Create tRNA type.
+}
+
+pub fun trna_type() -> RNAType {
+    return RNAType {
+        name: "transfer RNA",
+        abbreviation: "tRNA",
+        function: "brings amino acids to ribosome"
+    }
+}
+
+docs {
+    Create rRNA type.
+}
+
+pub fun rrna_type() -> RNAType {
+    return RNAType {
+        name: "ribosomal RNA",
+        abbreviation: "rRNA",
+        function: "structural and catalytic component of ribosome"
+    }
+}
+
+docs {
+    RNA - single-stranded nucleic acid.
+
+    Properties:
+    - sequence: 5' to 3' sequence (A, U, G, C)
+    - length: Number of nucleotides
+    - rna_type: mRNA, tRNA, rRNA, etc.
+    - secondary_structure: Hairpin loops, stems, etc.
+    - is_coding: Whether it encodes protein
+}
+
+pub gen RNA {
+    has sequence: string
+    has length: u64
+    has rna_type: RNAType
+    has is_coding: bool
+    has has_cap: bool
+    has has_poly_a_tail: bool
+    has half_life_hours: f64
+}
+
+docs {
+    Create messenger RNA.
+}
+
+pub fun new_mrna(sequence: string) -> RNA {
+    return RNA {
+        sequence: sequence,
+        length: sequence.len() as u64,
+        rna_type: mrna_type(),
+        is_coding: true,
+        has_cap: true,
+        has_poly_a_tail: true,
+        half_life_hours: 10.0
+    }
+}
+
+docs {
+    Create transfer RNA.
+}
+
+pub fun new_trna(sequence: string, anticodon: string) -> RNA {
+    return RNA {
+        sequence: sequence,
+        length: sequence.len() as u64,
+        rna_type: trna_type(),
+        is_coding: false,
+        has_cap: false,
+        has_poly_a_tail: false,
+        half_life_hours: 48.0
+    }
+}
+
+docs {
+    Create ribosomal RNA.
+}
+
+pub fun new_rrna(sequence: string) -> RNA {
+    return RNA {
+        sequence: sequence,
+        length: sequence.len() as u64,
+        rna_type: rrna_type(),
+        is_coding: false,
+        has_cap: false,
+        has_poly_a_tail: false,
+        half_life_hours: 200.0
+    }
+}
+
+// =============================================================================
+// CORE TYPES - Genes and Chromosomes
+// =============================================================================
+
+docs {
+    Gene - functional unit of heredity.
+
+    Properties:
+    - dna_sequence: The gene's DNA sequence
+    - start: Start position on chromosome
+    - end: End position on chromosome
+    - strand: Sense (+) or antisense (-) strand
+    - function: Gene function description
+    - exons: Coding regions
+    - introns: Non-coding regions
+}
+
+pub gen Gene {
+    has name: string
+    has dna_sequence: string
+    has start: u64
+    has end: u64
+    has strand: char
+    has function: string
+    has exon_positions: Vec<(u64, u64)>
+    has intron_positions: Vec<(u64, u64)>
+    has promoter_position: u64
+    has is_protein_coding: bool
+}
+
+docs {
+    Create a new gene.
+}
+
+pub fun new_gene(name: string, sequence: string, start: u64, function: string) -> Gene {
+    let length = sequence.len() as u64
+
+    return Gene {
+        name: name,
+        dna_sequence: sequence,
+        start: start,
+        end: start + length,
+        strand: '+',
+        function: function,
+        exon_positions: vec![(start, start + length)],
+        intron_positions: Vec::new(),
+        promoter_position: start - 100,
+        is_protein_coding: true
+    }
+}
+
+docs {
+    Chromosome - DNA molecule with associated proteins.
+
+    Properties:
+    - number: Chromosome number
+    - genes: Genes on the chromosome
+    - length: Total base pairs
+    - centromere_position: Position of centromere
+    - is_sex_chromosome: X or Y chromosome
+}
+
+pub gen Chromosome {
+    has number: u8
+    has name: string
+    has genes: Vec<Gene>
+    has length: u64
+    has centromere_position: u64
+    has is_sex_chromosome: bool
+    has ploidy: u8
+    has telomere_length: u32
+}
+
+docs {
+    Create a new chromosome.
+}
+
+pub fun new_chromosome(number: u8, length: u64) -> Chromosome {
+    return Chromosome {
+        number: number,
+        name: "chr" + number.to_string(),
+        genes: Vec::new(),
+        length: length,
+        centromere_position: length / 2,
+        is_sex_chromosome: false,
+        ploidy: 2,
+        telomere_length: 10000
+    }
+}
+
+docs {
+    Create human chromosome 1.
+}
+
+pub fun human_chr1() -> Chromosome {
+    return Chromosome {
+        number: 1,
+        name: "chr1",
+        genes: Vec::new(),
+        length: 248956422,
+        centromere_position: 125000000,
+        is_sex_chromosome: false,
+        ploidy: 2,
+        telomere_length: 10000
+    }
+}
+
+docs {
+    Add a gene to a chromosome.
+}
+
+pub fun add_gene_to_chromosome(chromosome: Chromosome, gene: Gene) -> Chromosome {
+    let mut genes = chromosome.genes
+    genes.push(gene)
+
+    return Chromosome {
+        number: chromosome.number,
+        name: chromosome.name,
+        genes: genes,
+        length: chromosome.length,
+        centromere_position: chromosome.centromere_position,
+        is_sex_chromosome: chromosome.is_sex_chromosome,
+        ploidy: chromosome.ploidy,
+        telomere_length: chromosome.telomere_length
+    }
+}
+
+// =============================================================================
+// CORE TYPES - Proteins
+// =============================================================================
+
+docs {
+    Amino acid - building block of proteins.
+}
+
+pub gen AminoAcid {
+    has name: string
+    has three_letter_code: string
+    has one_letter_code: char
+    has molecular_weight: f64
+    has is_polar: bool
+    has is_charged: bool
+    has charge: i8
+    has is_hydrophobic: bool
+}
+
+docs {
+    Create an amino acid by one-letter code.
+}
+
+pub fun amino_acid(code: char) -> AminoAcid {
+    match code {
+        'A' => return AminoAcid {
+            name: "Alanine", three_letter_code: "Ala", one_letter_code: 'A',
+            molecular_weight: 89.09, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        'R' => return AminoAcid {
+            name: "Arginine", three_letter_code: "Arg", one_letter_code: 'R',
+            molecular_weight: 174.20, is_polar: true, is_charged: true,
+            charge: 1, is_hydrophobic: false
+        },
+        'N' => return AminoAcid {
+            name: "Asparagine", three_letter_code: "Asn", one_letter_code: 'N',
+            molecular_weight: 132.12, is_polar: true, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'D' => return AminoAcid {
+            name: "Aspartic acid", three_letter_code: "Asp", one_letter_code: 'D',
+            molecular_weight: 133.10, is_polar: true, is_charged: true,
+            charge: -1, is_hydrophobic: false
+        },
+        'C' => return AminoAcid {
+            name: "Cysteine", three_letter_code: "Cys", one_letter_code: 'C',
+            molecular_weight: 121.16, is_polar: true, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'E' => return AminoAcid {
+            name: "Glutamic acid", three_letter_code: "Glu", one_letter_code: 'E',
+            molecular_weight: 147.13, is_polar: true, is_charged: true,
+            charge: -1, is_hydrophobic: false
+        },
+        'Q' => return AminoAcid {
+            name: "Glutamine", three_letter_code: "Gln", one_letter_code: 'Q',
+            molecular_weight: 146.15, is_polar: true, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'G' => return AminoAcid {
+            name: "Glycine", three_letter_code: "Gly", one_letter_code: 'G',
+            molecular_weight: 75.07, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'H' => return AminoAcid {
+            name: "Histidine", three_letter_code: "His", one_letter_code: 'H',
+            molecular_weight: 155.16, is_polar: true, is_charged: true,
+            charge: 0, is_hydrophobic: false
+        },
+        'I' => return AminoAcid {
+            name: "Isoleucine", three_letter_code: "Ile", one_letter_code: 'I',
+            molecular_weight: 131.17, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        'L' => return AminoAcid {
+            name: "Leucine", three_letter_code: "Leu", one_letter_code: 'L',
+            molecular_weight: 131.17, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        'K' => return AminoAcid {
+            name: "Lysine", three_letter_code: "Lys", one_letter_code: 'K',
+            molecular_weight: 146.19, is_polar: true, is_charged: true,
+            charge: 1, is_hydrophobic: false
+        },
+        'M' => return AminoAcid {
+            name: "Methionine", three_letter_code: "Met", one_letter_code: 'M',
+            molecular_weight: 149.21, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        'F' => return AminoAcid {
+            name: "Phenylalanine", three_letter_code: "Phe", one_letter_code: 'F',
+            molecular_weight: 165.19, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        'P' => return AminoAcid {
+            name: "Proline", three_letter_code: "Pro", one_letter_code: 'P',
+            molecular_weight: 115.13, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'S' => return AminoAcid {
+            name: "Serine", three_letter_code: "Ser", one_letter_code: 'S',
+            molecular_weight: 105.09, is_polar: true, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'T' => return AminoAcid {
+            name: "Threonine", three_letter_code: "Thr", one_letter_code: 'T',
+            molecular_weight: 119.12, is_polar: true, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'W' => return AminoAcid {
+            name: "Tryptophan", three_letter_code: "Trp", one_letter_code: 'W',
+            molecular_weight: 204.23, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        'Y' => return AminoAcid {
+            name: "Tyrosine", three_letter_code: "Tyr", one_letter_code: 'Y',
+            molecular_weight: 181.19, is_polar: true, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        },
+        'V' => return AminoAcid {
+            name: "Valine", three_letter_code: "Val", one_letter_code: 'V',
+            molecular_weight: 117.15, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: true
+        },
+        _ => return AminoAcid {
+            name: "Unknown", three_letter_code: "Xaa", one_letter_code: 'X',
+            molecular_weight: 0.0, is_polar: false, is_charged: false,
+            charge: 0, is_hydrophobic: false
+        }
+    }
+}
+
+docs {
+    Protein secondary structure type.
+}
+
+pub gen SecondaryStructure {
+    has element_type: string
+    has start: u32
+    has end: u32
+}
+
+docs {
+    Protein - polymer of amino acids.
+
+    Properties:
+    - sequence: Amino acid sequence (one-letter codes)
+    - length: Number of amino acids
+    - molecular_weight: Total molecular weight (Da)
+    - structure: Predicted or known structure level
+    - function: Protein function
+}
+
+pub gen Protein {
+    has name: string
+    has sequence: string
+    has length: u32
+    has molecular_weight: f64
+    has isoelectric_point: f64
+    has function: string
+    has secondary_structures: Vec<SecondaryStructure>
+    has is_enzyme: bool
+    has is_membrane_protein: bool
+    has subcellular_location: string
+}
+
+docs {
+    Create a new protein from sequence.
+}
+
+pub fun new_protein(name: string, sequence: string, function: string) -> Protein {
+    let length = sequence.len() as u32
+    let mw = calculate_protein_mw(sequence)
+
+    return Protein {
+        name: name,
+        sequence: sequence,
+        length: length,
+        molecular_weight: mw,
+        isoelectric_point: 7.0,
+        function: function,
+        secondary_structures: Vec::new(),
+        is_enzyme: false,
+        is_membrane_protein: false,
+        subcellular_location: "cytoplasm"
+    }
+}
+
+// =============================================================================
+// TRAITS
+// =============================================================================
+
+docs {
+    Trait for entities that can be transcribed to RNA.
+}
+
+pub trait Transcribable {
+    docs {
+        Transcribe DNA to RNA.
+    }
+
+    fun transcribe() -> RNA
+
+    docs {
+        Get the template strand.
+    }
+
+    fun template_strand() -> string
+
+    docs {
+        Get promoter region.
+    }
+
+    fun promoter() -> string
+
+    docs {
+        Check if transcription is active.
+    }
+
+    fun is_being_transcribed() -> bool
+}
+
+docs {
+    Trait for entities that can be translated to protein.
+}
+
+pub trait Translatable {
+    docs {
+        Translate RNA to protein.
+    }
+
+    fun translate() -> Protein
+
+    docs {
+        Get the open reading frame.
+    }
+
+    fun open_reading_frame() -> string
+
+    docs {
+        Get start codon position.
+    }
+
+    fun start_codon_position() -> u64
+
+    docs {
+        Check if translation is active.
+    }
+
+    fun is_being_translated() -> bool
+}
+
+docs {
+    Trait for entities that can be replicated.
+}
+
+pub trait Replicable {
+    docs {
+        Replicate the genetic material.
+    }
+
+    fun replicate() -> (DNA, DNA)
+
+    docs {
+        Get replication origin.
+    }
+
+    fun origin_of_replication() -> u64
+
+    docs {
+        Calculate replication time (hours).
+    }
+
+    fun replication_time() -> f64
+
+    docs {
+        Get replication error rate.
+    }
+
+    fun error_rate() -> f64
+}
+
+docs {
+    Trait for entities that can mutate.
+}
+
+pub trait Mutable {
+    docs {
+        Introduce a point mutation.
+    }
+
+    fun point_mutation(position: u64, new_base: char) -> DNA
+
+    docs {
+        Introduce a deletion.
+    }
+
+    fun deletion(start: u64, length: u64) -> DNA
+
+    docs {
+        Introduce an insertion.
+    }
+
+    fun insertion(position: u64, sequence: string) -> DNA
+
+    docs {
+        Get mutation rate per base pair per generation.
+    }
+
+    fun mutation_rate() -> f64
+}
+
+docs {
+    Trait for proteins with catalytic activity.
+}
+
+pub trait Catalytic {
+    docs {
+        Catalyze a reaction.
+    }
+
+    fun catalyze(substrate: string) -> string
+
+    docs {
+        Get Michaelis constant (Km).
+    }
+
+    fun km() -> f64
+
+    docs {
+        Get maximum velocity (Vmax).
+    }
+
+    fun vmax() -> f64
+
+    docs {
+        Get catalytic efficiency (kcat/Km).
+    }
+
+    fun catalytic_efficiency() -> f64
+}
+
+// =============================================================================
+// RULES
+// =============================================================================
+
+docs {
+    Central Dogma: DNA is transcribed to RNA, which is translated to protein.
+    Information flows: DNA -> RNA -> Protein
+}
+
+pub rule central_dogma {
+    each Gene {
+        this.dna_sequence can_transcribe_to RNA
+        RNA can_translate_to Protein
+    }
+}
+
+docs {
+    Complementary Base Pairing in DNA: A pairs with T, G pairs with C.
+}
+
+pub rule dna_base_pairing {
+    each DNA {
+        for base in this.sequence {
+            base == 'A' || base == 'T' || base == 'G' || base == 'C'
+        }
+    }
+}
+
+docs {
+    Complementary Base Pairing in RNA: A pairs with U, G pairs with C.
+}
+
+pub rule rna_base_pairing {
+    each RNA {
+        for base in this.sequence {
+            base == 'A' || base == 'U' || base == 'G' || base == 'C'
+        }
+    }
+}
+
+docs {
+    Codon Rule: Each codon is exactly 3 nucleotides.
+}
+
+pub rule codon_triplet {
+    each RNA where this.is_coding {
+        this.length % 3 == 0
+    }
+}
+
+docs {
+    Start Codon: Protein synthesis begins with AUG (Methionine).
+}
+
+pub rule start_codon {
+    each Protein {
+        this.sequence.starts_with("M") || is_alternative_start(this)
+    }
+}
+
+docs {
+    Reading Frame: Translation must maintain reading frame.
+}
+
+pub rule reading_frame {
+    each RNA where this.is_coding {
+        has_open_reading_frame(this.sequence)
+    }
+}
+
+docs {
+    Chargaff's Rule: In double-stranded DNA, A=T and G=C.
+}
+
+pub rule chargaff {
+    each DNA where this.is_double_stranded {
+        count_base(this.sequence, 'A') == count_base(this.sequence, 'T') &&
+        count_base(this.sequence, 'G') == count_base(this.sequence, 'C')
+    }
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Sequence Analysis
+// =============================================================================
+
+docs {
+    Calculate GC content of a DNA sequence (percentage).
+}
+
+pub fun calculate_gc_content(sequence: string) -> f64 {
+    let mut gc_count = 0
+    let length = sequence.len()
+
+    if length == 0 {
+        return 0.0
+    }
+
+    for c in sequence.chars() {
+        if c == 'G' || c == 'C' || c == 'g' || c == 'c' {
+            gc_count = gc_count + 1
+        }
+    }
+
+    return (gc_count as f64) / (length as f64) * 100.0
+}
+
+docs {
+    Count occurrences of a base in a sequence.
+}
+
+pub fun count_base(sequence: string, base: char) -> u64 {
+    let mut count: u64 = 0
+
+    for c in sequence.chars() {
+        if c == base {
+            count = count + 1
+        }
+    }
+
+    return count
+}
+
+docs {
+    Get the complement of a DNA base.
+}
+
+pub fun complement_base(base: char) -> char {
+    match base {
+        'A' => 'T',
+        'T' => 'A',
+        'G' => 'C',
+        'C' => 'G',
+        'a' => 't',
+        't' => 'a',
+        'g' => 'c',
+        'c' => 'g',
+        _ => 'N'
+    }
+}
+
+docs {
+    Get the complement of a DNA sequence.
+}
+
+pub fun complement_sequence(sequence: string) -> string {
+    let mut result = ""
+
+    for c in sequence.chars() {
+        result = result + complement_base(c).to_string()
+    }
+
+    return result
+}
+
+docs {
+    Get the reverse complement of a DNA sequence.
+}
+
+pub fun reverse_complement(sequence: string) -> string {
+    let comp = complement_sequence(sequence)
+    let mut result = ""
+
+    for c in comp.chars().rev() {
+        result = result + c.to_string()
+    }
+
+    return result
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Transcription
+// =============================================================================
+
+docs {
+    Transcribe DNA to RNA.
+    Replaces T with U and produces the sense strand.
+}
+
+pub fun transcribe(dna: DNA) -> RNA {
+    let mut rna_seq = ""
+
+    for c in dna.sequence.chars() {
+        match c {
+            'T' => rna_seq = rna_seq + "U",
+            't' => rna_seq = rna_seq + "u",
+            _ => rna_seq = rna_seq + c.to_string()
+        }
+    }
+
+    return new_mrna(rna_seq)
+}
+
+docs {
+    Transcribe a gene to mRNA (includes splicing simulation).
+}
+
+pub fun transcribe_gene(gene: Gene) -> RNA {
+    // In a full implementation, this would:
+    // 1. Transcribe from template strand
+    // 2. Add 5' cap
+    // 3. Splice out introns
+    // 4. Add poly-A tail
+
+    let dna = new_dna(gene.dna_sequence)
+    return transcribe(dna)
+}
+
+docs {
+    Get template strand (antisense) from coding strand.
+}
+
+pub fun template_strand(coding_strand: string) -> string {
+    return complement_sequence(coding_strand)
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Translation (Genetic Code)
+// =============================================================================
+
+docs {
+    Convert a codon (3 RNA bases) to its corresponding amino acid.
+    Uses the standard genetic code.
+
+    Parameters:
+    - codon: Three-letter RNA codon (e.g., "AUG")
+
+    Returns:
+    - Single-letter amino acid code, or '*' for stop codons
+}
+
+pub fun codon_to_amino(codon: string) -> char {
+    match codon {
+        // Phenylalanine (F)
+        "UUU" => 'F', "UUC" => 'F',
+        // Leucine (L)
+        "UUA" => 'L', "UUG" => 'L', "CUU" => 'L', "CUC" => 'L', "CUA" => 'L', "CUG" => 'L',
+        // Isoleucine (I)
+        "AUU" => 'I', "AUC" => 'I', "AUA" => 'I',
+        // Methionine (M) - Start codon
+        "AUG" => 'M',
+        // Valine (V)
+        "GUU" => 'V', "GUC" => 'V', "GUA" => 'V', "GUG" => 'V',
+        // Serine (S)
+        "UCU" => 'S', "UCC" => 'S', "UCA" => 'S', "UCG" => 'S', "AGU" => 'S', "AGC" => 'S',
+        // Proline (P)
+        "CCU" => 'P', "CCC" => 'P', "CCA" => 'P', "CCG" => 'P',
+        // Threonine (T)
+        "ACU" => 'T', "ACC" => 'T', "ACA" => 'T', "ACG" => 'T',
+        // Alanine (A)
+        "GCU" => 'A', "GCC" => 'A', "GCA" => 'A', "GCG" => 'A',
+        // Tyrosine (Y)
+        "UAU" => 'Y', "UAC" => 'Y',
+        // Stop codons (*)
+        "UAA" => '*', "UAG" => '*', "UGA" => '*',
+        // Histidine (H)
+        "CAU" => 'H', "CAC" => 'H',
+        // Glutamine (Q)
+        "CAA" => 'Q', "CAG" => 'Q',
+        // Asparagine (N)
+        "AAU" => 'N', "AAC" => 'N',
+        // Lysine (K)
+        "AAA" => 'K', "AAG" => 'K',
+        // Aspartic acid (D)
+        "GAU" => 'D', "GAC" => 'D',
+        // Glutamic acid (E)
+        "GAA" => 'E', "GAG" => 'E',
+        // Cysteine (C)
+        "UGU" => 'C', "UGC" => 'C',
+        // Tryptophan (W)
+        "UGG" => 'W',
+        // Arginine (R)
+        "CGU" => 'R', "CGC" => 'R', "CGA" => 'R', "CGG" => 'R', "AGA" => 'R', "AGG" => 'R',
+        // Glycine (G)
+        "GGU" => 'G', "GGC" => 'G', "GGA" => 'G', "GGG" => 'G',
+        // Unknown
+        _ => 'X'
+    }
+}
+
+docs {
+    Check if a codon is a stop codon.
+}
+
+pub fun is_stop_codon(codon: string) -> bool {
+    return codon == "UAA" || codon == "UAG" || codon == "UGA"
+}
+
+docs {
+    Check if a codon is the start codon (AUG).
+}
+
+pub fun is_start_codon(codon: string) -> bool {
+    return codon == "AUG"
+}
+
+docs {
+    Translate an mRNA sequence to a protein sequence.
+
+    Parameters:
+    - rna: mRNA with coding sequence
+
+    Returns:
+    - Protein with amino acid sequence
+}
+
+pub fun translate(rna: RNA) -> Protein {
+    let mut protein_seq = ""
+    let seq = rna.sequence
+    let length = seq.len()
+
+    // Find start codon
+    let mut start_pos = 0
+    let mut found_start = false
+
+    for i in 0..(length - 2) {
+        let codon = seq[i..(i + 3)]
+        if is_start_codon(codon) {
+            start_pos = i
+            found_start = true
+            break
+        }
+    }
+
+    if !found_start {
+        return new_protein("unknown", "", "unknown")
+    }
+
+    // Translate from start codon
+    let mut pos = start_pos
+
+    while pos + 3 <= length {
+        let codon = seq[pos..(pos + 3)]
+
+        if is_stop_codon(codon) {
+            break
+        }
+
+        let aa = codon_to_amino(codon)
+        if aa != 'X' {
+            protein_seq = protein_seq + aa.to_string()
+        }
+
+        pos = pos + 3
+    }
+
+    return new_protein("translated", protein_seq, "unknown")
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Protein Analysis
+// =============================================================================
+
+docs {
+    Calculate protein molecular weight from sequence.
+}
+
+pub fun calculate_protein_mw(sequence: string) -> f64 {
+    let mut total = 0.0
+
+    for c in sequence.chars() {
+        let aa = amino_acid(c)
+        total = total + aa.molecular_weight
+    }
+
+    // Subtract water for peptide bonds
+    let bonds = sequence.len() as f64 - 1.0
+    if bonds > 0.0 {
+        total = total - bonds * 18.015
+    }
+
+    return total
+}
+
+docs {
+    Count amino acids by type in a protein.
+}
+
+pub fun amino_acid_composition(sequence: string) -> Vec<(char, u32)> {
+    let mut counts: Vec<(char, u32)> = Vec::new()
+
+    for c in sequence.chars() {
+        let mut found = false
+        for i in 0..counts.len() {
+            if counts[i].0 == c {
+                counts[i].1 = counts[i].1 + 1
+                found = true
+            }
+        }
+        if !found {
+            counts.push((c, 1))
+        }
+    }
+
+    return counts
+}
+
+docs {
+    Calculate hydrophobicity index (Kyte-Doolittle scale, simplified).
+}
+
+pub fun hydrophobicity(sequence: string) -> f64 {
+    let mut total = 0.0
+
+    for c in sequence.chars() {
+        let aa = amino_acid(c)
+        if aa.is_hydrophobic {
+            total = total + 1.0
+        } else {
+            total = total - 1.0
+        }
+    }
+
+    return total / (sequence.len() as f64)
+}
+
+docs {
+    Estimate protein isoelectric point (simplified).
+}
+
+pub fun estimate_pi(sequence: string) -> f64 {
+    let mut positive = 0
+    let mut negative = 0
+
+    for c in sequence.chars() {
+        let aa = amino_acid(c)
+        if aa.charge > 0 {
+            positive = positive + 1
+        }
+        if aa.charge < 0 {
+            negative = negative + 1
+        }
+    }
+
+    // Very simplified approximation
+    if positive > negative {
+        return 8.0 + (positive - negative) as f64 * 0.5
+    } else if negative > positive {
+        return 6.0 - (negative - positive) as f64 * 0.5
+    }
+    return 7.0
+}
+
+// =============================================================================
+// PURE FUNCTIONS - Mutations
+// =============================================================================
+
+docs {
+    Introduce a point mutation at a specific position.
+}
+
+pub fun mutation(dna: DNA, position: u64, new_base: char) -> DNA {
+    if position >= dna.length {
+        return dna
+    }
+
+    let mut new_seq = dna.sequence[0..position as usize].to_string()
+    new_seq = new_seq + new_base.to_string()
+    new_seq = new_seq + dna.sequence[(position as usize + 1)..].to_string()
+
+    return new_dna(new_seq)
+}
+
+docs {
+    Check if mutation is synonymous (doesn't change amino acid).
+}
+
+pub fun is_synonymous_mutation(original_codon: string, mutant_codon: string) -> bool {
+    return codon_to_amino(original_codon) == codon_to_amino(mutant_codon)
+}
+
+docs {
+    Check if mutation is nonsense (creates stop codon).
+}
+
+pub fun is_nonsense_mutation(original_codon: string, mutant_codon: string) -> bool {
+    return !is_stop_codon(original_codon) && is_stop_codon(mutant_codon)
+}
+
+docs {
+    Calculate Hamming distance between two sequences.
+}
+
+pub fun hamming_distance(seq1: string, seq2: string) -> u64 {
+    let mut distance: u64 = 0
+    let len = if seq1.len() < seq2.len() { seq1.len() } else { seq2.len() }
+
+    for i in 0..len {
+        if seq1.chars().nth(i) != seq2.chars().nth(i) {
+            distance = distance + 1
+        }
+    }
+
+    return distance
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+docs {
+    Check if sequence has open reading frame.
+}
+
+pub fun has_open_reading_frame(sequence: string) -> bool {
+    // Check for start codon
+    for i in 0..(sequence.len() - 2) {
+        let codon = sequence[i..(i + 3)]
+        if is_start_codon(codon) {
+            // Check for in-frame stop codon
+            let mut pos = i + 3
+            while pos + 3 <= sequence.len() {
+                let c = sequence[pos..(pos + 3)]
+                if is_stop_codon(c) {
+                    return true
+                }
+                pos = pos + 3
+            }
+        }
+    }
+    return false
+}
+
+docs {
+    Check for alternative start codon usage.
+}
+
+pub fun is_alternative_start(protein: Protein) -> bool {
+    // Some proteins use alternative start codons (CUG, GUG, UUG)
+    // These typically still encode Methionine or Leucine at start
+    let first = protein.sequence.chars().nth(0)
+    match first {
+        Some('M') => true,
+        Some('L') => true,
+        Some('V') => true,
+        _ => false
+    }
+}
+
+// =============================================================================
+// EVOLUTION
+// =============================================================================
+
+docs {
+    Evolution adding epigenetics support.
+}
+
+evo epigenetics @ 0.9.1 > 0.9.0 {
+    adds gen MethylationPattern { sites: Vec<u64>, level: f64 }
+    adds gen HistoneModification { histone: string, modification: string, position: u32 }
+    adds fun methylate_dna(dna: DNA, sites: Vec<u64>) -> DNA
+    adds fun demethylate_dna(dna: DNA, sites: Vec<u64>) -> DNA
+    adds fun is_gene_silenced(gene: Gene, methylation: MethylationPattern) -> bool
+    because "epigenetics essential for gene regulation understanding"
+}
+
+docs {
+    Evolution adding CRISPR/gene editing support.
+}
+
+evo crispr @ 0.9.2 > 0.9.1 {
+    adds gen GuideRNA { sequence: string, target: string, pam: string }
+    adds gen CrisprCas9 { guide_rna: GuideRNA, cut_site: u64 }
+    adds fun design_guide_rna(target_sequence: string) -> GuideRNA
+    adds fun predict_off_targets(guide: GuideRNA, genome: DNA) -> Vec<u64>
+    adds fun crispr_edit(dna: DNA, cas9: CrisprCas9, insert: string) -> DNA
+    because "gene editing revolutionizing molecular biology"
+}
+
+docs {
+    Evolution adding phylogenetics support.
+}
+
+evo phylogenetics @ 0.9.3 > 0.9.2 {
+    adds gen PhylogeneticTree { species: Vec<string>, distances: Vec<Vec<f64>> }
+    adds fun sequence_alignment(seq1: string, seq2: string) -> (string, string)
+    adds fun calculate_evolutionary_distance(seq1: string, seq2: string) -> f64
+    adds fun build_phylogenetic_tree(sequences: Vec<string>) -> PhylogeneticTree
+    adds fun molecular_clock_date(distance: f64, rate: f64) -> f64
+    because "phylogenetics essential for evolutionary biology"
+}
