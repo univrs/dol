@@ -1,0 +1,1418 @@
+// Visual Arts Spirit - Pattern Module
+// Noise functions, tessellations, tilings, and procedural patterns
+
+module visual.pattern @ 0.1.0
+
+use visual.geometry.{ Point2D, Vector2D, Polygon, Triangle, Rectangle }
+use visual.color.{ RGB }
+use @univrs/physics.waves.{ Wave, interference }
+
+// ============================================================================
+// TILES AND GRIDS
+// ============================================================================
+
+pub gen TileShape {
+    type: enum {
+        Square,
+        Hexagon,
+        Triangle,
+        Pentagon,
+        Octagon,
+        Custom { polygon: Polygon }
+    }
+
+    fun vertex_count() -> u64 {
+        match this {
+            TileShape::Square { return 4 }
+            TileShape::Hexagon { return 6 }
+            TileShape::Triangle { return 3 }
+            TileShape::Pentagon { return 5 }
+            TileShape::Octagon { return 8 }
+            TileShape::Custom { polygon } { return polygon.vertices.length }
+        }
+    }
+
+    docs {
+        The shape of a tile in a tessellation.
+    }
+}
+
+pub gen Tile {
+    has shape: TileShape
+    has center: Point2D
+    has rotation: f64
+    has scale: f64
+    has color: Option<RGB>
+
+    rule positive_scale {
+        this.scale > 0.0
+    }
+
+    fun to_polygon() -> Polygon {
+        match this.shape {
+            TileShape::Square {
+                let half = this.scale / 2.0
+                let vertices = vec![
+                    Point2D { x: -half, y: -half },
+                    Point2D { x: half, y: -half },
+                    Point2D { x: half, y: half },
+                    Point2D { x: -half, y: half }
+                ]
+                return this.transform_vertices(vertices)
+            }
+            TileShape::Hexagon {
+                let r = this.scale
+                let vertices = (0..6).map(|i| {
+                    let angle = i as f64 * PI / 3.0
+                    Point2D { x: r * cos(angle), y: r * sin(angle) }
+                }).collect()
+                return this.transform_vertices(vertices)
+            }
+            TileShape::Triangle {
+                let r = this.scale
+                let vertices = (0..3).map(|i| {
+                    let angle = i as f64 * 2.0 * PI / 3.0 - PI / 2.0
+                    Point2D { x: r * cos(angle), y: r * sin(angle) }
+                }).collect()
+                return this.transform_vertices(vertices)
+            }
+            TileShape::Pentagon {
+                let r = this.scale
+                let vertices = (0..5).map(|i| {
+                    let angle = i as f64 * 2.0 * PI / 5.0 - PI / 2.0
+                    Point2D { x: r * cos(angle), y: r * sin(angle) }
+                }).collect()
+                return this.transform_vertices(vertices)
+            }
+            TileShape::Octagon {
+                let r = this.scale
+                let vertices = (0..8).map(|i| {
+                    let angle = i as f64 * PI / 4.0
+                    Point2D { x: r * cos(angle), y: r * sin(angle) }
+                }).collect()
+                return this.transform_vertices(vertices)
+            }
+            TileShape::Custom { polygon } {
+                return this.transform_vertices(polygon.vertices)
+            }
+        }
+    }
+
+    fun transform_vertices(vertices: Vec<Point2D>) -> Polygon {
+        let transformed = vertices.map(|v| {
+            // Rotate
+            let rx = v.x * cos(this.rotation) - v.y * sin(this.rotation)
+            let ry = v.x * sin(this.rotation) + v.y * cos(this.rotation)
+            // Translate
+            Point2D { x: rx + this.center.x, y: ry + this.center.y }
+        }).collect()
+        return Polygon { vertices: transformed }
+    }
+
+    docs {
+        A single tile with shape, position, and visual properties.
+    }
+}
+
+pub gen Tessellation {
+    has tiles: Vec<Tile>
+    has bounds: Rectangle
+
+    fun tile_count() -> u64 {
+        return this.tiles.length
+    }
+
+    fun to_polygons() -> Vec<Polygon> {
+        return this.tiles.map(|t| t.to_polygon()).collect()
+    }
+
+    docs {
+        A collection of tiles that cover a region.
+    }
+}
+
+pub gen Grid2D {
+    has origin: Point2D
+    has cell_width: f64
+    has cell_height: f64
+    has cols: u64
+    has rows: u64
+
+    rule positive_dimensions {
+        this.cell_width > 0.0 && this.cell_height > 0.0
+    }
+
+    rule positive_counts {
+        this.cols > 0 && this.rows > 0
+    }
+
+    fun width() -> f64 {
+        return this.cols as f64 * this.cell_width
+    }
+
+    fun height() -> f64 {
+        return this.rows as f64 * this.cell_height
+    }
+
+    fun cell_center(col: u64, row: u64) -> Point2D {
+        return Point2D {
+            x: this.origin.x + (col as f64 + 0.5) * this.cell_width,
+            y: this.origin.y + (row as f64 + 0.5) * this.cell_height
+        }
+    }
+
+    fun cell_bounds(col: u64, row: u64) -> Rectangle {
+        return Rectangle {
+            origin: Point2D {
+                x: this.origin.x + col as f64 * this.cell_width,
+                y: this.origin.y + row as f64 * this.cell_height
+            },
+            width: this.cell_width,
+            height: this.cell_height
+        }
+    }
+
+    fun point_to_cell(point: Point2D) -> Option<(u64, u64)> {
+        let col = ((point.x - this.origin.x) / this.cell_width) as i64
+        let row = ((point.y - this.origin.y) / this.cell_height) as i64
+
+        if col >= 0 && col < this.cols as i64 && row >= 0 && row < this.rows as i64 {
+            return Some((col as u64, row as u64))
+        }
+        return None
+    }
+
+    fun to_tessellation() -> Tessellation {
+        let tiles = vec![]
+        for row in 0..this.rows {
+            for col in 0..this.cols {
+                tiles.push(Tile {
+                    shape: TileShape::Square,
+                    center: this.cell_center(col, row),
+                    rotation: 0.0,
+                    scale: min(this.cell_width, this.cell_height),
+                    color: None
+                })
+            }
+        }
+        return Tessellation {
+            tiles: tiles,
+            bounds: Rectangle {
+                origin: this.origin,
+                width: this.width(),
+                height: this.height()
+            }
+        }
+    }
+
+    docs {
+        Regular rectangular grid.
+    }
+}
+
+pub gen HexGrid {
+    has origin: Point2D
+    has hex_size: f64
+    has cols: u64
+    has rows: u64
+    has orientation: HexOrientation
+
+    fun hex_width() -> f64 {
+        match this.orientation {
+            HexOrientation::Flat { return this.hex_size * 2.0 }
+            HexOrientation::Pointy { return this.hex_size * sqrt(3.0) }
+        }
+    }
+
+    fun hex_height() -> f64 {
+        match this.orientation {
+            HexOrientation::Flat { return this.hex_size * sqrt(3.0) }
+            HexOrientation::Pointy { return this.hex_size * 2.0 }
+        }
+    }
+
+    fun hex_center(col: u64, row: u64) -> Point2D {
+        match this.orientation {
+            HexOrientation::Flat {
+                let x = this.origin.x + col as f64 * this.hex_width() * 0.75
+                let y = this.origin.y + row as f64 * this.hex_height()
+                if col % 2 == 1 {
+                    y = y + this.hex_height() / 2.0
+                }
+                return Point2D { x: x, y: y }
+            }
+            HexOrientation::Pointy {
+                let x = this.origin.x + col as f64 * this.hex_width()
+                let y = this.origin.y + row as f64 * this.hex_height() * 0.75
+                if row % 2 == 1 {
+                    x = x + this.hex_width() / 2.0
+                }
+                return Point2D { x: x, y: y }
+            }
+        }
+    }
+
+    fun to_tessellation() -> Tessellation {
+        let tiles = vec![]
+        for row in 0..this.rows {
+            for col in 0..this.cols {
+                let rotation = match this.orientation {
+                    HexOrientation::Flat { 0.0 }
+                    HexOrientation::Pointy { PI / 6.0 }
+                }
+                tiles.push(Tile {
+                    shape: TileShape::Hexagon,
+                    center: this.hex_center(col, row),
+                    rotation: rotation,
+                    scale: this.hex_size,
+                    color: None
+                })
+            }
+        }
+        return Tessellation {
+            tiles: tiles,
+            bounds: Rectangle {
+                origin: this.origin,
+                width: this.cols as f64 * this.hex_width(),
+                height: this.rows as f64 * this.hex_height()
+            }
+        }
+    }
+
+    docs {
+        Hexagonal grid with flat-top or pointy-top orientation.
+    }
+}
+
+pub gen HexOrientation {
+    type: enum {
+        Flat,   // Flat edge on top
+        Pointy  // Vertex on top
+    }
+
+    docs {
+        Orientation of hexagons in a hex grid.
+    }
+}
+
+pub gen TriangularGrid {
+    has origin: Point2D
+    has triangle_size: f64
+    has cols: u64
+    has rows: u64
+
+    fun to_tessellation() -> Tessellation {
+        let tiles = vec![]
+        let h = this.triangle_size * sqrt(3.0) / 2.0
+
+        for row in 0..this.rows {
+            for col in 0..this.cols {
+                let is_inverted = (col + row) % 2 == 1
+                let x = this.origin.x + col as f64 * this.triangle_size / 2.0
+                let y = this.origin.y + row as f64 * h
+
+                let rotation = if is_inverted { PI } else { 0.0 }
+
+                // Adjust center for inverted triangles
+                let center_y = if is_inverted {
+                    y + h / 3.0
+                } else {
+                    y + 2.0 * h / 3.0
+                }
+
+                tiles.push(Tile {
+                    shape: TileShape::Triangle,
+                    center: Point2D { x: x, y: center_y },
+                    rotation: rotation,
+                    scale: this.triangle_size / sqrt(3.0),
+                    color: None
+                })
+            }
+        }
+
+        return Tessellation {
+            tiles: tiles,
+            bounds: Rectangle {
+                origin: this.origin,
+                width: this.cols as f64 * this.triangle_size / 2.0,
+                height: this.rows as f64 * h
+            }
+        }
+    }
+
+    docs {
+        Triangular tessellation grid.
+    }
+}
+
+// ============================================================================
+// NOISE FUNCTIONS
+// ============================================================================
+
+pub gen Noise2D {
+    has seed: u64
+    has frequency: f64
+    has amplitude: f64
+
+    rule positive_frequency {
+        this.frequency > 0.0
+    }
+
+    fun sample(x: f64, y: f64) -> f64 {
+        // Override in specific noise types
+        return 0.0
+    }
+
+    docs {
+        Base type for 2D noise functions.
+    }
+}
+
+pub gen PerlinNoise {
+    has seed: u64
+    has frequency: f64
+    has amplitude: f64
+    has permutation: Vec<u64>
+
+    fun default(seed: u64) -> PerlinNoise {
+        // Generate permutation table
+        let perm = (0..256).collect::<Vec<u64>>()
+        shuffle_with_seed(perm, seed)
+        let permutation = perm.clone()
+        permutation.extend(perm)  // Double for wrapping
+
+        return PerlinNoise {
+            seed: seed,
+            frequency: 1.0,
+            amplitude: 1.0,
+            permutation: permutation
+        }
+    }
+
+    fun grad(hash: u64, x: f64, y: f64) -> f64 {
+        let h = hash & 3
+        let u = if h < 2 { x } else { y }
+        let v = if h < 2 { y } else { x }
+        let result = if h & 1 == 0 { u } else { -u }
+        return result + if h & 2 == 0 { v } else { -v }
+    }
+
+    fun fade(t: f64) -> f64 {
+        return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    }
+
+    fun sample(x: f64, y: f64) -> f64 {
+        let fx = x * this.frequency
+        let fy = y * this.frequency
+
+        let xi = floor(fx) as i64 & 255
+        let yi = floor(fy) as i64 & 255
+
+        let xf = fx - floor(fx)
+        let yf = fy - floor(fy)
+
+        let u = this.fade(xf)
+        let v = this.fade(yf)
+
+        let aa = this.permutation[(this.permutation[xi as u64] + yi as u64) as u64]
+        let ab = this.permutation[(this.permutation[xi as u64] + yi as u64 + 1) as u64]
+        let ba = this.permutation[(this.permutation[(xi + 1) as u64] + yi as u64) as u64]
+        let bb = this.permutation[(this.permutation[(xi + 1) as u64] + yi as u64 + 1) as u64]
+
+        let x1 = lerp(this.grad(aa, xf, yf), this.grad(ba, xf - 1.0, yf), u)
+        let x2 = lerp(this.grad(ab, xf, yf - 1.0), this.grad(bb, xf - 1.0, yf - 1.0), u)
+
+        return this.amplitude * lerp(x1, x2, v)
+    }
+
+    docs {
+        Perlin noise - smooth gradient noise.
+        Classic noise function for natural-looking patterns.
+    }
+}
+
+pub gen SimplexNoise {
+    has seed: u64
+    has frequency: f64
+    has amplitude: f64
+    has permutation: Vec<u64>
+
+    fun default(seed: u64) -> SimplexNoise {
+        let perm = (0..256).collect::<Vec<u64>>()
+        shuffle_with_seed(perm, seed)
+        let permutation = perm.clone()
+        permutation.extend(perm)
+
+        return SimplexNoise {
+            seed: seed,
+            frequency: 1.0,
+            amplitude: 1.0,
+            permutation: permutation
+        }
+    }
+
+    fun sample(x: f64, y: f64) -> f64 {
+        let fx = x * this.frequency
+        let fy = y * this.frequency
+
+        // Skew input space
+        let F2 = 0.5 * (sqrt(3.0) - 1.0)
+        let G2 = (3.0 - sqrt(3.0)) / 6.0
+
+        let s = (fx + fy) * F2
+        let i = floor(fx + s)
+        let j = floor(fy + s)
+
+        let t = (i + j) * G2
+        let X0 = i - t
+        let Y0 = j - t
+        let x0 = fx - X0
+        let y0 = fy - Y0
+
+        // Determine which simplex
+        let (i1, j1) = if x0 > y0 { (1, 0) } else { (0, 1) }
+
+        let x1 = x0 - i1 as f64 + G2
+        let y1 = y0 - j1 as f64 + G2
+        let x2 = x0 - 1.0 + 2.0 * G2
+        let y2 = y0 - 1.0 + 2.0 * G2
+
+        let ii = i as i64 & 255
+        let jj = j as i64 & 255
+
+        // Gradient indices
+        let gi0 = this.permutation[(ii + this.permutation[jj as u64] as i64) as u64] % 12
+        let gi1 = this.permutation[(ii + i1 as i64 + this.permutation[(jj + j1 as i64) as u64] as i64) as u64] % 12
+        let gi2 = this.permutation[(ii + 1 + this.permutation[(jj + 1) as u64] as i64) as u64] % 12
+
+        // Gradients
+        let grad3 = vec![
+            (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0),
+            (1.0, 0.0), (-1.0, 0.0), (1.0, 0.0), (-1.0, 0.0),
+            (0.0, 1.0), (0.0, -1.0), (0.0, 1.0), (0.0, -1.0)
+        ]
+
+        fun contrib(gx: f64, gy: f64, px: f64, py: f64) -> f64 {
+            let t = 0.5 - px * px - py * py
+            if t < 0.0 {
+                return 0.0
+            }
+            let t2 = t * t
+            return t2 * t2 * (gx * px + gy * py)
+        }
+
+        let (gx0, gy0) = grad3[gi0 as usize]
+        let (gx1, gy1) = grad3[gi1 as usize]
+        let (gx2, gy2) = grad3[gi2 as usize]
+
+        let n0 = contrib(gx0, gy0, x0, y0)
+        let n1 = contrib(gx1, gy1, x1, y1)
+        let n2 = contrib(gx2, gy2, x2, y2)
+
+        return this.amplitude * 70.0 * (n0 + n1 + n2)
+    }
+
+    docs {
+        Simplex noise - improved Perlin noise.
+        Less directional artifacts, O(n) complexity.
+    }
+}
+
+pub gen ValueNoise {
+    has seed: u64
+    has frequency: f64
+    has amplitude: f64
+
+    fun sample(x: f64, y: f64) -> f64 {
+        let fx = x * this.frequency
+        let fy = y * this.frequency
+
+        let xi = floor(fx) as i64
+        let yi = floor(fy) as i64
+
+        let xf = fx - floor(fx)
+        let yf = fy - floor(fy)
+
+        // Smoothstep interpolation
+        let u = xf * xf * (3.0 - 2.0 * xf)
+        let v = yf * yf * (3.0 - 2.0 * yf)
+
+        // Hash corners
+        fun hash(x: i64, y: i64, seed: u64) -> f64 {
+            let n = x + y * 57 + seed as i64 * 131
+            let n2 = (n << 13) ^ n
+            return (1.0 - ((n2 * (n2 * n2 * 15731 + 789221) + 1376312589) & 0x7fffffff) as f64 / 1073741824.0)
+        }
+
+        let v00 = hash(xi, yi, this.seed)
+        let v10 = hash(xi + 1, yi, this.seed)
+        let v01 = hash(xi, yi + 1, this.seed)
+        let v11 = hash(xi + 1, yi + 1, this.seed)
+
+        let x1 = lerp(v00, v10, u)
+        let x2 = lerp(v01, v11, u)
+
+        return this.amplitude * lerp(x1, x2, v)
+    }
+
+    docs {
+        Value noise - simpler but blockier than Perlin.
+        Interpolates random values at grid points.
+    }
+}
+
+pub gen WorleyNoise {
+    has seed: u64
+    has frequency: f64
+    has amplitude: f64
+    has distance_func: DistanceFunction
+
+    fun default(seed: u64) -> WorleyNoise {
+        return WorleyNoise {
+            seed: seed,
+            frequency: 1.0,
+            amplitude: 1.0,
+            distance_func: DistanceFunction::Euclidean
+        }
+    }
+
+    fun sample(x: f64, y: f64) -> f64 {
+        let fx = x * this.frequency
+        let fy = y * this.frequency
+
+        let xi = floor(fx) as i64
+        let yi = floor(fy) as i64
+
+        let min_dist = f64::MAX
+
+        // Check 3x3 neighborhood
+        for di in -1..=1 {
+            for dj in -1..=1 {
+                let cx = xi + di
+                let cy = yi + dj
+
+                // Generate feature point in cell
+                let (px, py) = this.cell_point(cx, cy)
+
+                let dist = this.distance(fx, fy, px, py)
+                if dist < min_dist {
+                    min_dist = dist
+                }
+            }
+        }
+
+        return this.amplitude * min_dist
+    }
+
+    fun cell_point(cx: i64, cy: i64) -> (f64, f64) {
+        // Deterministic random point in cell
+        let n = cx + cy * 1619 + self.seed as i64 * 6971
+        let n1 = n * 15731
+        let n2 = n * 789221
+
+        let px = cx as f64 + (n1 & 0xffff) as f64 / 65536.0
+        let py = cy as f64 + (n2 & 0xffff) as f64 / 65536.0
+
+        return (px, py)
+    }
+
+    fun distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+        match this.distance_func {
+            DistanceFunction::Euclidean {
+                let dx = x2 - x1
+                let dy = y2 - y1
+                return sqrt(dx * dx + dy * dy)
+            }
+            DistanceFunction::Manhattan {
+                return abs(x2 - x1) + abs(y2 - y1)
+            }
+            DistanceFunction::Chebyshev {
+                return max(abs(x2 - x1), abs(y2 - y1))
+            }
+        }
+    }
+
+    docs {
+        Worley/Cellular noise.
+        Creates cell-like patterns based on distance to feature points.
+    }
+}
+
+pub gen DistanceFunction {
+    type: enum {
+        Euclidean,  // sqrt(dx^2 + dy^2)
+        Manhattan,  // |dx| + |dy|
+        Chebyshev   // max(|dx|, |dy|)
+    }
+
+    docs {
+        Distance metric for Worley noise.
+    }
+}
+
+pub gen FractalNoise {
+    has base_noise: NoiseType
+    has octaves: u64
+    has lacunarity: f64    // Frequency multiplier per octave
+    has persistence: f64   // Amplitude multiplier per octave
+    has seed: u64
+
+    fun default(seed: u64) -> FractalNoise {
+        return FractalNoise {
+            base_noise: NoiseType::Perlin,
+            octaves: 6,
+            lacunarity: 2.0,
+            persistence: 0.5,
+            seed: seed
+        }
+    }
+
+    fun sample(x: f64, y: f64) -> f64 {
+        let total = 0.0
+        let frequency = 1.0
+        let amplitude = 1.0
+        let max_value = 0.0
+
+        for i in 0..this.octaves {
+            let noise_val = this.sample_base(x * frequency, y * frequency, this.seed + i)
+            total = total + noise_val * amplitude
+            max_value = max_value + amplitude
+
+            frequency = frequency * this.lacunarity
+            amplitude = amplitude * this.persistence
+        }
+
+        return total / max_value
+    }
+
+    fun sample_base(x: f64, y: f64, seed: u64) -> f64 {
+        match this.base_noise {
+            NoiseType::Perlin {
+                let noise = PerlinNoise::default(seed)
+                return noise.sample(x, y)
+            }
+            NoiseType::Simplex {
+                let noise = SimplexNoise::default(seed)
+                return noise.sample(x, y)
+            }
+            NoiseType::Value {
+                let noise = ValueNoise { seed: seed, frequency: 1.0, amplitude: 1.0 }
+                return noise.sample(x, y)
+            }
+        }
+    }
+
+    docs {
+        Fractal Brownian Motion (fBm) noise.
+        Combines multiple octaves of noise for natural detail.
+    }
+}
+
+pub gen NoiseType {
+    type: enum {
+        Perlin,
+        Simplex,
+        Value
+    }
+
+    docs {
+        Type of base noise function for fractal noise.
+    }
+}
+
+// ============================================================================
+// VORONOI
+// ============================================================================
+
+pub gen VoronoiCell {
+    has site: Point2D
+    has vertices: Vec<Point2D>
+    has neighbors: Vec<u64>
+
+    fun area() -> f64 {
+        if this.vertices.length < 3 {
+            return 0.0
+        }
+        // Shoelace formula
+        let n = this.vertices.length
+        let sum = 0.0
+        for i in 0..n {
+            let j = (i + 1) % n
+            sum = sum + this.vertices[i].x * this.vertices[j].y
+            sum = sum - this.vertices[j].x * this.vertices[i].y
+        }
+        return abs(sum) / 2.0
+    }
+
+    docs {
+        A single cell in a Voronoi diagram.
+    }
+}
+
+pub gen VoronoiDiagram {
+    has cells: Vec<VoronoiCell>
+    has bounds: Rectangle
+
+    fun from_points(points: Vec<Point2D>, bounds: Rectangle) -> VoronoiDiagram {
+        // Fortune's algorithm would go here
+        // Simplified: just store sites, compute on-demand
+        let cells = points.map(|p| {
+            VoronoiCell {
+                site: p,
+                vertices: vec![],
+                neighbors: vec![]
+            }
+        }).collect()
+
+        return VoronoiDiagram { cells: cells, bounds: bounds }
+    }
+
+    fun nearest_site(point: Point2D) -> u64 {
+        let min_dist = f64::MAX
+        let nearest = 0
+
+        for (i, cell) in this.cells.enumerate() {
+            let dist = point.distance_to(cell.site)
+            if dist < min_dist {
+                min_dist = dist
+                nearest = i
+            }
+        }
+
+        return nearest
+    }
+
+    fun sample(point: Point2D) -> f64 {
+        // Return distance to nearest site (normalized)
+        let min_dist = f64::MAX
+
+        for cell in this.cells {
+            let dist = point.distance_to(cell.site)
+            if dist < min_dist {
+                min_dist = dist
+            }
+        }
+
+        return min_dist
+    }
+
+    docs {
+        Voronoi diagram - partition of space by nearest site.
+    }
+}
+
+pub gen DelaunayTriangulation {
+    has triangles: Vec<(u64, u64, u64)>
+    has points: Vec<Point2D>
+
+    fun from_points(points: Vec<Point2D>) -> DelaunayTriangulation {
+        // Bowyer-Watson algorithm would go here
+        // Simplified placeholder
+        return DelaunayTriangulation {
+            triangles: vec![],
+            points: points
+        }
+    }
+
+    fun to_voronoi(bounds: Rectangle) -> VoronoiDiagram {
+        // Dual graph conversion
+        return VoronoiDiagram::from_points(this.points.clone(), bounds)
+    }
+
+    docs {
+        Delaunay triangulation - dual of Voronoi diagram.
+        Maximizes minimum angle of all triangles.
+    }
+}
+
+// ============================================================================
+// SPECIAL TILINGS
+// ============================================================================
+
+pub gen PenroseTiling {
+    has origin: Point2D
+    has size: f64
+    has iterations: u64
+    has type_: PenroseType
+
+    fun default() -> PenroseTiling {
+        return PenroseTiling {
+            origin: Point2D { x: 0.0, y: 0.0 },
+            size: 1.0,
+            iterations: 5,
+            type_: PenroseType::P3
+        }
+    }
+
+    fun generate() -> Vec<Polygon> {
+        match this.type_ {
+            PenroseType::P2 { return this.generate_p2() }
+            PenroseType::P3 { return this.generate_p3() }
+        }
+    }
+
+    fun generate_p3() -> Vec<Polygon> {
+        // Robinson triangles subdivision
+        let phi = (1.0 + sqrt(5.0)) / 2.0  // Golden ratio
+        let tiles = vec![]
+
+        // Start with a "sun" of 5 kites
+        for i in 0..5 {
+            let angle = i as f64 * 2.0 * PI / 5.0
+            let a = this.origin
+            let b = Point2D {
+                x: this.origin.x + this.size * cos(angle),
+                y: this.origin.y + this.size * sin(angle)
+            }
+            let c = Point2D {
+                x: this.origin.x + this.size * cos(angle + 2.0 * PI / 5.0),
+                y: this.origin.y + this.size * sin(angle + 2.0 * PI / 5.0)
+            }
+
+            this.subdivide_kite(a, b, c, this.iterations, &mut tiles)
+        }
+
+        return tiles
+    }
+
+    fun subdivide_kite(a: Point2D, b: Point2D, c: Point2D, depth: u64, out: &mut Vec<Polygon>) {
+        if depth == 0 {
+            out.push(Polygon { vertices: vec![a, b, c] })
+            return
+        }
+
+        let phi = (1.0 + sqrt(5.0)) / 2.0
+        // Subdivision points
+        let d = a.lerp(c, 1.0 / phi)
+        let e = b.lerp(a, 1.0 / phi)
+
+        this.subdivide_kite(d, e, a, depth - 1, out)
+        this.subdivide_dart(e, d, b, depth - 1, out)
+        this.subdivide_kite(c, d, b, depth - 1, out)
+    }
+
+    fun subdivide_dart(a: Point2D, b: Point2D, c: Point2D, depth: u64, out: &mut Vec<Polygon>) {
+        if depth == 0 {
+            out.push(Polygon { vertices: vec![a, b, c] })
+            return
+        }
+
+        let phi = (1.0 + sqrt(5.0)) / 2.0
+        let d = a.lerp(c, 1.0 / phi)
+
+        this.subdivide_kite(d, b, a, depth - 1, out)
+        this.subdivide_dart(c, d, b, depth - 1, out)
+    }
+
+    fun generate_p2() -> Vec<Polygon> {
+        // Rhombus-based Penrose tiling
+        let tiles = vec![]
+        // Implementation similar to P3 but with rhombi
+        return tiles
+    }
+
+    docs {
+        Penrose tiling - aperiodic tiling with 5-fold symmetry.
+        P2 uses kites and darts, P3 uses rhombi.
+        Never repeats but has local patterns.
+    }
+}
+
+pub gen PenroseType {
+    type: enum {
+        P2,  // Kites and darts
+        P3   // Rhombi
+    }
+
+    docs {
+        Type of Penrose tiling.
+    }
+}
+
+pub gen WangTiles {
+    has tile_set: Vec<WangTile>
+    has grid_width: u64
+    has grid_height: u64
+
+    fun generate() -> Vec<(u64, u64, u64)> {
+        // Returns (col, row, tile_index) for valid tiling
+        let result = vec![]
+
+        for row in 0..this.grid_height {
+            for col in 0..this.grid_width {
+                let valid_tiles = this.find_valid_tiles(col, row, &result)
+                if valid_tiles.is_empty() {
+                    // Backtrack or use default
+                    result.push((col, row, 0))
+                } else {
+                    // Random selection from valid tiles
+                    let tile_idx = valid_tiles[random_int(0, valid_tiles.length)]
+                    result.push((col, row, tile_idx))
+                }
+            }
+        }
+
+        return result
+    }
+
+    fun find_valid_tiles(col: u64, row: u64, placed: &Vec<(u64, u64, u64)>) -> Vec<u64> {
+        let valid = vec![]
+
+        for (i, tile) in this.tile_set.enumerate() {
+            let is_valid = true
+
+            // Check left neighbor
+            if col > 0 {
+                let left_tile = this.get_placed_tile(col - 1, row, placed)
+                if let Some(lt) = left_tile {
+                    if this.tile_set[lt].right != tile.left {
+                        is_valid = false
+                    }
+                }
+            }
+
+            // Check top neighbor
+            if row > 0 {
+                let top_tile = this.get_placed_tile(col, row - 1, placed)
+                if let Some(tt) = top_tile {
+                    if this.tile_set[tt].bottom != tile.top {
+                        is_valid = false
+                    }
+                }
+            }
+
+            if is_valid {
+                valid.push(i)
+            }
+        }
+
+        return valid
+    }
+
+    fun get_placed_tile(col: u64, row: u64, placed: &Vec<(u64, u64, u64)>) -> Option<u64> {
+        for (c, r, idx) in placed {
+            if *c == col && *r == row {
+                return Some(*idx)
+            }
+        }
+        return None
+    }
+
+    docs {
+        Wang tiles - square tiles with colored edges.
+        Adjacent tiles must have matching edge colors.
+        Can be aperiodic with the right tile set.
+    }
+}
+
+pub gen WangTile {
+    has top: u8
+    has right: u8
+    has bottom: u8
+    has left: u8
+    has texture: Option<u64>
+
+    docs {
+        A single Wang tile with edge colors (0-255).
+    }
+}
+
+pub gen TruchetTiles {
+    has grid: Grid2D
+    has pattern_type: TruchetPattern
+
+    fun generate() -> Vec<TruchetTile> {
+        let tiles = vec![]
+
+        for row in 0..this.grid.rows {
+            for col in 0..this.grid.cols {
+                // Random orientation
+                let orientation = random_int(0, 2)
+                tiles.push(TruchetTile {
+                    position: this.grid.cell_center(col, row),
+                    size: min(this.grid.cell_width, this.grid.cell_height),
+                    orientation: orientation as u8,
+                    pattern: this.pattern_type
+                })
+            }
+        }
+
+        return tiles
+    }
+
+    docs {
+        Truchet tiles - square tiles with rotational patterns.
+        Simple rules create complex visual patterns.
+    }
+}
+
+pub gen TruchetTile {
+    has position: Point2D
+    has size: f64
+    has orientation: u8  // 0 or 1
+    has pattern: TruchetPattern
+
+    fun to_arcs() -> Vec<(Point2D, f64, f64, f64)> {
+        // Returns (center, radius, start_angle, end_angle)
+        let half = this.size / 2.0
+        let radius = half
+
+        match this.pattern {
+            TruchetPattern::QuarterCircle {
+                if this.orientation == 0 {
+                    return vec![
+                        (Point2D { x: this.position.x - half, y: this.position.y - half },
+                         radius, 0.0, PI / 2.0),
+                        (Point2D { x: this.position.x + half, y: this.position.y + half },
+                         radius, PI, 3.0 * PI / 2.0)
+                    ]
+                } else {
+                    return vec![
+                        (Point2D { x: this.position.x + half, y: this.position.y - half },
+                         radius, PI / 2.0, PI),
+                        (Point2D { x: this.position.x - half, y: this.position.y + half },
+                         radius, 3.0 * PI / 2.0, 2.0 * PI)
+                    ]
+                }
+            }
+            TruchetPattern::Diagonal {
+                // Return as line segments instead
+                return vec![]
+            }
+        }
+    }
+
+    docs {
+        A single Truchet tile with orientation.
+    }
+}
+
+pub gen TruchetPattern {
+    type: enum {
+        QuarterCircle,  // Quarter circles in opposite corners
+        Diagonal        // Diagonal line
+    }
+
+    docs {
+        Visual pattern for Truchet tiles.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Tileable {
+    fun can_tile_with(other: Self) -> bool
+    fun rotate(quarters: u64) -> Self
+
+    docs {
+        Types that can form tilings.
+    }
+}
+
+pub trait Periodic {
+    fun period() -> (f64, f64)
+    fun is_periodic() -> bool
+
+    docs {
+        Types with translational periodicity.
+    }
+}
+
+pub trait Seamless {
+    fun sample_seamless(x: f64, y: f64, width: f64, height: f64) -> f64
+
+    docs {
+        Types that can be sampled seamlessly (tileable texture).
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Seamless for PerlinNoise {
+    fun sample_seamless(x: f64, y: f64, width: f64, height: f64) -> f64 {
+        // Use 4D noise for seamless 2D
+        let s = x / width
+        let t = y / height
+
+        let nx = cos(s * 2.0 * PI) * width / (2.0 * PI)
+        let ny = sin(s * 2.0 * PI) * width / (2.0 * PI)
+        let nz = cos(t * 2.0 * PI) * height / (2.0 * PI)
+        let nw = sin(t * 2.0 * PI) * height / (2.0 * PI)
+
+        // Would need 4D noise; using 2D approximation
+        return this.sample(nx + nz, ny + nw)
+    }
+}
+
+impl Periodic for Grid2D {
+    fun period() -> (f64, f64) {
+        return (this.cell_width, this.cell_height)
+    }
+
+    fun is_periodic() -> bool {
+        return true
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+pub fun perlin_noise(x: f64, y: f64, seed: u64) -> f64 {
+    let noise = PerlinNoise::default(seed)
+    return noise.sample(x, y)
+
+    docs {
+        Quick Perlin noise sample.
+    }
+}
+
+pub fun simplex_noise(x: f64, y: f64, seed: u64) -> f64 {
+    let noise = SimplexNoise::default(seed)
+    return noise.sample(x, y)
+
+    docs {
+        Quick Simplex noise sample.
+    }
+}
+
+pub fun voronoi(x: f64, y: f64, points: Vec<Point2D>) -> f64 {
+    let min_dist = f64::MAX
+
+    for p in points {
+        let dx = x - p.x
+        let dy = y - p.y
+        let dist = sqrt(dx * dx + dy * dy)
+        if dist < min_dist {
+            min_dist = dist
+        }
+    }
+
+    return min_dist
+
+    docs {
+        Quick Voronoi distance sample.
+    }
+}
+
+pub fun delaunay(points: Vec<Point2D>) -> DelaunayTriangulation {
+    return DelaunayTriangulation::from_points(points)
+
+    docs {
+        Generate Delaunay triangulation from points.
+    }
+}
+
+pub fun penrose_tiling(origin: Point2D, size: f64, iterations: u64) -> Vec<Polygon> {
+    let tiling = PenroseTiling {
+        origin: origin,
+        size: size,
+        iterations: iterations,
+        type_: PenroseType::P3
+    }
+    return tiling.generate()
+
+    docs {
+        Generate Penrose tiling polygons.
+    }
+}
+
+pub fun wang_tile_match(tile1: WangTile, tile2: WangTile, direction: Direction) -> bool {
+    match direction {
+        Direction::Right { return tile1.right == tile2.left }
+        Direction::Left { return tile1.left == tile2.right }
+        Direction::Up { return tile1.top == tile2.bottom }
+        Direction::Down { return tile1.bottom == tile2.top }
+    }
+
+    docs {
+        Check if two Wang tiles can be adjacent.
+    }
+}
+
+pub gen Direction {
+    type: enum {
+        Up,
+        Down,
+        Left,
+        Right
+    }
+
+    docs {
+        Cardinal direction.
+    }
+}
+
+pub fun truchet_pattern(grid: Grid2D, pattern: TruchetPattern, seed: u64) -> Vec<TruchetTile> {
+    set_random_seed(seed)
+    let truchet = TruchetTiles {
+        grid: grid,
+        pattern_type: pattern
+    }
+    return truchet.generate()
+
+    docs {
+        Generate Truchet tile pattern.
+    }
+}
+
+pub fun fbm(x: f64, y: f64, octaves: u64, seed: u64) -> f64 {
+    let noise = FractalNoise::default(seed)
+    noise.octaves = octaves
+    return noise.sample(x, y)
+
+    docs {
+        Fractal Brownian Motion noise.
+    }
+}
+
+pub fun turbulence(x: f64, y: f64, octaves: u64, seed: u64) -> f64 {
+    let total = 0.0
+    let frequency = 1.0
+    let amplitude = 1.0
+    let max_value = 0.0
+
+    for i in 0..octaves {
+        let noise = PerlinNoise::default(seed + i)
+        noise.frequency = frequency
+        total = total + abs(noise.sample(x, y)) * amplitude
+        max_value = max_value + amplitude
+
+        frequency = frequency * 2.0
+        amplitude = amplitude * 0.5
+    }
+
+    return total / max_value
+
+    docs {
+        Turbulence noise (absolute value fBm).
+        Good for fire, smoke, marble textures.
+    }
+}
+
+pub fun ridged_multifractal(x: f64, y: f64, octaves: u64, seed: u64) -> f64 {
+    let total = 0.0
+    let frequency = 1.0
+    let amplitude = 1.0
+    let weight = 1.0
+
+    for i in 0..octaves {
+        let noise = PerlinNoise::default(seed + i)
+        noise.frequency = frequency
+        let signal = noise.sample(x, y)
+        let ridge = 1.0 - abs(signal)
+        let ridge_sq = ridge * ridge
+        total = total + ridge_sq * weight * amplitude
+
+        weight = clamp(ridge_sq * 2.0, 0.0, 1.0)
+        frequency = frequency * 2.0
+        amplitude = amplitude * 0.5
+    }
+
+    return total
+
+    docs {
+        Ridged multifractal noise.
+        Good for mountains, terrain features.
+    }
+}
+
+pub fun domain_warp(x: f64, y: f64, warp_strength: f64, seed: u64) -> (f64, f64) {
+    let noise1 = PerlinNoise::default(seed)
+    let noise2 = PerlinNoise::default(seed + 1)
+
+    let warp_x = noise1.sample(x, y) * warp_strength
+    let warp_y = noise2.sample(x, y) * warp_strength
+
+    return (x + warp_x, y + warp_y)
+
+    docs {
+        Warp coordinates using noise.
+        Creates organic distortion effects.
+    }
+}
+
+// ============================================================================
+// WAVE-BASED PATTERNS (using physics.waves)
+// ============================================================================
+
+pub fun wave_interference_pattern(x: f64, y: f64, sources: Vec<Point2D>, wavelength: f64) -> f64 {
+    let amplitude = 0.0
+
+    for source in sources {
+        let dist = sqrt((x - source.x) * (x - source.x) + (y - source.y) * (y - source.y))
+        let phase = (dist / wavelength) * 2.0 * PI
+        amplitude = amplitude + sin(phase)
+    }
+
+    return amplitude / sources.length as f64
+
+    docs {
+        Create interference pattern from multiple wave sources.
+        Uses physics.waves concepts for realistic wave behavior.
+    }
+}
+
+pub fun moire_pattern(x: f64, y: f64, freq1: f64, freq2: f64, angle: f64) -> f64 {
+    // Two overlapping line patterns
+    let pattern1 = sin(x * freq1 * 2.0 * PI)
+
+    let x2 = x * cos(angle) - y * sin(angle)
+    let pattern2 = sin(x2 * freq2 * 2.0 * PI)
+
+    return (pattern1 + pattern2) / 2.0
+
+    docs {
+        Generate Moire interference pattern.
+        Created by overlapping two regular patterns.
+    }
+}
+
+docs {
+    Visual Arts Spirit - Pattern Module
+
+    Procedural pattern generation and tessellation.
+
+    Tiles and Grids:
+    - TileShape: Square, Hexagon, Triangle, etc.
+    - Tile: Positioned, rotated, scaled shape
+    - Tessellation: Collection of tiles
+    - Grid2D: Rectangular grid
+    - HexGrid: Hexagonal grid (flat/pointy)
+    - TriangularGrid: Triangle tessellation
+
+    Noise Functions:
+    - PerlinNoise: Classic gradient noise
+    - SimplexNoise: Improved Perlin
+    - ValueNoise: Simple interpolated noise
+    - WorleyNoise: Cellular/Voronoi noise
+    - FractalNoise: fBm with octaves
+
+    Voronoi/Delaunay:
+    - VoronoiDiagram: Space partition by nearest site
+    - VoronoiCell: Single Voronoi cell
+    - DelaunayTriangulation: Dual of Voronoi
+
+    Special Tilings:
+    - PenroseTiling: Aperiodic 5-fold symmetry
+    - WangTiles: Edge-matching tiles
+    - TruchetTiles: Quarter-circle patterns
+
+    Utility Functions:
+    - perlin_noise, simplex_noise: Quick sampling
+    - voronoi, delaunay: Quick construction
+    - fbm, turbulence: Fractal noise
+    - ridged_multifractal: Mountain-like noise
+    - domain_warp: Coordinate distortion
+    - wave_interference_pattern: Physics-based waves
+    - moire_pattern: Overlapping patterns
+
+    Traits:
+    - Tileable: Can form tilings
+    - Periodic: Has translational period
+    - Seamless: Tileable texture sampling
+}

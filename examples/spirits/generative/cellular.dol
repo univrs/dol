@@ -1,0 +1,913 @@
+// Generative Art Spirit - Cellular Automata Module
+// Cellular automata for emergent patterns and simulations
+
+module generative.cellular @ 0.1.0
+
+use @univrs/visual.geometry.{ Point2D }
+use @univrs/visual.color.{ RGB, RGBA }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+// Conway's Game of Life: B3/S23
+pub const CONWAY_BIRTH: Vec<u8> = vec![3]
+pub const CONWAY_SURVIVAL: Vec<u8> = vec![2, 3]
+
+// HighLife: B36/S23 (has replicator pattern)
+pub const HIGHLIFE_BIRTH: Vec<u8> = vec![3, 6]
+pub const HIGHLIFE_SURVIVAL: Vec<u8> = vec![2, 3]
+
+// Day and Night: B3678/S34678
+pub const DAY_NIGHT_BIRTH: Vec<u8> = vec![3, 6, 7, 8]
+pub const DAY_NIGHT_SURVIVAL: Vec<u8> = vec![3, 4, 6, 7, 8]
+
+// Seeds: B2/S (explosive growth)
+pub const SEEDS_BIRTH: Vec<u8> = vec![2]
+pub const SEEDS_SURVIVAL: Vec<u8> = vec![]
+
+// Brian's Brain states
+pub const STATE_OFF: u8 = 0
+pub const STATE_ON: u8 = 1
+pub const STATE_DYING: u8 = 2
+
+// Wolfram elementary CA famous rules
+pub const RULE_30: u8 = 30
+pub const RULE_90: u8 = 90
+pub const RULE_110: u8 = 110
+pub const RULE_184: u8 = 184
+
+// ============================================================================
+// CELL STATE
+// ============================================================================
+
+pub gen CellState {
+    type: enum {
+        Dead,
+        Alive,
+        Custom { value: u8 }
+    }
+
+    fun is_alive() -> bool {
+        match this.type {
+            Dead { false }
+            Alive { true }
+            Custom { value } { value > 0 }
+        }
+    }
+
+    fun to_bool() -> bool {
+        return this.is_alive()
+    }
+
+    docs {
+        State of a single cell in a cellular automaton.
+    }
+}
+
+// ============================================================================
+// CELL GRID
+// ============================================================================
+
+pub gen CellGrid {
+    has width: u32                  // Grid width
+    has height: u32                 // Grid height
+    has cells: Vec<bool>            // Cell states (row-major, true = alive)
+    has wrap: bool                  // Whether edges wrap around (toroidal)
+
+    rule valid_dimensions {
+        this.width > 0 && this.height > 0
+    }
+
+    rule valid_cells_length {
+        this.cells.length == (this.width * this.height) as u64
+    }
+
+    fun get(x: i32, y: i32) -> bool {
+        let (wx, wy) = this.wrap_coords(x, y)
+        if wx < 0 || wx >= this.width as i32 || wy < 0 || wy >= this.height as i32 {
+            return false
+        }
+        let index = (wy as u32 * this.width + wx as u32) as u64
+        return this.cells[index]
+    }
+
+    fun set(x: u32, y: u32, value: bool) -> CellGrid {
+        if x >= this.width || y >= this.height {
+            return this.clone()
+        }
+        let index = (y * this.width + x) as u64
+        let mut cells = this.cells.clone()
+        cells[index] = value
+        return CellGrid {
+            width: this.width,
+            height: this.height,
+            cells: cells,
+            wrap: this.wrap
+        }
+    }
+
+    fun wrap_coords(x: i32, y: i32) -> (i32, i32) {
+        if this.wrap {
+            let wx = ((x % this.width as i32) + this.width as i32) % this.width as i32
+            let wy = ((y % this.height as i32) + this.height as i32) % this.height as i32
+            return (wx, wy)
+        }
+        return (x, y)
+    }
+
+    fun count_alive() -> u64 {
+        return this.cells.filter(|c| *c).count()
+    }
+
+    fun density() -> f64 {
+        return this.count_alive() as f64 / (this.width * this.height) as f64
+    }
+
+    fun toggle(x: u32, y: u32) -> CellGrid {
+        let current = this.get(x as i32, y as i32)
+        return this.set(x, y, !current)
+    }
+
+    docs {
+        A 2D grid of cells for cellular automata.
+        Cells are boolean (alive/dead).
+        Optionally wraps at edges (toroidal topology).
+    }
+}
+
+// ============================================================================
+// 1D RULES (ELEMENTARY CA)
+// ============================================================================
+
+pub gen Rule1D {
+    has rule_number: u8             // Wolfram rule number (0-255)
+
+    fun apply(left: bool, center: bool, right: bool) -> bool {
+        // Convert neighborhood to index (0-7)
+        let index = (left as u8) * 4 + (center as u8) * 2 + (right as u8)
+        // Check corresponding bit in rule number
+        return (this.rule_number >> index) & 1 == 1
+    }
+
+    fun to_string() -> string {
+        return format!("Rule {}", this.rule_number)
+    }
+
+    docs {
+        Wolfram elementary cellular automaton rule.
+        Rule number encodes all 8 possible neighborhood transitions.
+
+        Famous rules:
+        - Rule 30: Chaotic, used for random number generation
+        - Rule 90: Sierpinski triangle pattern
+        - Rule 110: Turing complete
+        - Rule 184: Traffic flow model
+    }
+}
+
+// ============================================================================
+// 2D RULES (LIFE-LIKE)
+// ============================================================================
+
+pub gen Rule2D {
+    has birth: Vec<u8>              // Neighbor counts that cause birth
+    has survival: Vec<u8>           // Neighbor counts that allow survival
+    has name: string                // Rule name
+
+    fun apply(is_alive: bool, neighbors: u8) -> bool {
+        if is_alive {
+            return this.survival.contains(&neighbors)
+        } else {
+            return this.birth.contains(&neighbors)
+        }
+    }
+
+    fun to_rulestring() -> string {
+        // B/S notation (e.g., "B3/S23")
+        let birth_str = this.birth.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("")
+        let survival_str = this.survival.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("")
+        return format!("B{}/S{}", birth_str, survival_str)
+    }
+
+    docs {
+        A 2D cellular automaton rule in B/S (birth/survival) notation.
+        Defines which neighbor counts cause birth and survival.
+    }
+}
+
+pub gen Neighborhood {
+    type: enum {
+        Moore,          // 8 neighbors (including diagonals)
+        VonNeumann,     // 4 neighbors (cardinal directions only)
+        Extended { range: u32 }  // Extended range
+    }
+
+    fun offsets() -> Vec<(i32, i32)> {
+        match this.type {
+            Moore {
+                return vec![
+                    (-1, -1), (0, -1), (1, -1),
+                    (-1, 0),           (1, 0),
+                    (-1, 1),  (0, 1),  (1, 1)
+                ]
+            }
+            VonNeumann {
+                return vec![
+                    (0, -1),
+                    (-1, 0), (1, 0),
+                    (0, 1)
+                ]
+            }
+            Extended { range } {
+                let mut offsets = vec![]
+                for dy in -(range as i32)..(range as i32 + 1) {
+                    for dx in -(range as i32)..(range as i32 + 1) {
+                        if dx != 0 || dy != 0 {
+                            offsets.push((dx, dy))
+                        }
+                    }
+                }
+                return offsets
+            }
+        }
+    }
+
+    docs {
+        Neighborhood definition for cellular automata.
+        Moore: 8 neighbors (standard for Game of Life)
+        Von Neumann: 4 neighbors (cardinal directions)
+    }
+}
+
+// ============================================================================
+// PRESET RULES
+// ============================================================================
+
+pub gen GameOfLife is Rule2D {
+    has birth: Vec<u8> = CONWAY_BIRTH
+    has survival: Vec<u8> = CONWAY_SURVIVAL
+    has name: string = "Conway's Game of Life"
+
+    docs {
+        Conway's Game of Life (B3/S23).
+        The most famous cellular automaton.
+
+        Rules:
+        - A dead cell with exactly 3 neighbors becomes alive (birth)
+        - A living cell with 2 or 3 neighbors survives
+        - All other cells die (underpopulation or overpopulation)
+    }
+}
+
+pub gen HighLife is Rule2D {
+    has birth: Vec<u8> = HIGHLIFE_BIRTH
+    has survival: Vec<u8> = HIGHLIFE_SURVIVAL
+    has name: string = "HighLife"
+
+    docs {
+        HighLife (B36/S23).
+        Similar to Game of Life but with a replicator pattern.
+        Birth: 3 or 6 neighbors
+        Survival: 2 or 3 neighbors
+    }
+}
+
+pub gen DayAndNight is Rule2D {
+    has birth: Vec<u8> = DAY_NIGHT_BIRTH
+    has survival: Vec<u8> = DAY_NIGHT_SURVIVAL
+    has name: string = "Day and Night"
+
+    docs {
+        Day and Night (B3678/S34678).
+        Symmetric rule where patterns work inverted too.
+    }
+}
+
+pub gen Seeds is Rule2D {
+    has birth: Vec<u8> = SEEDS_BIRTH
+    has survival: Vec<u8> = SEEDS_SURVIVAL
+    has name: string = "Seeds"
+
+    docs {
+        Seeds (B2/S).
+        Explosive growth - cells never survive,
+        but new cells are born with 2 neighbors.
+    }
+}
+
+pub gen BriansBrain {
+    // Three-state automaton
+    has states: u8 = 3  // Off (0), On (1), Dying (2)
+
+    docs {
+        Brian's Brain - three-state automaton.
+        Off -> On (if exactly 2 On neighbors)
+        On -> Dying
+        Dying -> Off
+        Creates beautiful moving patterns.
+    }
+}
+
+pub gen WireWorld {
+    // Four-state automaton for logic circuits
+    has states: u8 = 4  // Empty (0), Wire (1), Head (2), Tail (3)
+
+    docs {
+        WireWorld - four-state automaton for circuit simulation.
+        Empty: Stays empty
+        Wire: Becomes head if 1-2 neighbors are heads
+        Head: Becomes tail
+        Tail: Becomes wire
+    }
+}
+
+pub gen LangtonsAnt {
+    has x: i32              // Ant position X
+    has y: i32              // Ant position Y
+    has direction: u8       // 0=up, 1=right, 2=down, 3=left
+
+    docs {
+        Langton's Ant - simple turmite.
+        On white: turn right, flip color, move
+        On black: turn left, flip color, move
+        Eventually produces a highway pattern.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Evolvable {
+    fun step() -> Self
+
+    docs {
+        Types that can evolve one time step.
+    }
+}
+
+pub trait Seedable {
+    fun seed(pattern: string) -> Self
+    fun randomize(density: f64, rng: &mut Random) -> Self
+
+    docs {
+        Types that can be seeded with patterns.
+    }
+}
+
+pub trait Visualizable {
+    fun to_image(alive_color: RGB, dead_color: RGB) -> Vec<RGB>
+
+    docs {
+        Types that can be visualized as colored pixels.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Evolvable for CellGrid {
+    fun step() -> CellGrid {
+        return conway_step(this)
+    }
+}
+
+impl Seedable for CellGrid {
+    fun seed(pattern: string) -> CellGrid {
+        // Parse RLE or simple pattern
+        return parse_pattern(pattern, this.width, this.height)
+    }
+
+    fun randomize(density: f64, rng: &mut Random) -> CellGrid {
+        return randomize_grid(this.width, this.height, density, rng)
+    }
+}
+
+impl Visualizable for CellGrid {
+    fun to_image(alive_color: RGB, dead_color: RGB) -> Vec<RGB> {
+        return this.cells.map(|c| {
+            if *c { alive_color } else { dead_color }
+        }).collect()
+    }
+}
+
+// ============================================================================
+// 1D CELLULAR AUTOMATA FUNCTIONS
+// ============================================================================
+
+pub fun wolfram_step(row: Vec<bool>, rule: Rule1D) -> Vec<bool> {
+    let length = row.length as u64
+    let mut result = vec![]
+
+    for i in 0..length {
+        let left = if i > 0 { row[i - 1] } else { row[length - 1] }
+        let center = row[i]
+        let right = if i < length - 1 { row[i + 1] } else { row[0] }
+        result.push(rule.apply(left, center, right))
+    }
+
+    return result
+
+    docs {
+        Step a 1D row using a Wolfram rule.
+        Wraps at boundaries.
+    }
+}
+
+pub fun wolfram_rule(rule_number: u8) -> Rule1D {
+    return Rule1D { rule_number: rule_number }
+
+    docs {
+        Create a Wolfram elementary CA rule from its number.
+    }
+}
+
+pub fun elementary_ca(width: u32, generations: u32, rule: Rule1D, seed_center: bool) -> Vec<Vec<bool>> {
+    let mut rows = vec![]
+
+    // Initialize first row
+    let mut row = vec![false; width as usize]
+    if seed_center {
+        row[width as usize / 2] = true
+    }
+    rows.push(row.clone())
+
+    // Generate generations
+    for _ in 1..generations {
+        row = wolfram_step(row, rule)
+        rows.push(row.clone())
+    }
+
+    return rows
+
+    docs {
+        Generate a complete elementary CA image.
+        Returns all generations as rows.
+    }
+}
+
+// ============================================================================
+// 2D CELLULAR AUTOMATA FUNCTIONS
+// ============================================================================
+
+pub fun conway_step(grid: CellGrid) -> CellGrid {
+    return life_step(grid, GameOfLife {
+        birth: CONWAY_BIRTH,
+        survival: CONWAY_SURVIVAL,
+        name: "Conway's Game of Life".to_string()
+    })
+
+    docs {
+        Step Conway's Game of Life by one generation.
+    }
+}
+
+pub fun life_step(grid: CellGrid, rule: Rule2D) -> CellGrid {
+    let mut new_cells = vec![]
+
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let neighbors = count_neighbors_moore(grid, x as i32, y as i32)
+            let is_alive = grid.get(x as i32, y as i32)
+            let next_state = rule.apply(is_alive, neighbors)
+            new_cells.push(next_state)
+        }
+    }
+
+    return CellGrid {
+        width: grid.width,
+        height: grid.height,
+        cells: new_cells,
+        wrap: grid.wrap
+    }
+
+    docs {
+        Step a 2D grid using any Life-like rule.
+    }
+}
+
+pub fun step_2d(grid: CellGrid, rule: Rule2D, neighborhood: Neighborhood) -> CellGrid {
+    let offsets = neighborhood.offsets()
+    let mut new_cells = vec![]
+
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let mut neighbors = 0
+            for (dx, dy) in offsets {
+                if grid.get(x as i32 + dx, y as i32 + dy) {
+                    neighbors = neighbors + 1
+                }
+            }
+            let is_alive = grid.get(x as i32, y as i32)
+            let next_state = rule.apply(is_alive, neighbors)
+            new_cells.push(next_state)
+        }
+    }
+
+    return CellGrid {
+        width: grid.width,
+        height: grid.height,
+        cells: new_cells,
+        wrap: grid.wrap
+    }
+
+    docs {
+        Step a 2D grid with custom neighborhood.
+    }
+}
+
+// ============================================================================
+// GRID OPERATIONS
+// ============================================================================
+
+pub fun randomize_grid(width: u32, height: u32, density: f64, rng: &mut Random) -> CellGrid {
+    let mut cells = vec![]
+    for _ in 0..(width * height) {
+        cells.push(rng.next_f64() < density)
+    }
+
+    return CellGrid {
+        width: width,
+        height: height,
+        cells: cells,
+        wrap: true
+    }
+
+    docs {
+        Create a random grid with given alive cell density.
+        density: 0.0 = all dead, 1.0 = all alive
+    }
+}
+
+pub fun clear_grid(width: u32, height: u32) -> CellGrid {
+    return CellGrid {
+        width: width,
+        height: height,
+        cells: vec![false; (width * height) as usize],
+        wrap: true
+    }
+
+    docs {
+        Create an empty grid (all cells dead).
+    }
+}
+
+pub fun set_cell(grid: CellGrid, x: u32, y: u32, value: bool) -> CellGrid {
+    return grid.set(x, y, value)
+}
+
+pub fun get_cell(grid: CellGrid, x: i32, y: i32) -> bool {
+    return grid.get(x, y)
+}
+
+pub fun count_neighbors(grid: CellGrid, x: i32, y: i32, offsets: Vec<(i32, i32)>) -> u8 {
+    let mut count = 0
+    for (dx, dy) in offsets {
+        if grid.get(x + dx, y + dy) {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+pub fun count_neighbors_moore(grid: CellGrid, x: i32, y: i32) -> u8 {
+    let offsets = vec![
+        (-1, -1), (0, -1), (1, -1),
+        (-1, 0),           (1, 0),
+        (-1, 1),  (0, 1),  (1, 1)
+    ]
+    return count_neighbors(grid, x, y, offsets)
+
+    docs {
+        Count alive neighbors using Moore neighborhood (8 cells).
+    }
+}
+
+pub fun count_neighbors_von_neumann(grid: CellGrid, x: i32, y: i32) -> u8 {
+    let offsets = vec![
+        (0, -1),
+        (-1, 0), (1, 0),
+        (0, 1)
+    ]
+    return count_neighbors(grid, x, y, offsets)
+
+    docs {
+        Count alive neighbors using Von Neumann neighborhood (4 cells).
+    }
+}
+
+// ============================================================================
+// PRESET PATTERNS
+// ============================================================================
+
+pub fun glider() -> CellGrid {
+    // Smallest spaceship in Game of Life
+    // .#.
+    // ..#
+    // ###
+    let mut grid = clear_grid(10, 10)
+    grid = grid.set(1, 0, true)  // .#.
+    grid = grid.set(2, 1, true)  // ..#
+    grid = grid.set(0, 2, true)  // ###
+    grid = grid.set(1, 2, true)
+    grid = grid.set(2, 2, true)
+    return grid
+
+    docs {
+        The glider - smallest spaceship in Game of Life.
+        Moves diagonally across the grid.
+    }
+}
+
+pub fun blinker() -> CellGrid {
+    // Period-2 oscillator
+    // ###
+    let mut grid = clear_grid(5, 5)
+    grid = grid.set(1, 2, true)
+    grid = grid.set(2, 2, true)
+    grid = grid.set(3, 2, true)
+    return grid
+
+    docs {
+        The blinker - simplest oscillator (period 2).
+        Alternates between horizontal and vertical.
+    }
+}
+
+pub fun beacon() -> CellGrid {
+    // Period-2 oscillator
+    // ##..
+    // ##..
+    // ..##
+    // ..##
+    let mut grid = clear_grid(6, 6)
+    grid = grid.set(1, 1, true)
+    grid = grid.set(2, 1, true)
+    grid = grid.set(1, 2, true)
+    grid = grid.set(2, 2, true)
+    grid = grid.set(3, 3, true)
+    grid = grid.set(4, 3, true)
+    grid = grid.set(3, 4, true)
+    grid = grid.set(4, 4, true)
+    return grid
+
+    docs {
+        The beacon - period-2 oscillator.
+        Two overlapping blocks that blink.
+    }
+}
+
+pub fun pulsar() -> CellGrid {
+    // Period-3 oscillator (most common natural oscillator)
+    let mut grid = clear_grid(17, 17)
+
+    // Top-left quadrant (replicated 4 times with symmetry)
+    let pattern = vec![
+        (4, 2), (5, 2), (6, 2), (10, 2), (11, 2), (12, 2),
+        (2, 4), (7, 4), (9, 4), (14, 4),
+        (2, 5), (7, 5), (9, 5), (14, 5),
+        (2, 6), (7, 6), (9, 6), (14, 6),
+        (4, 7), (5, 7), (6, 7), (10, 7), (11, 7), (12, 7),
+        (4, 9), (5, 9), (6, 9), (10, 9), (11, 9), (12, 9),
+        (2, 10), (7, 10), (9, 10), (14, 10),
+        (2, 11), (7, 11), (9, 11), (14, 11),
+        (2, 12), (7, 12), (9, 12), (14, 12),
+        (4, 14), (5, 14), (6, 14), (10, 14), (11, 14), (12, 14)
+    ]
+
+    for (x, y) in pattern {
+        grid = grid.set(x, y, true)
+    }
+
+    return grid
+
+    docs {
+        The pulsar - period-3 oscillator.
+        Large symmetric pattern that pulsates.
+    }
+}
+
+pub fun gosper_gun() -> CellGrid {
+    // Gosper glider gun - produces gliders indefinitely
+    let mut grid = clear_grid(40, 20)
+
+    // Left square
+    grid = grid.set(1, 5, true)
+    grid = grid.set(1, 6, true)
+    grid = grid.set(2, 5, true)
+    grid = grid.set(2, 6, true)
+
+    // Left part of gun
+    grid = grid.set(11, 5, true)
+    grid = grid.set(11, 6, true)
+    grid = grid.set(11, 7, true)
+    grid = grid.set(12, 4, true)
+    grid = grid.set(12, 8, true)
+    grid = grid.set(13, 3, true)
+    grid = grid.set(13, 9, true)
+    grid = grid.set(14, 3, true)
+    grid = grid.set(14, 9, true)
+    grid = grid.set(15, 6, true)
+    grid = grid.set(16, 4, true)
+    grid = grid.set(16, 8, true)
+    grid = grid.set(17, 5, true)
+    grid = grid.set(17, 6, true)
+    grid = grid.set(17, 7, true)
+    grid = grid.set(18, 6, true)
+
+    // Right part of gun
+    grid = grid.set(21, 3, true)
+    grid = grid.set(21, 4, true)
+    grid = grid.set(21, 5, true)
+    grid = grid.set(22, 3, true)
+    grid = grid.set(22, 4, true)
+    grid = grid.set(22, 5, true)
+    grid = grid.set(23, 2, true)
+    grid = grid.set(23, 6, true)
+    grid = grid.set(25, 1, true)
+    grid = grid.set(25, 2, true)
+    grid = grid.set(25, 6, true)
+    grid = grid.set(25, 7, true)
+
+    // Right square
+    grid = grid.set(35, 3, true)
+    grid = grid.set(35, 4, true)
+    grid = grid.set(36, 3, true)
+    grid = grid.set(36, 4, true)
+
+    return grid
+
+    docs {
+        Gosper glider gun - first known gun pattern.
+        Produces a new glider every 30 generations.
+    }
+}
+
+pub fun spaceship() -> CellGrid {
+    // Lightweight spaceship (LWSS)
+    // .#..#
+    // #....
+    // #...#
+    // ####.
+    let mut grid = clear_grid(10, 10)
+    grid = grid.set(1, 0, true)
+    grid = grid.set(4, 0, true)
+    grid = grid.set(0, 1, true)
+    grid = grid.set(0, 2, true)
+    grid = grid.set(4, 2, true)
+    grid = grid.set(0, 3, true)
+    grid = grid.set(1, 3, true)
+    grid = grid.set(2, 3, true)
+    grid = grid.set(3, 3, true)
+    return grid
+
+    docs {
+        Lightweight spaceship (LWSS).
+        Moves horizontally across the grid.
+    }
+}
+
+pub fun rpentomino() -> CellGrid {
+    // R-pentomino - famous methuselah
+    // .##
+    // ##.
+    // .#.
+    let mut grid = clear_grid(100, 100)
+    let cx = 50
+    let cy = 50
+    grid = grid.set(cx + 1, cy - 1, true)
+    grid = grid.set(cx + 2, cy - 1, true)
+    grid = grid.set(cx, cy, true)
+    grid = grid.set(cx + 1, cy, true)
+    grid = grid.set(cx + 1, cy + 1, true)
+    return grid
+
+    docs {
+        R-pentomino - famous methuselah pattern.
+        5 cells that take 1103 generations to stabilize.
+    }
+}
+
+pub fun diehard() -> CellGrid {
+    // Diehard - disappears after 130 generations
+    // ......#.
+    // ##......
+    // .#...###
+    let mut grid = clear_grid(30, 20)
+    let cx = 10
+    let cy = 10
+    grid = grid.set(cx + 6, cy - 1, true)
+    grid = grid.set(cx, cy, true)
+    grid = grid.set(cx + 1, cy, true)
+    grid = grid.set(cx + 1, cy + 1, true)
+    grid = grid.set(cx + 5, cy + 1, true)
+    grid = grid.set(cx + 6, cy + 1, true)
+    grid = grid.set(cx + 7, cy + 1, true)
+    return grid
+
+    docs {
+        Diehard - pattern that disappears after 130 generations.
+    }
+}
+
+pub fun acorn() -> CellGrid {
+    // Acorn - takes 5206 generations to stabilize
+    // .#.....
+    // ...#...
+    // ##..###
+    let mut grid = clear_grid(150, 150)
+    let cx = 70
+    let cy = 70
+    grid = grid.set(cx + 1, cy - 2, true)
+    grid = grid.set(cx + 3, cy - 1, true)
+    grid = grid.set(cx, cy, true)
+    grid = grid.set(cx + 1, cy, true)
+    grid = grid.set(cx + 4, cy, true)
+    grid = grid.set(cx + 5, cy, true)
+    grid = grid.set(cx + 6, cy, true)
+    return grid
+
+    docs {
+        Acorn - takes 5206 generations to stabilize.
+        Produces 633 cells including 13 gliders.
+    }
+}
+
+// ============================================================================
+// PATTERN PARSING
+// ============================================================================
+
+fun parse_pattern(pattern: string, width: u32, height: u32) -> CellGrid {
+    let mut grid = clear_grid(width, height)
+    let lines = pattern.lines().collect::<Vec<_>>()
+
+    for (y, line) in lines.enumerate() {
+        for (x, ch) in line.chars().enumerate() {
+            if ch == '#' || ch == '*' || ch == 'O' || ch == '1' {
+                if x < width as usize && y < height as usize {
+                    grid = grid.set(x as u32, y as u32, true)
+                }
+            }
+        }
+    }
+
+    return grid
+}
+
+docs {
+    Generative Art Spirit - Cellular Automata Module
+
+    Cellular automata (CA) are discrete models where cells on a grid
+    evolve based on simple local rules. Despite their simplicity,
+    they can produce incredibly complex emergent behavior.
+
+    Types of CA:
+    - **1D Elementary**: Wolfram's 256 rules (Rule 30, 90, 110)
+    - **2D Life-like**: Game of Life and variants (B/S notation)
+    - **Multi-state**: Brian's Brain, WireWorld
+
+    Core Concepts:
+    - **Neighborhood**: Which cells influence each cell (Moore, Von Neumann)
+    - **Rules**: How cell state changes based on neighbors
+    - **Patterns**: Stable, oscillating, or moving configurations
+
+    Famous Patterns:
+    - **Still lifes**: Block, beehive, loaf (don't change)
+    - **Oscillators**: Blinker, beacon, pulsar (periodic)
+    - **Spaceships**: Glider, LWSS (move across grid)
+    - **Methuselae**: R-pentomino, acorn (long evolution)
+    - **Guns**: Gosper gun (produce gliders)
+
+    Wolfram Rules:
+    - Rule 30: Chaotic, used in Mathematica's RNG
+    - Rule 90: Produces Sierpinski triangle
+    - Rule 110: Proven Turing complete
+    - Rule 184: Models traffic flow
+
+    Usage:
+        // Create a grid with a glider
+        let grid = glider()
+
+        // Step through generations
+        for i in 0..100 {
+            grid = conway_step(grid)
+        }
+
+        // Try different rules
+        let highlife = HighLife {}
+        grid = life_step(grid, highlife)
+
+        // 1D cellular automata
+        let rule = wolfram_rule(110)
+        let history = elementary_ca(100, 50, rule, true)
+
+        // Random soup
+        let soup = randomize_grid(100, 100, 0.3, rng)
+
+    References:
+    - Conway, J. "The Game of Life" (1970)
+    - Wolfram, S. "A New Kind of Science" (2002)
+    - Gardner, M. "Mathematical Games" (Scientific American)
+}

@@ -1,0 +1,203 @@
+// Visual Arts Spirit - Library Entry Point
+// Re-exports all public items from submodules
+
+module visual @ 0.1.0
+
+// Import physics for wave-based effects
+pub use @univrs/physics.waves.{ Wave, Amplitude, Frequency, interference }
+
+// Color module exports
+pub use color.{
+    // Color spaces
+    RGB,
+    RGBA,
+    HSL,
+    HSV,
+    CMYK,
+    LAB,
+
+    // Compound types
+    ColorGradient,
+    GradientStop,
+    Palette,
+    ColorHarmony,
+
+    // Traits
+    Blendable,
+    Complementary,
+    ColorConvertible,
+
+    // Functions
+    rgb_to_hsl,
+    hsl_to_rgb,
+    rgb_to_hsv,
+    hsv_to_rgb,
+    rgb_to_cmyk,
+    cmyk_to_rgb,
+    rgb_to_lab,
+    lab_to_rgb,
+    lerp_color,
+    blend_colors,
+    harmonious_palette,
+    analogous_colors,
+    triadic_colors,
+    tetradic_colors
+}
+
+// Geometry module exports
+pub use geometry.{
+    // 2D primitives
+    Point2D,
+    Vector2D,
+    Line2D,
+    Ray2D,
+    Segment2D,
+    Circle,
+    Ellipse,
+    Arc,
+    Polygon,
+    Triangle,
+    Rectangle,
+    BezierCurve,
+    QuadraticBezier,
+    CubicBezier,
+    Path2D,
+
+    // 3D primitives
+    Point3D,
+    Vector3D,
+    Line3D,
+    Plane,
+    Sphere,
+
+    // Traits
+    Transformable,
+    Drawable,
+    Bounded,
+    Intersectable,
+
+    // Transform types
+    Transform2D,
+    Matrix3x3,
+
+    // Functions
+    distance,
+    dot_product,
+    cross_product,
+    normalize,
+    rotate_point,
+    scale_point,
+    translate_point,
+    golden_spiral,
+    fibonacci_spiral,
+    bezier_point,
+    path_length
+}
+
+// Fractal module exports
+pub use fractal.{
+    // Complex numbers
+    Complex,
+
+    // Fractal types
+    Mandelbrot,
+    Julia,
+    BurningShip,
+    Sierpinski,
+    SierpinskiTriangle,
+    SierpinskiCarpet,
+    Koch,
+    KochSnowflake,
+    KochCurve,
+    LSystem,
+    LSystemRule,
+    DragonCurve,
+    HilbertCurve,
+
+    // Traits
+    SelfSimilar,
+    Zoomable,
+    Iterable,
+
+    // Functions
+    mandelbrot_iterate,
+    julia_iterate,
+    burning_ship_iterate,
+    escape_time,
+    sierpinski_subdivide,
+    koch_iterate,
+    lsystem_expand,
+    lsystem_interpret,
+    fractal_dimension,
+    box_counting_dimension
+}
+
+// Pattern module exports
+pub use pattern.{
+    // Tile types
+    Tile,
+    TileShape,
+    Tessellation,
+    Grid2D,
+    HexGrid,
+    TriangularGrid,
+
+    // Noise types
+    Noise2D,
+    PerlinNoise,
+    SimplexNoise,
+    ValueNoise,
+    WorleyNoise,
+    FractalNoise,
+
+    // Voronoi
+    VoronoiDiagram,
+    VoronoiCell,
+    DelaunayTriangulation,
+
+    // Special tilings
+    PenroseTiling,
+    WangTiles,
+    TruchetTiles,
+
+    // Traits
+    Tileable,
+    Periodic,
+    Seamless,
+
+    // Functions
+    perlin_noise,
+    simplex_noise,
+    voronoi,
+    delaunay,
+    penrose_tiling,
+    wang_tile_match,
+    truchet_pattern,
+    fbm,
+    turbulence,
+    ridged_multifractal,
+    domain_warp
+}
+
+docs {
+    Visual Arts Spirit - Library Entry Point
+
+    This module re-exports all public items from the visual arts
+    submodules, providing a unified interface for:
+
+    - **Color**: Color spaces, blending, palettes, and color theory
+    - **Geometry**: 2D/3D primitives, transforms, and curves
+    - **Fractal**: Complex plane fractals, IFS, and L-systems
+    - **Pattern**: Noise functions, tilings, and tessellations
+
+    The visual spirit builds on physics.waves for interference-based
+    color effects and wave-based patterns.
+
+    Module organization:
+        visual/
+        ├── lib.dol      (this file - exports)
+        ├── color.dol    (color spaces and theory)
+        ├── geometry.dol (primitives and transforms)
+        ├── fractal.dol  (fractal mathematics)
+        └── pattern.dol  (noise and tilings)
+}

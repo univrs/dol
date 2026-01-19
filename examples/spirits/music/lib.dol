@@ -1,0 +1,246 @@
+// Music Spirit - Library Entry Point
+// Re-exports all public items from submodules
+
+module music @ 0.1.0
+
+// Import physics for wave-based synthesis
+pub use @univrs/physics.waves.{ Wave, Amplitude, Frequency, phase_shift }
+
+// ============================================================================
+// AUDIO CONSTANTS
+// ============================================================================
+
+/// Standard CD-quality sample rate (44.1 kHz)
+pub const SAMPLE_RATE_CD: u32 = 44100
+
+/// DVD/DAT sample rate (48 kHz)
+pub const SAMPLE_RATE_DVD: u32 = 48000
+
+/// High-resolution audio sample rate (96 kHz)
+pub const SAMPLE_RATE_HIRES: u32 = 96000
+
+/// Standard bit depth for CD audio
+pub const BIT_DEPTH_CD: u8 = 16
+
+/// High-resolution bit depth
+pub const BIT_DEPTH_HIRES: u8 = 24
+
+/// Concert pitch A4 frequency in Hz
+pub const A4_FREQUENCY: f64 = 440.0
+
+/// MIDI note number for A4
+pub const A4_MIDI: u8 = 69
+
+/// Semitones per octave
+pub const SEMITONES_PER_OCTAVE: u8 = 12
+
+/// Cents per semitone
+pub const CENTS_PER_SEMITONE: u16 = 100
+
+/// Twelfth root of 2 (for equal temperament)
+pub const TWELFTH_ROOT_OF_TWO: f64 = 1.0594630943592953
+
+/// Speed of sound in air at 20C (m/s)
+pub const SPEED_OF_SOUND: f64 = 343.0
+
+/// Minimum audible frequency (Hz)
+pub const MIN_AUDIBLE_FREQ: f64 = 20.0
+
+/// Maximum audible frequency (Hz)
+pub const MAX_AUDIBLE_FREQ: f64 = 20000.0
+
+/// Decibel reference level (0 dBFS = 1.0 amplitude)
+pub const DB_REFERENCE: f64 = 1.0
+
+// ============================================================================
+// SYNTHESIS MODULE EXPORTS
+// ============================================================================
+
+pub use synthesis.{
+    // Core types
+    Oscillator,
+    Waveform,
+    Envelope,
+    ADSR,
+    Filter,
+    FilterType,
+    AudioBuffer,
+    SampleFormat,
+
+    // Compound types
+    LFO,
+    Modulator,
+    VoiceState,
+    SynthVoice,
+
+    // Traits
+    Playable,
+    Modulatable,
+    SignalProcessor,
+
+    // Functions
+    sine_wave,
+    square_wave,
+    sawtooth_wave,
+    triangle_wave,
+    white_noise,
+    pink_noise,
+    generate_samples,
+    apply_envelope,
+    apply_filter,
+    mix_buffers,
+    normalize_buffer,
+    amplitude_to_db,
+    db_to_amplitude
+}
+
+// ============================================================================
+// THEORY MODULE EXPORTS
+// ============================================================================
+
+pub use theory.{
+    // Core types
+    Note,
+    PitchClass,
+    Interval,
+    Scale,
+    Chord,
+    ChordQuality,
+    Key,
+    Mode,
+
+    // Compound types
+    ScaleDegree,
+    ChordProgression,
+    Voicing,
+
+    // Traits
+    Transposable,
+    Invertible,
+    Enharmonic,
+
+    // Rules
+    CircleOfFifths,
+    OctaveEquivalence,
+
+    // Functions
+    note_to_frequency,
+    frequency_to_note,
+    note_to_midi,
+    midi_to_note,
+    build_scale,
+    chord_from_scale,
+    interval_between,
+    transpose,
+    invert_chord,
+    get_key_signature
+}
+
+// ============================================================================
+// RHYTHM MODULE EXPORTS
+// ============================================================================
+
+pub use rhythm.{
+    // Core types
+    TimeSignature,
+    Tempo,
+    Duration,
+    DurationValue,
+    Rest,
+    Beat,
+    Measure,
+    RhythmPattern,
+
+    // Compound types
+    Subdivision,
+    Groove,
+    Polyrhythm,
+
+    // Traits
+    Quantizable,
+    Syncopatable,
+    Divisible,
+
+    // Rules
+    MetronomeMark,
+    CommonTime,
+    CutTime,
+
+    // Functions
+    beats_to_seconds,
+    seconds_to_beats,
+    bpm_to_ms,
+    euclidean_rhythm,
+    swing,
+    humanize,
+    quantize_rhythm,
+    polyrhythm
+}
+
+// ============================================================================
+// COMPOSITION MODULE EXPORTS
+// ============================================================================
+
+pub use composition.{
+    // Core types
+    Melody,
+    Phrase,
+    Motif,
+    Section,
+    Song,
+    Voice,
+    Part,
+    Score,
+
+    // Compound types
+    Arrangement,
+    Dynamics,
+    Articulation,
+    Expression,
+
+    // Traits
+    Arrangeable,
+    Repeatable,
+    Sequenceable,
+
+    // Functions
+    generate_melody,
+    harmonize,
+    arpeggiate,
+    retrograde,
+    augment,
+    diminish,
+    sequence_motif,
+    create_variation
+}
+
+docs {
+    Music Spirit - Library Entry Point
+
+    This module re-exports all public items from the music
+    submodules, providing a unified interface for:
+
+    - **Synthesis**: Sound generation, oscillators, envelopes, filters
+    - **Theory**: Notes, scales, chords, keys, and music theory
+    - **Rhythm**: Time signatures, tempo, patterns, and timing
+    - **Composition**: Melodies, phrases, songs, and arrangement
+
+    The music spirit builds on physics.waves for accurate wave
+    mathematics and signal processing.
+
+    Audio Constants:
+        The module provides standard audio constants including:
+        - Sample rates (44.1kHz, 48kHz, 96kHz)
+        - Bit depths (16-bit, 24-bit)
+        - A4 = 440Hz tuning reference
+        - Equal temperament ratios
+        - Human audible frequency range (20Hz - 20kHz)
+
+    Module organization:
+        music/
+        |-- lib.dol         (this file - exports and constants)
+        |-- synthesis.dol   (sound generation and processing)
+        |-- theory.dol      (music theory and harmony)
+        |-- rhythm.dol      (timing and rhythm patterns)
+        |-- composition.dol (song structure and arrangement)
+}

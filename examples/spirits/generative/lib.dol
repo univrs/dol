@@ -1,0 +1,285 @@
+// Generative Art Spirit - Library Entry Point
+// Re-exports all public items from submodules
+
+module generative @ 0.1.0
+
+// Import visual for geometry and color
+pub use @univrs/visual.geometry.{ Point2D, Vector2D, Path2D, Polygon }
+pub use @univrs/visual.color.{ RGB, RGBA }
+
+// Import biology for genetics (reused in evolutionary module)
+pub use @univrs/biology.genetics.{ DNA, Gene, Chromosome }
+
+// ============================================================================
+// GENERATIVE CONSTANTS
+// ============================================================================
+
+pub const PI: f64 = 3.14159265358979323846
+pub const TAU: f64 = 6.28318530717958647692
+pub const E: f64 = 2.71828182845904523536
+pub const PHI: f64 = 1.61803398874989484820  // Golden ratio
+
+// L-System constants
+pub const DEFAULT_LSYSTEM_ANGLE: f64 = 25.0
+pub const DEFAULT_LSYSTEM_LENGTH: f64 = 10.0
+pub const DEFAULT_LSYSTEM_ITERATIONS: u32 = 5
+
+// Noise constants
+pub const DEFAULT_NOISE_OCTAVES: u32 = 4
+pub const DEFAULT_NOISE_LACUNARITY: f64 = 2.0
+pub const DEFAULT_NOISE_PERSISTENCE: f64 = 0.5
+pub const PERLIN_GRADIENT_SIZE: u32 = 256
+
+// Cellular automata constants
+pub const DEFAULT_GRID_SIZE: u32 = 100
+pub const CONWAY_BIRTH: Vec<u8> = vec![3]
+pub const CONWAY_SURVIVAL: Vec<u8> = vec![2, 3]
+pub const HIGHLIFE_BIRTH: Vec<u8> = vec![3, 6]
+pub const HIGHLIFE_SURVIVAL: Vec<u8> = vec![2, 3]
+
+// Evolutionary constants
+pub const DEFAULT_POPULATION_SIZE: u32 = 100
+pub const DEFAULT_MUTATION_RATE: f64 = 0.01
+pub const DEFAULT_CROSSOVER_RATE: f64 = 0.7
+pub const DEFAULT_ELITE_COUNT: u32 = 2
+pub const DEFAULT_TOURNAMENT_SIZE: u32 = 3
+
+// ============================================================================
+// L-SYSTEMS MODULE EXPORTS
+// ============================================================================
+
+pub use lsystems.{
+    // Core types
+    LSystem,
+    ProductionRule,
+    StochasticRule,
+    ContextRule,
+    TurtleState,
+    TurtleGraphics,
+    TurtleConfig,
+    LSystemResult,
+
+    // Traits
+    Growable,
+    Renderable,
+
+    // Functions
+    apply_rules,
+    apply_rules_stochastic,
+    apply_rules_context,
+    turtle_interpret,
+    turtle_step,
+
+    // Preset L-systems
+    tree_lsystem,
+    bush_lsystem,
+    fern_lsystem,
+    koch_curve_lsystem,
+    koch_snowflake_lsystem,
+    sierpinski_lsystem,
+    dragon_curve_lsystem,
+    hilbert_curve_lsystem,
+    plant_lsystem,
+    algae_lsystem
+}
+
+// ============================================================================
+// NOISE MODULE EXPORTS
+// ============================================================================
+
+pub use noise.{
+    // Core types
+    NoiseConfig,
+    NoiseField2D,
+    NoiseField3D,
+    GradientTable,
+    PermutationTable,
+
+    // Traits
+    NoiseSampler,
+    Tileable,
+    Seedable,
+
+    // 2D noise functions
+    perlin_2d,
+    simplex_2d,
+    worley_2d,
+    value_noise_2d,
+
+    // 3D noise functions
+    perlin_3d,
+    simplex_3d,
+    worley_3d,
+
+    // Fractal noise
+    fbm,
+    turbulence,
+    ridged_multifractal,
+    billow,
+
+    // Domain operations
+    domain_warp,
+    domain_warp_fbm,
+
+    // Field generation
+    generate_noise_field_2d,
+    generate_noise_field_3d,
+    make_tileable
+}
+
+// ============================================================================
+// CELLULAR AUTOMATA MODULE EXPORTS
+// ============================================================================
+
+pub use cellular.{
+    // Core types
+    CellGrid,
+    CellState,
+    Rule1D,
+    Rule2D,
+    Neighborhood,
+
+    // Preset rules
+    GameOfLife,
+    HighLife,
+    DayAndNight,
+    Seeds,
+    BriansBrain,
+    WireWorld,
+    LangtonsAnt,
+
+    // Traits
+    Evolvable,
+    Seedable,
+    Visualizable,
+
+    // 1D cellular automata
+    wolfram_step,
+    wolfram_rule,
+    elementary_ca,
+
+    // 2D cellular automata
+    conway_step,
+    life_step,
+    step_2d,
+
+    // Grid operations
+    randomize_grid,
+    clear_grid,
+    set_cell,
+    get_cell,
+    count_neighbors,
+    count_neighbors_moore,
+    count_neighbors_von_neumann,
+
+    // Preset patterns
+    glider,
+    blinker,
+    beacon,
+    pulsar,
+    gosper_gun,
+    spaceship,
+    rpentomino,
+    diehard,
+    acorn
+}
+
+// ============================================================================
+// EVOLUTIONARY MODULE EXPORTS
+// ============================================================================
+
+pub use evolutionary.{
+    // Core types
+    Genome,
+    Population,
+    Individual,
+    FitnessResult,
+
+    // Selection methods
+    SelectionMethod,
+    TournamentSelection,
+    RouletteSelection,
+    RankSelection,
+    TruncationSelection,
+
+    // Crossover methods
+    CrossoverMethod,
+    SinglePointCrossover,
+    TwoPointCrossover,
+    UniformCrossover,
+    BlendCrossover,
+    SimulatedBinaryCrossover,
+
+    // Mutation methods
+    MutationMethod,
+    GaussianMutation,
+    UniformMutation,
+    SwapMutation,
+    InversionMutation,
+    ScrambleMutation,
+
+    // Traits
+    Evolvable,
+    Evaluatable,
+    Encodable,
+
+    // Core functions
+    select,
+    crossover,
+    mutate,
+    evaluate,
+    evolve_generation,
+    evolve_until,
+
+    // Population management
+    create_population,
+    sort_by_fitness,
+    best_individual,
+    average_fitness,
+    diversity,
+
+    // Art-specific genome helpers
+    create_color_genome,
+    create_shape_genome,
+    create_tree_genome,
+    decode_color_genome,
+    decode_shape_genome,
+    decode_tree_genome
+}
+
+docs {
+    Generative Art Spirit - Library Entry Point
+
+    This module re-exports all public items from the generative art
+    submodules, providing a unified interface for:
+
+    - **L-Systems**: Lindenmayer systems for organic growth and fractals
+    - **Noise**: Procedural noise functions for natural textures
+    - **Cellular**: Cellular automata for emergent patterns
+    - **Evolutionary**: Genetic algorithms for evolving art
+
+    The generative spirit builds on visual (geometry, color) and
+    biology (genetics) spirits for foundational primitives.
+
+    Module organization:
+        generative/
+        ├── lib.dol          (this file - exports)
+        ├── lsystems.dol     (L-systems and turtle graphics)
+        ├── noise.dol        (noise functions and fields)
+        ├── cellular.dol     (cellular automata)
+        └── evolutionary.dol (genetic algorithms)
+
+    Design Philosophy:
+        Generative art emerges from simple rules and randomness.
+        This spirit provides the building blocks for:
+        - Deterministic complexity (L-systems, fractals)
+        - Controlled randomness (noise, stochastic rules)
+        - Emergent behavior (cellular automata)
+        - Optimization and evolution (genetic algorithms)
+
+    All modules are designed to work together:
+        - Use noise to add variation to L-system parameters
+        - Use cellular automata as fitness landscapes for evolution
+        - Use evolutionary algorithms to discover interesting L-systems
+        - Combine noise and cellular automata for terrain generation
+}

@@ -1,0 +1,1073 @@
+// Animation Spirit - Keyframes Module
+// Keyframe animation with easing functions and interpolation
+
+module animation.keyframes @ 0.1.0
+
+use @univrs/visual.geometry.{ Point2D, Vector2D, CubicBezier }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const PI: f64 = 3.14159265358979323846
+pub const TAU: f64 = 6.28318530717958647692
+pub const E: f64 = 2.71828182845904523536
+
+// Back easing overshoot constant
+const BACK_OVERSHOOT: f64 = 1.70158
+
+// Elastic easing constants
+const ELASTIC_AMPLITUDE: f64 = 1.0
+const ELASTIC_PERIOD: f64 = 0.3
+
+// ============================================================================
+// EASING FUNCTION ENUM
+// ============================================================================
+
+pub gen EasingFn {
+    type: enum {
+        // Linear (no easing)
+        Linear,
+
+        // Quadratic
+        EaseIn,
+        EaseOut,
+        EaseInOut,
+
+        // Cubic
+        Cubic,
+        CubicIn,
+        CubicOut,
+        CubicInOut,
+
+        // Quartic
+        QuartIn,
+        QuartOut,
+        QuartInOut,
+
+        // Quintic
+        QuintIn,
+        QuintOut,
+        QuintInOut,
+
+        // Sinusoidal
+        SineIn,
+        SineOut,
+        SineInOut,
+
+        // Exponential
+        ExpoIn,
+        ExpoOut,
+        ExpoInOut,
+
+        // Circular
+        CircIn,
+        CircOut,
+        CircInOut,
+
+        // Back (overshoot)
+        BackIn,
+        BackOut,
+        BackInOut,
+
+        // Elastic
+        Elastic,
+        ElasticIn,
+        ElasticOut,
+        ElasticInOut,
+
+        // Bounce
+        Bounce,
+        BounceIn,
+        BounceOut,
+        BounceInOut,
+
+        // Custom cubic bezier
+        CubicBezier { p1: Point2D, p2: Point2D }
+    }
+
+    fun apply(t: f64) -> f64 {
+        match this.type {
+            Linear { return ease_linear(t) }
+            EaseIn { return ease_in_quad(t) }
+            EaseOut { return ease_out_quad(t) }
+            EaseInOut { return ease_in_out_quad(t) }
+            Cubic { return ease_out_cubic(t) }
+            CubicIn { return ease_in_cubic(t) }
+            CubicOut { return ease_out_cubic(t) }
+            CubicInOut { return ease_in_out_cubic(t) }
+            QuartIn { return ease_in_quart(t) }
+            QuartOut { return ease_out_quart(t) }
+            QuartInOut { return ease_in_out_quart(t) }
+            QuintIn { return ease_in_quint(t) }
+            QuintOut { return ease_out_quint(t) }
+            QuintInOut { return ease_in_out_quint(t) }
+            SineIn { return ease_in_sine(t) }
+            SineOut { return ease_out_sine(t) }
+            SineInOut { return ease_in_out_sine(t) }
+            ExpoIn { return ease_in_expo(t) }
+            ExpoOut { return ease_out_expo(t) }
+            ExpoInOut { return ease_in_out_expo(t) }
+            CircIn { return ease_in_circ(t) }
+            CircOut { return ease_out_circ(t) }
+            CircInOut { return ease_in_out_circ(t) }
+            BackIn { return ease_in_back(t) }
+            BackOut { return ease_out_back(t) }
+            BackInOut { return ease_in_out_back(t) }
+            Elastic { return ease_out_elastic(t) }
+            ElasticIn { return ease_in_elastic(t) }
+            ElasticOut { return ease_out_elastic(t) }
+            ElasticInOut { return ease_in_out_elastic(t) }
+            Bounce { return ease_out_bounce(t) }
+            BounceIn { return ease_in_bounce(t) }
+            BounceOut { return ease_out_bounce(t) }
+            BounceInOut { return ease_in_out_bounce(t) }
+            CubicBezier { p1, p2 } { return bezier_easing(p1, p2, t) }
+        }
+    }
+
+    docs {
+        Enumeration of standard easing functions.
+
+        Easing functions transform linear time [0,1] into curved motion,
+        creating natural-feeling animations.
+
+        Categories:
+        - Linear: Constant velocity
+        - Quad/Cubic/Quart/Quint: Polynomial curves of increasing sharpness
+        - Sine: Sinusoidal acceleration
+        - Expo: Exponential acceleration
+        - Circ: Circular motion
+        - Back: Overshoot effect
+        - Elastic: Spring-like oscillation
+        - Bounce: Bouncing ball effect
+        - CubicBezier: Custom curve defined by control points
+    }
+}
+
+// ============================================================================
+// KEYFRAME
+// ============================================================================
+
+pub gen Keyframe<T> {
+    has time: f64      // Time in seconds
+    has value: T       // Value at this keyframe
+    has easing: EasingFn  // Easing function to next keyframe
+
+    rule non_negative_time {
+        this.time >= 0.0
+    }
+
+    docs {
+        A single keyframe in an animation track.
+
+        The keyframe stores:
+        - time: When this keyframe occurs
+        - value: The animated value at this time
+        - easing: How to interpolate to the next keyframe
+
+        Generic over T, which must implement Interpolatable.
+    }
+}
+
+// ============================================================================
+// TRACK
+// ============================================================================
+
+pub gen Track<T> {
+    has keyframes: Vec<Keyframe<T>>
+    has name: string
+
+    rule minimum_keyframes {
+        this.keyframes.length >= 1
+    }
+
+    rule sorted_keyframes {
+        // Keyframes must be sorted by time
+        for i in 1..this.keyframes.length {
+            this.keyframes[i - 1].time <= this.keyframes[i].time
+        }
+    }
+
+    fun duration() -> f64 {
+        if this.keyframes.is_empty() {
+            return 0.0
+        }
+        return this.keyframes.last().time - this.keyframes.first().time
+    }
+
+    fun start_time() -> f64 {
+        if this.keyframes.is_empty() {
+            return 0.0
+        }
+        return this.keyframes.first().time
+    }
+
+    fun end_time() -> f64 {
+        if this.keyframes.is_empty() {
+            return 0.0
+        }
+        return this.keyframes.last().time
+    }
+
+    fun keyframe_count() -> u64 {
+        return this.keyframes.length
+    }
+
+    fun add_keyframe(kf: Keyframe<T>) -> Track<T> {
+        let mut keyframes = this.keyframes.clone()
+        // Insert in sorted order
+        let idx = keyframes.binary_search_by(|k| k.time.partial_cmp(&kf.time))
+        match idx {
+            Ok(i) { keyframes[i] = kf }  // Replace existing
+            Err(i) { keyframes.insert(i, kf) }  // Insert new
+        }
+        return Track { keyframes: keyframes, name: this.name.clone() }
+    }
+
+    fun remove_keyframe_at(time: f64) -> Track<T> {
+        let keyframes = this.keyframes.filter(|k| k.time != time).collect()
+        return Track { keyframes: keyframes, name: this.name.clone() }
+    }
+
+    docs {
+        A collection of keyframes forming an animation track.
+
+        Tracks are named and contain sorted keyframes for a single
+        animated property (e.g., "position.x", "rotation", "opacity").
+    }
+}
+
+// ============================================================================
+// ANIMATION
+// ============================================================================
+
+pub gen Animation {
+    has tracks: Vec<Track<f64>>  // Tracks animating f64 values
+    has duration: f64            // Total animation duration
+    has looping: bool            // Whether to loop
+
+    rule positive_duration {
+        this.duration >= 0.0
+    }
+
+    fun track_count() -> u64 {
+        return this.tracks.length
+    }
+
+    fun get_track(name: string) -> Option<Track<f64>> {
+        for track in this.tracks {
+            if track.name == name {
+                return Some(track)
+            }
+        }
+        return None
+    }
+
+    fun add_track(track: Track<f64>) -> Animation {
+        let mut tracks = this.tracks.clone()
+        tracks.push(track)
+        return Animation {
+            tracks: tracks,
+            duration: this.duration,
+            looping: this.looping
+        }
+    }
+
+    fun remove_track(name: string) -> Animation {
+        let tracks = this.tracks.filter(|t| t.name != name).collect()
+        return Animation {
+            tracks: tracks,
+            duration: this.duration,
+            looping: this.looping
+        }
+    }
+
+    docs {
+        A complete animation containing multiple tracks.
+
+        Animations coordinate multiple property tracks with a
+        shared timeline and looping behavior.
+    }
+}
+
+// ============================================================================
+// ANIMATION STATE
+// ============================================================================
+
+pub gen AnimationState {
+    has time: f64         // Current playback time
+    has playing: bool     // Whether animation is playing
+    has speed: f64        // Playback speed multiplier
+    has direction: i8     // 1 for forward, -1 for reverse
+
+    rule valid_speed {
+        this.speed >= 0.0
+    }
+
+    rule valid_direction {
+        this.direction == 1 || this.direction == -1
+    }
+
+    fun advance(dt: f64) -> AnimationState {
+        let new_time = this.time + dt * this.speed * this.direction as f64
+        return AnimationState {
+            time: new_time,
+            playing: this.playing,
+            speed: this.speed,
+            direction: this.direction
+        }
+    }
+
+    fun play() -> AnimationState {
+        return AnimationState {
+            time: this.time,
+            playing: true,
+            speed: this.speed,
+            direction: this.direction
+        }
+    }
+
+    fun pause() -> AnimationState {
+        return AnimationState {
+            time: this.time,
+            playing: false,
+            speed: this.speed,
+            direction: this.direction
+        }
+    }
+
+    fun stop() -> AnimationState {
+        return AnimationState {
+            time: 0.0,
+            playing: false,
+            speed: this.speed,
+            direction: this.direction
+        }
+    }
+
+    fun reverse() -> AnimationState {
+        return AnimationState {
+            time: this.time,
+            playing: this.playing,
+            speed: this.speed,
+            direction: -this.direction
+        }
+    }
+
+    fun set_speed(speed: f64) -> AnimationState {
+        return AnimationState {
+            time: this.time,
+            playing: this.playing,
+            speed: speed,
+            direction: this.direction
+        }
+    }
+
+    fun seek(time: f64) -> AnimationState {
+        return AnimationState {
+            time: time,
+            playing: this.playing,
+            speed: this.speed,
+            direction: this.direction
+        }
+    }
+
+    docs {
+        Mutable state for animation playback.
+
+        Tracks current time, play state, speed, and direction
+        for controlling animation playback.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Interpolatable {
+    fun lerp(other: Self, t: f64) -> Self
+
+    docs {
+        Types that can be linearly interpolated.
+        The parameter t is in range [0, 1].
+    }
+}
+
+pub trait Animatable {
+    fun animate(anim: Animation, t: f64) -> Self
+
+    docs {
+        Types that can be animated using an Animation.
+    }
+}
+
+// ============================================================================
+// INTERPOLATABLE IMPLEMENTATIONS
+// ============================================================================
+
+impl Interpolatable for f64 {
+    fun lerp(other: f64, t: f64) -> f64 {
+        return this + (other - this) * t
+    }
+}
+
+impl Interpolatable for Point2D {
+    fun lerp(other: Point2D, t: f64) -> Point2D {
+        return Point2D {
+            x: this.x + (other.x - this.x) * t,
+            y: this.y + (other.y - this.y) * t
+        }
+    }
+}
+
+impl Interpolatable for Vector2D {
+    fun lerp(other: Vector2D, t: f64) -> Vector2D {
+        return Vector2D {
+            x: this.x + (other.x - this.x) * t,
+            y: this.y + (other.y - this.y) * t
+        }
+    }
+}
+
+// ============================================================================
+// LINEAR EASING
+// ============================================================================
+
+pub fun ease_linear(t: f64) -> f64 {
+    return t
+
+    docs {
+        Linear interpolation - constant velocity.
+        f(t) = t
+    }
+}
+
+// ============================================================================
+// QUADRATIC EASING
+// ============================================================================
+
+pub fun ease_in_quad(t: f64) -> f64 {
+    return t * t
+
+    docs {
+        Quadratic ease-in: slow start, accelerating.
+        f(t) = t^2
+    }
+}
+
+pub fun ease_out_quad(t: f64) -> f64 {
+    return t * (2.0 - t)
+
+    docs {
+        Quadratic ease-out: fast start, decelerating.
+        f(t) = 1 - (1-t)^2 = t(2-t)
+    }
+}
+
+pub fun ease_in_out_quad(t: f64) -> f64 {
+    if t < 0.5 {
+        return 2.0 * t * t
+    }
+    return -1.0 + (4.0 - 2.0 * t) * t
+
+    docs {
+        Quadratic ease-in-out: slow start and end.
+    }
+}
+
+// ============================================================================
+// CUBIC EASING
+// ============================================================================
+
+pub fun ease_in_cubic(t: f64) -> f64 {
+    return t * t * t
+
+    docs {
+        Cubic ease-in: slow start, accelerating.
+        f(t) = t^3
+    }
+}
+
+pub fun ease_out_cubic(t: f64) -> f64 {
+    let t1 = t - 1.0
+    return 1.0 + t1 * t1 * t1
+
+    docs {
+        Cubic ease-out: fast start, decelerating.
+        f(t) = 1 - (1-t)^3
+    }
+}
+
+pub fun ease_in_out_cubic(t: f64) -> f64 {
+    if t < 0.5 {
+        return 4.0 * t * t * t
+    }
+    let t1 = 2.0 * t - 2.0
+    return 0.5 * t1 * t1 * t1 + 1.0
+
+    docs {
+        Cubic ease-in-out: slow start and end.
+    }
+}
+
+// ============================================================================
+// QUARTIC EASING
+// ============================================================================
+
+pub fun ease_in_quart(t: f64) -> f64 {
+    return t * t * t * t
+
+    docs {
+        Quartic ease-in.
+        f(t) = t^4
+    }
+}
+
+pub fun ease_out_quart(t: f64) -> f64 {
+    let t1 = t - 1.0
+    return 1.0 - t1 * t1 * t1 * t1
+
+    docs {
+        Quartic ease-out.
+        f(t) = 1 - (1-t)^4
+    }
+}
+
+pub fun ease_in_out_quart(t: f64) -> f64 {
+    if t < 0.5 {
+        return 8.0 * t * t * t * t
+    }
+    let t1 = t - 1.0
+    return 1.0 - 8.0 * t1 * t1 * t1 * t1
+
+    docs {
+        Quartic ease-in-out.
+    }
+}
+
+// ============================================================================
+// QUINTIC EASING
+// ============================================================================
+
+pub fun ease_in_quint(t: f64) -> f64 {
+    return t * t * t * t * t
+
+    docs {
+        Quintic ease-in.
+        f(t) = t^5
+    }
+}
+
+pub fun ease_out_quint(t: f64) -> f64 {
+    let t1 = t - 1.0
+    return 1.0 + t1 * t1 * t1 * t1 * t1
+
+    docs {
+        Quintic ease-out.
+        f(t) = 1 - (1-t)^5
+    }
+}
+
+pub fun ease_in_out_quint(t: f64) -> f64 {
+    if t < 0.5 {
+        return 16.0 * t * t * t * t * t
+    }
+    let t1 = 2.0 * t - 2.0
+    return 0.5 * t1 * t1 * t1 * t1 * t1 + 1.0
+
+    docs {
+        Quintic ease-in-out.
+    }
+}
+
+// ============================================================================
+// SINUSOIDAL EASING
+// ============================================================================
+
+pub fun ease_in_sine(t: f64) -> f64 {
+    return 1.0 - cos(t * PI / 2.0)
+
+    docs {
+        Sinusoidal ease-in.
+    }
+}
+
+pub fun ease_out_sine(t: f64) -> f64 {
+    return sin(t * PI / 2.0)
+
+    docs {
+        Sinusoidal ease-out.
+    }
+}
+
+pub fun ease_in_out_sine(t: f64) -> f64 {
+    return 0.5 * (1.0 - cos(PI * t))
+
+    docs {
+        Sinusoidal ease-in-out.
+    }
+}
+
+// ============================================================================
+// EXPONENTIAL EASING
+// ============================================================================
+
+pub fun ease_in_expo(t: f64) -> f64 {
+    if t == 0.0 {
+        return 0.0
+    }
+    return pow(2.0, 10.0 * (t - 1.0))
+
+    docs {
+        Exponential ease-in.
+        f(t) = 2^(10(t-1))
+    }
+}
+
+pub fun ease_out_expo(t: f64) -> f64 {
+    if t == 1.0 {
+        return 1.0
+    }
+    return 1.0 - pow(2.0, -10.0 * t)
+
+    docs {
+        Exponential ease-out.
+        f(t) = 1 - 2^(-10t)
+    }
+}
+
+pub fun ease_in_out_expo(t: f64) -> f64 {
+    if t == 0.0 {
+        return 0.0
+    }
+    if t == 1.0 {
+        return 1.0
+    }
+    if t < 0.5 {
+        return 0.5 * pow(2.0, 20.0 * t - 10.0)
+    }
+    return 1.0 - 0.5 * pow(2.0, -20.0 * t + 10.0)
+
+    docs {
+        Exponential ease-in-out.
+    }
+}
+
+// ============================================================================
+// CIRCULAR EASING
+// ============================================================================
+
+pub fun ease_in_circ(t: f64) -> f64 {
+    return 1.0 - sqrt(1.0 - t * t)
+
+    docs {
+        Circular ease-in.
+        f(t) = 1 - sqrt(1 - t^2)
+    }
+}
+
+pub fun ease_out_circ(t: f64) -> f64 {
+    let t1 = t - 1.0
+    return sqrt(1.0 - t1 * t1)
+
+    docs {
+        Circular ease-out.
+        f(t) = sqrt(1 - (t-1)^2)
+    }
+}
+
+pub fun ease_in_out_circ(t: f64) -> f64 {
+    if t < 0.5 {
+        return 0.5 * (1.0 - sqrt(1.0 - 4.0 * t * t))
+    }
+    let t1 = 2.0 * t - 2.0
+    return 0.5 * (sqrt(1.0 - t1 * t1) + 1.0)
+
+    docs {
+        Circular ease-in-out.
+    }
+}
+
+// ============================================================================
+// BACK EASING (OVERSHOOT)
+// ============================================================================
+
+pub fun ease_in_back(t: f64) -> f64 {
+    let s = BACK_OVERSHOOT
+    return t * t * ((s + 1.0) * t - s)
+
+    docs {
+        Back ease-in: pulls back before moving forward.
+    }
+}
+
+pub fun ease_out_back(t: f64) -> f64 {
+    let s = BACK_OVERSHOOT
+    let t1 = t - 1.0
+    return t1 * t1 * ((s + 1.0) * t1 + s) + 1.0
+
+    docs {
+        Back ease-out: overshoots target then settles.
+    }
+}
+
+pub fun ease_in_out_back(t: f64) -> f64 {
+    let s = BACK_OVERSHOOT * 1.525
+    if t < 0.5 {
+        let t1 = 2.0 * t
+        return 0.5 * t1 * t1 * ((s + 1.0) * t1 - s)
+    }
+    let t1 = 2.0 * t - 2.0
+    return 0.5 * (t1 * t1 * ((s + 1.0) * t1 + s) + 2.0)
+
+    docs {
+        Back ease-in-out: pulls back, moves forward, overshoots, settles.
+    }
+}
+
+// ============================================================================
+// ELASTIC EASING
+// ============================================================================
+
+pub fun ease_in_elastic(t: f64) -> f64 {
+    if t == 0.0 {
+        return 0.0
+    }
+    if t == 1.0 {
+        return 1.0
+    }
+
+    let p = ELASTIC_PERIOD
+    let s = p / 4.0
+    let t1 = t - 1.0
+
+    return -pow(2.0, 10.0 * t1) * sin((t1 - s) * TAU / p)
+
+    docs {
+        Elastic ease-in: wind up before release.
+        Creates a spring-like oscillation effect.
+    }
+}
+
+pub fun ease_out_elastic(t: f64) -> f64 {
+    if t == 0.0 {
+        return 0.0
+    }
+    if t == 1.0 {
+        return 1.0
+    }
+
+    let p = ELASTIC_PERIOD
+    let s = p / 4.0
+
+    return pow(2.0, -10.0 * t) * sin((t - s) * TAU / p) + 1.0
+
+    docs {
+        Elastic ease-out: overshoot with oscillation then settle.
+        Creates a spring-like bounce effect.
+    }
+}
+
+pub fun ease_in_out_elastic(t: f64) -> f64 {
+    if t == 0.0 {
+        return 0.0
+    }
+    if t == 1.0 {
+        return 1.0
+    }
+
+    let p = ELASTIC_PERIOD * 1.5
+    let s = p / 4.0
+
+    if t < 0.5 {
+        let t1 = 2.0 * t - 1.0
+        return -0.5 * pow(2.0, 10.0 * t1) * sin((t1 - s) * TAU / p)
+    }
+
+    let t1 = 2.0 * t - 1.0
+    return 0.5 * pow(2.0, -10.0 * t1) * sin((t1 - s) * TAU / p) + 1.0
+
+    docs {
+        Elastic ease-in-out: spring effect on both ends.
+    }
+}
+
+// ============================================================================
+// BOUNCE EASING
+// ============================================================================
+
+pub fun ease_out_bounce(t: f64) -> f64 {
+    let n1 = 7.5625
+    let d1 = 2.75
+
+    if t < 1.0 / d1 {
+        return n1 * t * t
+    } else if t < 2.0 / d1 {
+        let t1 = t - 1.5 / d1
+        return n1 * t1 * t1 + 0.75
+    } else if t < 2.5 / d1 {
+        let t1 = t - 2.25 / d1
+        return n1 * t1 * t1 + 0.9375
+    } else {
+        let t1 = t - 2.625 / d1
+        return n1 * t1 * t1 + 0.984375
+    }
+
+    docs {
+        Bounce ease-out: bouncing ball effect.
+        Simulates a ball dropped from height bouncing to rest.
+    }
+}
+
+pub fun ease_in_bounce(t: f64) -> f64 {
+    return 1.0 - ease_out_bounce(1.0 - t)
+
+    docs {
+        Bounce ease-in: reversed bounce effect.
+    }
+}
+
+pub fun ease_in_out_bounce(t: f64) -> f64 {
+    if t < 0.5 {
+        return (1.0 - ease_out_bounce(1.0 - 2.0 * t)) * 0.5
+    }
+    return (1.0 + ease_out_bounce(2.0 * t - 1.0)) * 0.5
+
+    docs {
+        Bounce ease-in-out: bounce on both ends.
+    }
+}
+
+// ============================================================================
+// BEZIER EASING
+// ============================================================================
+
+pub fun bezier_easing(p1: Point2D, p2: Point2D, t: f64) -> f64 {
+    // Cubic bezier with control points (0,0), p1, p2, (1,1)
+    // We need to find the y value for a given x (time)
+    return cubic_bezier_easing(p1.x, p1.y, p2.x, p2.y, t)
+
+    docs {
+        Custom cubic bezier easing with two control points.
+
+        The curve goes from (0,0) to (1,1) with control points p1 and p2.
+        This matches CSS cubic-bezier() timing function.
+
+        Parameters:
+        - p1: First control point
+        - p2: Second control point
+        - t: Input time [0,1]
+
+        Returns: Eased output [0,1]
+    }
+}
+
+pub fun cubic_bezier_easing(x1: f64, y1: f64, x2: f64, y2: f64, t: f64) -> f64 {
+    // Newton-Raphson iteration to find parameter for x coordinate
+    let epsilon = 0.0001
+    let mut guess = t
+
+    for _ in 0..10 {
+        // Calculate x at current guess
+        let guess2 = guess * guess
+        let guess3 = guess2 * guess
+        let x = 3.0 * (1.0 - guess) * (1.0 - guess) * guess * x1 +
+                3.0 * (1.0 - guess) * guess2 * x2 +
+                guess3
+
+        // Check if close enough
+        if abs(x - t) < epsilon {
+            break
+        }
+
+        // Calculate derivative
+        let dx = 3.0 * (1.0 - guess) * (1.0 - guess) * x1 +
+                 6.0 * (1.0 - guess) * guess * (x2 - x1) +
+                 3.0 * guess2 * (1.0 - x2)
+
+        if abs(dx) < epsilon {
+            break
+        }
+
+        // Newton-Raphson step
+        guess = guess - (x - t) / dx
+        guess = clamp(guess, 0.0, 1.0)
+    }
+
+    // Calculate y at found parameter
+    let guess2 = guess * guess
+    let guess3 = guess2 * guess
+    let y = 3.0 * (1.0 - guess) * (1.0 - guess) * guess * y1 +
+            3.0 * (1.0 - guess) * guess2 * y2 +
+            guess3
+
+    return y
+
+    docs {
+        Cubic bezier easing with numeric control point coordinates.
+
+        Uses Newton-Raphson iteration to solve for the bezier parameter
+        given an x (time) value, then evaluates y at that parameter.
+    }
+}
+
+// ============================================================================
+// TRACK EVALUATION
+// ============================================================================
+
+pub fun evaluate_track(track: Track<f64>, t: f64) -> f64 {
+    let keyframes = track.keyframes
+
+    if keyframes.is_empty() {
+        return 0.0
+    }
+
+    if keyframes.length == 1 {
+        return keyframes[0].value
+    }
+
+    // Before first keyframe
+    if t <= keyframes[0].time {
+        return keyframes[0].value
+    }
+
+    // After last keyframe
+    if t >= keyframes.last().time {
+        return keyframes.last().value
+    }
+
+    // Find surrounding keyframes
+    let mut prev_kf = keyframes[0]
+    let mut next_kf = keyframes[1]
+
+    for i in 1..keyframes.length {
+        if keyframes[i].time >= t {
+            prev_kf = keyframes[i - 1]
+            next_kf = keyframes[i]
+            break
+        }
+    }
+
+    // Calculate local t
+    let duration = next_kf.time - prev_kf.time
+    if duration <= 0.0 {
+        return next_kf.value
+    }
+
+    let local_t = (t - prev_kf.time) / duration
+
+    // Apply easing
+    let eased_t = prev_kf.easing.apply(local_t)
+
+    // Interpolate value
+    return prev_kf.value.lerp(next_kf.value, eased_t)
+
+    docs {
+        Evaluate a track at a given time.
+
+        Finds the surrounding keyframes, calculates local time,
+        applies the easing function, and interpolates the value.
+
+        Parameters:
+        - track: The animation track to evaluate
+        - t: Time in seconds
+
+        Returns: Interpolated value at time t
+    }
+}
+
+pub fun evaluate_animation(anim: Animation, state: AnimationState) -> Vec<(string, f64)> {
+    let mut t = state.time
+
+    // Handle looping
+    if anim.looping && anim.duration > 0.0 {
+        t = t % anim.duration
+        if t < 0.0 {
+            t = t + anim.duration
+        }
+    }
+
+    // Clamp to valid range
+    t = clamp(t, 0.0, anim.duration)
+
+    // Evaluate all tracks
+    let results = vec![]
+    for track in anim.tracks {
+        let value = evaluate_track(track, t)
+        results.push((track.name.clone(), value))
+    }
+
+    return results
+
+    docs {
+        Evaluate all tracks in an animation at the current state time.
+
+        Returns a vector of (track_name, value) pairs.
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+fun clamp(value: f64, min: f64, max: f64) -> f64 {
+    if value < min {
+        return min
+    }
+    if value > max {
+        return max
+    }
+    return value
+}
+
+docs {
+    Animation Spirit - Keyframes Module
+
+    Comprehensive keyframe animation system with easing functions.
+
+    Core Types:
+    - Keyframe<T>: Single keyframe with time, value, and easing
+    - Track<T>: Collection of keyframes for a property
+    - Animation: Multiple tracks with shared duration
+    - AnimationState: Playback state (time, playing, speed, direction)
+
+    Easing Functions:
+    All standard easing curves are provided:
+    - Linear
+    - Quadratic (in/out/in-out)
+    - Cubic (in/out/in-out)
+    - Quartic (in/out/in-out)
+    - Quintic (in/out/in-out)
+    - Sinusoidal (in/out/in-out)
+    - Exponential (in/out/in-out)
+    - Circular (in/out/in-out)
+    - Back (overshoot, in/out/in-out)
+    - Elastic (spring, in/out/in-out)
+    - Bounce (in/out/in-out)
+    - Custom cubic bezier
+
+    Traits:
+    - Interpolatable: Types that can be linearly interpolated
+    - Animatable: Types that can be animated
+
+    Key Functions:
+    - evaluate_track: Get value from track at time
+    - evaluate_animation: Get all track values at state time
+    - bezier_easing: Custom CSS-style bezier curves
+
+    Rules:
+    - TweenContinuity: Animations should maintain C1 continuity
+      for smooth, jerk-free motion
+
+    Usage:
+        let track = Track {
+            name: "opacity",
+            keyframes: vec![
+                Keyframe { time: 0.0, value: 0.0, easing: EasingFn::EaseOut },
+                Keyframe { time: 0.5, value: 1.0, easing: EasingFn::Linear },
+                Keyframe { time: 1.0, value: 0.0, easing: EasingFn::EaseIn }
+            ]
+        }
+        let value = evaluate_track(track, 0.25)  // Fading in
+}

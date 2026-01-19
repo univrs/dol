@@ -1,0 +1,69 @@
+// Music Spirit Package - Part of Spirits Jam 2
+// A comprehensive music and audio toolkit for DOL
+
+spirit Music {
+    has name: "music"
+    has version: "0.1.0"
+    has authors: ["VUDO Team <team@univrs.io>"]
+    has license: "MIT"
+
+    has lib: "lib.dol"
+
+    // Dependencies on physics for wave mathematics
+    has dependencies: [
+        "@univrs/physics @ >=0.1.0"
+    ]
+
+    has keywords: [
+        "audio",
+        "music",
+        "synthesis",
+        "theory",
+        "rhythm",
+        "composition",
+        "sound",
+        "dsp"
+    ]
+
+    has categories: [
+        "multimedia",
+        "audio",
+        "creative-coding"
+    ]
+
+    docs {
+        Music Spirit - A comprehensive music and audio toolkit for DOL.
+
+        This Spirit provides primitives and algorithms for:
+        - Sound synthesis (oscillators, waveforms, envelopes, filters)
+        - Music theory (notes, scales, chords, intervals, modes)
+        - Rhythm systems (time signatures, tempo, patterns)
+        - Composition structures (melodies, phrases, songs, scores)
+
+        Built on physics.waves for accurate wave mathematics and
+        signal processing fundamentals.
+
+        Quick start:
+            use @univrs/music.{ Note, Oscillator, Chord }
+            use @univrs/music.synthesis.{ sine_wave, generate_samples }
+            use @univrs/music.theory.{ note_to_frequency, build_scale }
+            use @univrs/music.rhythm.{ euclidean_rhythm, beats_to_seconds }
+            use @univrs/music.composition.{ generate_melody, harmonize }
+
+        Examples:
+            // Create a note and convert to frequency
+            let a4 = Note { pitch: 69, octave: 4, duration: 1.0 }
+            let freq = note_to_frequency(a4)  // 440.0 Hz
+
+            // Build a C major scale
+            let c = Note { pitch: 60, octave: 4, duration: 1.0 }
+            let c_major = build_scale(c, Mode::Major)
+
+            // Generate a sine wave
+            let osc = Oscillator { waveform: Waveform::Sine, frequency: 440.0, amplitude: 0.8 }
+            let samples = generate_samples(osc, envelope, 2.0)
+
+            // Create an euclidean rhythm
+            let rhythm = euclidean_rhythm(5, 8)  // 5 hits in 8 steps
+    }
+}

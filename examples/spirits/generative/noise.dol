@@ -1,0 +1,1056 @@
+// Generative Art Spirit - Noise Module
+// Procedural noise functions for natural textures and terrain
+
+module generative.noise @ 0.1.0
+
+use @univrs/visual.geometry.{ Point2D, Point3D }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const PI: f64 = 3.14159265358979323846
+pub const TAU: f64 = 6.28318530717958647692
+pub const SQRT_3: f64 = 1.7320508075688772935
+
+// Permutation table size (must be power of 2)
+pub const PERM_SIZE: u32 = 256
+pub const PERM_MASK: u32 = 255
+
+// Simplex skew factors
+pub const F2: f64 = 0.3660254037844386   // (sqrt(3) - 1) / 2
+pub const G2: f64 = 0.21132486540518713  // (3 - sqrt(3)) / 6
+pub const F3: f64 = 0.3333333333333333   // 1/3
+pub const G3: f64 = 0.1666666666666667   // 1/6
+
+// Default noise parameters
+pub const DEFAULT_OCTAVES: u32 = 4
+pub const DEFAULT_LACUNARITY: f64 = 2.0
+pub const DEFAULT_PERSISTENCE: f64 = 0.5
+pub const DEFAULT_FREQUENCY: f64 = 1.0
+
+// ============================================================================
+// NOISE CONFIGURATION
+// ============================================================================
+
+pub gen NoiseConfig {
+    has seed: u64                   // Random seed
+    has octaves: u32                // Number of noise layers
+    has lacunarity: f64             // Frequency multiplier per octave
+    has persistence: f64            // Amplitude multiplier per octave
+    has frequency: f64              // Base frequency
+
+    rule valid_octaves {
+        this.octaves >= 1 && this.octaves <= 16
+    }
+
+    rule valid_lacunarity {
+        this.lacunarity > 0.0
+    }
+
+    rule valid_persistence {
+        this.persistence > 0.0 && this.persistence <= 1.0
+    }
+
+    fun with_octaves(octaves: u32) -> NoiseConfig {
+        return NoiseConfig {
+            seed: this.seed,
+            octaves: octaves,
+            lacunarity: this.lacunarity,
+            persistence: this.persistence,
+            frequency: this.frequency
+        }
+    }
+
+    fun with_seed(seed: u64) -> NoiseConfig {
+        return NoiseConfig {
+            seed: seed,
+            octaves: this.octaves,
+            lacunarity: this.lacunarity,
+            persistence: this.persistence,
+            frequency: this.frequency
+        }
+    }
+
+    docs {
+        Configuration for fractal noise generation.
+
+        Parameters:
+        - seed: Random seed for reproducibility
+        - octaves: Number of noise layers (detail levels)
+        - lacunarity: Frequency multiplier between octaves (typically 2.0)
+        - persistence: Amplitude multiplier between octaves (typically 0.5)
+        - frequency: Base sampling frequency
+    }
+}
+
+pub fun default_noise_config() -> NoiseConfig {
+    return NoiseConfig {
+        seed: 0,
+        octaves: DEFAULT_OCTAVES,
+        lacunarity: DEFAULT_LACUNARITY,
+        persistence: DEFAULT_PERSISTENCE,
+        frequency: DEFAULT_FREQUENCY
+    }
+}
+
+// ============================================================================
+// NOISE FIELDS
+// ============================================================================
+
+pub gen NoiseField2D {
+    has width: u32                  // Field width in samples
+    has height: u32                 // Field height in samples
+    has values: Vec<f64>            // Noise values (row-major)
+
+    rule valid_dimensions {
+        this.width > 0 && this.height > 0
+    }
+
+    rule valid_values_length {
+        this.values.length == (this.width * this.height) as u64
+    }
+
+    fun get(x: u32, y: u32) -> f64 {
+        if x >= this.width || y >= this.height {
+            return 0.0
+        }
+        let index = y * this.width + x
+        return this.values[index as u64]
+    }
+
+    fun set(x: u32, y: u32, value: f64) -> NoiseField2D {
+        if x >= this.width || y >= this.height {
+            return this.clone()
+        }
+        let index = (y * this.width + x) as u64
+        let mut values = this.values.clone()
+        values[index] = value
+        return NoiseField2D {
+            width: this.width,
+            height: this.height,
+            values: values
+        }
+    }
+
+    fun sample_bilinear(x: f64, y: f64) -> f64 {
+        let x0 = floor(x) as u32
+        let y0 = floor(y) as u32
+        let x1 = x0 + 1
+        let y1 = y0 + 1
+        let fx = x - x0 as f64
+        let fy = y - y0 as f64
+
+        let v00 = this.get(x0, y0)
+        let v10 = this.get(x1, y0)
+        let v01 = this.get(x0, y1)
+        let v11 = this.get(x1, y1)
+
+        let v0 = lerp(v00, v10, fx)
+        let v1 = lerp(v01, v11, fx)
+        return lerp(v0, v1, fy)
+    }
+
+    fun normalize() -> NoiseField2D {
+        let min_val = this.values.min()
+        let max_val = this.values.max()
+        let range = max_val - min_val
+        if range == 0.0 {
+            return this.clone()
+        }
+        let normalized = this.values.map(|v| (v - min_val) / range).collect()
+        return NoiseField2D {
+            width: this.width,
+            height: this.height,
+            values: normalized
+        }
+    }
+
+    docs {
+        A 2D field of noise values.
+        Values are stored in row-major order.
+    }
+}
+
+pub gen NoiseField3D {
+    has width: u32                  // Field width (X)
+    has height: u32                 // Field height (Y)
+    has depth: u32                  // Field depth (Z)
+    has values: Vec<f64>            // Noise values
+
+    rule valid_dimensions {
+        this.width > 0 && this.height > 0 && this.depth > 0
+    }
+
+    fun get(x: u32, y: u32, z: u32) -> f64 {
+        if x >= this.width || y >= this.height || z >= this.depth {
+            return 0.0
+        }
+        let index = (z * this.width * this.height + y * this.width + x) as u64
+        return this.values[index]
+    }
+
+    fun sample_trilinear(x: f64, y: f64, z: f64) -> f64 {
+        let x0 = floor(x) as u32
+        let y0 = floor(y) as u32
+        let z0 = floor(z) as u32
+        let fx = x - x0 as f64
+        let fy = y - y0 as f64
+        let fz = z - z0 as f64
+
+        let v000 = this.get(x0, y0, z0)
+        let v100 = this.get(x0 + 1, y0, z0)
+        let v010 = this.get(x0, y0 + 1, z0)
+        let v110 = this.get(x0 + 1, y0 + 1, z0)
+        let v001 = this.get(x0, y0, z0 + 1)
+        let v101 = this.get(x0 + 1, y0, z0 + 1)
+        let v011 = this.get(x0, y0 + 1, z0 + 1)
+        let v111 = this.get(x0 + 1, y0 + 1, z0 + 1)
+
+        let v00 = lerp(v000, v100, fx)
+        let v10 = lerp(v010, v110, fx)
+        let v01 = lerp(v001, v101, fx)
+        let v11 = lerp(v011, v111, fx)
+
+        let v0 = lerp(v00, v10, fy)
+        let v1 = lerp(v01, v11, fy)
+
+        return lerp(v0, v1, fz)
+    }
+
+    docs {
+        A 3D field of noise values.
+        Useful for volumetric effects and animation.
+    }
+}
+
+// ============================================================================
+// PERMUTATION AND GRADIENT TABLES
+// ============================================================================
+
+pub gen PermutationTable {
+    has perm: Vec<u8>               // Permutation array [0..255]
+
+    fun get(index: u32) -> u8 {
+        return this.perm[(index & PERM_MASK) as u64]
+    }
+
+    fun hash2(x: u32, y: u32) -> u8 {
+        return this.get(x + this.get(y) as u32)
+    }
+
+    fun hash3(x: u32, y: u32, z: u32) -> u8 {
+        return this.get(x + this.get(y + this.get(z) as u32) as u32)
+    }
+
+    docs {
+        Permutation table for noise functions.
+        Provides pseudo-random but repeatable hash values.
+    }
+}
+
+pub gen GradientTable {
+    has gradients_2d: Vec<(f64, f64)>     // 2D unit gradient vectors
+    has gradients_3d: Vec<(f64, f64, f64)> // 3D unit gradient vectors
+
+    fun gradient_2d(hash: u8) -> (f64, f64) {
+        let index = (hash & 7) as u64  // 8 gradients
+        return this.gradients_2d[index]
+    }
+
+    fun gradient_3d(hash: u8) -> (f64, f64, f64) {
+        let index = (hash & 15) as u64  // 16 gradients
+        return this.gradients_3d[index]
+    }
+
+    docs {
+        Gradient vectors for Perlin noise.
+    }
+}
+
+pub fun create_permutation_table(seed: u64) -> PermutationTable {
+    // Initialize with 0..255
+    let mut perm: Vec<u8> = (0..256).map(|i| i as u8).collect()
+
+    // Fisher-Yates shuffle with seed
+    let mut rng_state = seed
+    for i in (1..256).rev() {
+        // Simple LCG for shuffling
+        rng_state = (rng_state * 6364136223846793005 + 1442695040888963407) % (1 << 63)
+        let j = (rng_state % (i as u64 + 1)) as u64
+        let temp = perm[i as u64]
+        perm[i as u64] = perm[j]
+        perm[j] = temp
+    }
+
+    return PermutationTable { perm: perm }
+}
+
+pub fun create_gradient_table() -> GradientTable {
+    // Standard 2D gradients (8 directions)
+    let gradients_2d = vec![
+        (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0),
+        (0.7071067811865476, 0.7071067811865476),
+        (-0.7071067811865476, 0.7071067811865476),
+        (0.7071067811865476, -0.7071067811865476),
+        (-0.7071067811865476, -0.7071067811865476)
+    ]
+
+    // Standard 3D gradients (12 edges of cube + 4 diagonals)
+    let gradients_3d = vec![
+        (1.0, 1.0, 0.0), (-1.0, 1.0, 0.0), (1.0, -1.0, 0.0), (-1.0, -1.0, 0.0),
+        (1.0, 0.0, 1.0), (-1.0, 0.0, 1.0), (1.0, 0.0, -1.0), (-1.0, 0.0, -1.0),
+        (0.0, 1.0, 1.0), (0.0, -1.0, 1.0), (0.0, 1.0, -1.0), (0.0, -1.0, -1.0),
+        (1.0, 1.0, 0.0), (-1.0, 1.0, 0.0), (0.0, -1.0, 1.0), (0.0, -1.0, -1.0)
+    ]
+
+    return GradientTable {
+        gradients_2d: gradients_2d,
+        gradients_3d: gradients_3d
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait NoiseSampler {
+    fun sample(x: f64, y: f64) -> f64
+
+    docs {
+        Types that can sample noise at 2D coordinates.
+    }
+}
+
+pub trait Tileable {
+    fun make_tileable(width: f64, height: f64) -> Self
+
+    docs {
+        Types that can be made seamlessly tileable.
+    }
+}
+
+pub trait Seedable {
+    fun with_seed(seed: u64) -> Self
+
+    docs {
+        Types that can be reseeded.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl NoiseSampler for NoiseConfig {
+    fun sample(x: f64, y: f64) -> f64 {
+        return perlin_2d(x, y, this)
+    }
+}
+
+impl Seedable for NoiseConfig {
+    fun with_seed(seed: u64) -> NoiseConfig {
+        return NoiseConfig {
+            seed: seed,
+            octaves: this.octaves,
+            lacunarity: this.lacunarity,
+            persistence: this.persistence,
+            frequency: this.frequency
+        }
+    }
+}
+
+// ============================================================================
+// 2D NOISE FUNCTIONS
+// ============================================================================
+
+pub fun perlin_2d(x: f64, y: f64, config: NoiseConfig) -> f64 {
+    let perm = create_permutation_table(config.seed)
+    let grad = create_gradient_table()
+
+    let xs = x * config.frequency
+    let ys = y * config.frequency
+
+    // Grid cell coordinates
+    let x0 = floor(xs) as i32
+    let y0 = floor(ys) as i32
+
+    // Fractional position within cell
+    let xf = xs - x0 as f64
+    let yf = ys - y0 as f64
+
+    // Fade curves
+    let u = fade(xf)
+    let v = fade(yf)
+
+    // Hash coordinates
+    let aa = perm.hash2(x0 as u32, y0 as u32)
+    let ab = perm.hash2(x0 as u32, (y0 + 1) as u32)
+    let ba = perm.hash2((x0 + 1) as u32, y0 as u32)
+    let bb = perm.hash2((x0 + 1) as u32, (y0 + 1) as u32)
+
+    // Get gradients and compute dot products
+    let g00 = grad.gradient_2d(aa)
+    let g10 = grad.gradient_2d(ba)
+    let g01 = grad.gradient_2d(ab)
+    let g11 = grad.gradient_2d(bb)
+
+    let d00 = dot2(g00, (xf, yf))
+    let d10 = dot2(g10, (xf - 1.0, yf))
+    let d01 = dot2(g01, (xf, yf - 1.0))
+    let d11 = dot2(g11, (xf - 1.0, yf - 1.0))
+
+    // Bilinear interpolation
+    let nx0 = lerp(d00, d10, u)
+    let nx1 = lerp(d01, d11, u)
+    return lerp(nx0, nx1, v)
+
+    docs {
+        Classic Perlin noise in 2D.
+        Returns values in range [-1, 1].
+
+        Perlin noise is gradient noise that:
+        - Is continuous and smooth
+        - Has zero values at integer coordinates
+        - Is band-limited (no high frequencies)
+    }
+}
+
+pub fun simplex_2d(x: f64, y: f64, seed: u64) -> f64 {
+    let perm = create_permutation_table(seed)
+
+    // Skew input space to simplex space
+    let s = (x + y) * F2
+    let i = floor(x + s) as i32
+    let j = floor(y + s) as i32
+
+    // Unskew back to input space
+    let t = (i + j) as f64 * G2
+    let x0 = x - (i as f64 - t)
+    let y0 = y - (j as f64 - t)
+
+    // Determine which simplex we're in
+    let (i1, j1) = if x0 > y0 { (1, 0) } else { (0, 1) }
+
+    // Offsets for corners
+    let x1 = x0 - i1 as f64 + G2
+    let y1 = y0 - j1 as f64 + G2
+    let x2 = x0 - 1.0 + 2.0 * G2
+    let y2 = y0 - 1.0 + 2.0 * G2
+
+    // Hash coordinates
+    let h0 = perm.hash2(i as u32, j as u32)
+    let h1 = perm.hash2((i + i1) as u32, (j + j1) as u32)
+    let h2 = perm.hash2((i + 1) as u32, (j + 1) as u32)
+
+    // Contribution from each corner
+    let n0 = simplex_corner_2d(x0, y0, h0)
+    let n1 = simplex_corner_2d(x1, y1, h1)
+    let n2 = simplex_corner_2d(x2, y2, h2)
+
+    // Scale to [-1, 1]
+    return 70.0 * (n0 + n1 + n2)
+
+    docs {
+        Simplex noise in 2D.
+        Returns values in range [-1, 1].
+
+        Simplex noise advantages over Perlin:
+        - Lower computational complexity O(n) vs O(2^n)
+        - No directional artifacts
+        - Better scaling to higher dimensions
+    }
+}
+
+pub fun worley_2d(x: f64, y: f64, seed: u64) -> f64 {
+    let perm = create_permutation_table(seed)
+
+    let xi = floor(x) as i32
+    let yi = floor(y) as i32
+
+    let mut min_dist = 999999.0
+
+    // Check 3x3 neighborhood of cells
+    for di in -1..2 {
+        for dj in -1..2 {
+            let cx = xi + di
+            let cy = yi + dj
+
+            // Hash to get feature point position within cell
+            let h = perm.hash2(cx as u32, cy as u32)
+            let fx = cx as f64 + (h as f64 / 255.0)
+            let fy = cy as f64 + (perm.get(h as u32) as f64 / 255.0)
+
+            // Distance to feature point
+            let dx = x - fx
+            let dy = y - fy
+            let dist = sqrt(dx * dx + dy * dy)
+
+            if dist < min_dist {
+                min_dist = dist
+            }
+        }
+    }
+
+    return min_dist
+
+    docs {
+        Worley (cellular/Voronoi) noise in 2D.
+        Returns distance to nearest feature point.
+
+        Creates cell-like patterns useful for:
+        - Stone/scale textures
+        - Cracked surfaces
+        - Organic patterns
+    }
+}
+
+pub fun value_noise_2d(x: f64, y: f64, seed: u64) -> f64 {
+    let perm = create_permutation_table(seed)
+
+    let x0 = floor(x) as i32
+    let y0 = floor(y) as i32
+    let x1 = x0 + 1
+    let y1 = y0 + 1
+
+    let xf = x - x0 as f64
+    let yf = y - y0 as f64
+
+    // Smooth interpolation
+    let u = fade(xf)
+    let v = fade(yf)
+
+    // Random values at corners
+    let v00 = perm.hash2(x0 as u32, y0 as u32) as f64 / 255.0
+    let v10 = perm.hash2(x1 as u32, y0 as u32) as f64 / 255.0
+    let v01 = perm.hash2(x0 as u32, y1 as u32) as f64 / 255.0
+    let v11 = perm.hash2(x1 as u32, y1 as u32) as f64 / 255.0
+
+    // Bilinear interpolation
+    let n0 = lerp(v00, v10, u)
+    let n1 = lerp(v01, v11, u)
+    return lerp(n0, n1, v) * 2.0 - 1.0  // Scale to [-1, 1]
+
+    docs {
+        Value noise in 2D.
+        Interpolates random values at integer coordinates.
+        Simpler but blockier than gradient noise.
+    }
+}
+
+// ============================================================================
+// 3D NOISE FUNCTIONS
+// ============================================================================
+
+pub fun perlin_3d(x: f64, y: f64, z: f64, config: NoiseConfig) -> f64 {
+    let perm = create_permutation_table(config.seed)
+    let grad = create_gradient_table()
+
+    let xs = x * config.frequency
+    let ys = y * config.frequency
+    let zs = z * config.frequency
+
+    let x0 = floor(xs) as i32
+    let y0 = floor(ys) as i32
+    let z0 = floor(zs) as i32
+
+    let xf = xs - x0 as f64
+    let yf = ys - y0 as f64
+    let zf = zs - z0 as f64
+
+    let u = fade(xf)
+    let v = fade(yf)
+    let w = fade(zf)
+
+    // Hash all 8 corners
+    let aaa = perm.hash3(x0 as u32, y0 as u32, z0 as u32)
+    let aba = perm.hash3(x0 as u32, (y0 + 1) as u32, z0 as u32)
+    let aab = perm.hash3(x0 as u32, y0 as u32, (z0 + 1) as u32)
+    let abb = perm.hash3(x0 as u32, (y0 + 1) as u32, (z0 + 1) as u32)
+    let baa = perm.hash3((x0 + 1) as u32, y0 as u32, z0 as u32)
+    let bba = perm.hash3((x0 + 1) as u32, (y0 + 1) as u32, z0 as u32)
+    let bab = perm.hash3((x0 + 1) as u32, y0 as u32, (z0 + 1) as u32)
+    let bbb = perm.hash3((x0 + 1) as u32, (y0 + 1) as u32, (z0 + 1) as u32)
+
+    // Gradient dot products
+    let d000 = dot3(grad.gradient_3d(aaa), (xf, yf, zf))
+    let d100 = dot3(grad.gradient_3d(baa), (xf - 1.0, yf, zf))
+    let d010 = dot3(grad.gradient_3d(aba), (xf, yf - 1.0, zf))
+    let d110 = dot3(grad.gradient_3d(bba), (xf - 1.0, yf - 1.0, zf))
+    let d001 = dot3(grad.gradient_3d(aab), (xf, yf, zf - 1.0))
+    let d101 = dot3(grad.gradient_3d(bab), (xf - 1.0, yf, zf - 1.0))
+    let d011 = dot3(grad.gradient_3d(abb), (xf, yf - 1.0, zf - 1.0))
+    let d111 = dot3(grad.gradient_3d(bbb), (xf - 1.0, yf - 1.0, zf - 1.0))
+
+    // Trilinear interpolation
+    let nx00 = lerp(d000, d100, u)
+    let nx01 = lerp(d001, d101, u)
+    let nx10 = lerp(d010, d110, u)
+    let nx11 = lerp(d011, d111, u)
+    let nxy0 = lerp(nx00, nx10, v)
+    let nxy1 = lerp(nx01, nx11, v)
+    return lerp(nxy0, nxy1, w)
+
+    docs {
+        Classic Perlin noise in 3D.
+        Useful for volumetric effects and animated noise.
+    }
+}
+
+pub fun simplex_3d(x: f64, y: f64, z: f64, seed: u64) -> f64 {
+    let perm = create_permutation_table(seed)
+
+    // Skew to simplex space
+    let s = (x + y + z) * F3
+    let i = floor(x + s) as i32
+    let j = floor(y + s) as i32
+    let k = floor(z + s) as i32
+
+    // Unskew
+    let t = (i + j + k) as f64 * G3
+    let x0 = x - (i as f64 - t)
+    let y0 = y - (j as f64 - t)
+    let z0 = z - (k as f64 - t)
+
+    // Determine simplex
+    let (i1, j1, k1, i2, j2, k2) = if x0 >= y0 {
+        if y0 >= z0 { (1, 0, 0, 1, 1, 0) }
+        else if x0 >= z0 { (1, 0, 0, 1, 0, 1) }
+        else { (0, 0, 1, 1, 0, 1) }
+    } else {
+        if y0 < z0 { (0, 0, 1, 0, 1, 1) }
+        else if x0 < z0 { (0, 1, 0, 0, 1, 1) }
+        else { (0, 1, 0, 1, 1, 0) }
+    }
+
+    let x1 = x0 - i1 as f64 + G3
+    let y1 = y0 - j1 as f64 + G3
+    let z1 = z0 - k1 as f64 + G3
+    let x2 = x0 - i2 as f64 + 2.0 * G3
+    let y2 = y0 - j2 as f64 + 2.0 * G3
+    let z2 = z0 - k2 as f64 + 2.0 * G3
+    let x3 = x0 - 1.0 + 3.0 * G3
+    let y3 = y0 - 1.0 + 3.0 * G3
+    let z3 = z0 - 1.0 + 3.0 * G3
+
+    let h0 = perm.hash3(i as u32, j as u32, k as u32)
+    let h1 = perm.hash3((i + i1) as u32, (j + j1) as u32, (k + k1) as u32)
+    let h2 = perm.hash3((i + i2) as u32, (j + j2) as u32, (k + k2) as u32)
+    let h3 = perm.hash3((i + 1) as u32, (j + 1) as u32, (k + 1) as u32)
+
+    let n0 = simplex_corner_3d(x0, y0, z0, h0)
+    let n1 = simplex_corner_3d(x1, y1, z1, h1)
+    let n2 = simplex_corner_3d(x2, y2, z2, h2)
+    let n3 = simplex_corner_3d(x3, y3, z3, h3)
+
+    return 32.0 * (n0 + n1 + n2 + n3)
+
+    docs {
+        Simplex noise in 3D.
+        More efficient than 3D Perlin noise.
+    }
+}
+
+pub fun worley_3d(x: f64, y: f64, z: f64, seed: u64) -> f64 {
+    let perm = create_permutation_table(seed)
+
+    let xi = floor(x) as i32
+    let yi = floor(y) as i32
+    let zi = floor(z) as i32
+
+    let mut min_dist = 999999.0
+
+    for di in -1..2 {
+        for dj in -1..2 {
+            for dk in -1..2 {
+                let cx = xi + di
+                let cy = yi + dj
+                let cz = zi + dk
+
+                let h = perm.hash3(cx as u32, cy as u32, cz as u32)
+                let fx = cx as f64 + (h as f64 / 255.0)
+                let fy = cy as f64 + (perm.get(h as u32) as f64 / 255.0)
+                let fz = cz as f64 + (perm.get((h + 1) as u32) as f64 / 255.0)
+
+                let dx = x - fx
+                let dy = y - fy
+                let dz = z - fz
+                let dist = sqrt(dx * dx + dy * dy + dz * dz)
+
+                if dist < min_dist {
+                    min_dist = dist
+                }
+            }
+        }
+    }
+
+    return min_dist
+
+    docs {
+        Worley (cellular) noise in 3D.
+    }
+}
+
+// ============================================================================
+// FRACTAL NOISE FUNCTIONS
+// ============================================================================
+
+pub fun fbm(x: f64, y: f64, config: NoiseConfig) -> f64 {
+    let mut total = 0.0
+    let mut amplitude = 1.0
+    let mut frequency = config.frequency
+    let mut max_value = 0.0
+
+    for _ in 0..config.octaves {
+        total = total + perlin_2d(x * frequency, y * frequency, config.with_seed(config.seed)) * amplitude
+        max_value = max_value + amplitude
+        amplitude = amplitude * config.persistence
+        frequency = frequency * config.lacunarity
+    }
+
+    return total / max_value
+
+    docs {
+        Fractal Brownian Motion (fBm).
+        Layers multiple octaves of noise with decreasing amplitude.
+
+        Creates natural-looking noise useful for:
+        - Terrain heightmaps
+        - Cloud textures
+        - Natural surfaces
+    }
+}
+
+pub fun turbulence(x: f64, y: f64, config: NoiseConfig) -> f64 {
+    let mut total = 0.0
+    let mut amplitude = 1.0
+    let mut frequency = config.frequency
+    let mut max_value = 0.0
+
+    for _ in 0..config.octaves {
+        // Use absolute value for turbulent effect
+        total = total + abs(perlin_2d(x * frequency, y * frequency, config.with_seed(config.seed))) * amplitude
+        max_value = max_value + amplitude
+        amplitude = amplitude * config.persistence
+        frequency = frequency * config.lacunarity
+    }
+
+    return total / max_value
+
+    docs {
+        Turbulent noise using absolute values.
+        Creates sharp ridge-like features useful for:
+        - Fire and smoke effects
+        - Marble textures
+        - Water caustics
+    }
+}
+
+pub fun ridged_multifractal(x: f64, y: f64, config: NoiseConfig) -> f64 {
+    let mut total = 0.0
+    let mut amplitude = 1.0
+    let mut frequency = config.frequency
+    let mut weight = 1.0
+
+    for i in 0..config.octaves {
+        let signal = perlin_2d(x * frequency, y * frequency, config.with_seed(config.seed + i as u64))
+        let ridge = 1.0 - abs(signal)
+        let ridge_sq = ridge * ridge
+
+        total = total + ridge_sq * amplitude * weight
+        weight = clamp(ridge_sq * 2.0, 0.0, 1.0)
+        amplitude = amplitude * config.persistence
+        frequency = frequency * config.lacunarity
+    }
+
+    return total
+
+    docs {
+        Ridged multifractal noise.
+        Creates sharp ridges useful for mountain terrain.
+    }
+}
+
+pub fun billow(x: f64, y: f64, config: NoiseConfig) -> f64 {
+    let mut total = 0.0
+    let mut amplitude = 1.0
+    let mut frequency = config.frequency
+    let mut max_value = 0.0
+
+    for _ in 0..config.octaves {
+        let noise = perlin_2d(x * frequency, y * frequency, config.with_seed(config.seed))
+        // Map [-1,1] to [0,1] then back to [-1,1] with bias toward extremes
+        total = total + (2.0 * abs(noise) - 1.0) * amplitude
+        max_value = max_value + amplitude
+        amplitude = amplitude * config.persistence
+        frequency = frequency * config.lacunarity
+    }
+
+    return total / max_value
+
+    docs {
+        Billowy noise with puffy, cloud-like appearance.
+    }
+}
+
+// ============================================================================
+// DOMAIN OPERATIONS
+// ============================================================================
+
+pub fun domain_warp(x: f64, y: f64, config: NoiseConfig) -> (f64, f64) {
+    let warp_strength = 4.0
+    let dx = perlin_2d(x, y, config)
+    let dy = perlin_2d(x + 5.2, y + 1.3, config)
+
+    return (x + dx * warp_strength, y + dy * warp_strength)
+
+    docs {
+        Warp coordinates using noise.
+        Creates swirling, organic distortions.
+    }
+}
+
+pub fun domain_warp_fbm(x: f64, y: f64, config: NoiseConfig, iterations: u32) -> (f64, f64) {
+    let mut wx = x
+    let mut wy = y
+    let warp_strength = 4.0
+
+    for i in 0..iterations {
+        let offset = i as f64 * 1.7
+        let dx = fbm(wx + offset, wy + offset, config)
+        let dy = fbm(wx + 5.2 + offset, wy + 1.3 + offset, config)
+        wx = x + dx * warp_strength
+        wy = y + dy * warp_strength
+    }
+
+    return (wx, wy)
+
+    docs {
+        Multi-iteration domain warping with fBm.
+        Creates complex, fluid-like patterns.
+    }
+}
+
+// ============================================================================
+// FIELD GENERATION
+// ============================================================================
+
+pub fun generate_noise_field_2d(
+    width: u32,
+    height: u32,
+    config: NoiseConfig,
+    scale: f64
+) -> NoiseField2D {
+    let mut values = vec![]
+
+    for y in 0..height {
+        for x in 0..width {
+            let nx = x as f64 / scale
+            let ny = y as f64 / scale
+            let value = fbm(nx, ny, config)
+            values.push(value)
+        }
+    }
+
+    return NoiseField2D {
+        width: width,
+        height: height,
+        values: values
+    }
+
+    docs {
+        Generate a 2D noise field.
+        Scale controls the zoom level (larger = more zoomed in).
+    }
+}
+
+pub fun generate_noise_field_3d(
+    width: u32,
+    height: u32,
+    depth: u32,
+    config: NoiseConfig,
+    scale: f64
+) -> NoiseField3D {
+    let mut values = vec![]
+
+    for z in 0..depth {
+        for y in 0..height {
+            for x in 0..width {
+                let nx = x as f64 / scale
+                let ny = y as f64 / scale
+                let nz = z as f64 / scale
+                let value = perlin_3d(nx, ny, nz, config)
+                values.push(value)
+            }
+        }
+    }
+
+    return NoiseField3D {
+        width: width,
+        height: height,
+        depth: depth,
+        values: values
+    }
+
+    docs {
+        Generate a 3D noise field.
+    }
+}
+
+pub fun make_tileable(field: NoiseField2D, period_x: f64, period_y: f64) -> NoiseField2D {
+    let mut values = vec![]
+
+    for y in 0..field.height {
+        for x in 0..field.width {
+            let u = x as f64 / field.width as f64
+            let v = y as f64 / field.height as f64
+
+            // Map to torus coordinates
+            let nx = cos(u * TAU) * period_x / TAU
+            let ny = sin(u * TAU) * period_x / TAU
+            let nz = cos(v * TAU) * period_y / TAU
+            let nw = sin(v * TAU) * period_y / TAU
+
+            // Sample 4D noise projected to 2D
+            // Approximation using 2D noise at multiple offsets
+            let v1 = field.sample_bilinear(nx * field.width as f64, nz * field.height as f64)
+            let v2 = field.sample_bilinear(ny * field.width as f64, nw * field.height as f64)
+            values.push((v1 + v2) / 2.0)
+        }
+    }
+
+    return NoiseField2D {
+        width: field.width,
+        height: field.height,
+        values: values
+    }
+
+    docs {
+        Make a noise field seamlessly tileable.
+        Uses torus mapping for perfect tiling.
+    }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+fun fade(t: f64) -> f64 {
+    // Improved smoothstep: 6t^5 - 15t^4 + 10t^3
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+fun lerp(a: f64, b: f64, t: f64) -> f64 {
+    return a + t * (b - a)
+}
+
+fun dot2(a: (f64, f64), b: (f64, f64)) -> f64 {
+    return a.0 * b.0 + a.1 * b.1
+}
+
+fun dot3(a: (f64, f64, f64), b: (f64, f64, f64)) -> f64 {
+    return a.0 * b.0 + a.1 * b.1 + a.2 * b.2
+}
+
+fun simplex_corner_2d(x: f64, y: f64, hash: u8) -> f64 {
+    let t = 0.5 - x * x - y * y
+    if t < 0.0 {
+        return 0.0
+    }
+    let t2 = t * t
+    let grad_idx = (hash & 7) as f64
+    let gx = if (hash & 1) == 0 { 1.0 } else { -1.0 }
+    let gy = if (hash & 2) == 0 { 1.0 } else { -1.0 }
+    return t2 * t2 * (gx * x + gy * y)
+}
+
+fun simplex_corner_3d(x: f64, y: f64, z: f64, hash: u8) -> f64 {
+    let t = 0.6 - x * x - y * y - z * z
+    if t < 0.0 {
+        return 0.0
+    }
+    let t2 = t * t
+    let h = hash & 15
+    let u = if h < 8 { x } else { y }
+    let v = if h < 4 { y } else if h == 12 || h == 14 { x } else { z }
+    return t2 * t2 * ((if (h & 1) == 0 { u } else { -u }) + (if (h & 2) == 0 { v } else { -v }))
+}
+
+fun floor(x: f64) -> f64 {
+    __builtin_floor(x)
+}
+
+fun sqrt(x: f64) -> f64 {
+    __builtin_sqrt(x)
+}
+
+fun cos(x: f64) -> f64 {
+    __builtin_cos(x)
+}
+
+fun sin(x: f64) -> f64 {
+    __builtin_sin(x)
+}
+
+fun abs(x: f64) -> f64 {
+    if x < 0.0 { -x } else { x }
+}
+
+fun clamp(x: f64, min_val: f64, max_val: f64) -> f64 {
+    if x < min_val { min_val }
+    else if x > max_val { max_val }
+    else { x }
+}
+
+docs {
+    Generative Art Spirit - Noise Module
+
+    Procedural noise functions for generating natural-looking textures
+    and terrain. Based on Ken Perlin's and Stefan Gustavson's work.
+
+    Noise Types:
+    - **Perlin**: Classic gradient noise, smooth and natural
+    - **Simplex**: Improved noise with fewer artifacts
+    - **Worley**: Cellular noise for organic cell patterns
+    - **Value**: Simple interpolated random values
+
+    Fractal Techniques:
+    - **fBm**: Fractal Brownian Motion - layered octaves
+    - **Turbulence**: Absolute value fBm for sharp features
+    - **Ridged**: Sharp ridges, good for mountains
+    - **Billow**: Puffy, cloud-like appearance
+
+    Domain Operations:
+    - **Domain Warp**: Distort coordinates with noise
+    - **Tileable**: Make seamless repeating textures
+
+    Configuration:
+    - seed: Random seed for reproducibility
+    - octaves: Detail levels (more = more detail)
+    - lacunarity: Frequency multiplier (2.0 typical)
+    - persistence: Amplitude multiplier (0.5 typical)
+
+    Usage:
+        // Simple Perlin noise
+        let config = default_noise_config()
+        let value = perlin_2d(x, y, config)
+
+        // Fractal terrain
+        let terrain_config = NoiseConfig {
+            seed: 42,
+            octaves: 6,
+            lacunarity: 2.0,
+            persistence: 0.5,
+            frequency: 0.01
+        }
+        let height = fbm(x, y, terrain_config)
+
+        // Generate a noise field
+        let field = generate_noise_field_2d(256, 256, config, 32.0)
+        let tileable = make_tileable(field, 1.0, 1.0)
+
+    References:
+    - Perlin, K. "Improving Noise" (2002)
+    - Gustavson, S. "Simplex noise demystified" (2005)
+    - Worley, S. "A Cellular Texture Basis Function" (1996)
+}

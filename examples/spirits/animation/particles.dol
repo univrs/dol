@@ -1,0 +1,1062 @@
+// Animation Spirit - Particles Module
+// Particle systems with emitters, forces, and lifecycle management
+
+module animation.particles @ 0.1.0
+
+use @univrs/visual.geometry.{ Point2D, Vector2D, Circle, Rectangle }
+use @univrs/visual.color.{ RGB, RGBA }
+use @univrs/physics.mechanics.{ Vector2 as PhysVec2, apply_force as phys_apply_force }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+pub const PI: f64 = 3.14159265358979323846
+pub const TAU: f64 = 6.28318530717958647692
+
+pub const DEFAULT_PARTICLE_LIFE: f64 = 2.0
+pub const DEFAULT_PARTICLE_SIZE: f64 = 1.0
+pub const DEFAULT_EMISSION_RATE: f64 = 10.0
+pub const DEFAULT_GRAVITY: f64 = 9.81
+pub const DEFAULT_DRAG: f64 = 0.01
+
+// ============================================================================
+// PARTICLE
+// ============================================================================
+
+pub gen Particle {
+    has position: Point2D      // Current position
+    has velocity: Vector2D     // Current velocity
+    has acceleration: Vector2D // Current acceleration
+    has life: f64              // Remaining life in seconds
+    has max_life: f64          // Initial life (for age calculations)
+    has size: f64              // Particle size/radius
+    has color: RGBA            // Particle color with alpha
+    has rotation: f64          // Rotation angle in radians
+    has angular_velocity: f64  // Rotation speed
+
+    fun age() -> f64 {
+        return this.max_life - this.life
+    }
+
+    fun normalized_age() -> f64 {
+        if this.max_life <= 0.0 {
+            return 1.0
+        }
+        return this.age() / this.max_life
+    }
+
+    fun is_alive() -> bool {
+        return this.life > 0.0
+    }
+
+    fun is_dead() -> bool {
+        return this.life <= 0.0
+    }
+
+    docs {
+        A single particle in a particle system.
+
+        Particles have position, velocity, acceleration, lifetime,
+        size, color, and rotation. They are updated each frame and
+        die when their life reaches zero.
+    }
+}
+
+// ============================================================================
+// PARTICLE STATE (for batch operations)
+// ============================================================================
+
+pub gen ParticleState {
+    has positions: Vec<Point2D>
+    has velocities: Vec<Vector2D>
+    has accelerations: Vec<Vector2D>
+    has lives: Vec<f64>
+    has max_lives: Vec<f64>
+    has sizes: Vec<f64>
+    has colors: Vec<RGBA>
+    has rotations: Vec<f64>
+    has angular_velocities: Vec<f64>
+
+    fun count() -> u64 {
+        return this.positions.length
+    }
+
+    fun alive_count() -> u64 {
+        return this.lives.filter(|l| *l > 0.0).count()
+    }
+
+    docs {
+        Structure-of-arrays representation of particles for efficient batch processing.
+    }
+}
+
+// ============================================================================
+// EMITTER SHAPE
+// ============================================================================
+
+pub gen EmitterShape {
+    type: enum {
+        Point,
+        Line { length: f64, angle: f64 },
+        Circle { radius: f64 },
+        Ring { inner_radius: f64, outer_radius: f64 },
+        Rectangle { width: f64, height: f64 },
+        Cone { angle: f64, length: f64 },
+        Sphere { radius: f64 }
+    }
+
+    fun sample_position(rng: &mut Random) -> Point2D {
+        match this.type {
+            Point {
+                return Point2D { x: 0.0, y: 0.0 }
+            }
+            Line { length, angle } {
+                let t = rng.next_f64() - 0.5
+                return Point2D {
+                    x: t * length * cos(angle),
+                    y: t * length * sin(angle)
+                }
+            }
+            Circle { radius } {
+                let angle = rng.next_f64() * TAU
+                let r = sqrt(rng.next_f64()) * radius  // sqrt for uniform distribution
+                return Point2D {
+                    x: r * cos(angle),
+                    y: r * sin(angle)
+                }
+            }
+            Ring { inner_radius, outer_radius } {
+                let angle = rng.next_f64() * TAU
+                let t = rng.next_f64()
+                let r = sqrt(inner_radius * inner_radius * (1.0 - t) +
+                            outer_radius * outer_radius * t)
+                return Point2D {
+                    x: r * cos(angle),
+                    y: r * sin(angle)
+                }
+            }
+            Rectangle { width, height } {
+                return Point2D {
+                    x: (rng.next_f64() - 0.5) * width,
+                    y: (rng.next_f64() - 0.5) * height
+                }
+            }
+            Cone { angle, length } {
+                let a = (rng.next_f64() - 0.5) * angle
+                let l = rng.next_f64() * length
+                return Point2D {
+                    x: l * cos(a),
+                    y: l * sin(a)
+                }
+            }
+            Sphere { radius } {
+                // 2D projection of sphere sampling
+                let angle = rng.next_f64() * TAU
+                let r = sqrt(rng.next_f64()) * radius
+                return Point2D {
+                    x: r * cos(angle),
+                    y: r * sin(angle)
+                }
+            }
+        }
+    }
+
+    fun sample_direction(rng: &mut Random) -> Vector2D {
+        match this.type {
+            Point {
+                let angle = rng.next_f64() * TAU
+                return Vector2D { x: cos(angle), y: sin(angle) }
+            }
+            Cone { angle, length } {
+                let a = (rng.next_f64() - 0.5) * angle
+                return Vector2D { x: cos(a), y: sin(a) }
+            }
+            _ {
+                // Default: radial outward
+                let angle = rng.next_f64() * TAU
+                return Vector2D { x: cos(angle), y: sin(angle) }
+            }
+        }
+    }
+
+    docs {
+        Shape definition for particle emission.
+
+        Defines where particles spawn and optionally influences
+        their initial direction.
+    }
+}
+
+// ============================================================================
+// EMITTER
+// ============================================================================
+
+pub gen Emitter {
+    has position: Point2D        // Emitter center position
+    has rotation: f64            // Emitter rotation
+    has shape: EmitterShape      // Emission shape
+    has rate: f64                // Particles per second
+    has burst_count: u32         // Particles per burst (0 = continuous)
+
+    // Particle spawn parameters
+    has initial_velocity_min: f64
+    has initial_velocity_max: f64
+    has initial_life_min: f64
+    has initial_life_max: f64
+    has initial_size_min: f64
+    has initial_size_max: f64
+    has initial_rotation_min: f64
+    has initial_rotation_max: f64
+    has initial_angular_velocity_min: f64
+    has initial_angular_velocity_max: f64
+
+    // Color gradient over lifetime
+    has color_start: RGBA
+    has color_end: RGBA
+
+    // Emitter state
+    has enabled: bool
+    has accumulator: f64  // Time accumulator for continuous emission
+
+    fun spawn_particle(rng: &mut Random) -> Particle {
+        // Sample position and direction from shape
+        let local_pos = this.shape.sample_position(rng)
+        let direction = this.shape.sample_direction(rng)
+
+        // Rotate by emitter rotation
+        let cos_r = cos(this.rotation)
+        let sin_r = sin(this.rotation)
+        let world_pos = Point2D {
+            x: this.position.x + local_pos.x * cos_r - local_pos.y * sin_r,
+            y: this.position.y + local_pos.x * sin_r + local_pos.y * cos_r
+        }
+
+        // Random velocity magnitude
+        let speed = lerp_f64(this.initial_velocity_min, this.initial_velocity_max, rng.next_f64())
+        let velocity = Vector2D {
+            x: direction.x * speed,
+            y: direction.y * speed
+        }
+
+        // Random life
+        let life = lerp_f64(this.initial_life_min, this.initial_life_max, rng.next_f64())
+
+        // Random size
+        let size = lerp_f64(this.initial_size_min, this.initial_size_max, rng.next_f64())
+
+        // Random rotation
+        let rotation = lerp_f64(this.initial_rotation_min, this.initial_rotation_max, rng.next_f64())
+        let angular_velocity = lerp_f64(
+            this.initial_angular_velocity_min,
+            this.initial_angular_velocity_max,
+            rng.next_f64()
+        )
+
+        return Particle {
+            position: world_pos,
+            velocity: velocity,
+            acceleration: Vector2D { x: 0.0, y: 0.0 },
+            life: life,
+            max_life: life,
+            size: size,
+            color: this.color_start,
+            rotation: rotation,
+            angular_velocity: angular_velocity
+        }
+    }
+
+    docs {
+        Particle emitter that spawns particles with configurable parameters.
+
+        Supports continuous emission (rate-based) or burst emission.
+        Particles are spawned within the emitter shape with randomized
+        initial values within specified ranges.
+    }
+}
+
+// ============================================================================
+// FORCE
+// ============================================================================
+
+pub gen Force {
+    has direction: Vector2D  // Force direction (normalized)
+    has strength: f64        // Force magnitude
+
+    fun to_vector() -> Vector2D {
+        return Vector2D {
+            x: this.direction.x * this.strength,
+            y: this.direction.y * this.strength
+        }
+    }
+
+    fun apply_to(particle: Particle, mass: f64) -> Vector2D {
+        // F = ma, so a = F/m
+        if mass <= 0.0 {
+            return Vector2D { x: 0.0, y: 0.0 }
+        }
+        return Vector2D {
+            x: this.direction.x * this.strength / mass,
+            y: this.direction.y * this.strength / mass
+        }
+    }
+
+    docs {
+        A force that can be applied to particles.
+    }
+}
+
+// ============================================================================
+// FORCE FIELD
+// ============================================================================
+
+pub gen ForceField {
+    type: enum {
+        // Constant directional force
+        Directional { force: Force },
+
+        // Gravity (downward force)
+        Gravity { strength: f64 },
+
+        // Wind (with turbulence)
+        Wind { direction: Vector2D, strength: f64, turbulence: f64 },
+
+        // Radial attraction/repulsion
+        Radial { center: Point2D, strength: f64, falloff: f64 },
+
+        // Vortex (rotational)
+        Vortex { center: Point2D, strength: f64, falloff: f64 },
+
+        // Drag (velocity-dependent resistance)
+        Drag { coefficient: f64 },
+
+        // Turbulence (noise-based)
+        Turbulence { strength: f64, scale: f64, seed: u64 }
+    }
+
+    fun calculate_force(particle: Particle, time: f64) -> Vector2D {
+        match this.type {
+            Directional { force } {
+                return force.to_vector()
+            }
+            Gravity { strength } {
+                return Vector2D { x: 0.0, y: strength }
+            }
+            Wind { direction, strength, turbulence } {
+                let turb_x = sin(time * 3.0 + particle.position.x * 0.1) * turbulence
+                let turb_y = cos(time * 2.5 + particle.position.y * 0.1) * turbulence
+                return Vector2D {
+                    x: direction.x * strength + turb_x,
+                    y: direction.y * strength + turb_y
+                }
+            }
+            Radial { center, strength, falloff } {
+                let dx = particle.position.x - center.x
+                let dy = particle.position.y - center.y
+                let dist = sqrt(dx * dx + dy * dy)
+                if dist < 0.001 {
+                    return Vector2D { x: 0.0, y: 0.0 }
+                }
+                let factor = strength / pow(dist, falloff)
+                return Vector2D {
+                    x: dx / dist * factor,
+                    y: dy / dist * factor
+                }
+            }
+            Vortex { center, strength, falloff } {
+                let dx = particle.position.x - center.x
+                let dy = particle.position.y - center.y
+                let dist = sqrt(dx * dx + dy * dy)
+                if dist < 0.001 {
+                    return Vector2D { x: 0.0, y: 0.0 }
+                }
+                let factor = strength / pow(dist, falloff)
+                // Perpendicular direction
+                return Vector2D {
+                    x: -dy / dist * factor,
+                    y: dx / dist * factor
+                }
+            }
+            Drag { coefficient } {
+                let speed_sq = particle.velocity.x * particle.velocity.x +
+                              particle.velocity.y * particle.velocity.y
+                let speed = sqrt(speed_sq)
+                if speed < 0.001 {
+                    return Vector2D { x: 0.0, y: 0.0 }
+                }
+                let drag_mag = coefficient * speed_sq
+                return Vector2D {
+                    x: -particle.velocity.x / speed * drag_mag,
+                    y: -particle.velocity.y / speed * drag_mag
+                }
+            }
+            Turbulence { strength, scale, seed } {
+                // Simplified noise-based turbulence
+                let nx = sin(particle.position.x * scale + seed as f64) *
+                         cos(particle.position.y * scale * 0.7 + time)
+                let ny = cos(particle.position.x * scale * 0.8 + time * 1.3) *
+                         sin(particle.position.y * scale + seed as f64 * 0.5)
+                return Vector2D {
+                    x: nx * strength,
+                    y: ny * strength
+                }
+            }
+        }
+    }
+
+    docs {
+        Force field that affects particles based on position, velocity, or time.
+    }
+}
+
+// ============================================================================
+// PARTICLE SYSTEM
+// ============================================================================
+
+pub gen ParticleSystem {
+    has emitters: Vec<Emitter>
+    has particles: Vec<Particle>
+    has force_fields: Vec<ForceField>
+    has max_particles: u64
+    has world_bounds: Option<Rectangle>  // Optional bounds for culling
+    has time: f64                         // System time
+
+    rule max_particles_limit {
+        this.particles.length <= this.max_particles
+    }
+
+    fun particle_count() -> u64 {
+        return this.particles.length
+    }
+
+    fun alive_count() -> u64 {
+        return this.particles.filter(|p| p.is_alive()).count()
+    }
+
+    fun add_emitter(emitter: Emitter) -> ParticleSystem {
+        let mut emitters = this.emitters.clone()
+        emitters.push(emitter)
+        return ParticleSystem {
+            emitters: emitters,
+            particles: this.particles.clone(),
+            force_fields: this.force_fields.clone(),
+            max_particles: this.max_particles,
+            world_bounds: this.world_bounds,
+            time: this.time
+        }
+    }
+
+    fun add_force_field(field: ForceField) -> ParticleSystem {
+        let mut fields = this.force_fields.clone()
+        fields.push(field)
+        return ParticleSystem {
+            emitters: this.emitters.clone(),
+            particles: this.particles.clone(),
+            force_fields: fields,
+            max_particles: this.max_particles,
+            world_bounds: this.world_bounds,
+            time: this.time
+        }
+    }
+
+    docs {
+        Complete particle system with emitters, particles, and force fields.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Emittable {
+    fun emit(count: u32, rng: &mut Random) -> Vec<Particle>
+
+    docs {
+        Types that can emit particles.
+    }
+}
+
+pub trait Updateable {
+    fun update(dt: f64) -> Self
+
+    docs {
+        Types that can be updated over time.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Emittable for Emitter {
+    fun emit(count: u32, rng: &mut Random) -> Vec<Particle> {
+        let particles = vec![]
+        for _ in 0..count {
+            particles.push(this.spawn_particle(rng))
+        }
+        return particles
+    }
+}
+
+impl Updateable for Particle {
+    fun update(dt: f64) -> Particle {
+        return update_particle(this, dt)
+    }
+}
+
+impl Updateable for ParticleSystem {
+    fun update(dt: f64) -> ParticleSystem {
+        return update_system(this, dt)
+    }
+}
+
+// ============================================================================
+// PARTICLE FUNCTIONS
+// ============================================================================
+
+pub fun create_particle(
+    position: Point2D,
+    velocity: Vector2D,
+    life: f64,
+    size: f64,
+    color: RGBA
+) -> Particle {
+    return Particle {
+        position: position,
+        velocity: velocity,
+        acceleration: Vector2D { x: 0.0, y: 0.0 },
+        life: life,
+        max_life: life,
+        size: size,
+        color: color,
+        rotation: 0.0,
+        angular_velocity: 0.0
+    }
+
+    docs {
+        Create a particle with basic parameters.
+    }
+}
+
+pub fun update_particle(p: Particle, dt: f64) -> Particle {
+    // Semi-implicit Euler integration
+    let new_velocity = Vector2D {
+        x: p.velocity.x + p.acceleration.x * dt,
+        y: p.velocity.y + p.acceleration.y * dt
+    }
+
+    let new_position = Point2D {
+        x: p.position.x + new_velocity.x * dt,
+        y: p.position.y + new_velocity.y * dt
+    }
+
+    let new_rotation = p.rotation + p.angular_velocity * dt
+    let new_life = p.life - dt
+
+    return Particle {
+        position: new_position,
+        velocity: new_velocity,
+        acceleration: p.acceleration,
+        life: new_life,
+        max_life: p.max_life,
+        size: p.size,
+        color: p.color,
+        rotation: new_rotation,
+        angular_velocity: p.angular_velocity
+    }
+
+    docs {
+        Update a particle's position and life using semi-implicit Euler integration.
+    }
+}
+
+pub fun update_particles(particles: Vec<Particle>, dt: f64) -> Vec<Particle> {
+    return particles.map(|p| update_particle(p, dt)).collect()
+
+    docs {
+        Update all particles in a vector.
+    }
+}
+
+pub fun is_particle_alive(p: Particle) -> bool {
+    return p.life > 0.0
+}
+
+// ============================================================================
+// EMITTER FUNCTIONS
+// ============================================================================
+
+pub fun spawn_single(emitter: Emitter, rng: &mut Random) -> Particle {
+    return emitter.spawn_particle(rng)
+
+    docs {
+        Spawn a single particle from an emitter.
+    }
+}
+
+pub fun spawn_burst(emitter: Emitter, count: u32, rng: &mut Random) -> Vec<Particle> {
+    let particles = vec![]
+    for _ in 0..count {
+        particles.push(emitter.spawn_particle(rng))
+    }
+    return particles
+
+    docs {
+        Spawn a burst of particles from an emitter.
+    }
+}
+
+pub fun spawn_continuous(emitter: Emitter, dt: f64, rng: &mut Random) -> (Emitter, Vec<Particle>) {
+    if !emitter.enabled {
+        return (emitter, vec![])
+    }
+
+    let mut accumulator = emitter.accumulator + dt
+    let spawn_interval = 1.0 / emitter.rate
+    let particles = vec![]
+
+    while accumulator >= spawn_interval {
+        particles.push(emitter.spawn_particle(rng))
+        accumulator = accumulator - spawn_interval
+    }
+
+    let updated_emitter = Emitter {
+        position: emitter.position,
+        rotation: emitter.rotation,
+        shape: emitter.shape,
+        rate: emitter.rate,
+        burst_count: emitter.burst_count,
+        initial_velocity_min: emitter.initial_velocity_min,
+        initial_velocity_max: emitter.initial_velocity_max,
+        initial_life_min: emitter.initial_life_min,
+        initial_life_max: emitter.initial_life_max,
+        initial_size_min: emitter.initial_size_min,
+        initial_size_max: emitter.initial_size_max,
+        initial_rotation_min: emitter.initial_rotation_min,
+        initial_rotation_max: emitter.initial_rotation_max,
+        initial_angular_velocity_min: emitter.initial_angular_velocity_min,
+        initial_angular_velocity_max: emitter.initial_angular_velocity_max,
+        color_start: emitter.color_start,
+        color_end: emitter.color_end,
+        enabled: emitter.enabled,
+        accumulator: accumulator
+    }
+
+    return (updated_emitter, particles)
+
+    docs {
+        Spawn particles continuously based on emission rate.
+        Returns updated emitter (with new accumulator) and spawned particles.
+    }
+}
+
+// ============================================================================
+// FORCE FUNCTIONS
+// ============================================================================
+
+pub fun apply_force(p: Particle, force: Force, mass: f64) -> Particle {
+    let accel = force.apply_to(p, mass)
+    return Particle {
+        position: p.position,
+        velocity: p.velocity,
+        acceleration: Vector2D {
+            x: p.acceleration.x + accel.x,
+            y: p.acceleration.y + accel.y
+        },
+        life: p.life,
+        max_life: p.max_life,
+        size: p.size,
+        color: p.color,
+        rotation: p.rotation,
+        angular_velocity: p.angular_velocity
+    }
+
+    docs {
+        Apply a force to a particle, updating its acceleration.
+    }
+}
+
+pub fun apply_gravity(sys: ParticleSystem, g: f64) -> ParticleSystem {
+    let gravity = Force {
+        direction: Vector2D { x: 0.0, y: 1.0 },
+        strength: g
+    }
+
+    let particles = sys.particles.map(|p| {
+        Particle {
+            position: p.position,
+            velocity: p.velocity,
+            acceleration: Vector2D {
+                x: p.acceleration.x,
+                y: p.acceleration.y + g
+            },
+            life: p.life,
+            max_life: p.max_life,
+            size: p.size,
+            color: p.color,
+            rotation: p.rotation,
+            angular_velocity: p.angular_velocity
+        }
+    }).collect()
+
+    return ParticleSystem {
+        emitters: sys.emitters.clone(),
+        particles: particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: sys.time
+    }
+
+    docs {
+        Apply gravity to all particles in a system.
+        Uses physics.mechanics for accurate force calculation.
+    }
+}
+
+pub fun apply_wind(sys: ParticleSystem, wind: Vector2D) -> ParticleSystem {
+    let particles = sys.particles.map(|p| {
+        Particle {
+            position: p.position,
+            velocity: p.velocity,
+            acceleration: Vector2D {
+                x: p.acceleration.x + wind.x,
+                y: p.acceleration.y + wind.y
+            },
+            life: p.life,
+            max_life: p.max_life,
+            size: p.size,
+            color: p.color,
+            rotation: p.rotation,
+            angular_velocity: p.angular_velocity
+        }
+    }).collect()
+
+    return ParticleSystem {
+        emitters: sys.emitters.clone(),
+        particles: particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: sys.time
+    }
+
+    docs {
+        Apply wind force to all particles in a system.
+        Uses physics.mechanics for force vector operations.
+    }
+}
+
+pub fun apply_drag(sys: ParticleSystem, coefficient: f64) -> ParticleSystem {
+    let particles = sys.particles.map(|p| {
+        let speed_sq = p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y
+        let speed = sqrt(speed_sq)
+        if speed < 0.001 {
+            return p
+        }
+        let drag_mag = coefficient * speed_sq
+        Particle {
+            position: p.position,
+            velocity: p.velocity,
+            acceleration: Vector2D {
+                x: p.acceleration.x - p.velocity.x / speed * drag_mag,
+                y: p.acceleration.y - p.velocity.y / speed * drag_mag
+            },
+            life: p.life,
+            max_life: p.max_life,
+            size: p.size,
+            color: p.color,
+            rotation: p.rotation,
+            angular_velocity: p.angular_velocity
+        }
+    }).collect()
+
+    return ParticleSystem {
+        emitters: sys.emitters.clone(),
+        particles: particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: sys.time
+    }
+
+    docs {
+        Apply drag force (velocity-dependent resistance) to all particles.
+    }
+}
+
+pub fun apply_attraction(sys: ParticleSystem, center: Point2D, strength: f64) -> ParticleSystem {
+    let particles = sys.particles.map(|p| {
+        let dx = center.x - p.position.x
+        let dy = center.y - p.position.y
+        let dist = sqrt(dx * dx + dy * dy)
+        if dist < 0.001 {
+            return p
+        }
+        let force = strength / (dist * dist)
+        Particle {
+            position: p.position,
+            velocity: p.velocity,
+            acceleration: Vector2D {
+                x: p.acceleration.x + dx / dist * force,
+                y: p.acceleration.y + dy / dist * force
+            },
+            life: p.life,
+            max_life: p.max_life,
+            size: p.size,
+            color: p.color,
+            rotation: p.rotation,
+            angular_velocity: p.angular_velocity
+        }
+    }).collect()
+
+    return ParticleSystem {
+        emitters: sys.emitters.clone(),
+        particles: particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: sys.time
+    }
+
+    docs {
+        Apply attraction force toward a point.
+    }
+}
+
+pub fun apply_repulsion(sys: ParticleSystem, center: Point2D, strength: f64) -> ParticleSystem {
+    return apply_attraction(sys, center, -strength)
+
+    docs {
+        Apply repulsion force away from a point.
+    }
+}
+
+pub fun apply_turbulence(sys: ParticleSystem, strength: f64, scale: f64, time: f64) -> ParticleSystem {
+    let particles = sys.particles.map(|p| {
+        let nx = sin(p.position.x * scale) * cos(p.position.y * scale * 0.7 + time)
+        let ny = cos(p.position.x * scale * 0.8 + time * 1.3) * sin(p.position.y * scale)
+        Particle {
+            position: p.position,
+            velocity: p.velocity,
+            acceleration: Vector2D {
+                x: p.acceleration.x + nx * strength,
+                y: p.acceleration.y + ny * strength
+            },
+            life: p.life,
+            max_life: p.max_life,
+            size: p.size,
+            color: p.color,
+            rotation: p.rotation,
+            angular_velocity: p.angular_velocity
+        }
+    }).collect()
+
+    return ParticleSystem {
+        emitters: sys.emitters.clone(),
+        particles: particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: time
+    }
+
+    docs {
+        Apply turbulent/chaotic forces based on position and time.
+    }
+}
+
+// ============================================================================
+// SYSTEM FUNCTIONS
+// ============================================================================
+
+pub fun update_system(sys: ParticleSystem, dt: f64, rng: &mut Random) -> ParticleSystem {
+    // Update time
+    let new_time = sys.time + dt
+
+    // Spawn new particles from emitters
+    let mut new_particles = sys.particles.clone()
+    let mut updated_emitters = vec![]
+
+    for emitter in sys.emitters {
+        let (updated_emitter, spawned) = spawn_continuous(emitter, dt, rng)
+        updated_emitters.push(updated_emitter)
+        for p in spawned {
+            if new_particles.length < sys.max_particles {
+                new_particles.push(p)
+            }
+        }
+    }
+
+    // Reset accelerations
+    new_particles = new_particles.map(|p| {
+        Particle {
+            position: p.position,
+            velocity: p.velocity,
+            acceleration: Vector2D { x: 0.0, y: 0.0 },
+            life: p.life,
+            max_life: p.max_life,
+            size: p.size,
+            color: p.color,
+            rotation: p.rotation,
+            angular_velocity: p.angular_velocity
+        }
+    }).collect()
+
+    // Apply force fields
+    for field in sys.force_fields {
+        new_particles = new_particles.map(|p| {
+            let force = field.calculate_force(p, new_time)
+            Particle {
+                position: p.position,
+                velocity: p.velocity,
+                acceleration: Vector2D {
+                    x: p.acceleration.x + force.x,
+                    y: p.acceleration.y + force.y
+                },
+                life: p.life,
+                max_life: p.max_life,
+                size: p.size,
+                color: p.color,
+                rotation: p.rotation,
+                angular_velocity: p.angular_velocity
+            }
+        }).collect()
+    }
+
+    // Update particles
+    new_particles = update_particles(new_particles, dt)
+
+    // Cull dead particles
+    new_particles = new_particles.filter(|p| p.is_alive()).collect()
+
+    // Cull particles outside bounds
+    if let Some(bounds) = sys.world_bounds {
+        new_particles = new_particles.filter(|p| {
+            p.position.x >= bounds.origin.x &&
+            p.position.x <= bounds.origin.x + bounds.width &&
+            p.position.y >= bounds.origin.y &&
+            p.position.y <= bounds.origin.y + bounds.height
+        }).collect()
+    }
+
+    return ParticleSystem {
+        emitters: updated_emitters,
+        particles: new_particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: new_time
+    }
+
+    docs {
+        Update the entire particle system for one frame.
+
+        1. Spawns new particles from emitters
+        2. Resets accelerations
+        3. Applies all force fields
+        4. Updates particle positions and velocities
+        5. Culls dead particles
+        6. Culls particles outside world bounds
+    }
+}
+
+pub fun cull_dead_particles(sys: ParticleSystem) -> ParticleSystem {
+    let particles = sys.particles.filter(|p| p.is_alive()).collect()
+    return ParticleSystem {
+        emitters: sys.emitters.clone(),
+        particles: particles,
+        force_fields: sys.force_fields.clone(),
+        max_particles: sys.max_particles,
+        world_bounds: sys.world_bounds,
+        time: sys.time
+    }
+
+    docs {
+        Remove all dead particles from the system.
+    }
+}
+
+pub fun get_particle_count(sys: ParticleSystem) -> u64 {
+    return sys.particles.length
+
+    docs {
+        Get the total number of particles in the system.
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+fun lerp_f64(a: f64, b: f64, t: f64) -> f64 {
+    return a + (b - a) * t
+}
+
+fun lerp_rgba(a: RGBA, b: RGBA, t: f64) -> RGBA {
+    return RGBA {
+        r: (a.r as f64 + (b.r as f64 - a.r as f64) * t) as u8,
+        g: (a.g as f64 + (b.g as f64 - a.g as f64) * t) as u8,
+        b: (a.b as f64 + (b.b as f64 - a.b as f64) * t) as u8,
+        a: (a.a as f64 + (b.a as f64 - a.a as f64) * t) as u8
+    }
+}
+
+docs {
+    Animation Spirit - Particles Module
+
+    Comprehensive particle system for visual effects.
+
+    Core Types:
+    - Particle: Individual particle with physics state and visual properties
+    - ParticleState: Batch particle data in structure-of-arrays layout
+    - Emitter: Spawns particles with configurable parameters
+    - EmitterShape: Defines emission area (Point, Circle, Ring, Rectangle, Cone)
+    - Force: Simple directional force
+    - ForceField: Position/velocity dependent force (Gravity, Wind, Radial, Vortex, Drag, Turbulence)
+    - ParticleSystem: Complete system with emitters, particles, and forces
+
+    Traits:
+    - Emittable: Types that can spawn particles
+    - Updateable: Types that can be stepped forward in time
+
+    Physics Integration:
+    Uses physics.mechanics for accurate force calculations:
+    - Gravity
+    - Wind with turbulence
+    - Drag (air resistance)
+    - Radial attraction/repulsion
+    - Vortex forces
+
+    Lifecycle:
+    rule ParticleLifecycle { spawn -> update -> die }
+
+    Usage:
+        // Create an emitter
+        let emitter = Emitter {
+            position: Point2D { x: 0.0, y: 0.0 },
+            shape: EmitterShape::Circle { radius: 10.0 },
+            rate: 50.0,
+            initial_velocity_min: 10.0,
+            initial_velocity_max: 20.0,
+            initial_life_min: 1.0,
+            initial_life_max: 2.0,
+            ...
+        }
+
+        // Create a particle system
+        let sys = ParticleSystem {
+            emitters: vec![emitter],
+            particles: vec![],
+            force_fields: vec![
+                ForceField::Gravity { strength: 9.81 },
+                ForceField::Wind { direction: Vector2D { x: 1.0, y: 0.0 }, strength: 5.0, turbulence: 2.0 }
+            ],
+            max_particles: 10000,
+            world_bounds: None,
+            time: 0.0
+        }
+
+        // Update each frame
+        sys = update_system(sys, dt, rng)
+}

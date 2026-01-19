@@ -1,0 +1,1082 @@
+// Visual Arts Spirit - Fractal Module
+// Complex numbers, escape-time fractals, IFS, and L-systems
+
+module visual.fractal @ 0.1.0
+
+use visual.geometry.{ Point2D, Vector2D, Line2D, Polygon, Transform2D }
+
+// ============================================================================
+// COMPLEX NUMBERS
+// ============================================================================
+
+pub gen Complex {
+    has re: f64  // Real part
+    has im: f64  // Imaginary part
+
+    fun magnitude() -> f64 {
+        return sqrt(this.re * this.re + this.im * this.im)
+    }
+
+    fun magnitude_squared() -> f64 {
+        return this.re * this.re + this.im * this.im
+    }
+
+    fun argument() -> f64 {
+        return atan2(this.im, this.re)
+    }
+
+    fun conjugate() -> Complex {
+        return Complex { re: this.re, im: -this.im }
+    }
+
+    fun add(other: Complex) -> Complex {
+        return Complex { re: this.re + other.re, im: this.im + other.im }
+    }
+
+    fun sub(other: Complex) -> Complex {
+        return Complex { re: this.re - other.re, im: this.im - other.im }
+    }
+
+    fun mul(other: Complex) -> Complex {
+        return Complex {
+            re: this.re * other.re - this.im * other.im,
+            im: this.re * other.im + this.im * other.re
+        }
+    }
+
+    fun div(other: Complex) -> Complex {
+        let denom = other.magnitude_squared()
+        return Complex {
+            re: (this.re * other.re + this.im * other.im) / denom,
+            im: (this.im * other.re - this.re * other.im) / denom
+        }
+    }
+
+    fun pow(n: i64) -> Complex {
+        if n == 0 {
+            return Complex { re: 1.0, im: 0.0 }
+        }
+
+        let r = this.magnitude()
+        let theta = this.argument()
+        let r_n = pow(r, n as f64)
+        let theta_n = theta * n as f64
+
+        return Complex {
+            re: r_n * cos(theta_n),
+            im: r_n * sin(theta_n)
+        }
+    }
+
+    fun sqrt() -> Complex {
+        let r = this.magnitude()
+        let theta = this.argument()
+        let r_sqrt = sqrt(r)
+        let theta_half = theta / 2.0
+
+        return Complex {
+            re: r_sqrt * cos(theta_half),
+            im: r_sqrt * sin(theta_half)
+        }
+    }
+
+    fun exp() -> Complex {
+        let e_re = exp(this.re)
+        return Complex {
+            re: e_re * cos(this.im),
+            im: e_re * sin(this.im)
+        }
+    }
+
+    fun to_point() -> Point2D {
+        return Point2D { x: this.re, y: this.im }
+    }
+
+    fun from_point(p: Point2D) -> Complex {
+        return Complex { re: p.x, im: p.y }
+    }
+
+    fun from_polar(r: f64, theta: f64) -> Complex {
+        return Complex {
+            re: r * cos(theta),
+            im: r * sin(theta)
+        }
+    }
+
+    docs {
+        Complex number for fractal mathematics.
+        Supports standard complex arithmetic and polar form.
+    }
+}
+
+// ============================================================================
+// ESCAPE-TIME FRACTALS
+// ============================================================================
+
+pub gen Mandelbrot {
+    has center: Complex
+    has zoom: f64
+    has max_iterations: u64
+    has escape_radius: f64
+
+    rule positive_zoom {
+        this.zoom > 0.0
+    }
+
+    rule valid_escape {
+        this.escape_radius > 0.0
+    }
+
+    fun default() -> Mandelbrot {
+        return Mandelbrot {
+            center: Complex { re: -0.5, im: 0.0 },
+            zoom: 1.0,
+            max_iterations: 100,
+            escape_radius: 2.0
+        }
+    }
+
+    fun iterate(c: Complex) -> (u64, Complex) {
+        let z = Complex { re: 0.0, im: 0.0 }
+        let escape_sq = this.escape_radius * this.escape_radius
+
+        for i in 0..this.max_iterations {
+            if z.magnitude_squared() > escape_sq {
+                return (i, z)
+            }
+            z = z.mul(z).add(c)
+        }
+
+        return (this.max_iterations, z)
+    }
+
+    fun in_set(c: Complex) -> bool {
+        let (iterations, _) = this.iterate(c)
+        return iterations == this.max_iterations
+    }
+
+    fun smooth_iterations(c: Complex) -> f64 {
+        let (iterations, z) = this.iterate(c)
+
+        if iterations == this.max_iterations {
+            return this.max_iterations as f64
+        }
+
+        // Smooth coloring using logarithm
+        let log_zn = log(z.magnitude_squared()) / 2.0
+        let nu = log(log_zn / log(2.0)) / log(2.0)
+        return iterations as f64 + 1.0 - nu
+    }
+
+    fun pixel_to_complex(px: u64, py: u64, width: u64, height: u64) -> Complex {
+        let aspect = width as f64 / height as f64
+        let scale = 3.0 / this.zoom
+
+        let re = this.center.re + (px as f64 / width as f64 - 0.5) * scale * aspect
+        let im = this.center.im + (py as f64 / height as f64 - 0.5) * scale
+
+        return Complex { re: re, im: im }
+    }
+
+    docs {
+        Mandelbrot set fractal.
+        z_{n+1} = z_n^2 + c, starting from z_0 = 0
+
+        The set consists of all c values where the iteration
+        does not escape to infinity.
+    }
+}
+
+pub gen Julia {
+    has c: Complex          // The Julia parameter
+    has center: Complex     // View center
+    has zoom: f64
+    has max_iterations: u64
+    has escape_radius: f64
+
+    rule positive_zoom {
+        this.zoom > 0.0
+    }
+
+    fun default() -> Julia {
+        return Julia {
+            c: Complex { re: -0.7, im: 0.27015 },
+            center: Complex { re: 0.0, im: 0.0 },
+            zoom: 1.0,
+            max_iterations: 100,
+            escape_radius: 2.0
+        }
+    }
+
+    fun iterate(z0: Complex) -> (u64, Complex) {
+        let z = z0
+        let escape_sq = this.escape_radius * this.escape_radius
+
+        for i in 0..this.max_iterations {
+            if z.magnitude_squared() > escape_sq {
+                return (i, z)
+            }
+            z = z.mul(z).add(this.c)
+        }
+
+        return (this.max_iterations, z)
+    }
+
+    fun in_set(z0: Complex) -> bool {
+        let (iterations, _) = this.iterate(z0)
+        return iterations == this.max_iterations
+    }
+
+    fun smooth_iterations(z0: Complex) -> f64 {
+        let (iterations, z) = this.iterate(z0)
+
+        if iterations == this.max_iterations {
+            return this.max_iterations as f64
+        }
+
+        let log_zn = log(z.magnitude_squared()) / 2.0
+        let nu = log(log_zn / log(2.0)) / log(2.0)
+        return iterations as f64 + 1.0 - nu
+    }
+
+    docs {
+        Julia set fractal.
+        z_{n+1} = z_n^2 + c, starting from z_0 = input
+
+        Each c value produces a different Julia set.
+        Connected Julia sets correspond to c in the Mandelbrot set.
+    }
+}
+
+pub gen BurningShip {
+    has center: Complex
+    has zoom: f64
+    has max_iterations: u64
+    has escape_radius: f64
+
+    fun default() -> BurningShip {
+        return BurningShip {
+            center: Complex { re: -0.4, im: -0.6 },
+            zoom: 1.0,
+            max_iterations: 100,
+            escape_radius: 2.0
+        }
+    }
+
+    fun iterate(c: Complex) -> (u64, Complex) {
+        let z = Complex { re: 0.0, im: 0.0 }
+        let escape_sq = this.escape_radius * this.escape_radius
+
+        for i in 0..this.max_iterations {
+            if z.magnitude_squared() > escape_sq {
+                return (i, z)
+            }
+            // Take absolute values before squaring
+            let z_abs = Complex { re: abs(z.re), im: abs(z.im) }
+            z = z_abs.mul(z_abs).add(c)
+        }
+
+        return (this.max_iterations, z)
+    }
+
+    docs {
+        Burning Ship fractal.
+        z_{n+1} = (|Re(z_n)| + i|Im(z_n)|)^2 + c
+
+        A variation of Mandelbrot with absolute value.
+        Produces flame-like ship shapes.
+    }
+}
+
+// ============================================================================
+// ITERATED FUNCTION SYSTEMS (IFS)
+// ============================================================================
+
+pub gen SierpinskiTriangle {
+    has vertices: (Point2D, Point2D, Point2D)
+    has depth: u64
+
+    fun default() -> SierpinskiTriangle {
+        return SierpinskiTriangle {
+            vertices: (
+                Point2D { x: 0.0, y: 0.0 },
+                Point2D { x: 1.0, y: 0.0 },
+                Point2D { x: 0.5, y: 0.866 }  // sqrt(3)/2
+            ),
+            depth: 5
+        }
+    }
+
+    fun generate() -> Vec<Polygon> {
+        let triangles = vec![]
+        let (a, b, c) = this.vertices
+
+        fun subdivide(a: Point2D, b: Point2D, c: Point2D, depth: u64, out: &mut Vec<Polygon>) {
+            if depth == 0 {
+                out.push(Polygon { vertices: vec![a, b, c] })
+                return
+            }
+
+            let ab = a.midpoint(b)
+            let bc = b.midpoint(c)
+            let ca = c.midpoint(a)
+
+            // Recursively subdivide the three corner triangles
+            // (skip the center triangle to create the hole)
+            subdivide(a, ab, ca, depth - 1, out)
+            subdivide(ab, b, bc, depth - 1, out)
+            subdivide(ca, bc, c, depth - 1, out)
+        }
+
+        subdivide(a, b, c, this.depth, &mut triangles)
+        return triangles
+    }
+
+    fun chaos_game(iterations: u64) -> Vec<Point2D> {
+        let points = vec![]
+        let (a, b, c) = this.vertices
+        let corners = vec![a, b, c]
+
+        // Start at random point inside triangle
+        let mut point = Point2D {
+            x: (a.x + b.x + c.x) / 3.0,
+            y: (a.y + b.y + c.y) / 3.0
+        }
+
+        for _ in 0..iterations {
+            let corner = corners[random_int(0, 3)]
+            point = point.midpoint(corner)
+            points.push(point)
+        }
+
+        return points
+    }
+
+    docs {
+        Sierpinski Triangle - classic IFS fractal.
+        Created by recursively removing the center triangle.
+        Can also be generated via the chaos game.
+    }
+}
+
+pub gen SierpinskiCarpet {
+    has origin: Point2D
+    has size: f64
+    has depth: u64
+
+    fun default() -> SierpinskiCarpet {
+        return SierpinskiCarpet {
+            origin: Point2D { x: 0.0, y: 0.0 },
+            size: 1.0,
+            depth: 4
+        }
+    }
+
+    fun generate() -> Vec<Polygon> {
+        let squares = vec![]
+
+        fun subdivide(origin: Point2D, size: f64, depth: u64, out: &mut Vec<Polygon>) {
+            if depth == 0 {
+                let p1 = origin
+                let p2 = Point2D { x: origin.x + size, y: origin.y }
+                let p3 = Point2D { x: origin.x + size, y: origin.y + size }
+                let p4 = Point2D { x: origin.x, y: origin.y + size }
+                out.push(Polygon { vertices: vec![p1, p2, p3, p4] })
+                return
+            }
+
+            let new_size = size / 3.0
+
+            // 8 sub-squares (skip center)
+            for i in 0..3 {
+                for j in 0..3 {
+                    if i == 1 && j == 1 {
+                        continue  // Skip center
+                    }
+                    let sub_origin = Point2D {
+                        x: origin.x + i as f64 * new_size,
+                        y: origin.y + j as f64 * new_size
+                    }
+                    subdivide(sub_origin, new_size, depth - 1, out)
+                }
+            }
+        }
+
+        subdivide(this.origin, this.size, this.depth, &mut squares)
+        return squares
+    }
+
+    docs {
+        Sierpinski Carpet - 2D analog of Cantor set.
+        Created by dividing into 9 squares and removing center.
+    }
+}
+
+pub gen Sierpinski {
+    has triangle: Option<SierpinskiTriangle>
+    has carpet: Option<SierpinskiCarpet>
+
+    docs {
+        General Sierpinski fractal container.
+    }
+}
+
+// ============================================================================
+// KOCH FRACTALS
+// ============================================================================
+
+pub gen KochCurve {
+    has start: Point2D
+    has end: Point2D
+    has depth: u64
+
+    fun default() -> KochCurve {
+        return KochCurve {
+            start: Point2D { x: 0.0, y: 0.0 },
+            end: Point2D { x: 1.0, y: 0.0 },
+            depth: 4
+        }
+    }
+
+    fun generate() -> Vec<Point2D> {
+        let points = vec![this.start]
+
+        fun subdivide(p1: Point2D, p2: Point2D, depth: u64, out: &mut Vec<Point2D>) {
+            if depth == 0 {
+                out.push(p2)
+                return
+            }
+
+            // Divide segment into thirds
+            let dx = p2.x - p1.x
+            let dy = p2.y - p1.y
+
+            let a = p1
+            let b = Point2D { x: p1.x + dx / 3.0, y: p1.y + dy / 3.0 }
+            let d = Point2D { x: p1.x + 2.0 * dx / 3.0, y: p1.y + 2.0 * dy / 3.0 }
+            let e = p2
+
+            // Create peak point (equilateral triangle)
+            let mx = (b.x + d.x) / 2.0
+            let my = (b.y + d.y) / 2.0
+            let angle = atan2(dy, dx) + PI / 3.0
+            let len = sqrt(dx * dx + dy * dy) / 3.0
+            let c = Point2D {
+                x: b.x + len * cos(angle),
+                y: b.y + len * sin(angle)
+            }
+
+            subdivide(a, b, depth - 1, out)
+            subdivide(b, c, depth - 1, out)
+            subdivide(c, d, depth - 1, out)
+            subdivide(d, e, depth - 1, out)
+        }
+
+        subdivide(this.start, this.end, this.depth, &mut points)
+        return points
+    }
+
+    docs {
+        Koch Curve - self-similar fractal curve.
+        Each segment is divided into 4 with a triangular bump.
+        Dimension: log(4)/log(3) ≈ 1.26
+    }
+}
+
+pub gen KochSnowflake {
+    has center: Point2D
+    has radius: f64
+    has depth: u64
+
+    fun default() -> KochSnowflake {
+        return KochSnowflake {
+            center: Point2D { x: 0.0, y: 0.0 },
+            radius: 1.0,
+            depth: 4
+        }
+    }
+
+    fun generate() -> Vec<Point2D> {
+        // Start with equilateral triangle
+        let p1 = Point2D {
+            x: this.center.x + this.radius * cos(PI / 2.0),
+            y: this.center.y + this.radius * sin(PI / 2.0)
+        }
+        let p2 = Point2D {
+            x: this.center.x + this.radius * cos(PI / 2.0 + 2.0 * PI / 3.0),
+            y: this.center.y + this.radius * sin(PI / 2.0 + 2.0 * PI / 3.0)
+        }
+        let p3 = Point2D {
+            x: this.center.x + this.radius * cos(PI / 2.0 + 4.0 * PI / 3.0),
+            y: this.center.y + this.radius * sin(PI / 2.0 + 4.0 * PI / 3.0)
+        }
+
+        let curve1 = KochCurve { start: p1, end: p2, depth: this.depth }
+        let curve2 = KochCurve { start: p2, end: p3, depth: this.depth }
+        let curve3 = KochCurve { start: p3, end: p1, depth: this.depth }
+
+        let mut points = curve1.generate()
+        points.extend(curve2.generate())
+        points.extend(curve3.generate())
+
+        return points
+    }
+
+    docs {
+        Koch Snowflake - closed Koch curve on triangle.
+        Has infinite perimeter but finite area.
+    }
+}
+
+pub gen Koch {
+    has curve: Option<KochCurve>
+    has snowflake: Option<KochSnowflake>
+
+    docs {
+        General Koch fractal container.
+    }
+}
+
+// ============================================================================
+// L-SYSTEMS
+// ============================================================================
+
+pub gen LSystemRule {
+    has symbol: char
+    has replacement: string
+
+    docs {
+        A single L-system rewriting rule.
+        symbol -> replacement
+    }
+}
+
+pub gen LSystem {
+    has axiom: string
+    has rules: Vec<LSystemRule>
+    has angle: f64        // Turn angle in degrees
+    has iterations: u64
+
+    fun default_sierpinski() -> LSystem {
+        return LSystem {
+            axiom: "F-G-G",
+            rules: vec![
+                LSystemRule { symbol: 'F', replacement: "F-G+F+G-F" },
+                LSystemRule { symbol: 'G', replacement: "GG" }
+            ],
+            angle: 120.0,
+            iterations: 5
+        }
+    }
+
+    fun default_koch() -> LSystem {
+        return LSystem {
+            axiom: "F",
+            rules: vec![
+                LSystemRule { symbol: 'F', replacement: "F+F-F-F+F" }
+            ],
+            angle: 90.0,
+            iterations: 4
+        }
+    }
+
+    fun default_dragon() -> LSystem {
+        return LSystem {
+            axiom: "FX",
+            rules: vec![
+                LSystemRule { symbol: 'X', replacement: "X+YF+" },
+                LSystemRule { symbol: 'Y', replacement: "-FX-Y" }
+            ],
+            angle: 90.0,
+            iterations: 10
+        }
+    }
+
+    fun default_hilbert() -> LSystem {
+        return LSystem {
+            axiom: "A",
+            rules: vec![
+                LSystemRule { symbol: 'A', replacement: "-BF+AFA+FB-" },
+                LSystemRule { symbol: 'B', replacement: "+AF-BFB-FA+" }
+            ],
+            angle: 90.0,
+            iterations: 5
+        }
+    }
+
+    fun default_plant() -> LSystem {
+        return LSystem {
+            axiom: "X",
+            rules: vec![
+                LSystemRule { symbol: 'X', replacement: "F+[[X]-X]-F[-FX]+X" },
+                LSystemRule { symbol: 'F', replacement: "FF" }
+            ],
+            angle: 25.0,
+            iterations: 5
+        }
+    }
+
+    fun expand() -> string {
+        let current = this.axiom
+
+        for _ in 0..this.iterations {
+            let next = ""
+            for c in current.chars() {
+                let found = false
+                for rule in this.rules {
+                    if c == rule.symbol {
+                        next = next + rule.replacement
+                        found = true
+                        break
+                    }
+                }
+                if !found {
+                    next = next + c.to_string()
+                }
+            }
+            current = next
+        }
+
+        return current
+    }
+
+    fun interpret(start: Point2D, initial_angle: f64, step: f64) -> Vec<Point2D> {
+        let string = this.expand()
+        let points = vec![start]
+        let stack = vec![]
+
+        let x = start.x
+        let y = start.y
+        let angle = initial_angle
+        let angle_rad = this.angle * PI / 180.0
+
+        for c in string.chars() {
+            match c {
+                'F' | 'G' {
+                    x = x + step * cos(angle)
+                    y = y + step * sin(angle)
+                    points.push(Point2D { x: x, y: y })
+                }
+                '+' {
+                    angle = angle + angle_rad
+                }
+                '-' {
+                    angle = angle - angle_rad
+                }
+                '[' {
+                    stack.push((x, y, angle))
+                }
+                ']' {
+                    if let Some((sx, sy, sa)) = stack.pop() {
+                        x = sx
+                        y = sy
+                        angle = sa
+                        // Add marker or handle branching
+                    }
+                }
+                _ { }
+            }
+        }
+
+        return points
+    }
+
+    docs {
+        L-System (Lindenmayer System) for procedural generation.
+
+        Common symbols:
+        - F, G: Draw forward
+        - +: Turn right by angle
+        - -: Turn left by angle
+        - [: Push state (position + angle)
+        - ]: Pop state
+
+        Used for plants, space-filling curves, fractals.
+    }
+}
+
+pub gen DragonCurve {
+    has iterations: u64
+    has start: Point2D
+    has step: f64
+
+    fun default() -> DragonCurve {
+        return DragonCurve {
+            iterations: 12,
+            start: Point2D { x: 0.0, y: 0.0 },
+            step: 1.0
+        }
+    }
+
+    fun generate() -> Vec<Point2D> {
+        let lsystem = LSystem::default_dragon()
+        lsystem.iterations = this.iterations
+        return lsystem.interpret(this.start, 0.0, this.step)
+    }
+
+    docs {
+        Dragon Curve - space-filling fractal.
+        Also known as Heighway dragon.
+    }
+}
+
+pub gen HilbertCurve {
+    has iterations: u64
+    has origin: Point2D
+    has size: f64
+
+    fun default() -> HilbertCurve {
+        return HilbertCurve {
+            iterations: 5,
+            origin: Point2D { x: 0.0, y: 0.0 },
+            size: 1.0
+        }
+    }
+
+    fun generate() -> Vec<Point2D> {
+        let lsystem = LSystem::default_hilbert()
+        lsystem.iterations = this.iterations
+        let step = this.size / pow(2.0, this.iterations as f64)
+        return lsystem.interpret(this.origin, 0.0, step)
+    }
+
+    docs {
+        Hilbert Curve - space-filling curve.
+        Passes through every point in a square exactly once.
+        Useful for spatial indexing and locality preservation.
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait SelfSimilar {
+    fun scale_ratio() -> f64
+    fun at_scale(scale: f64) -> Self
+
+    docs {
+        Types that exhibit self-similarity.
+        The fractal looks the same at different scales.
+    }
+}
+
+pub trait Zoomable {
+    fun zoom_in(factor: f64, center: Complex) -> Self
+    fun zoom_out(factor: f64, center: Complex) -> Self
+    fun set_center(center: Complex) -> Self
+
+    docs {
+        Types that support zoom navigation.
+    }
+}
+
+pub trait Iterable {
+    fun iterate(input: Complex) -> (u64, Complex)
+    fun escape_time(input: Complex) -> u64
+
+    docs {
+        Types that use iteration to determine membership.
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl SelfSimilar for SierpinskiTriangle {
+    fun scale_ratio() -> f64 {
+        return 0.5  // Each sub-triangle is half the size
+    }
+
+    fun at_scale(scale: f64) -> SierpinskiTriangle {
+        let (a, b, c) = this.vertices
+        let center = Point2D {
+            x: (a.x + b.x + c.x) / 3.0,
+            y: (a.y + b.y + c.y) / 3.0
+        }
+
+        fun scale_point(p: Point2D, center: Point2D, s: f64) -> Point2D {
+            return Point2D {
+                x: center.x + (p.x - center.x) * s,
+                y: center.y + (p.y - center.y) * s
+            }
+        }
+
+        return SierpinskiTriangle {
+            vertices: (
+                scale_point(a, center, scale),
+                scale_point(b, center, scale),
+                scale_point(c, center, scale)
+            ),
+            depth: this.depth
+        }
+    }
+}
+
+impl Zoomable for Mandelbrot {
+    fun zoom_in(factor: f64, center: Complex) -> Mandelbrot {
+        return Mandelbrot {
+            center: center,
+            zoom: this.zoom * factor,
+            max_iterations: this.max_iterations,
+            escape_radius: this.escape_radius
+        }
+    }
+
+    fun zoom_out(factor: f64, center: Complex) -> Mandelbrot {
+        return Mandelbrot {
+            center: center,
+            zoom: this.zoom / factor,
+            max_iterations: this.max_iterations,
+            escape_radius: this.escape_radius
+        }
+    }
+
+    fun set_center(center: Complex) -> Mandelbrot {
+        return Mandelbrot {
+            center: center,
+            zoom: this.zoom,
+            max_iterations: this.max_iterations,
+            escape_radius: this.escape_radius
+        }
+    }
+}
+
+impl Zoomable for Julia {
+    fun zoom_in(factor: f64, center: Complex) -> Julia {
+        return Julia {
+            c: this.c,
+            center: center,
+            zoom: this.zoom * factor,
+            max_iterations: this.max_iterations,
+            escape_radius: this.escape_radius
+        }
+    }
+
+    fun zoom_out(factor: f64, center: Complex) -> Julia {
+        return Julia {
+            c: this.c,
+            center: center,
+            zoom: this.zoom / factor,
+            max_iterations: this.max_iterations,
+            escape_radius: this.escape_radius
+        }
+    }
+
+    fun set_center(center: Complex) -> Julia {
+        return Julia {
+            c: this.c,
+            center: center,
+            zoom: this.zoom,
+            max_iterations: this.max_iterations,
+            escape_radius: this.escape_radius
+        }
+    }
+}
+
+impl Iterable for Mandelbrot {
+    fun iterate(input: Complex) -> (u64, Complex) {
+        return this.iterate(input)
+    }
+
+    fun escape_time(input: Complex) -> u64 {
+        let (iterations, _) = this.iterate(input)
+        return iterations
+    }
+}
+
+impl Iterable for Julia {
+    fun iterate(input: Complex) -> (u64, Complex) {
+        return this.iterate(input)
+    }
+
+    fun escape_time(input: Complex) -> u64 {
+        let (iterations, _) = this.iterate(input)
+        return iterations
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+pub fun mandelbrot_iterate(c: Complex, max_iter: u64) -> u64 {
+    let m = Mandelbrot {
+        center: Complex { re: 0.0, im: 0.0 },
+        zoom: 1.0,
+        max_iterations: max_iter,
+        escape_radius: 2.0
+    }
+    let (iterations, _) = m.iterate(c)
+    return iterations
+
+    docs {
+        Quick Mandelbrot iteration without full struct.
+    }
+}
+
+pub fun julia_iterate(z0: Complex, c: Complex, max_iter: u64) -> u64 {
+    let j = Julia {
+        c: c,
+        center: Complex { re: 0.0, im: 0.0 },
+        zoom: 1.0,
+        max_iterations: max_iter,
+        escape_radius: 2.0
+    }
+    let (iterations, _) = j.iterate(z0)
+    return iterations
+
+    docs {
+        Quick Julia iteration without full struct.
+    }
+}
+
+pub fun burning_ship_iterate(c: Complex, max_iter: u64) -> u64 {
+    let bs = BurningShip {
+        center: Complex { re: 0.0, im: 0.0 },
+        zoom: 1.0,
+        max_iterations: max_iter,
+        escape_radius: 2.0
+    }
+    let (iterations, _) = bs.iterate(c)
+    return iterations
+
+    docs {
+        Quick Burning Ship iteration without full struct.
+    }
+}
+
+pub fun escape_time(z: Complex, c: Complex, max_iter: u64, escape_radius: f64) -> u64 {
+    let escape_sq = escape_radius * escape_radius
+
+    for i in 0..max_iter {
+        if z.magnitude_squared() > escape_sq {
+            return i
+        }
+        z = z.mul(z).add(c)
+    }
+
+    return max_iter
+
+    docs {
+        Generic escape time algorithm for z^2 + c iteration.
+    }
+}
+
+pub fun sierpinski_subdivide(triangle: SierpinskiTriangle) -> Vec<Polygon> {
+    return triangle.generate()
+
+    docs {
+        Generate Sierpinski triangle polygons.
+    }
+}
+
+pub fun koch_iterate(curve: KochCurve) -> Vec<Point2D> {
+    return curve.generate()
+
+    docs {
+        Generate Koch curve points.
+    }
+}
+
+pub fun lsystem_expand(system: LSystem) -> string {
+    return system.expand()
+
+    docs {
+        Expand an L-system to its final string.
+    }
+}
+
+pub fun lsystem_interpret(system: LSystem, start: Point2D, angle: f64, step: f64) -> Vec<Point2D> {
+    return system.interpret(start, angle, step)
+
+    docs {
+        Interpret an L-system as geometry.
+    }
+}
+
+pub fun fractal_dimension(log_pieces: f64, log_scale: f64) -> f64 {
+    return log_pieces / log_scale
+
+    docs {
+        Calculate fractal dimension.
+        D = log(N) / log(S)
+        where N = number of self-similar pieces
+        and S = scaling factor
+    }
+}
+
+pub fun box_counting_dimension(points: Vec<Point2D>, box_sizes: Vec<f64>) -> f64 {
+    let log_counts = vec![]
+    let log_sizes = vec![]
+
+    for size in box_sizes {
+        // Count boxes needed to cover all points
+        let boxes = {}  // Set of (i, j) box indices
+
+        for p in points {
+            let i = floor(p.x / size) as i64
+            let j = floor(p.y / size) as i64
+            boxes.insert((i, j))
+        }
+
+        log_counts.push(log(boxes.len() as f64))
+        log_sizes.push(log(1.0 / size))
+    }
+
+    // Linear regression to find slope
+    let n = log_counts.len() as f64
+    let sum_x = log_sizes.sum()
+    let sum_y = log_counts.sum()
+    let sum_xy = log_sizes.zip(log_counts).map(|(x, y)| x * y).sum()
+    let sum_xx = log_sizes.map(|x| x * x).sum()
+
+    let slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+    return slope
+
+    docs {
+        Estimate fractal dimension using box-counting method.
+        More practical for empirical fractal analysis.
+    }
+}
+
+docs {
+    Visual Arts Spirit - Fractal Module
+
+    Mathematical fractals and procedural generation.
+
+    Complex Numbers:
+    - Full complex arithmetic (+, -, *, /, pow, sqrt, exp)
+    - Polar and Cartesian forms
+    - Integration with Point2D
+
+    Escape-Time Fractals:
+    - Mandelbrot: z^2 + c with z_0 = 0
+    - Julia: z^2 + c with variable z_0
+    - BurningShip: |z|^2 + c variant
+    - Smooth iteration counting for coloring
+
+    Iterated Function Systems (IFS):
+    - SierpinskiTriangle: Recursive triangle removal
+    - SierpinskiCarpet: Square analog
+    - Chaos game implementation
+
+    Koch Fractals:
+    - KochCurve: Self-similar bump pattern
+    - KochSnowflake: Closed Koch on triangle
+
+    L-Systems:
+    - Grammar-based rewriting
+    - Turtle graphics interpretation
+    - Pre-built: Sierpinski, Koch, Dragon, Hilbert, Plants
+
+    Traits:
+    - SelfSimilar: Scale-invariant types
+    - Zoomable: Navigation support
+    - Iterable: Escape-time iteration
+
+    Fractal Dimension:
+    - Theoretical calculation
+    - Box-counting estimation
+}

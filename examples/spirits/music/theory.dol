@@ -1,0 +1,1228 @@
+// Music Spirit - Theory Module
+// Notes, scales, chords, intervals, and music theory
+
+module music.theory @ 0.1.0
+
+use super.{
+    A4_FREQUENCY,
+    A4_MIDI,
+    SEMITONES_PER_OCTAVE,
+    TWELFTH_ROOT_OF_TWO
+}
+
+// ============================================================================
+// PITCH CLASS
+// ============================================================================
+
+pub gen PitchClass {
+    type: enum {
+        C,
+        Cs,  // C sharp / D flat
+        D,
+        Ds,  // D sharp / E flat
+        E,
+        F,
+        Fs,  // F sharp / G flat
+        G,
+        Gs,  // G sharp / A flat
+        A,
+        As,  // A sharp / B flat
+        B
+    }
+
+    fun to_semitone() -> u8 {
+        return match this {
+            PitchClass::C { 0 }
+            PitchClass::Cs { 1 }
+            PitchClass::D { 2 }
+            PitchClass::Ds { 3 }
+            PitchClass::E { 4 }
+            PitchClass::F { 5 }
+            PitchClass::Fs { 6 }
+            PitchClass::G { 7 }
+            PitchClass::Gs { 8 }
+            PitchClass::A { 9 }
+            PitchClass::As { 10 }
+            PitchClass::B { 11 }
+        }
+    }
+
+    fun from_semitone(semitone: u8) -> PitchClass {
+        return match semitone % 12 {
+            0 { PitchClass::C }
+            1 { PitchClass::Cs }
+            2 { PitchClass::D }
+            3 { PitchClass::Ds }
+            4 { PitchClass::E }
+            5 { PitchClass::F }
+            6 { PitchClass::Fs }
+            7 { PitchClass::G }
+            8 { PitchClass::Gs }
+            9 { PitchClass::A }
+            10 { PitchClass::As }
+            11 { PitchClass::B }
+        }
+    }
+
+    fun name() -> string {
+        return match this {
+            PitchClass::C { "C" }
+            PitchClass::Cs { "C#/Db" }
+            PitchClass::D { "D" }
+            PitchClass::Ds { "D#/Eb" }
+            PitchClass::E { "E" }
+            PitchClass::F { "F" }
+            PitchClass::Fs { "F#/Gb" }
+            PitchClass::G { "G" }
+            PitchClass::Gs { "G#/Ab" }
+            PitchClass::A { "A" }
+            PitchClass::As { "A#/Bb" }
+            PitchClass::B { "B" }
+        }
+    }
+
+    docs {
+        The twelve pitch classes in Western music theory.
+        Represents a note name without octave specification.
+
+        Uses sharps for accidentals internally, but supports
+        enharmonic equivalents (C# = Db, etc.)
+    }
+}
+
+// ============================================================================
+// NOTE
+// ============================================================================
+
+pub gen Note {
+    has pitch: u8        // MIDI note number (0-127)
+    has octave: i8       // Octave number (-1 to 9)
+    has duration: f64    // Duration in beats
+
+    rule valid_pitch {
+        this.pitch <= 127
+    }
+
+    rule valid_octave {
+        this.octave >= -1 && this.octave <= 9
+    }
+
+    rule valid_duration {
+        this.duration > 0.0
+    }
+
+    fun pitch_class() -> PitchClass {
+        return PitchClass::from_semitone(this.pitch % 12)
+    }
+
+    fun to_midi() -> u8 {
+        return this.pitch
+    }
+
+    fun frequency() -> f64 {
+        return note_to_frequency(this)
+    }
+
+    fun with_octave(oct: i8) -> Note {
+        let new_pitch = (this.pitch % 12) + ((oct + 1) * 12) as u8
+        return Note {
+            pitch: new_pitch,
+            octave: oct,
+            duration: this.duration
+        }
+    }
+
+    fun with_duration(dur: f64) -> Note {
+        return Note {
+            pitch: this.pitch,
+            octave: this.octave,
+            duration: dur
+        }
+    }
+
+    fun name() -> string {
+        return this.pitch_class().name() + this.octave.to_string()
+    }
+
+    docs {
+        A musical note with pitch, octave, and duration.
+
+        The pitch is stored as a MIDI note number (0-127) where:
+        - Middle C (C4) = 60
+        - A4 (440 Hz) = 69
+        - Each semitone is +/- 1
+
+        Duration is in beats (quarter notes by default).
+
+        Example:
+            let a4 = Note { pitch: 69, octave: 4, duration: 1.0 }
+            let freq = a4.frequency()  // 440.0 Hz
+    }
+}
+
+// ============================================================================
+// INTERVAL
+// ============================================================================
+
+pub gen Interval {
+    has semitones: i8    // Number of semitones (can be negative)
+    has name: string     // Interval name (e.g., "Perfect Fifth")
+
+    rule valid_semitones {
+        this.semitones >= -127 && this.semitones <= 127
+    }
+
+    fun quality() -> string {
+        let abs_semi = abs(this.semitones) % 12
+        return match abs_semi {
+            0 { "Perfect Unison" }
+            1 { "Minor Second" }
+            2 { "Major Second" }
+            3 { "Minor Third" }
+            4 { "Major Third" }
+            5 { "Perfect Fourth" }
+            6 { "Tritone" }
+            7 { "Perfect Fifth" }
+            8 { "Minor Sixth" }
+            9 { "Major Sixth" }
+            10 { "Minor Seventh" }
+            11 { "Major Seventh" }
+            _ { "Unknown" }
+        }
+    }
+
+    fun invert() -> Interval {
+        let inverted = 12 - (abs(this.semitones) % 12)
+        return Interval {
+            semitones: if this.semitones >= 0 { inverted as i8 } else { -(inverted as i8) },
+            name: "Inverted " + this.name
+        }
+    }
+
+    fun is_consonant() -> bool {
+        let abs_semi = abs(this.semitones) % 12
+        // Perfect consonances: unison, fourth, fifth, octave
+        // Imperfect consonances: thirds, sixths
+        return abs_semi == 0 || abs_semi == 3 || abs_semi == 4 ||
+               abs_semi == 5 || abs_semi == 7 || abs_semi == 8 ||
+               abs_semi == 9 || abs_semi == 12
+    }
+
+    docs {
+        A musical interval - the distance between two pitches.
+
+        Common intervals:
+        - Unison: 0 semitones
+        - Minor 2nd: 1 semitone
+        - Major 2nd: 2 semitones
+        - Minor 3rd: 3 semitones
+        - Major 3rd: 4 semitones
+        - Perfect 4th: 5 semitones
+        - Tritone: 6 semitones
+        - Perfect 5th: 7 semitones
+        - Minor 6th: 8 semitones
+        - Major 6th: 9 semitones
+        - Minor 7th: 10 semitones
+        - Major 7th: 11 semitones
+        - Octave: 12 semitones
+    }
+}
+
+// Standard interval constants
+pub const UNISON: Interval = Interval { semitones: 0, name: "Unison" }
+pub const MINOR_SECOND: Interval = Interval { semitones: 1, name: "Minor Second" }
+pub const MAJOR_SECOND: Interval = Interval { semitones: 2, name: "Major Second" }
+pub const MINOR_THIRD: Interval = Interval { semitones: 3, name: "Minor Third" }
+pub const MAJOR_THIRD: Interval = Interval { semitones: 4, name: "Major Third" }
+pub const PERFECT_FOURTH: Interval = Interval { semitones: 5, name: "Perfect Fourth" }
+pub const TRITONE: Interval = Interval { semitones: 6, name: "Tritone" }
+pub const PERFECT_FIFTH: Interval = Interval { semitones: 7, name: "Perfect Fifth" }
+pub const MINOR_SIXTH: Interval = Interval { semitones: 8, name: "Minor Sixth" }
+pub const MAJOR_SIXTH: Interval = Interval { semitones: 9, name: "Major Sixth" }
+pub const MINOR_SEVENTH: Interval = Interval { semitones: 10, name: "Minor Seventh" }
+pub const MAJOR_SEVENTH: Interval = Interval { semitones: 11, name: "Major Seventh" }
+pub const OCTAVE: Interval = Interval { semitones: 12, name: "Octave" }
+
+// ============================================================================
+// MODE
+// ============================================================================
+
+pub gen Mode {
+    type: enum {
+        Major,      // Ionian: W-W-H-W-W-W-H
+        Minor,      // Aeolian: W-H-W-W-H-W-W
+        Dorian,     // W-H-W-W-W-H-W
+        Phrygian,   // H-W-W-W-H-W-W
+        Lydian,     // W-W-W-H-W-W-H
+        Mixolydian, // W-W-H-W-W-H-W
+        Locrian,    // H-W-W-H-W-W-W
+        HarmonicMinor,    // W-H-W-W-H-WH-H
+        MelodicMinor,     // W-H-W-W-W-W-H (ascending)
+        PentatonicMajor,  // 5-note major scale
+        PentatonicMinor,  // 5-note minor scale
+        Blues,            // 6-note blues scale
+        WholeTone,        // All whole steps
+        Chromatic         // All half steps
+    }
+
+    fun intervals() -> Vec<Interval> {
+        return match this {
+            Mode::Major {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 4, name: "Major 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 9, name: "Major 6th" },
+                    Interval { semitones: 11, name: "Major 7th" }
+                ]
+            }
+            Mode::Minor {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 8, name: "Minor 6th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::Dorian {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 9, name: "Major 6th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::Phrygian {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 1, name: "Minor 2nd" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 8, name: "Minor 6th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::Lydian {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 4, name: "Major 3rd" },
+                    Interval { semitones: 6, name: "Augmented 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 9, name: "Major 6th" },
+                    Interval { semitones: 11, name: "Major 7th" }
+                ]
+            }
+            Mode::Mixolydian {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 4, name: "Major 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 9, name: "Major 6th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::Locrian {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 1, name: "Minor 2nd" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 6, name: "Diminished 5th" },
+                    Interval { semitones: 8, name: "Minor 6th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::HarmonicMinor {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 8, name: "Minor 6th" },
+                    Interval { semitones: 11, name: "Major 7th" }
+                ]
+            }
+            Mode::MelodicMinor {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 9, name: "Major 6th" },
+                    Interval { semitones: 11, name: "Major 7th" }
+                ]
+            }
+            Mode::PentatonicMajor {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 4, name: "Major 3rd" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 9, name: "Major 6th" }
+                ]
+            }
+            Mode::PentatonicMinor {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::Blues {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 3, name: "Minor 3rd" },
+                    Interval { semitones: 5, name: "Perfect 4th" },
+                    Interval { semitones: 6, name: "Blue Note" },
+                    Interval { semitones: 7, name: "Perfect 5th" },
+                    Interval { semitones: 10, name: "Minor 7th" }
+                ]
+            }
+            Mode::WholeTone {
+                vec![
+                    Interval { semitones: 0, name: "Root" },
+                    Interval { semitones: 2, name: "Major 2nd" },
+                    Interval { semitones: 4, name: "Major 3rd" },
+                    Interval { semitones: 6, name: "Augmented 4th" },
+                    Interval { semitones: 8, name: "Augmented 5th" },
+                    Interval { semitones: 10, name: "Augmented 6th" }
+                ]
+            }
+            Mode::Chromatic {
+                (0..12).map(|i| Interval { semitones: i as i8, name: "Semitone " + i.to_string() }).collect()
+            }
+        }
+    }
+
+    fun is_major() -> bool {
+        return match this {
+            Mode::Major | Mode::Lydian | Mode::Mixolydian | Mode::PentatonicMajor { true }
+            _ { false }
+        }
+    }
+
+    fun is_minor() -> bool {
+        return match this {
+            Mode::Minor | Mode::Dorian | Mode::Phrygian | Mode::Locrian |
+            Mode::HarmonicMinor | Mode::MelodicMinor | Mode::PentatonicMinor |
+            Mode::Blues { true }
+            _ { false }
+        }
+    }
+
+    docs {
+        Musical modes and scales.
+
+        The seven diatonic modes derived from the major scale:
+        - Ionian (Major): C-D-E-F-G-A-B
+        - Dorian: D-E-F-G-A-B-C
+        - Phrygian: E-F-G-A-B-C-D
+        - Lydian: F-G-A-B-C-D-E
+        - Mixolydian: G-A-B-C-D-E-F
+        - Aeolian (Minor): A-B-C-D-E-F-G
+        - Locrian: B-C-D-E-F-G-A
+
+        Plus common non-diatonic scales.
+    }
+}
+
+// ============================================================================
+// SCALE
+// ============================================================================
+
+pub gen Scale {
+    has root: Note
+    has intervals: Vec<Interval>
+    has name: string
+
+    fun notes() -> Vec<Note> {
+        return this.intervals.iter().map(|interval| {
+            Note {
+                pitch: ((this.root.pitch as i16 + interval.semitones as i16) % 128) as u8,
+                octave: this.root.octave + (this.root.pitch as i16 + interval.semitones as i16) / 12 as i8,
+                duration: this.root.duration
+            }
+        }).collect()
+    }
+
+    fun degree(n: u8) -> Option<Note> {
+        if n == 0 || n > this.intervals.length as u8 {
+            return None
+        }
+        let notes = this.notes()
+        return Some(notes[n - 1])
+    }
+
+    fun contains(note: Note) -> bool {
+        let pitch_class = note.pitch % 12
+        let root_class = this.root.pitch % 12
+        return this.intervals.iter().any(|i| {
+            (root_class as i16 + i.semitones as i16) % 12 == pitch_class as i16
+        })
+    }
+
+    fun parallel() -> Scale {
+        // Switch between major and minor with same root
+        let new_mode = if this.name.contains("Major") {
+            Mode::Minor
+        } else {
+            Mode::Major
+        }
+        return build_scale(this.root, new_mode)
+    }
+
+    fun relative() -> Scale {
+        // Major <-> relative minor (3 semitones apart)
+        if this.name.contains("Major") {
+            let minor_root = Note {
+                pitch: ((this.root.pitch as i16 - 3 + 12) % 12 + (this.root.octave + 1) as i16 * 12) as u8,
+                octave: this.root.octave,
+                duration: this.root.duration
+            }
+            return build_scale(minor_root, Mode::Minor)
+        } else {
+            let major_root = Note {
+                pitch: ((this.root.pitch as i16 + 3) % 12 + (this.root.octave + 1) as i16 * 12) as u8,
+                octave: this.root.octave,
+                duration: this.root.duration
+            }
+            return build_scale(major_root, Mode::Major)
+        }
+    }
+
+    docs {
+        A musical scale - a set of notes arranged in ascending pitch order.
+
+        Example:
+            let c4 = Note { pitch: 60, octave: 4, duration: 1.0 }
+            let c_major = build_scale(c4, Mode::Major)
+            // Notes: C4, D4, E4, F4, G4, A4, B4
+    }
+}
+
+pub gen ScaleDegree {
+    has degree: u8       // 1-7 for diatonic scales
+    has accidental: i8   // -1 flat, 0 natural, +1 sharp
+
+    fun roman_numeral(quality: ChordQuality) -> string {
+        let base = match this.degree {
+            1 { "I" }
+            2 { "II" }
+            3 { "III" }
+            4 { "IV" }
+            5 { "V" }
+            6 { "VI" }
+            7 { "VII" }
+            _ { "?" }
+        }
+        let accidental_str = match this.accidental {
+            -1 { "b" }
+            1 { "#" }
+            _ { "" }
+        }
+        let lower = match quality {
+            ChordQuality::Minor | ChordQuality::Diminished { base.to_lowercase() }
+            _ { base }
+        }
+        return accidental_str + lower
+    }
+
+    docs {
+        A scale degree with optional accidental.
+        Used for harmonic analysis and chord progressions.
+    }
+}
+
+// ============================================================================
+// CHORD
+// ============================================================================
+
+pub gen ChordQuality {
+    type: enum {
+        Major,
+        Minor,
+        Diminished,
+        Augmented,
+        Major7,
+        Minor7,
+        Dominant7,
+        Diminished7,
+        HalfDiminished7,
+        MinorMajor7,
+        Augmented7,
+        Sus2,
+        Sus4,
+        Add9,
+        Add11
+    }
+
+    fun intervals() -> Vec<Interval> {
+        return match this {
+            ChordQuality::Major {
+                vec![UNISON, MAJOR_THIRD, PERFECT_FIFTH]
+            }
+            ChordQuality::Minor {
+                vec![UNISON, MINOR_THIRD, PERFECT_FIFTH]
+            }
+            ChordQuality::Diminished {
+                vec![UNISON, MINOR_THIRD, TRITONE]
+            }
+            ChordQuality::Augmented {
+                vec![UNISON, MAJOR_THIRD, MINOR_SIXTH]
+            }
+            ChordQuality::Major7 {
+                vec![UNISON, MAJOR_THIRD, PERFECT_FIFTH, MAJOR_SEVENTH]
+            }
+            ChordQuality::Minor7 {
+                vec![UNISON, MINOR_THIRD, PERFECT_FIFTH, MINOR_SEVENTH]
+            }
+            ChordQuality::Dominant7 {
+                vec![UNISON, MAJOR_THIRD, PERFECT_FIFTH, MINOR_SEVENTH]
+            }
+            ChordQuality::Diminished7 {
+                vec![UNISON, MINOR_THIRD, TRITONE, MAJOR_SIXTH]  // 9 semitones = dim7
+            }
+            ChordQuality::HalfDiminished7 {
+                vec![UNISON, MINOR_THIRD, TRITONE, MINOR_SEVENTH]
+            }
+            ChordQuality::MinorMajor7 {
+                vec![UNISON, MINOR_THIRD, PERFECT_FIFTH, MAJOR_SEVENTH]
+            }
+            ChordQuality::Augmented7 {
+                vec![UNISON, MAJOR_THIRD, MINOR_SIXTH, MINOR_SEVENTH]
+            }
+            ChordQuality::Sus2 {
+                vec![UNISON, MAJOR_SECOND, PERFECT_FIFTH]
+            }
+            ChordQuality::Sus4 {
+                vec![UNISON, PERFECT_FOURTH, PERFECT_FIFTH]
+            }
+            ChordQuality::Add9 {
+                vec![UNISON, MAJOR_THIRD, PERFECT_FIFTH, Interval { semitones: 14, name: "9th" }]
+            }
+            ChordQuality::Add11 {
+                vec![UNISON, MAJOR_THIRD, PERFECT_FIFTH, Interval { semitones: 17, name: "11th" }]
+            }
+        }
+    }
+
+    fun symbol() -> string {
+        return match this {
+            ChordQuality::Major { "" }
+            ChordQuality::Minor { "m" }
+            ChordQuality::Diminished { "dim" }
+            ChordQuality::Augmented { "aug" }
+            ChordQuality::Major7 { "maj7" }
+            ChordQuality::Minor7 { "m7" }
+            ChordQuality::Dominant7 { "7" }
+            ChordQuality::Diminished7 { "dim7" }
+            ChordQuality::HalfDiminished7 { "m7b5" }
+            ChordQuality::MinorMajor7 { "mMaj7" }
+            ChordQuality::Augmented7 { "aug7" }
+            ChordQuality::Sus2 { "sus2" }
+            ChordQuality::Sus4 { "sus4" }
+            ChordQuality::Add9 { "add9" }
+            ChordQuality::Add11 { "add11" }
+        }
+    }
+
+    docs {
+        Chord quality - the type of chord (major, minor, etc.)
+    }
+}
+
+pub gen Chord {
+    has root: Note
+    has notes: Vec<Note>
+    has name: string
+    has quality: ChordQuality
+
+    fun inversion() -> u8 {
+        // Which inversion (0 = root position, 1 = first, etc.)
+        if this.notes.length == 0 {
+            return 0
+        }
+        let bass = this.notes[0].pitch % 12
+        let root_class = this.root.pitch % 12
+        if bass == root_class {
+            return 0
+        }
+        // Find which chord tone is in the bass
+        let intervals = this.quality.intervals()
+        for i in 1..intervals.length {
+            if (root_class as i16 + intervals[i].semitones as i16) % 12 == bass as i16 {
+                return i as u8
+            }
+        }
+        return 0
+    }
+
+    fun to_inversion(inv: u8) -> Chord {
+        if inv >= this.notes.length as u8 {
+            return this
+        }
+        let mut rotated = Vec::new()
+        for i in 0..this.notes.length {
+            let idx = (i + inv as u64) % this.notes.length
+            let mut note = this.notes[idx]
+            // Adjust octave for notes that wrap around
+            if i < inv as u64 {
+                note = Note {
+                    pitch: note.pitch + 12,
+                    octave: note.octave + 1,
+                    duration: note.duration
+                }
+            }
+            rotated.push(note)
+        }
+        return Chord {
+            root: this.root,
+            notes: rotated,
+            name: this.name + "/" + rotated[0].pitch_class().name(),
+            quality: this.quality
+        }
+    }
+
+    docs {
+        A musical chord - multiple notes played simultaneously.
+
+        Chords are built from intervals above a root note.
+        Common types include major, minor, diminished, augmented,
+        and various seventh chords.
+
+        Example:
+            let c_major = Chord {
+                root: Note { pitch: 60, octave: 4, duration: 1.0 },
+                notes: vec![
+                    Note { pitch: 60, ... },  // C
+                    Note { pitch: 64, ... },  // E
+                    Note { pitch: 67, ... }   // G
+                ],
+                name: "C Major",
+                quality: ChordQuality::Major
+            }
+    }
+}
+
+pub gen Voicing {
+    has chord: Chord
+    has spread: bool     // If notes span multiple octaves
+    has doubled: Vec<u8> // Which notes are doubled
+
+    fun as_notes() -> Vec<Note> {
+        return this.chord.notes.clone()
+    }
+
+    docs {
+        A specific arrangement of chord tones across registers.
+        Voicings can spread notes across octaves and double certain tones.
+    }
+}
+
+pub gen ChordProgression {
+    has chords: Vec<Chord>
+    has key: Key
+    has degrees: Vec<ScaleDegree>
+
+    fun length() -> u64 {
+        return this.chords.length
+    }
+
+    fun at(index: u64) -> Option<Chord> {
+        if index >= this.chords.length {
+            return None
+        }
+        return Some(this.chords[index])
+    }
+
+    docs {
+        A sequence of chords forming a harmonic progression.
+
+        Common progressions:
+        - I-IV-V-I (blues, rock)
+        - I-V-vi-IV (pop)
+        - ii-V-I (jazz)
+        - I-vi-IV-V (50s progression)
+    }
+}
+
+// ============================================================================
+// KEY
+// ============================================================================
+
+pub gen Key {
+    has tonic: Note
+    has mode: Mode
+
+    fun signature() -> (Vec<PitchClass>, Vec<PitchClass>) {
+        // Returns (sharps, flats) in key signature
+        let (sharps, flats) = get_key_signature(this)
+        return (sharps, flats)
+    }
+
+    fun name() -> string {
+        let mode_name = if this.mode.is_major() { "Major" } else { "Minor" }
+        return this.tonic.pitch_class().name() + " " + mode_name
+    }
+
+    fun scale() -> Scale {
+        return build_scale(this.tonic, this.mode)
+    }
+
+    fun parallel() -> Key {
+        let new_mode = if this.mode.is_major() { Mode::Minor } else { Mode::Major }
+        return Key { tonic: this.tonic, mode: new_mode }
+    }
+
+    fun relative() -> Key {
+        if this.mode.is_major() {
+            let minor_tonic = Note {
+                pitch: ((this.tonic.pitch as i16 - 3 + 12) % 12 + (this.tonic.octave + 1) as i16 * 12) as u8,
+                octave: this.tonic.octave,
+                duration: this.tonic.duration
+            }
+            return Key { tonic: minor_tonic, mode: Mode::Minor }
+        } else {
+            let major_tonic = Note {
+                pitch: ((this.tonic.pitch as i16 + 3) % 12 + (this.tonic.octave + 1) as i16 * 12) as u8,
+                octave: this.tonic.octave,
+                duration: this.tonic.duration
+            }
+            return Key { tonic: major_tonic, mode: Mode::Major }
+        }
+    }
+
+    docs {
+        A musical key - combination of tonic and mode.
+
+        The key defines which notes are "in key" (diatonic) and
+        affects the harmonic language of a piece.
+
+        C Major and A Minor are relative keys (same notes, different tonic).
+        C Major and C Minor are parallel keys (same tonic, different mode).
+    }
+}
+
+// ============================================================================
+// TRAITS
+// ============================================================================
+
+pub trait Transposable {
+    fun transpose(semitones: i8) -> Self
+
+    docs {
+        Types that can be transposed (shifted in pitch).
+    }
+}
+
+pub trait Invertible {
+    fun invert() -> Self
+
+    docs {
+        Types that can be inverted (chord inversions, interval inversions).
+    }
+}
+
+pub trait Enharmonic {
+    fun enharmonic_equivalent() -> Self
+
+    docs {
+        Types with enharmonic equivalents (C# = Db).
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Transposable for Note {
+    fun transpose(semitones: i8) -> Note {
+        let new_pitch = (this.pitch as i16 + semitones as i16) as u8
+        let new_octave = this.octave + (semitones / 12) as i8
+        return Note {
+            pitch: new_pitch,
+            octave: new_octave,
+            duration: this.duration
+        }
+    }
+}
+
+impl Transposable for Chord {
+    fun transpose(semitones: i8) -> Chord {
+        return Chord {
+            root: this.root.transpose(semitones),
+            notes: this.notes.iter().map(|n| n.transpose(semitones)).collect(),
+            name: PitchClass::from_semitone(((this.root.pitch as i16 + semitones as i16) % 12) as u8).name()
+                  + " " + this.quality.symbol(),
+            quality: this.quality
+        }
+    }
+}
+
+impl Transposable for Scale {
+    fun transpose(semitones: i8) -> Scale {
+        let new_root = this.root.transpose(semitones)
+        return Scale {
+            root: new_root,
+            intervals: this.intervals.clone(),
+            name: new_root.pitch_class().name() + " " + this.name.split(" ").last().unwrap_or("")
+        }
+    }
+}
+
+impl Invertible for Chord {
+    fun invert() -> Chord {
+        return this.to_inversion(1)
+    }
+}
+
+impl Invertible for Interval {
+    fun invert() -> Interval {
+        let inverted = 12 - (this.semitones % 12)
+        return Interval {
+            semitones: inverted as i8,
+            name: "Inverted " + this.name
+        }
+    }
+}
+
+// ============================================================================
+// RULES
+// ============================================================================
+
+rule OctaveEquivalence {
+    // Notes separated by octaves are considered equivalent pitch classes
+    forall n: Note {
+        n.pitch_class() == Note { pitch: n.pitch + 12, octave: n.octave + 1, duration: n.duration }.pitch_class()
+    }
+
+    docs {
+        Octave equivalence principle.
+        Notes 12 semitones apart have the same pitch class.
+        C4 and C5 are both "C".
+    }
+}
+
+rule CircleOfFifths {
+    // Moving by perfect fifths cycles through all pitch classes
+    let sequence = vec![
+        PitchClass::C, PitchClass::G, PitchClass::D, PitchClass::A,
+        PitchClass::E, PitchClass::B, PitchClass::Fs, PitchClass::Cs,
+        PitchClass::Gs, PitchClass::Ds, PitchClass::As, PitchClass::F
+    ]
+
+    fun fifth_up(pc: PitchClass) -> PitchClass {
+        let semitone = (pc.to_semitone() + 7) % 12
+        return PitchClass::from_semitone(semitone)
+    }
+
+    fun fifth_down(pc: PitchClass) -> PitchClass {
+        let semitone = (pc.to_semitone() + 5) % 12
+        return PitchClass::from_semitone(semitone)
+    }
+
+    docs {
+        The Circle of Fifths - a fundamental relationship in music theory.
+
+        Moving clockwise by perfect fifths (7 semitones):
+        C -> G -> D -> A -> E -> B -> F#/Gb -> Db -> Ab -> Eb -> Bb -> F -> C
+
+        Moving counter-clockwise by perfect fourths (5 semitones):
+        C -> F -> Bb -> Eb -> Ab -> Db -> Gb -> B -> E -> A -> D -> G -> C
+
+        Key signatures follow this pattern:
+        - Sharps appear in order: F#, C#, G#, D#, A#, E#, B#
+        - Flats appear in order: Bb, Eb, Ab, Db, Gb, Cb, Fb
+    }
+}
+
+// ============================================================================
+// FUNCTIONS
+// ============================================================================
+
+pub fun note_to_frequency(note: Note) -> f64 {
+    // MIDI note 69 = A4 = 440 Hz
+    let semitones_from_a4 = note.pitch as i16 - A4_MIDI as i16
+    return A4_FREQUENCY * pow(TWELFTH_ROOT_OF_TWO, semitones_from_a4 as f64)
+
+    docs {
+        Convert a MIDI note to frequency in Hz.
+
+        Uses equal temperament tuning with A4 = 440 Hz.
+
+        Formula: f = 440 * 2^((n - 69) / 12)
+        where n is the MIDI note number.
+    }
+}
+
+pub fun frequency_to_note(freq: f64) -> Note {
+    // Calculate MIDI note number from frequency
+    let midi = 69.0 + 12.0 * log2(freq / A4_FREQUENCY)
+    let pitch = round(midi) as u8
+    let octave = (pitch / 12) as i8 - 1
+
+    return Note {
+        pitch: pitch,
+        octave: octave,
+        duration: 1.0
+    }
+
+    docs {
+        Convert a frequency to the nearest MIDI note.
+
+        Returns the note closest to the given frequency.
+        May not be exact if frequency is between notes.
+    }
+}
+
+pub fun note_to_midi(note: Note) -> u8 {
+    return note.pitch
+
+    docs {
+        Convert a Note to MIDI note number.
+    }
+}
+
+pub fun midi_to_note(midi: u8) -> Note {
+    return Note {
+        pitch: midi,
+        octave: (midi / 12) as i8 - 1,
+        duration: 1.0
+    }
+
+    docs {
+        Convert a MIDI note number to Note.
+    }
+}
+
+pub fun build_scale(root: Note, mode: Mode) -> Scale {
+    let intervals = mode.intervals()
+    let mode_name = match mode {
+        Mode::Major { "Major" }
+        Mode::Minor { "Minor" }
+        Mode::Dorian { "Dorian" }
+        Mode::Phrygian { "Phrygian" }
+        Mode::Lydian { "Lydian" }
+        Mode::Mixolydian { "Mixolydian" }
+        Mode::Locrian { "Locrian" }
+        Mode::HarmonicMinor { "Harmonic Minor" }
+        Mode::MelodicMinor { "Melodic Minor" }
+        Mode::PentatonicMajor { "Pentatonic Major" }
+        Mode::PentatonicMinor { "Pentatonic Minor" }
+        Mode::Blues { "Blues" }
+        Mode::WholeTone { "Whole Tone" }
+        Mode::Chromatic { "Chromatic" }
+    }
+
+    return Scale {
+        root: root,
+        intervals: intervals,
+        name: root.pitch_class().name() + " " + mode_name
+    }
+
+    docs {
+        Build a scale from a root note and mode.
+
+        Example:
+            let c = Note { pitch: 60, octave: 4, duration: 1.0 }
+            let c_major = build_scale(c, Mode::Major)
+            let c_blues = build_scale(c, Mode::Blues)
+    }
+}
+
+pub fun chord_from_scale(scale: Scale, degree: u8) -> Chord {
+    if degree == 0 || degree > scale.intervals.length as u8 {
+        // Return empty chord for invalid degree
+        return Chord {
+            root: scale.root,
+            notes: vec![],
+            name: "Invalid",
+            quality: ChordQuality::Major
+        }
+    }
+
+    let scale_notes = scale.notes()
+    let num_notes = scale_notes.length
+
+    // Build triad from scale degrees (1-3-5 pattern)
+    let root_idx = (degree - 1) as u64
+    let third_idx = (root_idx + 2) % num_notes
+    let fifth_idx = (root_idx + 4) % num_notes
+
+    let root_note = scale_notes[root_idx]
+    let third_note = scale_notes[third_idx]
+    let fifth_note = scale_notes[fifth_idx]
+
+    // Determine chord quality based on intervals
+    let third_interval = (third_note.pitch as i16 - root_note.pitch as i16 + 12) % 12
+    let fifth_interval = (fifth_note.pitch as i16 - root_note.pitch as i16 + 12) % 12
+
+    let quality = if third_interval == 4 && fifth_interval == 7 {
+        ChordQuality::Major
+    } else if third_interval == 3 && fifth_interval == 7 {
+        ChordQuality::Minor
+    } else if third_interval == 3 && fifth_interval == 6 {
+        ChordQuality::Diminished
+    } else if third_interval == 4 && fifth_interval == 8 {
+        ChordQuality::Augmented
+    } else {
+        ChordQuality::Major  // Default
+    }
+
+    return Chord {
+        root: root_note,
+        notes: vec![root_note, third_note, fifth_note],
+        name: root_note.pitch_class().name() + quality.symbol(),
+        quality: quality
+    }
+
+    docs {
+        Build a chord from a scale degree.
+
+        In C Major:
+        - Degree 1: C Major (C-E-G)
+        - Degree 2: D Minor (D-F-A)
+        - Degree 3: E Minor (E-G-B)
+        - Degree 4: F Major (F-A-C)
+        - Degree 5: G Major (G-B-D)
+        - Degree 6: A Minor (A-C-E)
+        - Degree 7: B Diminished (B-D-F)
+    }
+}
+
+pub fun interval_between(a: Note, b: Note) -> Interval {
+    let semitones = b.pitch as i16 - a.pitch as i16
+    return Interval {
+        semitones: semitones as i8,
+        name: Interval { semitones: semitones as i8, name: "" }.quality()
+    }
+
+    docs {
+        Calculate the interval between two notes.
+    }
+}
+
+pub fun transpose(notes: Vec<Note>, semitones: i8) -> Vec<Note> {
+    return notes.iter().map(|n| n.transpose(semitones)).collect()
+
+    docs {
+        Transpose a collection of notes by a given number of semitones.
+    }
+}
+
+pub fun invert_chord(chord: Chord) -> Chord {
+    return chord.invert()
+
+    docs {
+        Invert a chord (move bass note up an octave).
+    }
+}
+
+pub fun get_key_signature(key: Key) -> (Vec<PitchClass>, Vec<PitchClass>) {
+    let tonic_semitone = key.tonic.pitch % 12
+
+    // For major keys, count fifths from C
+    // For minor keys, count fifths from A
+    let reference = if key.mode.is_major() { 0 } else { 9 }  // C=0, A=9
+    let distance = ((tonic_semitone as i16 - reference as i16 + 12) % 12) as u8
+
+    // Convert to circle of fifths position
+    let fifths = match distance {
+        0 { 0 }
+        7 { 1 }
+        2 { 2 }
+        9 { 3 }
+        4 { 4 }
+        11 { 5 }
+        6 { 6 }   // Can be 6 sharps or 6 flats
+        1 { -5 }
+        8 { -4 }
+        3 { -3 }
+        10 { -2 }
+        5 { -1 }
+        _ { 0 }
+    }
+
+    let sharp_order = vec![
+        PitchClass::F, PitchClass::C, PitchClass::G, PitchClass::D,
+        PitchClass::A, PitchClass::E, PitchClass::B
+    ]
+
+    let flat_order = vec![
+        PitchClass::B, PitchClass::E, PitchClass::A, PitchClass::D,
+        PitchClass::G, PitchClass::C, PitchClass::F
+    ]
+
+    if fifths > 0 {
+        let sharps = sharp_order[0..(fifths as u64)].to_vec()
+        return (sharps, vec![])
+    } else if fifths < 0 {
+        let flats = flat_order[0..((-fifths) as u64)].to_vec()
+        return (vec![], flats)
+    } else {
+        return (vec![], vec![])
+    }
+
+    docs {
+        Get the key signature (sharps and flats) for a key.
+
+        Returns: (sharps, flats) where each is a list of pitch classes.
+
+        Examples:
+        - C Major: no sharps, no flats
+        - G Major: F#
+        - F Major: Bb
+        - D Major: F#, C#
+    }
+}
+
+docs {
+    Music Spirit - Theory Module
+
+    Music theory primitives for notes, scales, chords, and harmony.
+
+    Core Types:
+    - Note: A pitch with duration (MIDI-based)
+    - Interval: Distance between two pitches
+    - Scale: Collection of notes forming a scale
+    - Chord: Multiple notes played together
+    - Key: Tonic + mode defining harmonic context
+    - Mode: Scale pattern (Major, Minor, Dorian, etc.)
+
+    Key Relationships:
+    - Parallel keys: Same tonic, different mode (C Major / C Minor)
+    - Relative keys: Same notes, different tonic (C Major / A Minor)
+    - Circle of Fifths: Fundamental key relationship
+
+    Traits:
+    - Transposable: Can shift pitch (notes, chords, scales)
+    - Invertible: Can invert (chords, intervals)
+    - Enharmonic: Has equivalent spellings (C# = Db)
+
+    Common Functions:
+    - note_to_frequency: Convert note to Hz
+    - build_scale: Create scale from root + mode
+    - chord_from_scale: Build chord from scale degree
+    - interval_between: Calculate interval between notes
+
+    MIDI Convention:
+        Middle C (C4) = MIDI 60
+        A4 (440 Hz) = MIDI 69
+        Each semitone = +/- 1 MIDI number
+}
