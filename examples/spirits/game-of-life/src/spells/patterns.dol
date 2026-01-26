@@ -7,7 +7,7 @@ use spells.grid_ops.set_cell
 
 pub gen Pattern {
   has name: string
-  has cells: List<Position>
+  has cells: Vec<Position>
   has width: u32
   has height: u32
   docs { A named pattern with relative cell positions. }

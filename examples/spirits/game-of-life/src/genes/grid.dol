@@ -14,7 +14,7 @@ pub gen GridConfig {
 pub gen Grid {
   has width: u32
   has height: u32
-  has cells: List<Cell>
+  has cells: Vec<Cell>
   has generation: u64
   has wrap_edges: bool
   rule valid_dims { this.width > 0 && this.height > 0 }
@@ -26,5 +26,5 @@ pub fun default_config() -> GridConfig {
 }
 
 pub fun alive_count(grid: Grid) -> u64 {
-  grid.cells |> filter((c) -> c.state == CellState.Alive) |> len()
+  grid.cells |> filter(|c| c.state == CellState.Alive) |> len()
 }

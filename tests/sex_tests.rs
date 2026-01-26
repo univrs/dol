@@ -595,7 +595,7 @@ fn test_codegen_constant() {
     };
 
     let output = gen.gen_constant(&var);
-    assert!(output.contains("const MAX_SIZE: i64 = 100_i64;"));
+    assert!(output.contains("const MAX_SIZE: i64 = 100;"));
 }
 
 #[test]
@@ -611,7 +611,7 @@ fn test_codegen_global_var() {
     };
 
     let output = gen.gen_global_var(&var);
-    assert!(output.contains("static mut COUNTER: i64 = 0_i64;"));
+    assert!(output.contains("static mut COUNTER: i64 = 0;"));
 }
 
 #[test]
@@ -696,6 +696,7 @@ fn test_codegen_sex_function() {
         body: vec![],
         exegesis: String::new(),
         span: Span::default(),
+        attributes: Vec::new(),
     };
 
     let output = gen.gen_sex_function(Visibility::Public, &func);

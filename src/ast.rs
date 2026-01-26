@@ -1734,6 +1734,8 @@ pub struct FunctionDecl {
     pub exegesis: String,
     /// Source location
     pub span: Span,
+    /// Attributes (e.g., #[wasm_export])
+    pub attributes: Vec<String>,
 }
 
 /// State declaration in a system.

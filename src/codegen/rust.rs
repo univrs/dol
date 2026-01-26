@@ -39,6 +39,9 @@ use super::{
 #[derive(Debug, Clone, Default)]
 pub struct RustCodegen {
     options: CodegenOptions,
+    /// Names of sex (side-effect) variables that require thread_local access patterns.
+    /// When set, identifiers matching these names will be wrapped in `.with()` calls.
+    sex_var_names: std::cell::RefCell<std::collections::HashSet<String>>,
 }
 
 impl RustCodegen {
@@ -49,7 +52,10 @@ impl RustCodegen {
 
     /// Create a new Rust code generator with custom options.
     pub fn with_options(options: CodegenOptions) -> Self {
-        Self { options }
+        Self {
+            options,
+            sex_var_names: std::cell::RefCell::new(std::collections::HashSet::new()),
+        }
     }
 
     /// Generate Rust code from a declaration.
@@ -110,9 +116,43 @@ impl RustCodegen {
             }
         }
 
-        // Generate non-function declarations (genes, traits, etc.)
+        // Collect sex var declarations for thread_local! block
+        let sex_vars: Vec<&crate::ast::VarDecl> = decls
+            .iter()
+            .filter_map(|d| {
+                if let Declaration::SexVar(v) = d {
+                    Some(v)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Populate sex_var_names for access pattern transformation in function bodies
+        {
+            let mut names = self.sex_var_names.borrow_mut();
+            names.clear();
+            for v in &sex_vars {
+                // Store the exact name (case-sensitive) - DOL convention uses UPPERCASE for sex vars
+                // This prevents matching local variables like `grid` with sex var `GRID`
+                names.insert(v.name.clone());
+            }
+        }
+
+        // Generate thread_local! block for sex vars (if any)
+        if !sex_vars.is_empty() {
+            output.push_str("use std::cell::RefCell;\n\n");
+            output.push_str("thread_local! {\n");
+            for v in &sex_vars {
+                output.push_str(&self.generate_sex_var_thread_local(v));
+                output.push('\n');
+            }
+            output.push_str("}\n\n");
+        }
+
+        // Generate non-function declarations (genes, traits, etc.) - skip SexVar (handled above)
         for decl in decls {
-            if !matches!(decl, Declaration::Function(_)) {
+            if !matches!(decl, Declaration::Function(_) | Declaration::SexVar(_)) {
                 output.push_str(&self.generate_declaration(decl));
                 output.push_str("\n\n");
             }
@@ -250,7 +290,7 @@ impl RustCodegen {
         format!("{}const {}: {} = {};", visibility, name, type_str, value)
     }
 
-    /// Generate a Rust static mut declaration for SEX variables.
+    /// Generate a Rust static mut declaration for SEX variables (legacy, for single declarations).
     fn generate_sex_var(&self, v: &crate::ast::VarDecl) -> String {
         let visibility = self.visibility_str();
         let name = v.name.to_uppercase().replace('.', "_");
@@ -270,6 +310,26 @@ impl RustCodegen {
         )
     }
 
+    /// Generate a thread_local! entry for a SEX variable.
+    /// Produces: `    static NAME: RefCell<Type> = RefCell::new(value);`
+    fn generate_sex_var_thread_local(&self, v: &crate::ast::VarDecl) -> String {
+        let name = v.name.to_uppercase().replace('.', "_");
+        let type_str = v
+            .type_ann
+            .as_ref()
+            .map(|t| self.gen_type(t))
+            .unwrap_or_else(|| "i64".to_string());
+        let value = v
+            .value
+            .as_ref()
+            .map(|e| self.gen_expr(e))
+            .unwrap_or_else(|| "Default::default()".to_string());
+        format!(
+            "    static {}: RefCell<{}> = RefCell::new({});",
+            name, type_str, value
+        )
+    }
+
     /// Generate a top-level Rust function from a function declaration.
     fn generate_toplevel_function(&self, func: &crate::ast::FunctionDecl) -> String {
         let visibility = self.visibility_str();
@@ -279,6 +339,19 @@ impl RustCodegen {
         if !func.exegesis.is_empty() {
             for line in func.exegesis.lines() {
                 output.push_str(&format!("/// {}\n", line.trim()));
+            }
+        }
+
+        // Translate DOL attributes to Rust attributes
+        for attr in &func.attributes {
+            match attr.as_str() {
+                "wasm_export" => {
+                    output.push_str("#[wasm_bindgen]\n");
+                }
+                other => {
+                    // Pass through other attributes as-is
+                    output.push_str(&format!("#[{}]\n", other));
+                }
             }
         }
 
@@ -1132,10 +1205,28 @@ impl RustCodegen {
             }
             Stmt::Assign { target, value } => {
                 output.push_str(&indent);
-                output.push_str(&self.gen_expr(target));
-                output.push_str(" = ");
-                output.push_str(&self.gen_expr(value));
-                output.push_str(";\n");
+                // Check if target is a sex var identifier for thread_local write pattern
+                // Use exact case match (DOL convention: sex vars are UPPERCASE)
+                if let Expr::Identifier(name) = target {
+                    if self.sex_var_names.borrow().contains(name) {
+                        // thread_local write: VAR.with(|__v| *__v.borrow_mut() = value)
+                        let value_str = self.gen_expr(value);
+                        output.push_str(&format!(
+                            "{}.with(|__v| *__v.borrow_mut() = {});\n",
+                            name, value_str
+                        ));
+                    } else {
+                        output.push_str(&self.gen_expr(target));
+                        output.push_str(" = ");
+                        output.push_str(&self.gen_expr(value));
+                        output.push_str(";\n");
+                    }
+                } else {
+                    output.push_str(&self.gen_expr(target));
+                    output.push_str(" = ");
+                    output.push_str(&self.gen_expr(value));
+                    output.push_str(";\n");
+                }
             }
             Stmt::Return(Some(expr)) => {
                 output.push_str(&indent);
@@ -1209,19 +1300,47 @@ impl RustCodegen {
             Expr::Identifier(name) => {
                 // Handle qualified identifiers (DOL lexer collects dots as part of identifiers)
                 // e.g., "this.field" becomes "self.field", "Type.Variant" becomes "Type::Variant"
+                // "spells.grid_ops.func" becomes "spells::grid_ops::func" (module paths)
                 if name.contains('.') {
                     let parts: Vec<&str> = name.split('.').collect();
+                    let first_part = parts[0];
+
+                    // Determine separator strategy:
+                    // - "this.field" or "self.field" -> use dots (field access)
+                    // - "Type.Variant" (first+last uppercase) -> use :: (enum variant)
+                    // - "TYPE.field" (first uppercase, last lowercase) -> use . (field on static)
+                    // - "module.submod.func" (3+ parts, all lowercase) -> use :: (module path)
+                    // - "var.field" (2 parts, first lowercase) -> use dots (field access)
+                    let last_part = parts.last().unwrap_or(&"");
+                    let first_is_upper =
+                        first_part.chars().next().is_some_and(|c| c.is_uppercase());
+                    let last_is_upper = last_part.chars().next().is_some_and(|c| c.is_uppercase());
+
+                    let use_colons = if first_part == "this" || first_part == "self" {
+                        false // field access on self
+                    } else if first_is_upper && last_is_upper {
+                        true // enum variant path (CellState::Alive)
+                    } else if first_is_upper && !last_is_upper {
+                        false // field access on static variable (CONFIG.width)
+                    } else if parts.len() >= 3 {
+                        true // module path (spells::grid_ops::func)
+                    } else {
+                        false // likely variable.field access
+                    };
+
+                    // Check if first part is a sex var (for thread_local field access)
+                    // Use exact case match (DOL convention: sex vars are UPPERCASE)
+                    let first_is_sex_var = self.sex_var_names.borrow().contains(first_part);
+
                     let mut result = String::new();
                     for (i, part) in parts.iter().enumerate() {
                         if i > 0 {
-                            // Use :: if previous part starts with uppercase (type), else use .
-                            if result.chars().next().is_some_and(|c| c.is_uppercase())
-                                && !result.contains('.')
-                            {
-                                // Check if the first part (type) should map to inline enum
-                                // e.g., Expr.Ident -> ExprType::Ident
-                                if let Some(inline_enum) = self.get_inline_enum_type(&result) {
-                                    result = inline_enum;
+                            if use_colons {
+                                // Check if first part should map to inline enum type
+                                if i == 1 {
+                                    if let Some(inline_enum) = self.get_inline_enum_type(&result) {
+                                        result = inline_enum;
+                                    }
                                 }
                                 result.push_str("::");
                             } else {
@@ -1237,7 +1356,16 @@ impl RustCodegen {
                             result.push_str(&super::escape_rust_keyword(mapped));
                         }
                     }
-                    result
+
+                    // Wrap sex var field access in thread_local pattern
+                    if first_is_sex_var && !use_colons {
+                        // CONFIG.width -> CONFIG.with(|__v| __v.borrow().width)
+                        let rest_parts: Vec<&str> = parts[1..].to_vec();
+                        let rest = rest_parts.join(".");
+                        format!("{}.with(|__v| __v.borrow().{})", first_part, rest)
+                    } else {
+                        result
+                    }
                 } else if name.contains("::") {
                     // Handle path expressions like Map::new, List::new
                     let parts: Vec<&str> = name.split("::").collect();
@@ -1261,8 +1389,16 @@ impl RustCodegen {
                         "List" => "Vec",
                         _ => name.as_str(),
                     };
-                    // Escape Rust keywords in single identifiers
-                    super::escape_rust_keyword(mapped_name)
+                    let escaped = super::escape_rust_keyword(mapped_name);
+
+                    // Check if this is a sex var - if so, wrap in thread_local read pattern
+                    // Use exact case match (DOL convention: sex vars are UPPERCASE)
+                    if self.sex_var_names.borrow().contains(&escaped) {
+                        // thread_local read: VAR.with(|v| v.borrow().clone())
+                        format!("{}.with(|__v| __v.borrow().clone())", escaped)
+                    } else {
+                        escaped
+                    }
                 }
             }
             Expr::Binary { left, op, right } => {
@@ -1738,14 +1874,16 @@ impl RustCodegen {
     }
 
     /// Generate Rust code for a literal.
+    /// Integer and float literals are generated without type suffix to allow Rust type inference.
     fn gen_literal(&self, lit: &Literal) -> String {
         match lit {
-            Literal::Int(n) => format!("{}_i64", n),
+            Literal::Int(n) => n.to_string(),
             Literal::Float(f) => {
+                // Ensure float literal has decimal point for type clarity
                 if f.fract() == 0.0 {
-                    format!("{:.1}_f64", f)
+                    format!("{:.1}", f)
                 } else {
-                    format!("{}_f64", f)
+                    f.to_string()
                 }
             }
             Literal::Bool(b) => b.to_string(),
@@ -1766,12 +1904,12 @@ impl RustCodegen {
     /// Used in pattern contexts and as arguments to methods like .join().
     fn gen_literal_as_str(&self, lit: &Literal) -> String {
         match lit {
-            Literal::Int(n) => format!("{}_i64", n),
+            Literal::Int(n) => n.to_string(),
             Literal::Float(f) => {
                 if f.fract() == 0.0 {
-                    format!("{:.1}_f64", f)
+                    format!("{:.1}", f)
                 } else {
-                    format!("{}_f64", f)
+                    f.to_string()
                 }
             }
             Literal::Bool(b) => b.to_string(),
@@ -1794,12 +1932,12 @@ impl RustCodegen {
     #[allow(dead_code)]
     fn gen_literal_pattern_old(&self, lit: &Literal) -> String {
         match lit {
-            Literal::Int(n) => format!("{}_i64", n),
+            Literal::Int(n) => n.to_string(),
             Literal::Float(f) => {
                 if f.fract() == 0.0 {
-                    format!("{:.1}_f64", f)
+                    format!("{:.1}", f)
                 } else {
-                    format!("{}_f64", f)
+                    format!("{}", f)
                 }
             }
             Literal::Bool(b) => b.to_string(),
@@ -1891,7 +2029,7 @@ impl RustCodegen {
     /// ```ignore
     /// // Pattern::Wildcard => "_"
     /// // Pattern::Identifier("x") => "x"
-    /// // Pattern::Literal(Literal::Int(42)) => "42_i64"
+    /// // Pattern::Literal(Literal::Int(42)) => "42"
     /// // Pattern::Constructor { name: "Some", fields: [Pattern::Identifier("x")] } => "Some(x)"
     /// // Pattern::Tuple([Pattern::Identifier("x"), Pattern::Identifier("y")]) => "(x, y)"
     /// ```
@@ -2456,8 +2594,7 @@ impl RustCodegen {
     /// ```ignore
     /// match value {
     ///     Some(x) => x,
-    ///     None => 0_i64
-    /// }
+    ///     None => 0    /// }
     /// ```
     fn gen_match(&self, scrutinee: &Expr, arms: &[crate::ast::MatchArm]) -> String {
         // Try to infer the enum type from the scrutinee for pattern qualification
@@ -3927,7 +4064,7 @@ mod tests {
         };
 
         let output = gen.gen_constant(&var);
-        assert!(output.contains("const MAX_SIZE: i64 = 100_i64;"));
+        assert!(output.contains("const MAX_SIZE: i64 = 100;"));
     }
 
     #[test]
@@ -3943,7 +4080,7 @@ mod tests {
         };
 
         let output = gen.gen_global_var(&var);
-        assert!(output.contains("static mut COUNTER: i64 = 0_i64;"));
+        assert!(output.contains("static mut COUNTER: i64 = 0;"));
     }
 
     #[test]
@@ -3988,9 +4125,9 @@ mod tests {
     #[test]
     fn test_gen_literal() {
         let gen = RustCodegen::new();
-        assert_eq!(gen.gen_literal(&Literal::Int(42)), "42_i64");
-        assert_eq!(gen.gen_literal(&Literal::Float(2.5)), "2.5_f64");
-        assert_eq!(gen.gen_literal(&Literal::Float(3.0)), "3.0_f64");
+        assert_eq!(gen.gen_literal(&Literal::Int(42)), "42");
+        assert_eq!(gen.gen_literal(&Literal::Float(2.5)), "2.5");
+        assert_eq!(gen.gen_literal(&Literal::Float(3.0)), "3.0");
         assert_eq!(gen.gen_literal(&Literal::Bool(true)), "true");
         assert_eq!(
             gen.gen_literal(&Literal::String("hello".to_string())),
@@ -4035,12 +4172,13 @@ mod tests {
             }))],
             exegesis: String::new(),
             span: Span::default(),
+            attributes: Vec::new(),
         };
 
         let output = gen.gen_sex_function(crate::ast::Visibility::Public, &func);
         assert!(output.contains("/// Side-effectful function"));
         assert!(output.contains("pub fn mutate(x: i32) -> i32"));
-        assert!(output.contains("return (x + 1_i64);"));
+        assert!(output.contains("return (x + 1);"));
     }
 
     #[test]
@@ -4051,7 +4189,7 @@ mod tests {
             op: crate::ast::BinaryOp::Mul,
             right: Box::new(Expr::Literal(Literal::Int(3))),
         };
-        assert_eq!(gen.gen_expr(&expr), "(2_i64 * 3_i64)");
+        assert_eq!(gen.gen_expr(&expr), "(2 * 3)");
     }
 
     #[test]
@@ -4064,7 +4202,7 @@ mod tests {
                 Expr::Literal(Literal::Int(2)),
             ],
         };
-        assert_eq!(gen.gen_expr(&expr), "foo(1_i64, 2_i64)");
+        assert_eq!(gen.gen_expr(&expr), "foo(1, 2)");
     }
 
     // === Lambda Expression Tests ===
@@ -4081,7 +4219,7 @@ mod tests {
                 right: Box::new(Expr::Literal(Literal::Int(1))),
             }),
         };
-        assert_eq!(gen.gen_expr(&expr), "|x| { (x + 1_i64) }");
+        assert_eq!(gen.gen_expr(&expr), "|x| { (x + 1) }");
     }
 
     #[test]
@@ -4096,7 +4234,7 @@ mod tests {
                 right: Box::new(Expr::Literal(Literal::Int(2))),
             }),
         };
-        assert_eq!(gen.gen_expr(&expr), "|x: i32| { (x * 2_i64) }");
+        assert_eq!(gen.gen_expr(&expr), "|x: i32| { (x * 2) }");
     }
 
     #[test]
@@ -4150,7 +4288,7 @@ mod tests {
         };
         let result = gen.gen_expr(&expr);
         assert!(result.starts_with("|x| {"));
-        assert!(result.contains("let mut doubled = (x * 2_i64);"));
+        assert!(result.contains("let mut doubled = (x * 2);"));
         assert!(result.contains("doubled"));
     }
 
@@ -4162,7 +4300,7 @@ mod tests {
             return_type: None,
             body: Box::new(Expr::Literal(Literal::Int(42))),
         };
-        assert_eq!(gen.gen_expr(&expr), "|| { 42_i64 }");
+        assert_eq!(gen.gen_expr(&expr), "|| { 42 }");
     }
 
     #[test]
@@ -4199,7 +4337,7 @@ mod tests {
             }),
             args: vec![Expr::Literal(Literal::Int(42))],
         };
-        assert_eq!(gen.gen_expr(&expr), "obj.method(42_i64)");
+        assert_eq!(gen.gen_expr(&expr), "obj.method(42)");
     }
 
     #[test]
@@ -4231,7 +4369,7 @@ mod tests {
                 Expr::Literal(Literal::Int(3)),
             ],
         };
-        assert_eq!(gen.gen_expr(&expr), "obj.calculate(1_i64, 2_i64, 3_i64)");
+        assert_eq!(gen.gen_expr(&expr), "obj.calculate(1, 2, 3)");
     }
 
     #[test]
@@ -4252,7 +4390,7 @@ mod tests {
             }),
             args: vec![Expr::Literal(Literal::Int(42))],
         };
-        assert_eq!(gen.gen_expr(&outer_call), "obj.method1().method2(42_i64)");
+        assert_eq!(gen.gen_expr(&outer_call), "obj.method1().method2(42)");
     }
 
     #[test]
@@ -4306,7 +4444,7 @@ mod tests {
             callee: Box::new(Expr::Identifier("map".to_string())),
             args: vec![lambda],
         };
-        assert_eq!(gen.gen_expr(&call), "map(|x| { (x + 1_i64) })");
+        assert_eq!(gen.gen_expr(&call), "map(|x| { (x + 1) })");
     }
 
     #[test]
@@ -4331,7 +4469,7 @@ mod tests {
         };
         assert_eq!(
             gen.gen_expr(&method_call),
-            "collection.into_iter().map(|x| { (x * 2_i64) }).collect::<Vec<_>>()"
+            "collection.into_iter().map(|x| { (x * 2) }).collect::<Vec<_>>()"
         );
     }
 
@@ -4346,10 +4484,7 @@ mod tests {
             op: crate::ast::BinaryOp::Add,
             right: Box::new(Expr::Literal(Literal::Int(2))),
         }));
-        assert_eq!(
-            gen.gen_expr(&expr),
-            "QuotedExpr::from_expr(&(1_i64 + 2_i64))"
-        );
+        assert_eq!(gen.gen_expr(&expr), "QuotedExpr::from_expr(&(1 + 2))");
     }
 
     #[test]
@@ -4377,10 +4512,7 @@ mod tests {
             op: crate::ast::BinaryOp::Add,
             right: Box::new(Expr::Literal(Literal::Int(2))),
         }))));
-        assert_eq!(
-            gen.gen_expr(&expr),
-            "eval(QuotedExpr::from_expr(&(1_i64 + 2_i64)))"
-        );
+        assert_eq!(gen.gen_expr(&expr), "eval(QuotedExpr::from_expr(&(1 + 2)))");
     }
 
     #[test]
@@ -4411,10 +4543,7 @@ mod tests {
             op: crate::ast::BinaryOp::Add,
             right: Box::new(Expr::Literal(Literal::Int(2))),
         }));
-        assert_eq!(
-            gen.gen_expr(&expr),
-            "QuotedExpr::from_expr(&(1_i64 + 2_i64))"
-        );
+        assert_eq!(gen.gen_expr(&expr), "QuotedExpr::from_expr(&(1 + 2))");
     }
 
     #[test]
@@ -4493,7 +4622,7 @@ mod tests {
             func: Box::new(lambda),
             args: vec![Expr::Identifier("opt_val".to_string())],
         };
-        assert_eq!(gen.gen_expr(&expr), "opt_val.map(|x| { (x + 1_i64) })");
+        assert_eq!(gen.gen_expr(&expr), "opt_val.map(|x| { (x + 1) })");
     }
 
     #[test]
@@ -4520,10 +4649,7 @@ mod tests {
                 Expr::Literal(Literal::Int(2)),
             ],
         }));
-        assert_eq!(
-            gen.gen_expr(&expr),
-            "QuotedExpr::from_expr(&f(1_i64, 2_i64))"
-        );
+        assert_eq!(gen.gen_expr(&expr), "QuotedExpr::from_expr(&f(1, 2))");
     }
 
     #[test]
@@ -4557,7 +4683,7 @@ mod tests {
     fn test_gen_pattern_literal_int() {
         let gen = RustCodegen::new();
         let pattern = crate::ast::Pattern::Literal(Literal::Int(42));
-        assert_eq!(gen.gen_pattern(&pattern), "42_i64");
+        assert_eq!(gen.gen_pattern(&pattern), "42");
     }
 
     #[test]
@@ -4660,7 +4786,7 @@ mod tests {
         let result = gen.gen_match(&scrutinee, &arms);
         assert!(result.contains("match value {"));
         assert!(result.contains("Some(x) => x"));
-        assert!(result.contains("None => 0_i64"));
+        assert!(result.contains("None => 0"));
     }
 
     #[test]
@@ -4686,8 +4812,8 @@ mod tests {
         ];
         let result = gen.gen_match(&scrutinee, &arms);
         assert!(result.contains("match value {"));
-        assert!(result.contains("x if (x > 0_i64) => x"));
-        assert!(result.contains("_ => 0_i64"));
+        assert!(result.contains("x if (x > 0) => x"));
+        assert!(result.contains("_ => 0"));
     }
 
     #[test]
@@ -4728,9 +4854,9 @@ mod tests {
         ];
         let result = gen.gen_match(&scrutinee, &arms);
         assert!(result.contains("match point {"));
-        assert!(result.contains("(0_i64, 0_i64) => \"origin\""));
-        assert!(result.contains("(x, 0_i64) => \"x-axis\""));
-        assert!(result.contains("(0_i64, y) => \"y-axis\""));
+        assert!(result.contains("(0, 0) => \"origin\""));
+        assert!(result.contains("(x, 0) => \"x-axis\""));
+        assert!(result.contains("(0, y) => \"y-axis\""));
         assert!(result.contains("_ => \"plane\""));
     }
 
@@ -4762,7 +4888,7 @@ mod tests {
         let result = gen.gen_expr(&expr);
         assert!(result.contains("match option {"));
         assert!(result.contains("Some(x) => x"));
-        assert!(result.contains("None => 0_i64"));
+        assert!(result.contains("None => 0"));
     }
 
     #[test]
@@ -4805,8 +4931,8 @@ mod tests {
         let result = gen.gen_match(&scrutinee, &arms);
         assert!(result.contains("match result {"));
         assert!(result.contains("Ok(Some(x)) => x"));
-        assert!(result.contains("Ok(None) => 0_i64"));
-        assert!(result.contains("Err(_) => -1_i64"));
+        assert!(result.contains("Ok(None) => 0"));
+        assert!(result.contains("Err(_) => -1"));
     }
 
     #[test]
@@ -4838,8 +4964,8 @@ mod tests {
         ];
         let result = gen.gen_match(&scrutinee, &arms);
         assert!(result.contains("match value {"));
-        assert!(result.contains("Some(x) => (x + 1_i64)"));
-        assert!(result.contains("None => 0_i64"));
+        assert!(result.contains("Some(x) => (x + 1)"));
+        assert!(result.contains("None => 0"));
     }
 
     #[test]

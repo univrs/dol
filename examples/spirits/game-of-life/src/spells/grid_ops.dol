@@ -6,7 +6,7 @@ use genes.grid.{ Grid, GridConfig }
 use spells.rules.next_state
 
 pub fun create_grid(config: GridConfig) -> Grid {
-  var cells: List<Cell> = []
+  var cells: Vec<Cell> = []
   for y in 0..config.height {
     for x in 0..config.width {
       cells = cells.push(dead_cell(x as i32, y as i32))
@@ -36,34 +36,48 @@ pub fun get_cell(grid: Grid, x: i32, y: i32) -> Option<Cell> {
 pub fun set_cell(grid: Grid, x: i32, y: i32, state: CellState) -> Grid {
   match to_index(grid, x, y) {
     Some(idx) {
-      val new_cells = grid.cells.update(idx, (c) -> Cell { pos: c.pos, state: state, neighbors: c.neighbors })
-      Grid { ...grid, cells: new_cells }
+      val new_cells = grid.cells.update(idx, |c| Cell { pos: c.pos, state: state, neighbors: c.neighbors })
+      Grid { width: grid.width, height: grid.height, cells: new_cells, generation: grid.generation, wrap_edges: grid.wrap_edges }
     }
     None { grid }
   }
 }
 
 pub fun count_neighbors(grid: Grid, x: i32, y: i32) -> u8 {
-  val offsets = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)]
   var count: u8 = 0
-  for (dx, dy) in offsets {
-    match get_cell(grid, x + dx, y + dy) {
-      Some(cell) { if cell.state == CellState.Alive { count = count + 1 } }
-      None { }
+  // Check all 8 neighbors
+  for dx in -1..2 {
+    for dy in -1..2 {
+      if dx != 0 || dy != 0 {
+        match get_cell(grid, x + dx, y + dy) {
+          Some(cell) { if cell.state == CellState.Alive { count = count + 1 } }
+          None { }
+        }
+      }
     }
   }
   count
 }
 
 pub fun tick(grid: Grid) -> Grid {
-  val with_neighbors = grid.cells |> map((c) -> Cell { ...c, neighbors: count_neighbors(grid, c.pos.x, c.pos.y) })
-  val next_cells = with_neighbors |> map((c) -> Cell { pos: c.pos, state: next_state(c), neighbors: 0 })
-  Grid { ...grid, cells: next_cells, generation: grid.generation + 1 }
+  val with_neighbors = grid.cells |> map(|c| Cell { pos: c.pos, state: c.state, neighbors: count_neighbors(grid, c.pos.x, c.pos.y) })
+  val next_cells = with_neighbors |> map(|c| Cell { pos: c.pos, state: next_state(c), neighbors: 0 })
+  Grid { width: grid.width, height: grid.height, cells: next_cells, generation: grid.generation + 1, wrap_edges: grid.wrap_edges }
 }
 
 pub fun clear(grid: Grid) -> Grid {
-  val new_cells = grid.cells |> map((c) -> Cell { ...c, state: CellState.Dead, neighbors: 0 })
-  Grid { ...grid, cells: new_cells, generation: 0 }
+  val new_cells = grid.cells |> map(|c| Cell { pos: c.pos, state: CellState.Dead, neighbors: 0 })
+  Grid { width: grid.width, height: grid.height, cells: new_cells, generation: 0, wrap_edges: grid.wrap_edges }
+}
+
+pub fun randomize(grid: Grid, density: f64) -> Grid {
+  var seed = grid.generation * 12345 + 67890
+  val new_cells = grid.cells |> map(|c| {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    val random = (seed as f64) / 2147483648.0
+    Cell { pos: c.pos, state: if random < density { CellState.Alive } else { CellState.Dead }, neighbors: 0 }
+  })
+  Grid { width: grid.width, height: grid.height, cells: new_cells, generation: 0, wrap_edges: grid.wrap_edges }
 }
 
 docs { Grid operations: create, get/set cells, tick. }

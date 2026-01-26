@@ -1,5 +1,5 @@
-// Game of Life - SEX Module
-mod sex
+// Game of Life - Effects Module (side-effectful code)
+mod effects
 
 pub mod browser
 

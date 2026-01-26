@@ -3921,6 +3921,7 @@ mod tests {
             }))],
             exegesis: "Adds two numbers".to_string(),
             span: Span::default(),
+            attributes: Vec::new(),
         };
 
         let decl = Declaration::Function(Box::new(func));
@@ -3954,6 +3955,7 @@ mod tests {
             body: vec![Stmt::Return(Some(Expr::Literal(Literal::Int(42))))],
             exegesis: "Returns the answer to everything".to_string(),
             span: Span::default(),
+            attributes: Vec::new(),
         };
 
         let decl = Declaration::Function(Box::new(func));
@@ -4034,6 +4036,7 @@ mod tests {
             }))],
             exegesis: "Creates origin point".to_string(),
             span: Span::default(),
+            attributes: Vec::new(),
         };
 
         let file = DolFile {
