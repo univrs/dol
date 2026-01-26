@@ -1,0 +1,8 @@
+// Game of Life - Spells Module
+mod spells
+
+pub mod rules
+pub mod grid_ops
+pub mod patterns
+
+docs { Pure function implementations. }

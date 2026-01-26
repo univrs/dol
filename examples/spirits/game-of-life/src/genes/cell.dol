@@ -1,0 +1,34 @@
+// Game of Life - Cell Genes
+mod genes.cell
+
+pub gen CellState {
+  type: enum { Dead, Alive }
+  docs { Binary state of a cell. }
+}
+
+pub gen Position {
+  has x: i32
+  has y: i32
+  rule non_negative { this.x >= 0 && this.y >= 0 }
+  docs { 2D coordinate on the grid. }
+}
+
+pub gen Cell {
+  has pos: Position
+  has state: CellState
+  has neighbors: u8
+  rule valid_neighbors { this.neighbors <= 8 }
+  docs { A cell with position, state, and neighbor count. }
+}
+
+pub fun dead_cell(x: i32, y: i32) -> Cell {
+  Cell { pos: Position { x: x, y: y }, state: CellState.Dead, neighbors: 0 }
+}
+
+pub fun alive_cell(x: i32, y: i32) -> Cell {
+  Cell { pos: Position { x: x, y: y }, state: CellState.Alive, neighbors: 0 }
+}
+
+pub fun is_alive(cell: Cell) -> bool {
+  cell.state == CellState.Alive
+}

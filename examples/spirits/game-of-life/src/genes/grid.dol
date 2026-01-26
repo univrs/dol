@@ -1,0 +1,30 @@
+// Game of Life - Grid Genes
+mod genes.grid
+
+use genes.cell.{ Cell, CellState, Position }
+
+pub gen GridConfig {
+  has width: u32
+  has height: u32
+  has wrap_edges: bool
+  rule valid_dims { this.width > 0 && this.height > 0 && this.width <= 1000 && this.height <= 1000 }
+  docs { Grid configuration with dimensions and edge wrapping. }
+}
+
+pub gen Grid {
+  has width: u32
+  has height: u32
+  has cells: List<Cell>
+  has generation: u64
+  has wrap_edges: bool
+  rule valid_dims { this.width > 0 && this.height > 0 }
+  docs { The game board containing all cells. }
+}
+
+pub fun default_config() -> GridConfig {
+  GridConfig { width: 100, height: 100, wrap_edges: true }
+}
+
+pub fun alive_count(grid: Grid) -> u64 {
+  grid.cells |> filter((c) -> c.state == CellState.Alive) |> len()
+}

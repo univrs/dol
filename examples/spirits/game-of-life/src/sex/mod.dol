@@ -1,0 +1,6 @@
+// Game of Life - SEX Module
+mod sex
+
+pub mod browser
+
+docs { Side-effectful code for browser bindings. }
