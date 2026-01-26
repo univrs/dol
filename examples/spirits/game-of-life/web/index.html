@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game of Life Spirit | DOL</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Game of Life Spirit</h1>
+      <p class="subtitle">DOL v0.8.0 → Rust → WASM</p>
+    </header>
+    <div class="controls">
+      <button id="start" class="btn btn-primary">▶ Start</button>
+      <button id="stop" class="btn">⏹ Stop</button>
+      <button id="step" class="btn">⏭ Step</button>
+      <button id="clear" class="btn btn-danger">Clear</button>
+      <label>Speed: <input type="range" id="speed" min="1" max="60" value="10"></label>
+      <span id="speed-value">10</span> fps
+      <select id="pattern">
+        <option value="">-- Pattern --</option>
+        <option value="glider">Glider</option>
+        <option value="blinker">Blinker</option>
+        <option value="block">Block</option>
+        <option value="toad">Toad</option>
+        <option value="beacon">Beacon</option>
+        <option value="lwss">LWSS</option>
+        <option value="gun">Gosper Gun</option>
+        <option value="r-pentomino">R-pentomino</option>
+        <option value="acorn">Acorn</option>
+      </select>
+      <button id="place-pattern" class="btn">Place</button>
+      <button id="random" class="btn">Random</button>
+    </div>
+    <canvas id="canvas"></canvas>
+    <footer>
+      <span>Gen: <strong id="gen">0</strong></span> |
+      <span>Alive: <strong id="alive">0</strong></span> |
+      <span>Grid: <strong id="grid-size">100×100</strong></span>
+      <p class="hint">Click to toggle cells</p>
+    </footer>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

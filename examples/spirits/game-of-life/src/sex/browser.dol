@@ -1,0 +1,108 @@
+// Game of Life - Browser Bindings (WASM)
+mod sex.browser
+
+use genes.cell.CellState
+use genes.grid.{ Grid, GridConfig }
+use spells.grid_ops.{ create_grid, tick, set_cell, clear }
+use spells.patterns.{ get_pattern, place_pattern }
+
+sex var GRID: Option<Grid> = None
+sex var CONFIG: GridConfig = GridConfig { width: 100, height: 100, wrap_edges: true }
+
+#[wasm_export]
+pub sex fun init(width: u32, height: u32, wrap: bool) {
+  CONFIG = GridConfig { width: width, height: height, wrap_edges: wrap }
+  GRID = Some(create_grid(CONFIG))
+}
+
+#[wasm_export]
+pub sex fun reset() {
+  match GRID { Some(grid) { GRID = Some(clear(grid)) } None { } }
+}
+
+#[wasm_export]
+pub sex fun step() -> u64 {
+  match GRID {
+    Some(grid) { val next = tick(grid); GRID = Some(next); next.generation }
+    None { 0 }
+  }
+}
+
+#[wasm_export]
+pub sex fun set_cell_state(x: i32, y: i32, alive: bool) {
+  match GRID {
+    Some(grid) { GRID = Some(set_cell(grid, x, y, if alive { CellState.Alive } else { CellState.Dead })) }
+    None { }
+  }
+}
+
+#[wasm_export]
+pub sex fun toggle_cell(x: i32, y: i32) {
+  match GRID {
+    Some(grid) {
+      match spells.grid_ops.get_cell(grid, x, y) {
+        Some(cell) {
+          val new_state = if cell.state == CellState.Alive { CellState.Dead } else { CellState.Alive }
+          GRID = Some(set_cell(grid, x, y, new_state))
+        }
+        None { }
+      }
+    }
+    None { }
+  }
+}
+
+#[wasm_export]
+pub sex fun load_pattern(name: string, x: i32, y: i32) -> bool {
+  match GRID {
+    Some(grid) {
+      match get_pattern(name) {
+        Some(pattern) { GRID = Some(place_pattern(grid, pattern, x, y)); true }
+        None { false }
+      }
+    }
+    None { false }
+  }
+}
+
+#[wasm_export]
+pub sex fun randomize_grid(density: f64) {
+  match GRID {
+    Some(grid) {
+      var seed = grid.generation * 12345 + 67890
+      val new_cells = grid.cells |> map((c) -> {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        val random = (seed as f64) / 2147483648.0
+        Cell { ...c, state: if random < density { CellState.Alive } else { CellState.Dead } }
+      })
+      GRID = Some(Grid { ...grid, cells: new_cells, generation: 0 })
+    }
+    None { }
+  }
+}
+
+#[wasm_export]
+pub sex fun get_generation() -> u64 {
+  match GRID { Some(grid) { grid.generation } None { 0 } }
+}
+
+#[wasm_export]
+pub sex fun get_width() -> u32 { CONFIG.width }
+
+#[wasm_export]
+pub sex fun get_height() -> u32 { CONFIG.height }
+
+#[wasm_export]
+pub sex fun get_alive_count() -> u64 {
+  match GRID { Some(grid) { genes.grid.alive_count(grid) } None { 0 } }
+}
+
+#[wasm_export]
+pub sex fun get_cells() -> List<u8> {
+  match GRID {
+    Some(grid) { grid.cells |> map((c) -> if c.state == CellState.Alive { 1 } else { 0 }) }
+    None { [] }
+  }
+}
+
+docs { WASM exports for browser integration. }

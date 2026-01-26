@@ -1,0 +1,69 @@
+// Game of Life - Grid Operations
+mod spells.grid_ops
+
+use genes.cell.{ Cell, CellState, Position, dead_cell }
+use genes.grid.{ Grid, GridConfig }
+use spells.rules.next_state
+
+pub fun create_grid(config: GridConfig) -> Grid {
+  var cells: List<Cell> = []
+  for y in 0..config.height {
+    for x in 0..config.width {
+      cells = cells.push(dead_cell(x as i32, y as i32))
+    }
+  }
+  Grid { width: config.width, height: config.height, cells: cells, generation: 0, wrap_edges: config.wrap_edges }
+}
+
+fun wrap_coord(v: i32, max: u32) -> i32 {
+  ((v % max as i32) + max as i32) % max as i32
+}
+
+fun to_index(grid: Grid, x: i32, y: i32) -> Option<u64> {
+  val ax = if grid.wrap_edges { wrap_coord(x, grid.width) } else { x }
+  val ay = if grid.wrap_edges { wrap_coord(y, grid.height) } else { y }
+  if ax < 0 || ay < 0 || ax >= grid.width as i32 || ay >= grid.height as i32 { None }
+  else { Some((ay as u64 * grid.width as u64) + ax as u64) }
+}
+
+pub fun get_cell(grid: Grid, x: i32, y: i32) -> Option<Cell> {
+  match to_index(grid, x, y) {
+    Some(idx) { Some(grid.cells[idx]) }
+    None { None }
+  }
+}
+
+pub fun set_cell(grid: Grid, x: i32, y: i32, state: CellState) -> Grid {
+  match to_index(grid, x, y) {
+    Some(idx) {
+      val new_cells = grid.cells.update(idx, (c) -> Cell { pos: c.pos, state: state, neighbors: c.neighbors })
+      Grid { ...grid, cells: new_cells }
+    }
+    None { grid }
+  }
+}
+
+pub fun count_neighbors(grid: Grid, x: i32, y: i32) -> u8 {
+  val offsets = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)]
+  var count: u8 = 0
+  for (dx, dy) in offsets {
+    match get_cell(grid, x + dx, y + dy) {
+      Some(cell) { if cell.state == CellState.Alive { count = count + 1 } }
+      None { }
+    }
+  }
+  count
+}
+
+pub fun tick(grid: Grid) -> Grid {
+  val with_neighbors = grid.cells |> map((c) -> Cell { ...c, neighbors: count_neighbors(grid, c.pos.x, c.pos.y) })
+  val next_cells = with_neighbors |> map((c) -> Cell { pos: c.pos, state: next_state(c), neighbors: 0 })
+  Grid { ...grid, cells: next_cells, generation: grid.generation + 1 }
+}
+
+pub fun clear(grid: Grid) -> Grid {
+  val new_cells = grid.cells |> map((c) -> Cell { ...c, state: CellState.Dead, neighbors: 0 })
+  Grid { ...grid, cells: new_cells, generation: 0 }
+}
+
+docs { Grid operations: create, get/set cells, tick. }

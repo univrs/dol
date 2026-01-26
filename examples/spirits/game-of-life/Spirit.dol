@@ -1,0 +1,24 @@
+// Game of Life Spirit - Package Manifest
+
+spirit GameOfLife {
+  name: "@univrs/game-of-life"
+  version: "0.1.0"
+  authors: ["Univrs Team <team@univrs.io>"]
+  license: "MIT"
+
+  docs {
+    Conway's Game of Life as a DOL Spirit.
+    Cellular automaton with B3/S23 rules.
+  }
+
+  requires {
+    @univrs/std: "^0.8"
+  }
+
+  targets {
+    rust: { edition: "2024" }
+    wasm: { optimize: true, target: "wasm32-unknown-unknown" }
+  }
+
+  lib: "src/lib.dol"
+}

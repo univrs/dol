@@ -1,0 +1,7 @@
+// Game of Life - Genes Module
+mod genes
+
+pub mod cell
+pub mod grid
+
+docs { Gene definitions: cell, grid }

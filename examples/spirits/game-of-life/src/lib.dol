@@ -1,0 +1,13 @@
+// Game of Life Spirit - Library Root
+mod lib
+
+pub use genes.cell.{ Cell, CellState, Position }
+pub use genes.grid.{ Grid, GridConfig }
+pub use spells.rules.{ next_state, apply_b3s23 }
+pub use spells.grid_ops.{ create_grid, tick, get_cell, set_cell }
+pub use spells.patterns.{ Pattern, glider, blinker, block, gosper_glider_gun, place_pattern }
+pub use sex.browser.*
+
+docs {
+  Game of Life Spirit - A cellular automaton implementation.
+}
