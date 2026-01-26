@@ -1,5 +1,10 @@
 # DOL v0.8.0 Architecture
 
+> **Document Version:** 0.8.0
+> **Last Updated:** January 2026
+> **Commit:** 8ce6145
+> **Spec Alignment:** DOL 2.0 Specification (implementation uses v0.8.0 keywords)
+
 > Domain Ontology Language - Comprehensive Technical Reference
 
 ## Executive Summary
@@ -31,7 +36,7 @@ DOL (Domain Ontology Language) v0.8.0 is a declarative domain-specific language 
 - **Version**: 0.8.0 "Clarity"
 - **Rust Edition**: 2021 (MSRV 1.81)
 - **Library Name**: `metadol` (Metal DOL)
-- **Total Tests**: 631 passing
+- **Total Tests**: 1914 passing
 - **Codebase**: ~1M lines
 
 ---
@@ -178,6 +183,33 @@ dol-migrate 0.7-to-0.8 src/
 # Preview changes first
 dol-migrate 0.7-to-0.8 --diff src/
 ```
+
+---
+
+## Relationship to Specifications
+
+### Keyword Evolution (v0.8.0)
+
+DOL v0.8.0 introduced keyword updates for improved clarity and Rust alignment:
+
+| DOL 2.0 Spec | v0.8.0 Current | Reason |
+|--------------|----------------|--------|
+| `gene` | `gen` | Shorter, avoids biology confusion |
+| `constraint` | `rule` | Clearer intent |
+| `exegesis` | `docs` | Familiar to developers |
+| `Int64` | `i64` | Rust alignment |
+| `List<T>` | `Vec<T>` | Rust alignment |
+
+> **Note:** The DOL 2.0 Specification documents (DOLRAC.md, dol2_0_roadmap_checkpoint.md) use original terminology. This ARCHITECTURE.md reflects current implementation. Specification documents will be updated to v0.8.0 terminology in Q2.
+
+### Document Hierarchy
+
+| Document | Authority | Scope |
+|----------|-----------|-------|
+| ARCHITECTURE.md | Implementation truth | Current codebase |
+| DOL 2.0 Spec | Design intent | Language semantics |
+| DOLRAC | Runtime design | Execution model, SEX, Spirit packages |
+| Roadmap | Timeline | Feature planning |
 
 ---
 
@@ -642,6 +674,13 @@ pub struct ContainerExists {
 
 ## 9. WASM Backend
 
+### Target Specification
+
+| Target | Description | Status |
+|--------|-------------|--------|
+| `wasm32-wasi` | WASI system interface | Primary |
+| `wasm32-unknown-unknown` | Standalone | Planned |
+
 ### Compilation Pipeline
 
 ```
@@ -673,6 +712,36 @@ pub struct ContainerExists {
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Memory Model
+
+```
+┌─────────────────────────────────────────┐
+│            Linear Memory                 │
+├─────────────────────────────────────────┤
+│ Stack (grows down)     │ Heap (grows up)│
+│ ←──────────────────────┼───────────────→│
+│ Local vars, frames     │ Allocations    │
+└─────────────────────────────────────────┘
+```
+
+### Compilation Strategy
+
+Per Compiler_Research.md analysis:
+- **Binaryen** over LLVM for WASM (faster compilation, full GC support)
+- Reference counting for memory management
+- Future: WASM GC proposal integration
+
+### Host Function Bindings
+
+```rust
+// Generated WASM imports
+#[wasm_bindgen]
+extern "C" {
+    fn dol_print(msg: &str);
+    fn dol_emit_effect(effect: JsValue) -> Promise;
+}
+```
+
 ### Memory Layout
 
 The WASM compiler handles:
@@ -680,6 +749,30 @@ The WASM compiler handles:
 - Heap allocation for dynamic data
 - Field offset calculation with alignment
 - Reference counting for memory safety
+
+---
+
+## Standard Library Overview
+
+DOL follows a "batteries included" philosophy with short module names.
+
+| Module | Description | Key Exports | Prelude |
+|--------|-------------|-------------|---------|
+| `io` | Input/output operations | `print`, `read`, `write` | ✓ |
+| `msg` | Message passing | `send`, `recv`, `channel` | ✓ |
+| `mem` | Memory operations | `alloc`, `free`, `copy` | - |
+| `time` | Time utilities | `now`, `sleep`, `duration` | - |
+| `net` | Networking | `connect`, `listen`, `request` | - |
+| `db` | Database access | `query`, `execute`, `connect` | - |
+| `fs` | File system | `read_file`, `write_file`, `exists` | - |
+
+### Prelude
+
+The prelude auto-imports common items without `use` statements:
+- Core types: `i8`, `i16`, `i32`, `i64`, `u8`..., `f32`, `f64`, `bool`, `string`
+- IO functions: `print`, `println`
+- Message functions: `send`, `recv`
+- Result/Option: `Ok`, `Err`, `Some`, `None`
 
 ---
 
@@ -771,6 +864,43 @@ sex {
 |---------|------------|-----------|-----|
 | Pure | ✓ | ✗ | ✗ |
 | SEX | ✓ | ✓ | ✓ |
+
+---
+
+## Effect System
+
+DOL v0.8.0 uses **Effect System v2** with compiler-inferred effects. Users never write explicit effect annotations.
+
+### Design Principles
+
+| Principle | Description |
+|-----------|-------------|
+| **Pure by Default** | Functions are pure unless they call effectful code |
+| **Automatic Inference** | Compiler tracks effects through call graph |
+| **Transitive Propagation** | Effects bubble up through callers |
+| **Zero Annotation** | No `!`, `async`, or effect markers in user code |
+
+### Effect Categories
+
+| Effect | Trigger | Example |
+|--------|---------|---------|
+| `IO` | print, file ops | `print("hello")` |
+| `Net` | network calls | `http.get(url)` |
+| `State` | mutable globals | `counter += 1` |
+| `Random` | non-determinism | `random.int(1, 10)` |
+| `Time` | clock access | `time.now()` |
+
+### Inference Flow
+
+```
+fn pure_fn() { ... }           // Inferred: Pure
+fn calls_io() { print("x") }   // Inferred: IO (from print)
+fn caller() { calls_io() }     // Inferred: IO (propagated)
+```
+
+### SEX Integration
+
+The SEX (Side Effect eXecution) system provides explicit boundaries for FFI and unsafe operations. Pure code cannot call SEX functions directly; boundaries must be explicit. See section 11 for full SEX specification.
 
 ---
 
@@ -1105,3 +1235,76 @@ for item in list { process(item) }
 | E007 | Effect | Pure context calling SEX |
 | W001 | Deprecation | Using deprecated keyword |
 | W002 | Style | Naming convention violation |
+
+---
+
+## Appendix D: Spirit Package System
+
+> For full specification, see DOLRAC.md in archive/docs/
+
+A **Spirit** is DOL's package unit—a collection of modules with metadata.
+
+### Package Structure
+
+```
+my-spirit/
+├── Spirit.dol          # Package manifest
+├── src/
+│   ├── lib.dol         # Library root
+│   ├── main.dol        # Entry point (optional)
+│   └── modules/        # Module files
+└── tests/
+```
+
+### Module Resolution
+
+| Source | Format | Example |
+|--------|--------|---------|
+| Local | `./path` | `use ./utils.dol` |
+| Registry | `@org/name` | `use @univrs/std` |
+| Git | `@git:url` | `use @git:github.com/org/repo` |
+| HTTPS | URL | `use https://example.com/mod.dol` |
+
+### Visibility
+
+| Modifier | Scope |
+|----------|-------|
+| (none) | Private to module |
+| `pub` | Public everywhere |
+| `pub(spirit)` | Public within Spirit only |
+
+---
+
+## Appendix E: Glossary
+
+| Term | Definition |
+|------|------------|
+| **gen** | Atomic type definition (v0.8.0 keyword, formerly `gene`) |
+| **rule** | Validation constraint (v0.8.0 keyword, formerly `constraint`) |
+| **docs** | Documentation block (v0.8.0 keyword, formerly `exegesis`) |
+| **Spirit** | DOL package unit with manifest and modules |
+| **Seance** | Collaborative editing/execution session |
+| **SEX** | Side Effect eXecution system for effectful code |
+| **HIR** | High-level Intermediate Representation |
+| **Spell** | Pure function library (mystical vocabulary) |
+| **Loa** | Background service (mystical vocabulary) |
+| **Mycelium** | P2P network fabric |
+
+---
+
+## Appendix F: Planned Features
+
+Features designed but not yet implemented:
+
+| Feature | Target | Description |
+|---------|--------|-------------|
+| Quote `'` | Q2 | Capture expressions as AST |
+| Eval `!` | Q2 | Execute quoted expressions |
+| Macro `#` | Q2 | Compile-time code generation |
+| Reflect `?` | Q2 | Runtime type introspection |
+| MLIR Backend | Q3 | LLVM-based code generation |
+| Self-Hosting | Q4 | DOL compiler in DOL |
+| Seance Sessions | Y2-Q2 | Collaborative editing |
+| Spirit Marketplace | Y3-Q2 | Package registry |
+
+See docs/strategy/DOL2_PHASE3_ROADMAP.md for complete timeline.

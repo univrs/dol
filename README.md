@@ -3,10 +3,12 @@
 [![Build Status](https://github.com/univrs/metadol/workflows/CI/badge.svg)](https://github.com/univrs/metadol/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.81%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-631%20passing-brightgreen)](https://github.com/univrs/metadol/actions)
+[![Tests](https://img.shields.io/badge/tests-1914%20passing-brightgreen)](https://github.com/univrs/metadol/actions)
 
 > [!CAUTION]
 > This project is a research demonstrator. It is in early development and may change significantly. Using permissive Univrs tools in your repository requires careful attention to security considerations and careful human supervision, and even then things can still go wrong. Use it with caution, and at your own risk. See [Disclaimer](#disclaimer).
+
+> **[📖 Architecture Documentation](docs/ARCHITECTURE.md)** — Comprehensive technical reference for DOL v0.8.0
 
 **A declarative DSL for ontology-first development with meta-programming and multi-target compilation**
 
@@ -168,7 +170,7 @@ cd dol
 # Build the project
 cargo build --release
 
-# Run tests (631 tests)
+# Run tests (1914 tests)
 cargo test
 ```
 
@@ -557,7 +559,7 @@ dol/
 │   ├── wasm/               # WASM backend (optional)
 │   ├── mcp/                # MCP server
 │   └── bin/                # CLI binaries
-├── tests/                  # Test suites (631 tests)
+├── tests/                  # Test suites (1914 tests)
 ├── examples/               # Example DOL files
 └── docs/                   # Documentation
 ```
@@ -567,7 +569,7 @@ dol/
 ## Testing
 
 ```bash
-# Run all tests (631 tests)
+# Run all tests (1914 tests)
 cargo test
 
 # Run specific test suite
@@ -596,7 +598,7 @@ cargo bench
 | Reflect Tests | 17 |
 | Doc Tests | 30 |
 | Additional Tests | 115 |
-| **Total** | **631** |
+| **Total** | **1914** |
 
 ---
 
