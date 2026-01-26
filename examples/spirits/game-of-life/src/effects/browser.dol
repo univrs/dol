@@ -1,5 +1,5 @@
 // Game of Life - Browser Bindings (WASM)
-mod sex.browser
+mod effects.browser
 
 use genes.cell.CellState
 use genes.grid.{ Grid, GridConfig }
@@ -69,13 +69,7 @@ pub sex fun load_pattern(name: string, x: i32, y: i32) -> bool {
 pub sex fun randomize_grid(density: f64) {
   match GRID {
     Some(grid) {
-      var seed = grid.generation * 12345 + 67890
-      val new_cells = grid.cells |> map((c) -> {
-        seed = (seed * 1103515245 + 12345) % 2147483648
-        val random = (seed as f64) / 2147483648.0
-        Cell { ...c, state: if random < density { CellState.Alive } else { CellState.Dead } }
-      })
-      GRID = Some(Grid { ...grid, cells: new_cells, generation: 0 })
+      GRID = Some(spells.grid_ops.randomize(grid, density))
     }
     None { }
   }
@@ -98,9 +92,9 @@ pub sex fun get_alive_count() -> u64 {
 }
 
 #[wasm_export]
-pub sex fun get_cells() -> List<u8> {
+pub sex fun get_cells() -> Vec<u8> {
   match GRID {
-    Some(grid) { grid.cells |> map((c) -> if c.state == CellState.Alive { 1 } else { 0 }) }
+    Some(grid) { grid.cells |> map(|c| if c.state == CellState.Alive { 1 } else { 0 }) }
     None { [] }
   }
 }

@@ -52,6 +52,9 @@ pub struct Parser<'a> {
 
     /// Second peeked token for two-token lookahead (if any)
     peeked2: Option<Token>,
+
+    /// Third peeked token for three-token lookahead (if any)
+    peeked3: Option<Token>,
 }
 
 impl<'a> Parser<'a> {
@@ -68,6 +71,7 @@ impl<'a> Parser<'a> {
             previous,
             peeked: None,
             peeked2: None,
+            peeked3: None,
         }
     }
 
@@ -201,6 +205,11 @@ impl<'a> Parser<'a> {
                 && self.current.kind != TokenKind::Module
                 && self.current.kind != TokenKind::Exegesis
                 && self.current.kind != TokenKind::Docs
+                && self.current.kind != TokenKind::Macro    // Stop before attributes
+                && self.current.kind != TokenKind::Sex      // Stop before sex declarations
+                && self.current.kind != TokenKind::Function // Stop before functions
+                && self.current.kind != TokenKind::Const
+            // Stop before constants
             {
                 self.advance();
             }
@@ -291,13 +300,20 @@ impl<'a> Parser<'a> {
 
     /// Parses a declaration.
     fn parse_declaration(&mut self) -> Result<Declaration, ParseError> {
-        // Handle attribute annotations like #[test]
+        // Collect attribute annotations like #[wasm_export] or #[test]
+        let mut collected_attributes: Vec<String> = Vec::new();
         while self.current.kind == TokenKind::Macro {
-            // Skip the attribute and the following declaration (tests are skipped)
             self.advance(); // consume #
             if self.current.kind == TokenKind::LeftBracket {
                 self.advance(); // consume [
-                                // Skip to closing ]
+                                // Get the attribute name
+                let attr_name = if self.current.kind == TokenKind::Identifier {
+                    self.current.lexeme.clone()
+                } else {
+                    String::new()
+                };
+
+                // Skip to closing ]
                 let mut depth = 1;
                 while depth > 0 && self.current.kind != TokenKind::Eof {
                     match self.current.kind {
@@ -307,40 +323,47 @@ impl<'a> Parser<'a> {
                     }
                     self.advance();
                 }
-            }
-            // Skip the following function (test function)
-            if self.current.kind == TokenKind::Function {
-                self.advance(); // consume 'fun'
-                                // Skip function name and body
-                while self.current.kind != TokenKind::Eof {
-                    if self.current.kind == TokenKind::LeftBrace {
-                        // Skip function body
-                        self.advance();
-                        let mut depth = 1;
-                        while depth > 0 && self.current.kind != TokenKind::Eof {
-                            match self.current.kind {
-                                TokenKind::LeftBrace => depth += 1,
-                                TokenKind::RightBrace => depth -= 1,
-                                _ => {}
+
+                // If it's a #[test] attribute, skip the following function entirely
+                if attr_name == "test" {
+                    if self.current.kind == TokenKind::Function {
+                        self.advance(); // consume 'fun'
+                                        // Skip function name and body
+                        while self.current.kind != TokenKind::Eof {
+                            if self.current.kind == TokenKind::LeftBrace {
+                                // Skip function body
+                                self.advance();
+                                let mut depth = 1;
+                                while depth > 0 && self.current.kind != TokenKind::Eof {
+                                    match self.current.kind {
+                                        TokenKind::LeftBrace => depth += 1,
+                                        TokenKind::RightBrace => depth -= 1,
+                                        _ => {}
+                                    }
+                                    self.advance();
+                                }
+                                break;
                             }
                             self.advance();
                         }
-                        break;
                     }
-                    self.advance();
+                    // Check if we've reached end of file after skipping tests
+                    if self.current.kind == TokenKind::Eof {
+                        return Ok(Declaration::Gene(Gen {
+                            visibility: Visibility::default(),
+                            name: "_test_skipped".to_string(),
+                            extends: None,
+                            statements: vec![],
+                            exegesis: "Tests skipped".to_string(),
+                            span: self.current.span,
+                        }));
+                    }
+                    // Clear collected attributes since we skipped a test
+                    collected_attributes.clear();
+                } else if !attr_name.is_empty() {
+                    // Store non-test attributes to attach to the next declaration
+                    collected_attributes.push(attr_name);
                 }
-            }
-            // Check if we've reached end of file after skipping tests
-            if self.current.kind == TokenKind::Eof {
-                // Return a placeholder for files that only have tests after the main content
-                return Ok(Declaration::Gene(Gen {
-                    visibility: Visibility::default(),
-                    name: "_test_skipped".to_string(),
-                    extends: None,
-                    statements: vec![],
-                    exegesis: "Tests skipped".to_string(),
-                    span: self.current.span,
-                }));
             }
         }
 
@@ -365,10 +388,11 @@ impl<'a> Parser<'a> {
             TokenKind::Constraint | TokenKind::Rule => self.parse_constraint(),
             TokenKind::System => self.parse_system(),
             TokenKind::Evolves | TokenKind::Evo => self.parse_evolution(),
-            TokenKind::Sex => self.parse_sex_top_level(),
+            TokenKind::Sex => self.parse_sex_top_level_with_attrs(collected_attributes),
             TokenKind::Function => {
                 // Top-level pure function
-                let func = self.parse_function_decl()?;
+                let mut func = self.parse_function_decl()?;
+                func.attributes = collected_attributes;
                 Ok(Declaration::Function(Box::new(func)))
             }
             TokenKind::Const => {
@@ -423,6 +447,8 @@ impl<'a> Parser<'a> {
                     && self.current.kind != TokenKind::Sex
                     && self.current.kind != TokenKind::Function
                     && self.current.kind != TokenKind::Module
+                    && self.current.kind != TokenKind::Macro
+                // Stop before attributes
                 {
                     self.advance();
                 }
@@ -1934,8 +1960,11 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse top-level sex declaration (sex var, sex fun, sex extern)
-    fn parse_sex_top_level(&mut self) -> Result<Declaration, ParseError> {
+    /// Parse top-level sex declaration with attributes (sex var, sex fun, sex extern)
+    fn parse_sex_top_level_with_attrs(
+        &mut self,
+        attributes: Vec<String>,
+    ) -> Result<Declaration, ParseError> {
         let start = self.current.span;
         // Don't consume 'sex' - let child functions do it
 
@@ -1951,6 +1980,7 @@ impl<'a> Parser<'a> {
                 self.advance(); // consume 'sex'
                 let mut func = self.parse_function_decl()?;
                 func.purity = crate::ast::Purity::Sex;
+                func.attributes = attributes;
                 Ok(Declaration::Function(Box::new(func)))
             }
             TokenKind::Extern => {
@@ -2950,20 +2980,23 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::RightParen)?;
                     Ok(Pattern::Constructor { name, fields })
                 }
-                // Check for struct destructuring pattern: `Foo { field, field }`
+                // Check for struct destructuring pattern: `Foo { field: binding, field2 }`
                 // Must distinguish from match arm body `Foo { stmt; }`.
-                // Struct patterns have: `{ }`, `{ ident }`, `{ ident: ... }`, `{ ident, ... }`
-                // Match arm bodies have: `{ expr.method() }`, `{ func() }`, etc.
-                // So we check that the token after the first identifier is `:`, `,`, or `}`
-                // Also check that the identifier is a simple name (no dots), since
-                // qualified paths like `Type.Int64` are expressions, not field names.
+                // Struct patterns have: `{ ident: binding }`, `{ ident, ident2 }`, etc.
+                // Match arm bodies have: `{ expr.method() }`, `{ func() }`, `{ 0 }`, `{ None }`, etc.
+                //
+                // The heuristic for single-field patterns like `Foo { bar }`:
+                // - If followed by another `{` (like `Foo { bar } { body }`), it's a struct pattern
+                // - If followed by `:` or `,` in the braces, it's definitely a struct pattern
+                // - Otherwise, it's ambiguous and we treat it as NOT a struct pattern
+                //   (to avoid misinterpreting `None { x }` as struct pattern when it's a match arm)
                 else if self.current.kind == TokenKind::LeftBrace
                     && self.peek().kind == TokenKind::Identifier
                     && !self.peek().lexeme.contains('.')
-                    && matches!(
-                        self.peek2().kind,
-                        TokenKind::Colon | TokenKind::Comma | TokenKind::RightBrace
-                    )
+                    && !self.peek().lexeme.chars().next().map_or(false, |c| c.is_ascii_digit())
+                    && (matches!(self.peek2().kind, TokenKind::Colon | TokenKind::Comma)
+                        || (self.peek2().kind == TokenKind::RightBrace
+                            && self.peek3().kind == TokenKind::LeftBrace))
                 {
                     self.advance();
                     let mut fields = Vec::new();
@@ -3823,6 +3856,7 @@ impl<'a> Parser<'a> {
             body,
             exegesis: String::new(),
             span,
+            attributes: Vec::new(),
         })
     }
 
@@ -4083,11 +4117,15 @@ impl<'a> Parser<'a> {
             self.peeked
                 .take()
                 .or_else(|| self.peeked2.take())
+                .or_else(|| self.peeked3.take())
                 .unwrap_or_else(|| self.lexer.next_token()),
         );
-        // Shift peeked2 to peeked if we consumed peeked
+        // Shift peeked tokens down the chain
         if self.peeked.is_none() && self.peeked2.is_some() {
             self.peeked = self.peeked2.take();
+        }
+        if self.peeked2.is_none() && self.peeked3.is_some() {
+            self.peeked2 = self.peeked3.take();
         }
     }
 
@@ -4110,6 +4148,22 @@ impl<'a> Parser<'a> {
             self.peeked2 = Some(self.lexer.next_token());
         }
         self.peeked2.as_ref().unwrap()
+    }
+
+    /// Peeks at the third token ahead (three-token lookahead).
+    fn peek3(&mut self) -> &Token {
+        // Ensure all prior tokens are populated
+        if self.peeked.is_none() {
+            self.peeked = Some(self.lexer.next_token());
+        }
+        if self.peeked2.is_none() {
+            self.peeked2 = Some(self.lexer.next_token());
+        }
+        // Ensure peeked3 is populated
+        if self.peeked3.is_none() {
+            self.peeked3 = Some(self.lexer.next_token());
+        }
+        self.peeked3.as_ref().unwrap()
     }
 
     /// Expects the current token to be of a specific kind.

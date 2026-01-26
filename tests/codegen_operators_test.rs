@@ -16,13 +16,13 @@ fn test_gen_pipe_operator() {
 #[test]
 fn test_gen_pipe_operator_with_literal() {
     let gen = RustCodegen::new();
-    // 42 |> double becomes double(42_i64)
+    // 42 |> double becomes double(42)
     let expr = Expr::Binary {
         left: Box::new(Expr::Literal(Literal::Int(42))),
         op: BinaryOp::Pipe,
         right: Box::new(Expr::Identifier("double".to_string())),
     };
-    assert_eq!(gen.gen_expr(&expr), "double(42_i64)");
+    assert_eq!(gen.gen_expr(&expr), "double(42)");
 }
 
 #[test]
@@ -72,13 +72,13 @@ fn test_gen_apply_operator() {
 #[test]
 fn test_gen_apply_with_literal() {
     let gen = RustCodegen::new();
-    // square @ 5 becomes square(5_i64)
+    // square @ 5 becomes square(5)
     let expr = Expr::Binary {
         left: Box::new(Expr::Identifier("square".to_string())),
         op: BinaryOp::Apply,
         right: Box::new(Expr::Literal(Literal::Int(5))),
     };
-    assert_eq!(gen.gen_expr(&expr), "square(5_i64)");
+    assert_eq!(gen.gen_expr(&expr), "square(5)");
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_gen_implies_operator() {
 #[test]
 fn test_gen_implies_with_expressions() {
     let gen = RustCodegen::new();
-    // (x > 0) => (y > 0) becomes (!(x > 0_i64) || (y > 0_i64))
+    // (x > 0) => (y > 0) becomes (!(x > 0) || (y > 0))
     let left = Expr::Binary {
         left: Box::new(Expr::Identifier("x".to_string())),
         op: BinaryOp::Gt,
@@ -112,7 +112,7 @@ fn test_gen_implies_with_expressions() {
         op: BinaryOp::Implies,
         right: Box::new(right),
     };
-    assert_eq!(gen.gen_expr(&expr), "(!(x > 0_i64) || (y > 0_i64))");
+    assert_eq!(gen.gen_expr(&expr), "(!(x > 0) || (y > 0))");
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn test_gen_bind_operator() {
 #[test]
 fn test_gen_bind_with_lambda() {
     let gen = RustCodegen::new();
-    // option_value := |x| Some(x + 1) becomes option_value.and_then(|x| { Some((x + 1_i64)) })
+    // option_value := |x| Some(x + 1) becomes option_value.and_then(|x| { Some((x + 1)) })
     let lambda = Expr::Lambda {
         params: vec![("x".to_string(), None)],
         return_type: None,
@@ -150,7 +150,7 @@ fn test_gen_bind_with_lambda() {
     };
     assert_eq!(
         gen.gen_expr(&expr),
-        "option_value.and_then(|x| { Some((x + 1_i64)) })"
+        "option_value.and_then(|x| { Some((x + 1)) })"
     );
 }
 
@@ -169,7 +169,7 @@ fn test_gen_map_operator() {
 #[test]
 fn test_gen_map_with_lambda() {
     let gen = RustCodegen::new();
-    // (|x| x * 2) <$> vec becomes vec.map(|x| { (x * 2_i64) })
+    // (|x| x * 2) <$> vec becomes vec.map(|x| { (x * 2) })
     let lambda = Expr::Lambda {
         params: vec![("x".to_string(), None)],
         return_type: None,
@@ -184,7 +184,7 @@ fn test_gen_map_with_lambda() {
         op: BinaryOp::Map,
         right: Box::new(Expr::Identifier("vec".to_string())),
     };
-    assert_eq!(gen.gen_expr(&expr), "vec.map(|x| { (x * 2_i64) })");
+    assert_eq!(gen.gen_expr(&expr), "vec.map(|x| { (x * 2) })");
 }
 
 #[test]
@@ -214,19 +214,19 @@ fn test_gen_pow_operator() {
 #[test]
 fn test_gen_pow_with_literals() {
     let gen = RustCodegen::new();
-    // 2 ^ 8 becomes 2_i64.pow(8_i64 as u32)
+    // 2 ^ 8 becomes 2.pow(8 as u32)
     let expr = Expr::Binary {
         left: Box::new(Expr::Literal(Literal::Int(2))),
         op: BinaryOp::Pow,
         right: Box::new(Expr::Literal(Literal::Int(8))),
     };
-    assert_eq!(gen.gen_expr(&expr), "2_i64.pow(8_i64 as u32)");
+    assert_eq!(gen.gen_expr(&expr), "2.pow(8 as u32)");
 }
 
 #[test]
 fn test_gen_pow_in_expression() {
     let gen = RustCodegen::new();
-    // (x + 1) ^ 2 becomes (x + 1_i64).pow(2_i64 as u32)
+    // (x + 1) ^ 2 becomes (x + 1).pow(2 as u32)
     let base = Expr::Binary {
         left: Box::new(Expr::Identifier("x".to_string())),
         op: BinaryOp::Add,
@@ -237,7 +237,7 @@ fn test_gen_pow_in_expression() {
         op: BinaryOp::Pow,
         right: Box::new(Expr::Literal(Literal::Int(2))),
     };
-    assert_eq!(gen.gen_expr(&expr), "(x + 1_i64).pow(2_i64 as u32)");
+    assert_eq!(gen.gen_expr(&expr), "(x + 1).pow(2 as u32)");
 }
 
 #[test]
