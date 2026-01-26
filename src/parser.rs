@@ -2993,7 +2993,7 @@ impl<'a> Parser<'a> {
                 else if self.current.kind == TokenKind::LeftBrace
                     && self.peek().kind == TokenKind::Identifier
                     && !self.peek().lexeme.contains('.')
-                    && !self.peek().lexeme.chars().next().map_or(false, |c| c.is_ascii_digit())
+                    && !self.peek().lexeme.chars().next().is_some_and(|c| c.is_ascii_digit())
                     && (matches!(self.peek2().kind, TokenKind::Colon | TokenKind::Comma)
                         || (self.peek2().kind == TokenKind::RightBrace
                             && self.peek3().kind == TokenKind::LeftBrace))
