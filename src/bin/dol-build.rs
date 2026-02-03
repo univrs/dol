@@ -123,10 +123,7 @@ impl BuildOrchestrator {
         verbose: bool,
         quiet: bool,
     ) -> Self {
-        let build_config = manifest
-            .build_config
-            .clone()
-            .unwrap_or_else(BuildConfig::default);
+        let build_config = manifest.build_config.clone().unwrap_or_default();
 
         Self {
             project_dir,
