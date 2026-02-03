@@ -265,7 +265,11 @@ config {
 
     // Verify JSON contains key fields
     assert!(json.contains("testpackage"));
-    assert!(json.contains("1.2.3") || json.contains("\"major\":1"));
+    assert!(
+        json.contains("\"major\": 1")
+            && json.contains("\"minor\": 2")
+            && json.contains("\"patch\": 3")
+    );
     assert!(json.contains("A test package"));
     assert!(json.contains("main.dol"));
 }
