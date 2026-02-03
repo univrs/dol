@@ -1,0 +1,14 @@
+// Minimal DOL Spirit for testing DOL -> WASM pipeline
+spirit minimal_test @ 0.1.0
+
+docs "Minimal test to prove DOL -> WASM compilation works"
+
+config {
+    entry: "src/lib.dol"
+    target: wasm32
+}
+
+targets {
+    rust: { edition: "2021" }
+    wasm: { optimize: true, target: "wasm32-unknown-unknown" }
+}

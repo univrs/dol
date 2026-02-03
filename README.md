@@ -128,9 +128,12 @@ dol build --target typescript src/domain.dol -o generated/
 # Generate JSON Schema for validation
 dol build --target jsonschema src/domain.dol -o schemas/
 
-# Compile to WebAssembly (requires LLVM 18)
-dol build --target wasm src/domain.dol -o app.wasm
+# Compile Spirit projects to WASM with JS bindings (v0.8.1+)
+dol-build                              # DOL → HIR → Rust → WASM + bindings
+dol-build --release -o ./dist          # Optimized production build
 ```
+
+See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** for a 5-minute WASM tutorial.
 
 ### MCP Server (AI Integration)
 
@@ -259,6 +262,7 @@ cargo install --path . --features cli
 dol-parse --version
 dol-check --version
 dol-test --version
+dol-build --version
 ```
 
 ### Optional Features
@@ -306,6 +310,35 @@ Run tests defined in `.dol.test` files.
 ```bash
 dol-test examples/tests/                # Run test suite
 dol-test --output tests/ *.dol.test     # Generate Rust tests
+```
+
+### `dol-build`
+
+Compile DOL Spirit projects to WebAssembly with JavaScript bindings.
+
+```bash
+dol-build                               # Build current directory
+dol-build --release                     # Optimized build
+dol-build -v                           # Verbose output
+dol-build --clean                      # Clean build
+```
+
+**6-Stage Pipeline**: Module resolution → Rust codegen → Cargo.toml → WASM compilation → JS bindings → Package
+
+See **[docs/cli/BUILD.md](docs/cli/BUILD.md)** for comprehensive documentation, examples, and roadmap.
+
+**Quick Example:**
+```dol
+// src/lib.dol
+fun add(a: i32, b: i32) -> i32 { a + b }
+```
+```bash
+dol-build && node -e "
+  import('./target/spirit/pkg/my_spirit.js').then(async m => {
+    await m.default();
+    console.log(m.add(5, 3)); // 8
+  })
+"
 ```
 
 ### `dol-mcp`
@@ -640,6 +673,8 @@ examples/
 
 ## Documentation
 
+- **[WASM Quick Start](docs/QUICKSTART.md)** — 5-minute DOL → WASM tutorial
+- **[dol-build CLI](docs/cli/BUILD.md)** — Complete WASM compilation reference
 - **[Language Specification](docs/specification.md)** — Formal language spec
 - **[Grammar (EBNF)](docs/grammar.ebnf)** — Formal grammar
 - **[Tutorials](docs/tutorials/)** — Step-by-step guides

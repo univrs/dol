@@ -82,6 +82,81 @@ impl HirRustCodegen {
         self.symbols.intern(s)
     }
 
+    /// Escape Rust keywords by prepending r#
+    fn escape_keyword(&self, name: &str) -> String {
+        match name {
+            "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern"
+            | "false" | "fn" | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod"
+            | "move" | "mut" | "pub" | "ref" | "return" | "self" | "Self" | "static" | "struct"
+            | "super" | "trait" | "true" | "type" | "unsafe" | "use" | "where" | "while"
+            | "async" | "await" | "dyn" | "abstract" | "become" | "box" | "do" | "final"
+            | "macro" | "override" | "priv" | "typeof" | "unsized" | "virtual" | "yield"
+            | "try" => {
+                format!("r#{}", name)
+            }
+            _ => name.to_string(),
+        }
+    }
+
+    /// Infer Rust type from property name (basic heuristics)
+    fn infer_type_from_name(&self, name: &str) -> String {
+        let lower = name.to_lowercase();
+        if lower.contains("count") || lower.contains("size") || lower.contains("length") {
+            "usize".to_string()
+        } else if lower == "x"
+            || lower == "y"
+            || lower == "z"
+            || lower == "width"
+            || lower == "height"
+        {
+            "i32".to_string()
+        } else if lower == "alive" || lower == "active" || lower == "enabled" {
+            "bool".to_string()
+        } else if lower == "neighbors" {
+            "u8".to_string()
+        } else if lower == "name" || lower == "label" || lower == "description" {
+            "String".to_string()
+        } else if lower.ends_with("state") {
+            // If property name ends with "state", try to infer the type
+            let type_name = name.replace("state", "State");
+            type_name
+        } else if lower == "pos" || lower == "position" {
+            "Position".to_string()
+        } else {
+            // Default to String for unknown types
+            "String".to_string()
+        }
+    }
+
+    /// Generate expression as a return value (no trailing semicolon)
+    fn gen_expr_as_return(&self, expr: &HirExpr) -> String {
+        match expr {
+            HirExpr::Block(block) => {
+                let mut parts = Vec::new();
+                let stmt_count = block.stmts.len();
+
+                for (i, stmt) in block.stmts.iter().enumerate() {
+                    let is_last = i == stmt_count - 1;
+                    // If this is the last statement and there's no final expr,
+                    // and it's an Expr statement, generate it without semicolon
+                    if is_last && block.expr.is_none() {
+                        if let HirStmt::Expr(e) = stmt {
+                            parts.push(self.gen_expr(e)); // No semicolon for return value
+                            continue;
+                        }
+                    }
+                    parts.push(self.gen_stmt(stmt));
+                }
+
+                if let Some(expr) = &block.expr {
+                    parts.push(self.gen_expr(expr)); // No semicolon for final expr
+                }
+                format!("{{ {} }}", parts.join(" "))
+            }
+            _ => self.gen_expr(expr),
+        }
+    }
+
     /// Generate a declaration
     fn gen_decl(&mut self, decl: &HirDecl) {
         match decl {
@@ -102,7 +177,8 @@ impl HirRustCodegen {
                 self.indent();
                 for field in fields {
                     let ty = self.gen_type(&field.ty);
-                    self.emit_line(&format!("pub {}: {},", self.sym(field.name), ty));
+                    let field_name = self.escape_keyword(self.sym(field.name));
+                    self.emit_line(&format!("pub {}: {},", field_name, ty));
                 }
                 self.dedent();
                 self.emit_line("}");
@@ -134,15 +210,13 @@ impl HirRustCodegen {
                     match &stmt.kind {
                         HirStatementKind::Has { subject, property } => {
                             // subject has property -> field: property
-                            self.emit_line(&format!(
-                                "/// {} has {}",
-                                self.sym(*subject),
-                                self.sym(*property)
-                            ));
-                            self.emit_line(&format!(
-                                "pub {}: String, // TODO: infer type",
-                                self.sym(*property)
-                            ));
+                            let prop_name = self.sym(*property).to_string();
+                            let subj_name = self.sym(*subject).to_string();
+                            self.emit_line(&format!("/// {} has {}", subj_name, prop_name));
+                            // Escape keywords and infer basic types from property names
+                            let field_name = self.escape_keyword(&prop_name);
+                            let field_type = self.infer_type_from_name(&prop_name);
+                            self.emit_line(&format!("pub {}: {},", field_name, field_type));
                         }
                         HirStatementKind::Is { subject, type_name } => {
                             self.emit_line(&format!(
@@ -230,7 +304,11 @@ impl HirRustCodegen {
                 self.emit(", ");
             }
             if let HirPat::Var(sym) = &param.pat {
-                self.emit(&format!("{}: {}", self.sym(*sym), self.gen_type(&param.ty)));
+                self.emit(&format!(
+                    "{}: {}",
+                    self.escape_keyword(self.sym(*sym)),
+                    self.gen_type(&param.ty)
+                ));
             } else {
                 self.emit(&format!("_: {}", self.gen_type(&param.ty)));
             }
@@ -241,7 +319,7 @@ impl HirRustCodegen {
         if let Some(body_expr) = &decl.body {
             self.emit(" {\n");
             self.indent();
-            let body_code = self.gen_expr(body_expr);
+            let body_code = self.gen_expr_as_return(body_expr);
             self.emit_line(&body_code);
             self.dedent();
             self.emit_line("}");
@@ -292,7 +370,18 @@ impl HirRustCodegen {
                 format!("{}.{}({})", recv, self.sym(mc.method), args_str.join(", "))
             }
             HirExpr::Field(field) => {
-                format!("{}.{}", self.gen_expr(&field.base), self.sym(field.field))
+                // Check if the base is a simple variable (type name) or a complex expression
+                let is_type_access = matches!(&field.base, HirExpr::Var(_));
+                let base = self.gen_expr(&field.base);
+                let field_name = self.escape_keyword(self.sym(field.field));
+
+                // If accessing from a type name (e.g., CellState.Alive), use ::
+                // Heuristic: base is capitalized (type name) or is a simple identifier
+                if is_type_access && base.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    format!("{}::{}", base, field_name)
+                } else {
+                    format!("{}.{}", base, field_name)
+                }
             }
             HirExpr::Index(idx) => {
                 format!(
@@ -402,15 +491,24 @@ impl HirRustCodegen {
     fn gen_pat(&self, pat: &HirPat) -> String {
         match pat {
             HirPat::Wildcard => "_".to_string(),
-            HirPat::Var(sym) => self.sym(*sym).to_string(),
+            HirPat::Var(sym) => self.escape_keyword(self.sym(*sym)),
             HirPat::Literal(lit) => self.gen_lit(lit),
             HirPat::Constructor(ctor) => {
                 let name = self.sym(ctor.name);
-                if ctor.fields.is_empty() {
+                // Convert dot notation to :: for enum variants
+                let qualified_name = if name.contains('.') {
+                    name.replace('.', "::")
+                } else {
+                    // Check if this looks like an enum variant (capitalized)
+                    // If so, assume it needs qualification
                     name.to_string()
+                };
+
+                if ctor.fields.is_empty() {
+                    qualified_name
                 } else {
                     let fields: Vec<_> = ctor.fields.iter().map(|f| self.gen_pat(f)).collect();
-                    format!("{}({})", name, fields.join(", "))
+                    format!("{}({})", qualified_name, fields.join(", "))
                 }
             }
             HirPat::Tuple(pats) => {

@@ -50,8 +50,14 @@ pub struct SpiritManifest {
     pub docs: Option<String>,
     /// Dependencies on other packages
     pub dependencies: Vec<Dependency>,
+    /// Requirements with version constraints
+    pub requirements: Vec<Requirement>,
     /// Spirit configuration
     pub config: SpiritConfig,
+    /// Target-specific build settings
+    pub targets: Option<TargetsConfig>,
+    /// Build configuration (derived from targets)
+    pub build_config: Option<BuildConfig>,
     /// Module declarations
     pub modules: Vec<ModuleExport>,
     /// Source span
@@ -82,6 +88,57 @@ pub struct SpiritConfig {
     pub target: String,
     /// Enabled features
     pub features: Vec<String>,
+    /// Source span
+    pub span: Span,
+}
+
+/// Build configuration for compilation targets.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct BuildConfig {
+    /// Rust edition (e.g., "2024", "2021")
+    pub rust_edition: String,
+    /// WASM target triple (e.g., "wasm32-unknown-unknown")
+    pub wasm_target: String,
+    /// Enable WASM optimizations
+    pub optimize: bool,
+    /// Enabled features for build
+    pub features: Vec<String>,
+}
+
+impl Default for BuildConfig {
+    fn default() -> Self {
+        Self {
+            rust_edition: "2021".to_string(),
+            wasm_target: "wasm32-unknown-unknown".to_string(),
+            optimize: false,
+            features: Vec::new(),
+        }
+    }
+}
+
+/// Target-specific build settings.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct TargetsConfig {
+    /// Rust-specific settings
+    pub rust_edition: Option<String>,
+    /// WASM-specific settings
+    pub wasm_target: Option<String>,
+    /// WASM optimization flag
+    pub wasm_optimize: bool,
+    /// Source span
+    pub span: Span,
+}
+
+/// A requirement declaration (dependency with version constraint).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Requirement {
+    /// Package identifier (e.g., "@univrs/std")
+    pub package: String,
+    /// Version constraint (e.g., "^0.8", ">=1.0.0")
+    pub version_constraint: String,
     /// Source span
     pub span: Span,
 }
@@ -118,6 +175,31 @@ impl SpiritManifest {
         self.modules
             .iter()
             .filter(|m| m.visibility == Visibility::Public)
+    }
+
+    /// Returns the build configuration, creating it from targets if needed.
+    pub fn get_build_config(&self) -> BuildConfig {
+        if let Some(ref bc) = self.build_config {
+            return bc.clone();
+        }
+
+        // Derive from targets if available
+        if let Some(ref targets) = self.targets {
+            BuildConfig {
+                rust_edition: targets
+                    .rust_edition
+                    .clone()
+                    .unwrap_or_else(|| "2021".to_string()),
+                wasm_target: targets
+                    .wasm_target
+                    .clone()
+                    .unwrap_or_else(|| "wasm32-unknown-unknown".to_string()),
+                optimize: targets.wasm_optimize,
+                features: self.config.features.clone(),
+            }
+        } else {
+            BuildConfig::default()
+        }
     }
 }
 
@@ -162,7 +244,9 @@ impl<'a> ManifestParser<'a> {
 
         let mut docs = None;
         let mut dependencies = Vec::new();
+        let mut requirements = Vec::new();
         let mut config = SpiritConfig::default();
+        let mut targets = None;
         let mut modules = Vec::new();
 
         // Parse the rest of the manifest
@@ -177,6 +261,12 @@ impl<'a> ManifestParser<'a> {
                 }
                 TokenKind::Config => {
                     config = self.parse_config()?;
+                }
+                TokenKind::Identifier if self.current.lexeme == "targets" => {
+                    targets = Some(self.parse_targets()?);
+                }
+                TokenKind::Requires => {
+                    requirements.extend(self.parse_requires()?);
                 }
                 TokenKind::Pub => {
                     // pub mod <name>
@@ -214,6 +304,17 @@ impl<'a> ManifestParser<'a> {
             config.target = "wasm32".to_string();
         }
 
+        // Derive build_config from targets if present
+        let build_config = targets.as_ref().map(|t| BuildConfig {
+            rust_edition: t.rust_edition.clone().unwrap_or_else(|| "2021".to_string()),
+            wasm_target: t
+                .wasm_target
+                .clone()
+                .unwrap_or_else(|| "wasm32-unknown-unknown".to_string()),
+            optimize: t.wasm_optimize,
+            features: config.features.clone(),
+        });
+
         let span = start_span.merge(&self.previous.span);
 
         Ok(SpiritManifest {
@@ -221,7 +322,10 @@ impl<'a> ManifestParser<'a> {
             version,
             docs,
             dependencies,
+            requirements,
             config,
+            targets,
+            build_config,
             modules,
             span,
         })
@@ -333,6 +437,152 @@ impl<'a> ManifestParser<'a> {
         constraint.push_str(&version.to_string());
 
         Ok(constraint)
+    }
+
+    /// Parses the targets block: targets { rust: {...}, wasm: {...} }
+    fn parse_targets(&mut self) -> Result<TargetsConfig, ParseError> {
+        let start_span = self.current.span;
+        self.expect_identifier()?; // consume "targets"
+        self.expect(TokenKind::LeftBrace)?;
+
+        let mut rust_edition = None;
+        let mut wasm_target = None;
+        let mut wasm_optimize = false;
+
+        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
+            let key = self.expect_identifier()?;
+            self.expect(TokenKind::Colon)?;
+
+            match key.as_str() {
+                "rust" => {
+                    // Parse rust: { edition: "2024" }
+                    self.expect(TokenKind::LeftBrace)?;
+                    while self.current.kind != TokenKind::RightBrace
+                        && self.current.kind != TokenKind::Eof
+                    {
+                        let rust_key = self.expect_identifier()?;
+                        self.expect(TokenKind::Colon)?;
+
+                        match rust_key.as_str() {
+                            "edition" => {
+                                rust_edition = Some(self.expect_string()?);
+                            }
+                            _ => {
+                                self.skip_value()?;
+                            }
+                        }
+
+                        if self.current.kind == TokenKind::Comma {
+                            self.advance();
+                        }
+                    }
+                    self.expect(TokenKind::RightBrace)?;
+                }
+                "wasm" => {
+                    // Parse wasm: { optimize: true, target: "wasm32-unknown-unknown" }
+                    self.expect(TokenKind::LeftBrace)?;
+                    while self.current.kind != TokenKind::RightBrace
+                        && self.current.kind != TokenKind::Eof
+                    {
+                        let wasm_key = self.expect_identifier()?;
+                        self.expect(TokenKind::Colon)?;
+
+                        match wasm_key.as_str() {
+                            "optimize" => {
+                                let val = self.expect_identifier()?;
+                                wasm_optimize = val == "true";
+                            }
+                            "target" => {
+                                wasm_target = Some(self.expect_string()?);
+                            }
+                            _ => {
+                                self.skip_value()?;
+                            }
+                        }
+
+                        if self.current.kind == TokenKind::Comma {
+                            self.advance();
+                        }
+                    }
+                    self.expect(TokenKind::RightBrace)?;
+                }
+                _ => {
+                    self.skip_value()?;
+                }
+            }
+
+            if self.current.kind == TokenKind::Comma {
+                self.advance();
+            }
+        }
+
+        self.expect(TokenKind::RightBrace)?;
+
+        let span = start_span.merge(&self.previous.span);
+
+        Ok(TargetsConfig {
+            rust_edition,
+            wasm_target,
+            wasm_optimize,
+            span,
+        })
+    }
+
+    /// Parses the requires block: requires { @org/package: "^1.0", ... }
+    fn parse_requires(&mut self) -> Result<Vec<Requirement>, ParseError> {
+        let start_span = self.current.span;
+        self.expect(TokenKind::Requires)?; // consume "requires"
+        self.expect(TokenKind::LeftBrace)?;
+
+        let mut requirements = Vec::new();
+
+        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
+            // Parse package identifier (e.g., @univrs/std or @univrs/wasm-runtime)
+            let package = if self.current.kind == TokenKind::At {
+                self.advance();
+                let org = self.expect_identifier()?;
+                self.expect(TokenKind::Slash)?;
+
+                // Handle hyphenated package names (e.g., wasm-runtime)
+                let mut pkg_parts = vec![self.expect_identifier()?];
+                while self.current.kind == TokenKind::Minus {
+                    self.advance();
+                    pkg_parts.push("-".to_string());
+                    pkg_parts.push(self.expect_identifier()?);
+                }
+                let pkg = pkg_parts.join("");
+
+                format!("@{}/{}", org, pkg)
+            } else {
+                // Handle non-scoped package names
+                let mut pkg_parts = vec![self.expect_identifier()?];
+                while self.current.kind == TokenKind::Minus {
+                    self.advance();
+                    pkg_parts.push("-".to_string());
+                    pkg_parts.push(self.expect_identifier()?);
+                }
+                pkg_parts.join("")
+            };
+
+            self.expect(TokenKind::Colon)?;
+            let version_constraint = self.expect_string()?;
+
+            let span = start_span.merge(&self.previous.span);
+
+            requirements.push(Requirement {
+                package,
+                version_constraint,
+                span,
+            });
+
+            if self.current.kind == TokenKind::Comma {
+                self.advance();
+            }
+        }
+
+        self.expect(TokenKind::RightBrace)?;
+
+        Ok(requirements)
     }
 
     /// Parses the config block.
@@ -648,5 +898,141 @@ pub mod c
         assert_eq!(public.len(), 2);
         assert_eq!(public[0].name, "a");
         assert_eq!(public[1].name, "c");
+    }
+
+    #[test]
+    fn test_parse_targets_block() {
+        let source = r#"
+spirit buildtest @ 1.0.0
+
+targets {
+    rust: { edition: "2024" }
+    wasm: { optimize: true, target: "wasm32-unknown-unknown" }
+}
+"#;
+        let manifest = parse_spirit_manifest(source).expect("should parse");
+        assert!(manifest.targets.is_some());
+        let targets = manifest.targets.unwrap();
+        assert_eq!(targets.rust_edition, Some("2024".to_string()));
+        assert_eq!(
+            targets.wasm_target,
+            Some("wasm32-unknown-unknown".to_string())
+        );
+        assert!(targets.wasm_optimize);
+    }
+
+    #[test]
+    fn test_parse_requires_block() {
+        let source = r#"
+spirit deptest @ 1.0.0
+
+requires {
+    @univrs/std: "^0.8"
+    @univrs/wasm-runtime: ">=0.5.0"
+}
+"#;
+        let manifest = parse_spirit_manifest(source).expect("should parse");
+        assert_eq!(manifest.requirements.len(), 2);
+        assert_eq!(manifest.requirements[0].package, "@univrs/std");
+        assert_eq!(manifest.requirements[0].version_constraint, "^0.8");
+        assert_eq!(manifest.requirements[1].package, "@univrs/wasm-runtime");
+        assert_eq!(manifest.requirements[1].version_constraint, ">=0.5.0");
+    }
+
+    #[test]
+    fn test_get_build_config_from_targets() {
+        let source = r#"
+spirit buildtest @ 1.0.0
+
+targets {
+    rust: { edition: "2024" }
+    wasm: { optimize: true, target: "wasm32-unknown-unknown" }
+}
+
+config {
+    features: ["async", "gc"]
+}
+"#;
+        let manifest = parse_spirit_manifest(source).expect("should parse");
+        let build_config = manifest.get_build_config();
+        assert_eq!(build_config.rust_edition, "2024");
+        assert_eq!(build_config.wasm_target, "wasm32-unknown-unknown");
+        assert!(build_config.optimize);
+        assert_eq!(build_config.features, vec!["async", "gc"]);
+    }
+
+    #[test]
+    fn test_build_config_defaults() {
+        let source = r#"spirit simple @ 1.0.0"#;
+        let manifest = parse_spirit_manifest(source).expect("should parse");
+        let build_config = manifest.get_build_config();
+        assert_eq!(build_config.rust_edition, "2021");
+        assert_eq!(build_config.wasm_target, "wasm32-unknown-unknown");
+        assert!(!build_config.optimize);
+        assert!(build_config.features.is_empty());
+    }
+
+    #[test]
+    fn test_full_manifest_with_all_features() {
+        let source = r#"
+spirit complete @ 2.0.0
+
+docs "A complete spirit manifest example"
+
+requires {
+    @univrs/std: "^0.8"
+    @univrs/async: "^1.0"
+}
+
+targets {
+    rust: { edition: "2024" }
+    wasm: { optimize: true, target: "wasm32-unknown-unknown" }
+}
+
+config {
+    entry: "main.dol"
+    target: wasm32
+    features: ["async", "gc", "simd"]
+}
+
+pub mod lib
+pub mod api
+mod internal
+"#;
+        let manifest = parse_spirit_manifest(source).expect("should parse");
+
+        // Check basic info
+        assert_eq!(manifest.name, "complete");
+        assert_eq!(manifest.version.major, 2);
+        assert_eq!(
+            manifest.docs,
+            Some("A complete spirit manifest example".to_string())
+        );
+
+        // Check requirements
+        assert_eq!(manifest.requirements.len(), 2);
+        assert_eq!(manifest.requirements[0].package, "@univrs/std");
+        assert_eq!(manifest.requirements[1].package, "@univrs/async");
+
+        // Check targets
+        assert!(manifest.targets.is_some());
+        let targets = manifest.targets.as_ref().unwrap();
+        assert_eq!(targets.rust_edition, Some("2024".to_string()));
+        assert!(targets.wasm_optimize);
+
+        // Check config
+        assert_eq!(manifest.config.entry, "main.dol");
+        assert_eq!(manifest.config.features.len(), 3);
+
+        // Check build config
+        let build_config = manifest.get_build_config();
+        assert_eq!(build_config.rust_edition, "2024");
+        assert_eq!(build_config.wasm_target, "wasm32-unknown-unknown");
+        assert!(build_config.optimize);
+
+        // Check modules
+        assert_eq!(manifest.modules.len(), 3);
+        let public: Vec<_> = manifest.public_modules().collect();
+        assert_eq!(public.len(), 2);
     }
 }

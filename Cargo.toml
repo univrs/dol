@@ -64,6 +64,11 @@ path = "src/bin/dol-migrate.rs"
 required-features = ["cli"]
 
 [[bin]]
+name = "dol-build"
+path = "src/bin/dol-build.rs"
+required-features = ["cli"]
+
+[[bin]]
 name = "vudo"
 path = "src/bin/vudo.rs"
 required-features = ["vudo"]
