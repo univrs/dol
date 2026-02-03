@@ -118,8 +118,7 @@ impl HirRustCodegen {
             "String".to_string()
         } else if lower.ends_with("state") {
             // If property name ends with "state", try to infer the type
-            let type_name = name.replace("state", "State");
-            type_name
+            name.replace("state", "State")
         } else if lower == "pos" || lower == "position" {
             "Position".to_string()
         } else {
@@ -377,7 +376,7 @@ impl HirRustCodegen {
 
                 // If accessing from a type name (e.g., CellState.Alive), use ::
                 // Heuristic: base is capitalized (type name) or is a simple identifier
-                if is_type_access && base.chars().next().map_or(false, |c| c.is_uppercase()) {
+                if is_type_access && base.chars().next().is_some_and(|c| c.is_uppercase()) {
                     format!("{}::{}", base, field_name)
                 } else {
                     format!("{}.{}", base, field_name)
