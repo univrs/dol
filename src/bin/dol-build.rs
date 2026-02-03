@@ -183,7 +183,7 @@ impl BuildOrchestrator {
         // Scan for all .dol files in src/ directory
         let src_dir = self.project_dir.join("src");
         if !src_dir.exists() {
-            return Err(format!("Source directory not found: src/"));
+            return Err("Source directory not found: src/".to_string());
         }
 
         // Walk the src directory and find all .dol files
@@ -213,7 +213,7 @@ impl BuildOrchestrator {
             if path.is_dir() {
                 // Recursively scan subdirectories
                 self.scan_dol_files(&path, base_dir, modules)?;
-            } else if path.extension().map_or(false, |ext| ext == "dol") {
+            } else if path.extension().is_some_and(|ext| ext == "dol") {
                 // Found a .dol file
                 let relative_path = path
                     .strip_prefix(base_dir)
@@ -223,8 +223,7 @@ impl BuildOrchestrator {
                 let module_name = relative_path
                     .with_extension("")
                     .to_string_lossy()
-                    .replace('/', "_")
-                    .replace('-', "_");
+                    .replace(['/', '-'], "_");
 
                 // Skip mod.dol files (just directory markers)
                 if module_name.ends_with("_mod") {
