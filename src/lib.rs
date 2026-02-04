@@ -50,6 +50,8 @@
 //! - [`lexer`]: Tokenization of DOL source text
 //! - [`parser`]: Recursive descent parser producing AST
 //! - [`error`]: Error types with source location information
+//! - [`types`]: Common ABI types (LogLevel, ResultCode, StandardEffect)
+//! - [`host`]: Host function imports for WASM runtime
 //! - [`validator`]: Semantic validation rules
 //! - [`typechecker`]: DOL 2.0 type inference and checking
 //! - [`eval`]: Expression evaluation for DOL 2.0
@@ -72,6 +74,7 @@ pub mod codegen;
 pub mod error;
 pub mod eval;
 pub mod hir;
+pub mod host;
 pub mod lexer;
 pub mod lower;
 pub mod macros;
@@ -81,6 +84,7 @@ pub mod reflect;
 pub mod sex;
 pub mod transform;
 pub mod typechecker;
+pub mod types;
 pub mod validator;
 
 // Spirit manifest parsing
@@ -124,6 +128,9 @@ pub use eval::{EvalError, Interpreter, Value};
 pub use lexer::{Lexer, Token, TokenKind};
 pub use parser::Parser;
 pub use typechecker::{Type, TypeChecker, TypeEnv, TypeError};
+#[cfg(feature = "serde")]
+pub use types::StandardEffect;
+pub use types::{LogLevel, ResultCode};
 pub use validator::{validate, ValidationResult};
 
 // Codegen re-exports

@@ -1,13 +1,15 @@
 //! Error types for Metal DOL.
 //!
 //! This module defines all error types used throughout the crate,
-//! providing rich error information including source locations.
+//! providing rich error information including source locations and
+//! cross-boundary error reporting for ABI operations.
 //!
 //! # Error Categories
 //!
 //! - [`LexError`]: Errors during tokenization
 //! - [`ParseError`]: Errors during parsing
 //! - [`ValidationError`]: Errors during semantic validation
+//! - [`AbiError`]: Errors at application binary interface boundaries
 //!
 //! # Example
 //!
@@ -329,6 +331,196 @@ impl std::fmt::Display for ValidationWarning {
     }
 }
 
+/// Errors that can occur at ABI (Application Binary Interface) boundaries.
+///
+/// These errors are used for cross-boundary communication, particularly
+/// for WASM integration and other interop scenarios. They are designed
+/// to be serializable for transmission across boundaries.
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::error::AbiError;
+///
+/// let error = AbiError::InvalidPointer;
+/// assert_eq!(error.to_string(), "Invalid pointer");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AbiError {
+    /// An invalid pointer was encountered.
+    ///
+    /// This typically occurs when a memory address is null or out of bounds.
+    InvalidPointer,
+
+    /// Memory allocation failed.
+    ///
+    /// The system ran out of available memory or allocation was denied.
+    OutOfMemory,
+
+    /// A message received across the boundary is invalid.
+    ///
+    /// This occurs when a message doesn't conform to the expected format
+    /// or contains invalid data.
+    InvalidMessage(String),
+
+    /// An operation timed out.
+    ///
+    /// The operation took longer than the allowed timeout period.
+    Timeout,
+
+    /// An effect execution failed.
+    ///
+    /// An operation with side effects failed during execution.
+    EffectFailed(String),
+
+    /// An unknown error occurred.
+    ///
+    /// Used for errors that don't fit into other categories or
+    /// when the specific error type is not yet determined.
+    UnknownError(String),
+}
+
+impl std::fmt::Display for AbiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AbiError::InvalidPointer => write!(f, "Invalid pointer"),
+            AbiError::OutOfMemory => write!(f, "Out of memory"),
+            AbiError::InvalidMessage(msg) => write!(f, "Invalid message: {}", msg),
+            AbiError::Timeout => write!(f, "Operation timed out"),
+            AbiError::EffectFailed(err) => write!(f, "Effect failed: {}", err),
+            AbiError::UnknownError(err) => write!(f, "Unknown error: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for AbiError {}
+
+impl From<String> for AbiError {
+    fn from(s: String) -> Self {
+        AbiError::UnknownError(s)
+    }
+}
+
+impl From<&str> for AbiError {
+    fn from(s: &str) -> Self {
+        AbiError::UnknownError(s.to_string())
+    }
+}
+
+/// Serialize support for AbiError when serde feature is enabled.
+#[cfg(feature = "serde")]
+impl serde::Serialize for AbiError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        match self {
+            AbiError::InvalidPointer => {
+                map.serialize_entry("type", "InvalidPointer")?;
+                map.serialize_entry("message", "Invalid pointer")?;
+            }
+            AbiError::OutOfMemory => {
+                map.serialize_entry("type", "OutOfMemory")?;
+                map.serialize_entry("message", "Out of memory")?;
+            }
+            AbiError::InvalidMessage(msg) => {
+                map.serialize_entry("type", "InvalidMessage")?;
+                map.serialize_entry("message", msg)?;
+            }
+            AbiError::Timeout => {
+                map.serialize_entry("type", "Timeout")?;
+                map.serialize_entry("message", "Operation timed out")?;
+            }
+            AbiError::EffectFailed(err) => {
+                map.serialize_entry("type", "EffectFailed")?;
+                map.serialize_entry("message", err)?;
+            }
+            AbiError::UnknownError(err) => {
+                map.serialize_entry("type", "UnknownError")?;
+                map.serialize_entry("message", err)?;
+            }
+        }
+        map.end()
+    }
+}
+
+/// Deserialize support for AbiError when serde feature is enabled.
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for AbiError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct AbiErrorVisitor;
+
+        impl<'de> Visitor<'de> for AbiErrorVisitor {
+            type Value = AbiError;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("AbiError with type and message fields")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<AbiError, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut error_type: Option<String> = None;
+                let mut message: Option<String> = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        "type" => {
+                            if error_type.is_some() {
+                                return Err(de::Error::duplicate_field("type"));
+                            }
+                            error_type = Some(map.next_value()?);
+                        }
+                        "message" => {
+                            if message.is_some() {
+                                return Err(de::Error::duplicate_field("message"));
+                            }
+                            message = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                let error_type = error_type.ok_or_else(|| de::Error::missing_field("type"))?;
+                let message = message.ok_or_else(|| de::Error::missing_field("message"))?;
+
+                match error_type.as_str() {
+                    "InvalidPointer" => Ok(AbiError::InvalidPointer),
+                    "OutOfMemory" => Ok(AbiError::OutOfMemory),
+                    "InvalidMessage" => Ok(AbiError::InvalidMessage(message)),
+                    "Timeout" => Ok(AbiError::Timeout),
+                    "EffectFailed" => Ok(AbiError::EffectFailed(message)),
+                    "UnknownError" => Ok(AbiError::UnknownError(message)),
+                    _ => Err(de::Error::unknown_variant(
+                        &error_type,
+                        &[
+                            "InvalidPointer",
+                            "OutOfMemory",
+                            "InvalidMessage",
+                            "Timeout",
+                            "EffectFailed",
+                            "UnknownError",
+                        ],
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(AbiErrorVisitor)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,5 +566,100 @@ mod tests {
             span: Span::default(),
         });
         assert!(errors.has_warnings());
+    }
+
+    #[test]
+    fn test_abi_error_invalid_pointer() {
+        let error = AbiError::InvalidPointer;
+        assert_eq!(error.to_string(), "Invalid pointer");
+        assert_eq!(error, AbiError::InvalidPointer);
+    }
+
+    #[test]
+    fn test_abi_error_out_of_memory() {
+        let error = AbiError::OutOfMemory;
+        assert_eq!(error.to_string(), "Out of memory");
+    }
+
+    #[test]
+    fn test_abi_error_invalid_message() {
+        let msg = "malformed data".to_string();
+        let error = AbiError::InvalidMessage(msg.clone());
+        assert_eq!(error.to_string(), format!("Invalid message: {}", msg));
+    }
+
+    #[test]
+    fn test_abi_error_timeout() {
+        let error = AbiError::Timeout;
+        assert_eq!(error.to_string(), "Operation timed out");
+    }
+
+    #[test]
+    fn test_abi_error_effect_failed() {
+        let msg = "connection lost".to_string();
+        let error = AbiError::EffectFailed(msg.clone());
+        assert_eq!(error.to_string(), format!("Effect failed: {}", msg));
+    }
+
+    #[test]
+    fn test_abi_error_unknown() {
+        let msg = "something went wrong".to_string();
+        let error = AbiError::UnknownError(msg.clone());
+        assert_eq!(error.to_string(), format!("Unknown error: {}", msg));
+    }
+
+    #[test]
+    fn test_abi_error_from_string() {
+        let error: AbiError = "test error".to_string().into();
+        assert!(matches!(error, AbiError::UnknownError(_)));
+        assert_eq!(error.to_string(), "Unknown error: test error");
+    }
+
+    #[test]
+    fn test_abi_error_from_str() {
+        let error: AbiError = "test error".into();
+        assert!(matches!(error, AbiError::UnknownError(_)));
+        assert_eq!(error.to_string(), "Unknown error: test error");
+    }
+
+    #[test]
+    fn test_abi_error_is_error_trait() {
+        let error: Box<dyn std::error::Error> = Box::new(AbiError::OutOfMemory);
+        assert_eq!(error.to_string(), "Out of memory");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_abi_error_serialize_deserialize() {
+        use serde_json;
+
+        let error = AbiError::InvalidMessage("test".to_string());
+        let json = serde_json::to_string(&error).expect("serialize failed");
+        assert!(json.contains("InvalidMessage"));
+        assert!(json.contains("test"));
+
+        let deserialized: AbiError = serde_json::from_str(&json).expect("deserialize failed");
+        assert_eq!(error, deserialized);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_abi_error_serialize_all_variants() {
+        use serde_json;
+
+        let variants = vec![
+            AbiError::InvalidPointer,
+            AbiError::OutOfMemory,
+            AbiError::InvalidMessage("msg".to_string()),
+            AbiError::Timeout,
+            AbiError::EffectFailed("reason".to_string()),
+            AbiError::UnknownError("error".to_string()),
+        ];
+
+        for variant in variants {
+            let json = serde_json::to_string(&variant).expect("serialize failed");
+            let deserialized: AbiError = serde_json::from_str(&json).expect("deserialize failed");
+            assert_eq!(variant, deserialized);
+        }
     }
 }

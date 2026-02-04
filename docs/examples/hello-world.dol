@@ -1,0 +1,107 @@
+// hello-world.dol - Basic I/O Operations
+// This example demonstrates fundamental I/O through the ABI,
+// showing how to output text and interact with the host system.
+
+// Host function: Print a string to standard output
+// Returns: ResultCode (0 = success, non-zero = error)
+sex fun vudo_println(ptr: i32, len: i32) -> i32
+
+// Host function: Get the length of a string
+sex fun vudo_strlen(ptr: i32) -> i32
+
+// A simple spirit that demonstrates basic I/O
+gen HelloWorld {
+    has name: String
+    has greeting_count: Int
+
+    // Initialize the spirit with a name
+    fun new(person_name: String) {
+        this.name = person_name
+        this.greeting_count = 0
+    }
+
+    // Print a greeting to the host
+    // Demonstrates vudo_println ABI usage
+    fun greet() {
+        // Build the greeting message
+        let message = "Hello, " + this.name + "!"
+
+        // Call the host function to print the message
+        // vudo_println expects a pointer and length (handled by the runtime)
+        let result = vudo_println(message)
+
+        // Increment the greeting counter
+        this.greeting_count = this.greeting_count + 1
+
+        // Print confirmation message
+        let confirmation = "Greeting sent. Total greetings: " + this.greeting_count.to_string()
+        vudo_println(confirmation)
+    }
+
+    // Print a formatted message with dynamic content
+    // Demonstrates string concatenation and multiple I/O calls
+    fun say_goodbye() {
+        let goodbye_msg = "Goodbye, " + this.name + "!"
+        vudo_println(goodbye_msg)
+
+        let final_count = "Total greetings issued: " + this.greeting_count.to_string()
+        vudo_println(final_count)
+    }
+
+    // Get the current greeting count
+    fun get_greeting_count() -> Int {
+        return this.greeting_count
+    }
+}
+
+// A program that runs the HelloWorld spirit
+gen HelloWorldProgram {
+    has world: HelloWorld
+
+    // Main program entry point
+    fun main() {
+        // Create a new HelloWorld instance
+        this.world = HelloWorld { name: "World", greeting_count: 0 }
+
+        // Print a header
+        vudo_println("=== Hello World Example ===")
+
+        // Greet multiple times
+        this.world.greet()
+        this.world.greet()
+
+        // Print some status
+        vudo_println("Program is running...")
+
+        // Say goodbye
+        this.world.say_goodbye()
+
+        // Final message
+        vudo_println("Example complete!")
+    }
+}
+
+docs {
+    This example demonstrates basic I/O operations using the vudo_println
+    host function. Key concepts:
+
+    1. Host Function Declaration: The "sex fun" keyword marks functions
+       provided by the host system (vudo_println in this case).
+
+    2. String Handling: The runtime automatically converts DOL strings
+       to pointer/length pairs when calling host functions. The programmer
+       doesn't need to worry about memory management.
+
+    3. Return Codes: vudo_println returns a ResultCode (0 = success).
+       In this example we don't explicitly check it, but production code
+       should validate return codes.
+
+    4. Multiple Calls: The example shows how to make multiple host calls
+       from within a single spirit function.
+
+    5. State Management: The HelloWorld spirit maintains state (name and
+       greeting_count) while using I/O.
+
+    The vudo_println ABI function maps to the Loa runtime's println
+    implementation and ultimately outputs to the host's standard output.
+}
