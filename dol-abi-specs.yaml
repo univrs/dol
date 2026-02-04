@@ -1,0 +1,2232 @@
+# =============================================================================
+
+# DOL ABI SPECIFICATION - Host Function Bindings
+
+# =============================================================================
+
+# claude-flow v3alpha workflow
+
+# 
+
+# PURPOSE: Define the ABI contract between DOL compiler and VUDO runtime
+
+# EXIT CRITERIA: Compiler emits WASM imports that runtime satisfies
+
+# 
+
+# Run with:
+
+# npx claude-flow@alpha swarm dol-abi-specification.yaml
+
+# =============================================================================
+
+name: “dol-abi-specification”
+version: “1.0.0”
+description: |
+Establishes the Application Binary Interface (ABI) between DOL-compiled
+WASM modules and the VUDO runtime. This is the foundation for all
+Spirit ↔ Host communication.
+
+# =============================================================================
+
+# WORKFLOW CONFIGURATION
+
+# =============================================================================
+
+config:
+max_concurrency: 3
+checkpoint_on_phase: true
+require_tests_pass: true
+
+# =============================================================================
+
+# PHASE 1: ABI TYPE DEFINITIONS (Rust Crate)
+
+# =============================================================================
+
+phases:
+
+- name: “phase1-abi-types”
+  description: “Create dol-abi Rust crate with type definitions”
+  
+  agents:
+  - name: “abi-architect”
+    role: “Define ABI structure and types”
+    
+    tasks:
+    
+    # ─────────────────────────────────────────────────────────────────
+    
+    # Task 1.1: Create crate structure
+    
+    # ─────────────────────────────────────────────────────────────────
+    - name: “create-crate-structure”
+      description: “Initialize dol-abi crate”
+      action: “create_files”
+      files:
+      - path: “crates/dol-abi/Cargo.toml”
+        content: |
+        [package]
+        name = “dol-abi”
+        version = “0.1.0”
+        edition = “2021”
+        description = “ABI definitions for DOL ↔ VUDO runtime communication”
+        license = “MIT”
+        repository = “https://github.com/univrs/dol”
+        
+        [features]
+        default = []
+        wasm = [“wasm-bindgen”]
+        serde = [“dep:serde”]
+        
+        [dependencies]
+        wasm-bindgen = { version = “0.2”, optional = true }
+        serde = { version = “1.0”, features = [“derive”], optional = true }
+        
+        [dev-dependencies]
+        pretty_assertions = “1.4”
+      - path: “crates/dol-abi/src/lib.rs”
+        content: |
+        //! # DOL ABI - Host Function Bindings
+        //!
+        //! This crate defines the Application Binary Interface (ABI) between
+        //! DOL-compiled WASM modules and the VUDO runtime.
+        //!
+        //! ## ABI Contract
+        //!
+        //! All host functions are imported from the `"vudo"` module namespace.
+        //! The compiler emits WASM imports, and the runtime provides implementations.
+        //!
+        //! ## Usage
+        //!
+        //! `rust //! use dol_abi::{HostFunction, ABI_VERSION}; //! //! // Get all host function signatures //! for func in HostFunction::all() { //!     println!("{}: {:?}", func.name(), func.signature()); //! } //! `
+        
+        #![deny(missing_docs)]
+        #![deny(unsafe_code)]
+        
+        pub mod host;
+        pub mod message;
+        pub mod types;
+        pub mod error;
+        
+        pub use host::{HostFunction, HostFunctionSignature, WasmType};
+        pub use message::{Message, MessageHeader, MessagePayload};
+        pub use types::*;
+        pub use error::{AbiError, AbiResult};
+        
+        /// ABI version string for compatibility checking.
+        /// Format: “major.minor.patch”
+        pub const ABI_VERSION: &str = “0.1.0”;
+        
+        /// WASM import module name for all host functions.
+        pub const IMPORT_MODULE: &str = “vudo”;
+        
+        /// Validate that a WASM module’s imports match the expected ABI.
+        pub fn validate_imports(imports: &[(String, String)]) -> AbiResult<()> {
+        for (module, name) in imports {
+        if module == IMPORT_MODULE {
+        if HostFunction::by_name(name).is_none() {
+        return Err(AbiError::UnknownHostFunction(name.clone()));
+        }
+        }
+        }
+        Ok(())
+        }
+    
+    # ─────────────────────────────────────────────────────────────────
+    
+    # Task 1.2: Define host function signatures
+    
+    # ─────────────────────────────────────────────────────────────────
+    - name: “define-host-functions”
+      description: “Define all host function signatures”
+      action: “create_file”
+      path: “crates/dol-abi/src/host.rs”
+      content: |
+      //! Host function definitions and signatures.
+      //!
+      //! Each host function has a well-defined WASM signature that both
+      //! the compiler and runtime must agree on.
+      
+      use std::fmt;
+      
+      /// WASM value types used in function signatures.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub enum WasmType {
+      /// 32-bit integer (i32)
+      I32,
+      /// 64-bit integer (i64)
+      I64,
+      /// 32-bit float (f32)
+      F32,
+      /// 64-bit float (f64)
+      F64,
+      }
+      
+      impl fmt::Display for WasmType {
+      fn fmt(&self, f: &mut fmt::Formatter<’_>) -> fmt::Result {
+      match self {
+      WasmType::I32 => write!(f, “i32”),
+      WasmType::I64 => write!(f, “i64”),
+      WasmType::F32 => write!(f, “f32”),
+      WasmType::F64 => write!(f, “f64”),
+      }
+      }
+      }
+      
+      /// Function signature: parameters and return type.
+      #[derive(Debug, Clone, PartialEq, Eq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub struct HostFunctionSignature {
+      /// Parameter types
+      pub params: Vec<WasmType>,
+      /// Return type (None for void)
+      pub result: Option<WasmType>,
+      }
+      
+      impl HostFunctionSignature {
+      /// Create a new signature.
+      pub const fn new(params: &’static [WasmType], result: Option<WasmType>) -> Self {
+      Self {
+      params: Vec::new(), // Will be set by from_static
+      result,
+      }
+      }
+      
+      ```
+        /// Create from static slices (for const contexts).
+        pub fn from_static(params: &[WasmType], result: Option<WasmType>) -> Self {
+            Self {
+                params: params.to_vec(),
+                result,
+            }
+        }
+      ```
+      
+      }
+      
+      impl fmt::Display for HostFunctionSignature {
+      fn fmt(&self, f: &mut fmt::Formatter<’_>) -> fmt::Result {
+      write!(f, “(”)?;
+      for (i, p) in self.params.iter().enumerate() {
+      if i > 0 { write!(f, “, “)?; }
+      write!(f, “{}”, p)?;
+      }
+      write!(f, “)”)?;
+      if let Some(ret) = &self.result {
+      write!(f, “ -> {}”, ret)?;
+      }
+      Ok(())
+      }
+      }
+      
+      /// All host functions available to DOL Spirits.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub enum HostFunction {
+      // ═══════════════════════════════════════════════════════════════
+      // I/O FUNCTIONS
+      // ═══════════════════════════════════════════════════════════════
+      
+      ```
+        /// Print a UTF-8 string (no newline).
+        /// Signature: (ptr: i32, len: i32) -> void
+        Print,
+        
+        /// Print a UTF-8 string with newline.
+        /// Signature: (ptr: i32, len: i32) -> void
+        Println,
+        
+        /// Structured logging with level.
+        /// Signature: (level: i32, ptr: i32, len: i32) -> void
+        /// Levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
+        Log,
+        
+        /// Log an error message.
+        /// Signature: (ptr: i32, len: i32) -> void
+        Error,
+        
+        // ═══════════════════════════════════════════════════════════════
+        // MEMORY FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// Allocate memory from the host allocator.
+        /// Signature: (size: i32) -> i32 (pointer, 0 on failure)
+        Alloc,
+        
+        /// Free previously allocated memory.
+        /// Signature: (ptr: i32, size: i32) -> void
+        Free,
+        
+        /// Reallocate memory (grow or shrink).
+        /// Signature: (ptr: i32, old_size: i32, new_size: i32) -> i32
+        Realloc,
+        
+        // ═══════════════════════════════════════════════════════════════
+        // TIME FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// Get current timestamp in milliseconds since epoch.
+        /// Signature: () -> i64
+        Now,
+        
+        /// Sleep for specified milliseconds (async).
+        /// Signature: (ms: i32) -> void
+        Sleep,
+        
+        /// Get monotonic time in nanoseconds (for measurements).
+        /// Signature: () -> i64
+        MonotonicNow,
+        
+        // ═══════════════════════════════════════════════════════════════
+        // MESSAGING FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// Send a message to another Spirit.
+        /// Signature: (target_ptr: i32, target_len: i32, 
+        ///             payload_ptr: i32, payload_len: i32) -> i32
+        /// Returns: 0 on success, error code on failure
+        Send,
+        
+        /// Receive next message from inbox.
+        /// Signature: () -> i32 (pointer to message, 0 if none)
+        /// Message format: [sender_len: u32][sender: bytes][payload_len: u32][payload: bytes]
+        Recv,
+        
+        /// Check number of pending messages.
+        /// Signature: () -> i32
+        Pending,
+        
+        /// Broadcast message to all Spirits in session.
+        /// Signature: (payload_ptr: i32, payload_len: i32) -> i32
+        Broadcast,
+        
+        /// Free a received message.
+        /// Signature: (msg_ptr: i32) -> void
+        FreeMessage,
+        
+        // ═══════════════════════════════════════════════════════════════
+        // RANDOM FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// Generate random f64 in [0, 1).
+        /// Signature: () -> f64
+        Random,
+        
+        /// Generate random bytes.
+        /// Signature: (ptr: i32, len: i32) -> void
+        RandomBytes,
+        
+        // ═══════════════════════════════════════════════════════════════
+        // EFFECT FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// Emit a side effect for host handling.
+        /// Signature: (effect_id: i32, payload_ptr: i32, payload_len: i32) -> i32
+        /// Returns: result code (0 = success)
+        EmitEffect,
+        
+        /// Subscribe to an effect channel.
+        /// Signature: (channel_ptr: i32, channel_len: i32) -> i32
+        Subscribe,
+        
+        // ═══════════════════════════════════════════════════════════════
+        // DEBUG FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        
+        /// Trigger a breakpoint (debug builds only).
+        /// Signature: () -> void
+        Breakpoint,
+        
+        /// Assert condition with message.
+        /// Signature: (condition: i32, msg_ptr: i32, msg_len: i32) -> void
+        Assert,
+        
+        /// Panic with message (terminates Spirit).
+        /// Signature: (msg_ptr: i32, msg_len: i32) -> void
+        Panic,
+      ```
+      
+      }
+      
+      impl HostFunction {
+      /// Get the WASM import name for this function.
+      pub const fn name(&self) -> &’static str {
+      match self {
+      // I/O
+      Self::Print => “vudo_print”,
+      Self::Println => “vudo_println”,
+      Self::Log => “vudo_log”,
+      Self::Error => “vudo_error”,
+      // Memory
+      Self::Alloc => “vudo_alloc”,
+      Self::Free => “vudo_free”,
+      Self::Realloc => “vudo_realloc”,
+      // Time
+      Self::Now => “vudo_now”,
+      Self::Sleep => “vudo_sleep”,
+      Self::MonotonicNow => “vudo_monotonic_now”,
+      // Messaging
+      Self::Send => “vudo_send”,
+      Self::Recv => “vudo_recv”,
+      Self::Pending => “vudo_pending”,
+      Self::Broadcast => “vudo_broadcast”,
+      Self::FreeMessage => “vudo_free_message”,
+      // Random
+      Self::Random => “vudo_random”,
+      Self::RandomBytes => “vudo_random_bytes”,
+      // Effects
+      Self::EmitEffect => “vudo_emit_effect”,
+      Self::Subscribe => “vudo_subscribe”,
+      // Debug
+      Self::Breakpoint => “vudo_breakpoint”,
+      Self::Assert => “vudo_assert”,
+      Self::Panic => “vudo_panic”,
+      }
+      }
+      
+      ```
+        /// Get the function signature.
+        pub fn signature(&self) -> HostFunctionSignature {
+            use WasmType::*;
+            
+            match self {
+                // I/O: (ptr, len) -> void
+                Self::Print | Self::Println | Self::Error => {
+                    HostFunctionSignature::from_static(&[I32, I32], None)
+                }
+                // Log: (level, ptr, len) -> void
+                Self::Log => {
+                    HostFunctionSignature::from_static(&[I32, I32, I32], None)
+                }
+                // Memory
+                Self::Alloc => {
+                    HostFunctionSignature::from_static(&[I32], Some(I32))
+                }
+                Self::Free => {
+                    HostFunctionSignature::from_static(&[I32, I32], None)
+                }
+                Self::Realloc => {
+                    HostFunctionSignature::from_static(&[I32, I32, I32], Some(I32))
+                }
+                // Time
+                Self::Now | Self::MonotonicNow => {
+                    HostFunctionSignature::from_static(&[], Some(I64))
+                }
+                Self::Sleep => {
+                    HostFunctionSignature::from_static(&[I32], None)
+                }
+                // Messaging
+                Self::Send => {
+                    HostFunctionSignature::from_static(&[I32, I32, I32, I32], Some(I32))
+                }
+                Self::Recv => {
+                    HostFunctionSignature::from_static(&[], Some(I32))
+                }
+                Self::Pending => {
+                    HostFunctionSignature::from_static(&[], Some(I32))
+                }
+                Self::Broadcast => {
+                    HostFunctionSignature::from_static(&[I32, I32], Some(I32))
+                }
+                Self::FreeMessage => {
+                    HostFunctionSignature::from_static(&[I32], None)
+                }
+                // Random
+                Self::Random => {
+                    HostFunctionSignature::from_static(&[], Some(F64))
+                }
+                Self::RandomBytes => {
+                    HostFunctionSignature::from_static(&[I32, I32], None)
+                }
+                // Effects
+                Self::EmitEffect => {
+                    HostFunctionSignature::from_static(&[I32, I32, I32], Some(I32))
+                }
+                Self::Subscribe => {
+                    HostFunctionSignature::from_static(&[I32, I32], Some(I32))
+                }
+                // Debug
+                Self::Breakpoint => {
+                    HostFunctionSignature::from_static(&[], None)
+                }
+                Self::Assert => {
+                    HostFunctionSignature::from_static(&[I32, I32, I32], None)
+                }
+                Self::Panic => {
+                    HostFunctionSignature::from_static(&[I32, I32], None)
+                }
+            }
+        }
+        
+        /// Get a host function by its import name.
+        pub fn by_name(name: &str) -> Option<Self> {
+            match name {
+                "vudo_print" => Some(Self::Print),
+                "vudo_println" => Some(Self::Println),
+                "vudo_log" => Some(Self::Log),
+                "vudo_error" => Some(Self::Error),
+                "vudo_alloc" => Some(Self::Alloc),
+                "vudo_free" => Some(Self::Free),
+                "vudo_realloc" => Some(Self::Realloc),
+                "vudo_now" => Some(Self::Now),
+                "vudo_sleep" => Some(Self::Sleep),
+                "vudo_monotonic_now" => Some(Self::MonotonicNow),
+                "vudo_send" => Some(Self::Send),
+                "vudo_recv" => Some(Self::Recv),
+                "vudo_pending" => Some(Self::Pending),
+                "vudo_broadcast" => Some(Self::Broadcast),
+                "vudo_free_message" => Some(Self::FreeMessage),
+                "vudo_random" => Some(Self::Random),
+                "vudo_random_bytes" => Some(Self::RandomBytes),
+                "vudo_emit_effect" => Some(Self::EmitEffect),
+                "vudo_subscribe" => Some(Self::Subscribe),
+                "vudo_breakpoint" => Some(Self::Breakpoint),
+                "vudo_assert" => Some(Self::Assert),
+                "vudo_panic" => Some(Self::Panic),
+                _ => None,
+            }
+        }
+        
+        /// Get all host functions.
+        pub fn all() -> &'static [Self] {
+            &[
+                Self::Print, Self::Println, Self::Log, Self::Error,
+                Self::Alloc, Self::Free, Self::Realloc,
+                Self::Now, Self::Sleep, Self::MonotonicNow,
+                Self::Send, Self::Recv, Self::Pending, Self::Broadcast, Self::FreeMessage,
+                Self::Random, Self::RandomBytes,
+                Self::EmitEffect, Self::Subscribe,
+                Self::Breakpoint, Self::Assert, Self::Panic,
+            ]
+        }
+        
+        /// Get the category/group for this function.
+        pub const fn category(&self) -> HostFunctionCategory {
+            match self {
+                Self::Print | Self::Println | Self::Log | Self::Error => {
+                    HostFunctionCategory::Io
+                }
+                Self::Alloc | Self::Free | Self::Realloc => {
+                    HostFunctionCategory::Memory
+                }
+                Self::Now | Self::Sleep | Self::MonotonicNow => {
+                    HostFunctionCategory::Time
+                }
+                Self::Send | Self::Recv | Self::Pending | 
+                Self::Broadcast | Self::FreeMessage => {
+                    HostFunctionCategory::Messaging
+                }
+                Self::Random | Self::RandomBytes => {
+                    HostFunctionCategory::Random
+                }
+                Self::EmitEffect | Self::Subscribe => {
+                    HostFunctionCategory::Effects
+                }
+                Self::Breakpoint | Self::Assert | Self::Panic => {
+                    HostFunctionCategory::Debug
+                }
+            }
+        }
+        
+        /// Check if this function is effectful (has side effects).
+        pub const fn is_effectful(&self) -> bool {
+            // Only pure functions are: (none currently)
+            // All host functions have observable effects
+            true
+        }
+      ```
+      
+      }
+      
+      /// Categories of host functions.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub enum HostFunctionCategory {
+      /// I/O operations (print, log)
+      Io,
+      /// Memory management (alloc, free)
+      Memory,
+      /// Time operations (now, sleep)
+      Time,
+      /// Spirit messaging (send, recv)
+      Messaging,
+      /// Random number generation
+      Random,
+      /// Side effect handling
+      Effects,
+      /// Debug utilities
+      Debug,
+      }
+      
+      impl HostFunctionCategory {
+      /// Get all functions in this category.
+      pub fn functions(&self) -> Vec<HostFunction> {
+      HostFunction::all()
+      .iter()
+      .copied()
+      .filter(|f| f.category() == *self)
+      .collect()
+      }
+      }
+      
+      #[cfg(test)]
+      mod tests {
+      use super::*;
+      
+      ```
+        #[test]
+        fn test_all_functions_have_unique_names() {
+            let mut names = std::collections::HashSet::new();
+            for func in HostFunction::all() {
+                assert!(
+                    names.insert(func.name()),
+                    "Duplicate function name: {}",
+                    func.name()
+                );
+            }
+        }
+        
+        #[test]
+        fn test_by_name_roundtrip() {
+            for func in HostFunction::all() {
+                let name = func.name();
+                let found = HostFunction::by_name(name);
+                assert_eq!(found, Some(*func), "Failed roundtrip for {}", name);
+            }
+        }
+        
+        #[test]
+        fn test_signature_display() {
+            let sig = HostFunction::Print.signature();
+            assert_eq!(sig.to_string(), "(i32, i32)");
+            
+            let sig = HostFunction::Now.signature();
+            assert_eq!(sig.to_string(), "() -> i64");
+            
+            let sig = HostFunction::Send.signature();
+            assert_eq!(sig.to_string(), "(i32, i32, i32, i32) -> i32");
+        }
+        
+        #[test]
+        fn test_categories() {
+            assert_eq!(HostFunction::Print.category(), HostFunctionCategory::Io);
+            assert_eq!(HostFunction::Alloc.category(), HostFunctionCategory::Memory);
+            assert_eq!(HostFunction::Now.category(), HostFunctionCategory::Time);
+            assert_eq!(HostFunction::Send.category(), HostFunctionCategory::Messaging);
+        }
+      ```
+      
+      }
+    
+    # ─────────────────────────────────────────────────────────────────
+    
+    # Task 1.3: Define message format
+    
+    # ─────────────────────────────────────────────────────────────────
+    - name: “define-message-format”
+      description: “Define wire format for Spirit messages”
+      action: “create_file”
+      path: “crates/dol-abi/src/message.rs”
+      content: |
+      //! Message format for Spirit ↔ Spirit communication.
+      //!
+      //! # Wire Format
+      //!
+      //! Messages in WASM linear memory use this layout:
+      //!
+      //! `text //! ┌─────────────┬────────────────┬─────────────┬───────────────┐ //! │ sender_len  │ sender (UTF-8) │ payload_len │ payload       │ //! │ (4 bytes)   │ (variable)     │ (4 bytes)   │ (variable)    │ //! └─────────────┴────────────────┴─────────────┴───────────────┘ //! `
+      //!
+      //! All integers are little-endian.
+      
+      use std::io::{self, Read, Write};
+      
+      /// Maximum message payload size (1 MB).
+      pub const MAX_PAYLOAD_SIZE: usize = 1024 * 1024;
+      
+      /// Maximum sender ID length (256 bytes).
+      pub const MAX_SENDER_LEN: usize = 256;
+      
+      /// Message header containing sender information.
+      #[derive(Debug, Clone, PartialEq, Eq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub struct MessageHeader {
+      /// Spirit ID of the sender.
+      pub sender: String,
+      /// Timestamp when message was sent (ms since epoch).
+      pub timestamp: u64,
+      /// Optional message ID for tracking.
+      pub message_id: Option<u64>,
+      }
+      
+      /// Message payload types.
+      #[derive(Debug, Clone, PartialEq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub enum MessagePayload {
+      /// UTF-8 text message.
+      Text(String),
+      /// Binary data.
+      Binary(Vec<u8>),
+      /// Structured JSON-like data.
+      Structured(StructuredData),
+      }
+      
+      /// Structured message data (simple key-value).
+      #[derive(Debug, Clone, PartialEq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub struct StructuredData {
+      /// Field-value pairs.
+      pub fields: Vec<(String, DataValue)>,
+      }
+      
+      /// Primitive values in structured data.
+      #[derive(Debug, Clone, PartialEq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub enum DataValue {
+      /// Null/none value.
+      Null,
+      /// Boolean.
+      Bool(bool),
+      /// 64-bit integer.
+      Int(i64),
+      /// 64-bit float.
+      Float(f64),
+      /// UTF-8 string.
+      String(String),
+      /// Binary bytes.
+      Bytes(Vec<u8>),
+      /// Nested list.
+      List(Vec<DataValue>),
+      }
+      
+      /// A complete message between Spirits.
+      #[derive(Debug, Clone, PartialEq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      pub struct Message {
+      /// Message header with sender info.
+      pub header: MessageHeader,
+      /// Message payload.
+      pub payload: MessagePayload,
+      }
+      
+      impl Message {
+      /// Create a new text message.
+      pub fn text(sender: impl Into<String>, content: impl Into<String>) -> Self {
+      Self {
+      header: MessageHeader {
+      sender: sender.into(),
+      timestamp: 0, // Set by runtime
+      message_id: None,
+      },
+      payload: MessagePayload::Text(content.into()),
+      }
+      }
+      
+      ```
+        /// Create a new binary message.
+        pub fn binary(sender: impl Into<String>, data: Vec<u8>) -> Self {
+            Self {
+                header: MessageHeader {
+                    sender: sender.into(),
+                    timestamp: 0,
+                    message_id: None,
+                },
+                payload: MessagePayload::Binary(data),
+            }
+        }
+        
+        /// Encode message to bytes for WASM linear memory.
+        ///
+        /// Wire format:
+        /// - sender_len: u32 (LE)
+        /// - sender: [u8; sender_len]
+        /// - timestamp: u64 (LE)
+        /// - payload_type: u8 (0=text, 1=binary, 2=structured)
+        /// - payload_len: u32 (LE)
+        /// - payload: [u8; payload_len]
+        pub fn encode(&self) -> io::Result<Vec<u8>> {
+            let mut buf = Vec::new();
+            
+            // Sender
+            let sender_bytes = self.header.sender.as_bytes();
+            if sender_bytes.len() > MAX_SENDER_LEN {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Sender ID too long",
+                ));
+            }
+            buf.write_all(&(sender_bytes.len() as u32).to_le_bytes())?;
+            buf.write_all(sender_bytes)?;
+            
+            // Timestamp
+            buf.write_all(&self.header.timestamp.to_le_bytes())?;
+            
+            // Payload
+            match &self.payload {
+                MessagePayload::Text(text) => {
+                    buf.write_all(&[0u8])?; // type = text
+                    let text_bytes = text.as_bytes();
+                    if text_bytes.len() > MAX_PAYLOAD_SIZE {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Payload too large",
+                        ));
+                    }
+                    buf.write_all(&(text_bytes.len() as u32).to_le_bytes())?;
+                    buf.write_all(text_bytes)?;
+                }
+                MessagePayload::Binary(data) => {
+                    buf.write_all(&[1u8])?; // type = binary
+                    if data.len() > MAX_PAYLOAD_SIZE {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Payload too large",
+                        ));
+                    }
+                    buf.write_all(&(data.len() as u32).to_le_bytes())?;
+                    buf.write_all(data)?;
+                }
+                MessagePayload::Structured(_) => {
+                    // TODO: Implement structured encoding
+                    buf.write_all(&[2u8])?;
+                    buf.write_all(&0u32.to_le_bytes())?;
+                }
+            }
+            
+            Ok(buf)
+        }
+        
+        /// Decode message from bytes.
+        pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+            let mut cursor = io::Cursor::new(bytes);
+            
+            // Sender
+            let mut len_buf = [0u8; 4];
+            cursor.read_exact(&mut len_buf)?;
+            let sender_len = u32::from_le_bytes(len_buf) as usize;
+            
+            if sender_len > MAX_SENDER_LEN {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Sender ID too long",
+                ));
+            }
+            
+            let mut sender_buf = vec![0u8; sender_len];
+            cursor.read_exact(&mut sender_buf)?;
+            let sender = String::from_utf8(sender_buf)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            
+            // Timestamp
+            let mut ts_buf = [0u8; 8];
+            cursor.read_exact(&mut ts_buf)?;
+            let timestamp = u64::from_le_bytes(ts_buf);
+            
+            // Payload type
+            let mut type_buf = [0u8; 1];
+            cursor.read_exact(&mut type_buf)?;
+            
+            // Payload length
+            cursor.read_exact(&mut len_buf)?;
+            let payload_len = u32::from_le_bytes(len_buf) as usize;
+            
+            if payload_len > MAX_PAYLOAD_SIZE {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Payload too large",
+                ));
+            }
+            
+            let mut payload_buf = vec![0u8; payload_len];
+            cursor.read_exact(&mut payload_buf)?;
+            
+            let payload = match type_buf[0] {
+                0 => {
+                    let text = String::from_utf8(payload_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    MessagePayload::Text(text)
+                }
+                1 => MessagePayload::Binary(payload_buf),
+                2 => MessagePayload::Structured(StructuredData { fields: vec![] }),
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Unknown payload type",
+                    ))
+                }
+            };
+            
+            Ok(Self {
+                header: MessageHeader {
+                    sender,
+                    timestamp,
+                    message_id: None,
+                },
+                payload,
+            })
+        }
+        
+        /// Get total encoded size in bytes.
+        pub fn encoded_size(&self) -> usize {
+            let sender_len = self.header.sender.len();
+            let payload_len = match &self.payload {
+                MessagePayload::Text(t) => t.len(),
+                MessagePayload::Binary(b) => b.len(),
+                MessagePayload::Structured(_) => 0,
+            };
+            
+            4 + sender_len + 8 + 1 + 4 + payload_len
+        }
+      ```
+      
+      }
+      
+      #[cfg(test)]
+      mod tests {
+      use super::*;
+      
+      ```
+        #[test]
+        fn test_text_message_roundtrip() {
+            let msg = Message::text("spirit-1", "Hello, World!");
+            let encoded = msg.encode().unwrap();
+            let decoded = Message::decode(&encoded).unwrap();
+            
+            assert_eq!(decoded.header.sender, "spirit-1");
+            assert!(matches!(decoded.payload, MessagePayload::Text(t) if t == "Hello, World!"));
+        }
+        
+        #[test]
+        fn test_binary_message_roundtrip() {
+            let msg = Message::binary("spirit-2", vec![1, 2, 3, 4, 5]);
+            let encoded = msg.encode().unwrap();
+            let decoded = Message::decode(&encoded).unwrap();
+            
+            assert_eq!(decoded.header.sender, "spirit-2");
+            assert!(matches!(decoded.payload, MessagePayload::Binary(b) if b == vec![1, 2, 3, 4, 5]));
+        }
+        
+        #[test]
+        fn test_encoded_size() {
+            let msg = Message::text("abc", "hello");
+            // 4 (sender_len) + 3 (sender) + 8 (timestamp) + 1 (type) + 4 (payload_len) + 5 (payload)
+            assert_eq!(msg.encoded_size(), 25);
+        }
+        
+        #[test]
+        fn test_empty_message() {
+            let msg = Message::text("", "");
+            let encoded = msg.encode().unwrap();
+            let decoded = Message::decode(&encoded).unwrap();
+            
+            assert_eq!(decoded.header.sender, "");
+            assert!(matches!(decoded.payload, MessagePayload::Text(t) if t.is_empty()));
+        }
+      ```
+      
+      }
+    
+    # ─────────────────────────────────────────────────────────────────
+    
+    # Task 1.4: Define common types
+    
+    # ─────────────────────────────────────────────────────────────────
+    - name: “define-common-types”
+      description: “Define common ABI types”
+      action: “create_file”
+      path: “crates/dol-abi/src/types.rs”
+      content: |
+      //! Common types used across the ABI.
+      
+      /// Spirit identifier (unique within a session).
+      pub type SpiritId = String;
+      
+      /// Effect identifier for host-handled side effects.
+      pub type EffectId = u32;
+      
+      /// Pointer to WASM linear memory.
+      pub type WasmPtr = u32;
+      
+      /// Size in WASM linear memory.
+      pub type WasmSize = u32;
+      
+      /// Log levels for structured logging.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      #[repr(u8)]
+      pub enum LogLevel {
+      /// Debug information (development only).
+      Debug = 0,
+      /// Informational messages.
+      Info = 1,
+      /// Warning conditions.
+      Warn = 2,
+      /// Error conditions.
+      Error = 3,
+      }
+      
+      impl LogLevel {
+      /// Convert from i32 (used in WASM calls).
+      pub fn from_i32(value: i32) -> Option<Self> {
+      match value {
+      0 => Some(Self::Debug),
+      1 => Some(Self::Info),
+      2 => Some(Self::Warn),
+      3 => Some(Self::Error),
+      _ => None,
+      }
+      }
+      
+      ```
+        /// Get display name.
+        pub const fn as_str(&self) -> &'static str {
+            match self {
+                Self::Debug => "DEBUG",
+                Self::Info => "INFO",
+                Self::Warn => "WARN",
+                Self::Error => "ERROR",
+            }
+        }
+      ```
+      
+      }
+      
+      /// Standard effect types that the runtime handles.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      #[repr(u32)]
+      pub enum StandardEffect {
+      /// No-op effect (for testing).
+      Noop = 0,
+      /// Request to terminate the Spirit.
+      Terminate = 1,
+      /// Request to spawn a new Spirit.
+      Spawn = 2,
+      /// File system read request.
+      FsRead = 10,
+      /// File system write request.
+      FsWrite = 11,
+      /// HTTP GET request.
+      HttpGet = 20,
+      /// HTTP POST request.
+      HttpPost = 21,
+      /// Database query.
+      DbQuery = 30,
+      }
+      
+      impl StandardEffect {
+      /// Convert from u32.
+      pub fn from_u32(value: u32) -> Option<Self> {
+      match value {
+      0 => Some(Self::Noop),
+      1 => Some(Self::Terminate),
+      2 => Some(Self::Spawn),
+      10 => Some(Self::FsRead),
+      11 => Some(Self::FsWrite),
+      20 => Some(Self::HttpGet),
+      21 => Some(Self::HttpPost),
+      30 => Some(Self::DbQuery),
+      _ => None,
+      }
+      }
+      }
+      
+      /// Result codes returned by host functions.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+      #[cfg_attr(feature = “serde”, derive(serde::Serialize, serde::Deserialize))]
+      #[repr(i32)]
+      pub enum ResultCode {
+      /// Success.
+      Ok = 0,
+      /// Generic error.
+      Error = -1,
+      /// Invalid argument.
+      InvalidArg = -2,
+      /// Out of memory.
+      OutOfMemory = -3,
+      /// Target not found (for messaging).
+      NotFound = -4,
+      /// Operation not permitted.
+      NotPermitted = -5,
+      /// Timeout.
+      Timeout = -6,
+      /// Buffer too small.
+      BufferTooSmall = -7,
+      }
+      
+      impl ResultCode {
+      /// Check if this is a success code.
+      pub const fn is_ok(&self) -> bool {
+      matches!(self, Self::Ok)
+      }
+      
+      ```
+        /// Convert from i32.
+        pub fn from_i32(value: i32) -> Self {
+            match value {
+                0 => Self::Ok,
+                -1 => Self::Error,
+                -2 => Self::InvalidArg,
+                -3 => Self::OutOfMemory,
+                -4 => Self::NotFound,
+                -5 => Self::NotPermitted,
+                -6 => Self::Timeout,
+                -7 => Self::BufferTooSmall,
+                _ => Self::Error,
+            }
+        }
+      ```
+      
+      }
+      
+      /// String encoding options.
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+      pub enum StringEncoding {
+      /// UTF-8 (default).
+      #[default]
+      Utf8,
+      /// UTF-16 (for JavaScript interop).
+      Utf16,
+      /// Latin-1 (single-byte).
+      Latin1,
+      }
+      
+      #[cfg(test)]
+      mod tests {
+      use super::*;
+      
+      ```
+        #[test]
+        fn test_log_level_ordering() {
+            assert!(LogLevel::Debug < LogLevel::Info);
+            assert!(LogLevel::Info < LogLevel::Warn);
+            assert!(LogLevel::Warn < LogLevel::Error);
+        }
+        
+        #[test]
+        fn test_result_code_roundtrip() {
+            for code in [
+                ResultCode::Ok,
+                ResultCode::Error,
+                ResultCode::InvalidArg,
+                ResultCode::OutOfMemory,
+            ] {
+                let value = code as i32;
+                assert_eq!(ResultCode::from_i32(value), code);
+            }
+        }
+      ```
+      
+      }
+    
+    # ─────────────────────────────────────────────────────────────────
+    
+    # Task 1.5: Define error types
+    
+    # ─────────────────────────────────────────────────────────────────
+    - name: “define-errors”
+      description: “Define ABI error types”
+      action: “create_file”
+      path: “crates/dol-abi/src/error.rs”
+      content: |
+      //! Error types for ABI operations.
+      
+      use std::fmt;
+      
+      /// Result type for ABI operations.
+      pub type AbiResult<T> = Result<T, AbiError>;
+      
+      /// Errors that can occur during ABI operations.
+      #[derive(Debug, Clone, PartialEq, Eq)]
+      pub enum AbiError {
+      /// Unknown host function name.
+      UnknownHostFunction(String),
+      /// Signature mismatch between expected and actual.
+      SignatureMismatch {
+      /// Function name.
+      function: String,
+      /// Expected signature.
+      expected: String,
+      /// Actual signature found.
+      actual: String,
+      },
+      /// ABI version mismatch.
+      VersionMismatch {
+      /// Expected version.
+      expected: String,
+      /// Actual version found.
+      actual: String,
+      },
+      /// Invalid message encoding.
+      InvalidMessage(String),
+      /// Memory access out of bounds.
+      OutOfBounds {
+      /// Attempted offset.
+      offset: u32,
+      /// Attempted size.
+      size: u32,
+      /// Actual memory size.
+      memory_size: u32,
+      },
+      /// Invalid pointer (null or misaligned).
+      InvalidPointer(u32),
+      /// Buffer too small for operation.
+      BufferTooSmall {
+      /// Required size.
+      required: usize,
+      /// Available size.
+      available: usize,
+      },
+      }
+      
+      impl fmt::Display for AbiError {
+      fn fmt(&self, f: &mut fmt::Formatter<’_>) -> fmt::Result {
+      match self {
+      Self::UnknownHostFunction(name) => {
+      write!(f, “Unknown host function: {}”, name)
+      }
+      Self::SignatureMismatch { function, expected, actual } => {
+      write!(
+      f,
+      “Signature mismatch for ‘{}’: expected {}, got {}”,
+      function, expected, actual
+      )
+      }
+      Self::VersionMismatch { expected, actual } => {
+      write!(
+      f,
+      “ABI version mismatch: expected {}, got {}”,
+      expected, actual
+      )
+      }
+      Self::InvalidMessage(msg) => {
+      write!(f, “Invalid message: {}”, msg)
+      }
+      Self::OutOfBounds { offset, size, memory_size } => {
+      write!(
+      f,
+      “Memory access out of bounds: offset {} + size {} > memory size {}”,
+      offset, size, memory_size
+      )
+      }
+      Self::InvalidPointer(ptr) => {
+      write!(f, “Invalid pointer: 0x{:08x}”, ptr)
+      }
+      Self::BufferTooSmall { required, available } => {
+      write!(
+      f,
+      “Buffer too small: need {} bytes, have {}”,
+      required, available
+      )
+      }
+      }
+      }
+      }
+      
+      impl std::error::Error for AbiError {}
+  
+  # ─────────────────────────────────────────────────────────────────────
+  
+  # Phase 1 Validation
+  
+  # ─────────────────────────────────────────────────────────────────────
+  
+  validation:
+  commands:
+  - “cd crates/dol-abi && cargo build”
+  - “cd crates/dol-abi && cargo test”
+  - “cd crates/dol-abi && cargo clippy – -D warnings”
+  success_criteria:
+  - “All tests pass”
+  - “No clippy warnings”
+  - “Crate builds successfully”
+
+# =============================================================================
+
+# PHASE 2: TYPESCRIPT ABI MIRROR
+
+# =============================================================================
+
+- name: “phase2-typescript-abi”
+  description: “Create TypeScript types that mirror the Rust ABI”
+  depends_on: [“phase1-abi-types”]
+  
+  agents:
+  - name: “ts-abi-generator”
+    role: “Generate TypeScript ABI types”
+    
+    tasks:
+    - name: “create-ts-abi”
+      description: “Create TypeScript ABI definitions”
+      action: “create_file”
+      path: “packages/vudo-runtime/src/abi/index.ts”
+      content: |
+      /**
+      - DOL ABI - Host Function Bindings (TypeScript)
+      - 
+      - This module mirrors the Rust dol-abi crate, ensuring
+      - type safety across the WASM boundary.
+      - 
+      - @module @vudo/runtime/abi
+        */
+      
+      /** ABI version for compatibility checking. */
+      export const ABI_VERSION = ‘0.1.0’;
+      
+      /** WASM import module name for all host functions. */
+      export const IMPORT_MODULE = ‘vudo’;
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // WASM TYPES
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /** WASM value types used in function signatures. */
+      export type WasmType = ‘i32’ | ‘i64’ | ‘f32’ | ‘f64’;
+      
+      /** Function signature: parameters and optional return type. */
+      export interface HostFunctionSignature {
+      params: WasmType[];
+      result?: WasmType;
+      }
+      
+      /** Categories of host functions. */
+      export type HostFunctionCategory =
+      | ‘io’
+      | ‘memory’
+      | ‘time’
+      | ‘messaging’
+      | ‘random’
+      | ‘effects’
+      | ‘debug’;
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // HOST FUNCTION DEFINITIONS
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /** All host function names. */
+      export type HostFunctionName =
+      // I/O
+      | ‘vudo_print’
+      | ‘vudo_println’
+      | ‘vudo_log’
+      | ‘vudo_error’
+      // Memory
+      | ‘vudo_alloc’
+      | ‘vudo_free’
+      | ‘vudo_realloc’
+      // Time
+      | ‘vudo_now’
+      | ‘vudo_sleep’
+      | ‘vudo_monotonic_now’
+      // Messaging
+      | ‘vudo_send’
+      | ‘vudo_recv’
+      | ‘vudo_pending’
+      | ‘vudo_broadcast’
+      | ‘vudo_free_message’
+      // Random
+      | ‘vudo_random’
+      | ‘vudo_random_bytes’
+      // Effects
+      | ‘vudo_emit_effect’
+      | ‘vudo_subscribe’
+      // Debug
+      | ‘vudo_breakpoint’
+      | ‘vudo_assert’
+      | ‘vudo_panic’;
+      
+      /** Host function metadata. */
+      export interface HostFunctionInfo {
+      name: HostFunctionName;
+      signature: HostFunctionSignature;
+      category: HostFunctionCategory;
+      description: string;
+      }
+      
+      /** All host functions with their signatures. */
+      export const HOST_FUNCTIONS: Record<HostFunctionName, HostFunctionInfo> = {
+      // ─────────────────────────────────────────────────────────────────
+      // I/O FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_print: {
+      name: ‘vudo_print’,
+      signature: { params: [‘i32’, ‘i32’] },
+      category: ‘io’,
+      description: ‘Print a UTF-8 string (no newline)’,
+      },
+      vudo_println: {
+      name: ‘vudo_println’,
+      signature: { params: [‘i32’, ‘i32’] },
+      category: ‘io’,
+      description: ‘Print a UTF-8 string with newline’,
+      },
+      vudo_log: {
+      name: ‘vudo_log’,
+      signature: { params: [‘i32’, ‘i32’, ‘i32’] },
+      category: ‘io’,
+      description: ‘Structured logging with level (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR)’,
+      },
+      vudo_error: {
+      name: ‘vudo_error’,
+      signature: { params: [‘i32’, ‘i32’] },
+      category: ‘io’,
+      description: ‘Log an error message’,
+      },
+      
+      ```
+      // ─────────────────────────────────────────────────────────────────
+      // MEMORY FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_alloc: {
+        name: 'vudo_alloc',
+        signature: { params: ['i32'], result: 'i32' },
+        category: 'memory',
+        description: 'Allocate memory from host allocator',
+      },
+      vudo_free: {
+        name: 'vudo_free',
+        signature: { params: ['i32', 'i32'] },
+        category: 'memory',
+        description: 'Free previously allocated memory',
+      },
+      vudo_realloc: {
+        name: 'vudo_realloc',
+        signature: { params: ['i32', 'i32', 'i32'], result: 'i32' },
+        category: 'memory',
+        description: 'Reallocate memory (grow or shrink)',
+      },
+      
+      // ─────────────────────────────────────────────────────────────────
+      // TIME FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_now: {
+        name: 'vudo_now',
+        signature: { params: [], result: 'i64' },
+        category: 'time',
+        description: 'Get current timestamp in milliseconds since epoch',
+      },
+      vudo_sleep: {
+        name: 'vudo_sleep',
+        signature: { params: ['i32'] },
+        category: 'time',
+        description: 'Sleep for specified milliseconds',
+      },
+      vudo_monotonic_now: {
+        name: 'vudo_monotonic_now',
+        signature: { params: [], result: 'i64' },
+        category: 'time',
+        description: 'Get monotonic time in nanoseconds',
+      },
+      
+      // ─────────────────────────────────────────────────────────────────
+      // MESSAGING FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_send: {
+        name: 'vudo_send',
+        signature: { params: ['i32', 'i32', 'i32', 'i32'], result: 'i32' },
+        category: 'messaging',
+        description: 'Send a message to another Spirit',
+      },
+      vudo_recv: {
+        name: 'vudo_recv',
+        signature: { params: [], result: 'i32' },
+        category: 'messaging',
+        description: 'Receive next message from inbox',
+      },
+      vudo_pending: {
+        name: 'vudo_pending',
+        signature: { params: [], result: 'i32' },
+        category: 'messaging',
+        description: 'Check number of pending messages',
+      },
+      vudo_broadcast: {
+        name: 'vudo_broadcast',
+        signature: { params: ['i32', 'i32'], result: 'i32' },
+        category: 'messaging',
+        description: 'Broadcast message to all Spirits in session',
+      },
+      vudo_free_message: {
+        name: 'vudo_free_message',
+        signature: { params: ['i32'] },
+        category: 'messaging',
+        description: 'Free a received message',
+      },
+      
+      // ─────────────────────────────────────────────────────────────────
+      // RANDOM FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_random: {
+        name: 'vudo_random',
+        signature: { params: [], result: 'f64' },
+        category: 'random',
+        description: 'Generate random f64 in [0, 1)',
+      },
+      vudo_random_bytes: {
+        name: 'vudo_random_bytes',
+        signature: { params: ['i32', 'i32'] },
+        category: 'random',
+        description: 'Generate random bytes',
+      },
+      
+      // ─────────────────────────────────────────────────────────────────
+      // EFFECT FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_emit_effect: {
+        name: 'vudo_emit_effect',
+        signature: { params: ['i32', 'i32', 'i32'], result: 'i32' },
+        category: 'effects',
+        description: 'Emit a side effect for host handling',
+      },
+      vudo_subscribe: {
+        name: 'vudo_subscribe',
+        signature: { params: ['i32', 'i32'], result: 'i32' },
+        category: 'effects',
+        description: 'Subscribe to an effect channel',
+      },
+      
+      // ─────────────────────────────────────────────────────────────────
+      // DEBUG FUNCTIONS
+      // ─────────────────────────────────────────────────────────────────
+      vudo_breakpoint: {
+        name: 'vudo_breakpoint',
+        signature: { params: [] },
+        category: 'debug',
+        description: 'Trigger a breakpoint (debug builds only)',
+      },
+      vudo_assert: {
+        name: 'vudo_assert',
+        signature: { params: ['i32', 'i32', 'i32'] },
+        category: 'debug',
+        description: 'Assert condition with message',
+      },
+      vudo_panic: {
+        name: 'vudo_panic',
+        signature: { params: ['i32', 'i32'] },
+        category: 'debug',
+        description: 'Panic with message (terminates Spirit)',
+      },
+      ```
+      
+      };
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // LOG LEVELS
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /** Log levels for structured logging. */
+      export enum LogLevel {
+      Debug = 0,
+      Info = 1,
+      Warn = 2,
+      Error = 3,
+      }
+      
+      /** Log level names. */
+      export const LOG_LEVEL_NAMES: Record<LogLevel, string> = {
+      [LogLevel.Debug]: ‘DEBUG’,
+      [LogLevel.Info]: ‘INFO’,
+      [LogLevel.Warn]: ‘WARN’,
+      [LogLevel.Error]: ‘ERROR’,
+      };
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // RESULT CODES
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /** Result codes returned by host functions. */
+      export enum ResultCode {
+      Ok = 0,
+      Error = -1,
+      InvalidArg = -2,
+      OutOfMemory = -3,
+      NotFound = -4,
+      NotPermitted = -5,
+      Timeout = -6,
+      BufferTooSmall = -7,
+      }
+      
+      /** Check if a result code indicates success. */
+      export function isOk(code: number): boolean {
+      return code === ResultCode.Ok;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // STANDARD EFFECTS
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /** Standard effect types that the runtime handles. */
+      export enum StandardEffect {
+      Noop = 0,
+      Terminate = 1,
+      Spawn = 2,
+      FsRead = 10,
+      FsWrite = 11,
+      HttpGet = 20,
+      HttpPost = 21,
+      DbQuery = 30,
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // MESSAGE FORMAT
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /** Maximum message payload size (1 MB). */
+      export const MAX_PAYLOAD_SIZE = 1024 * 1024;
+      
+      /** Maximum sender ID length (256 bytes). */
+      export const MAX_SENDER_LEN = 256;
+      
+      /** Message payload types. */
+      export enum MessagePayloadType {
+      Text = 0,
+      Binary = 1,
+      Structured = 2,
+      }
+      
+      /** Message header. */
+      export interface MessageHeader {
+      sender: string;
+      timestamp: bigint;
+      messageId?: bigint;
+      }
+      
+      /** A complete message between Spirits. */
+      export interface Message {
+      header: MessageHeader;
+      payload: Uint8Array | string;
+      payloadType: MessagePayloadType;
+      }
+      
+      /**
+      - Encode a message to bytes for WASM linear memory.
+      - 
+      - Wire format:
+      - - sender_len: u32 (LE)
+      - - sender: [u8; sender_len]
+      - - timestamp: u64 (LE)
+      - - payload_type: u8
+      - - payload_len: u32 (LE)
+      - - payload: [u8; payload_len]
+          */
+          export function encodeMessage(msg: Message): Uint8Array {
+          const encoder = new TextEncoder();
+          const senderBytes = encoder.encode(msg.header.sender);
+      
+      ```
+      if (senderBytes.length > MAX_SENDER_LEN) {
+        throw new Error('Sender ID too long');
+      }
+      
+      const payloadBytes =
+        typeof msg.payload === 'string'
+          ? encoder.encode(msg.payload)
+          : msg.payload;
+      
+      if (payloadBytes.length > MAX_PAYLOAD_SIZE) {
+        throw new Error('Payload too large');
+      }
+      
+      const totalSize =
+        4 + senderBytes.length + 8 + 1 + 4 + payloadBytes.length;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+      const bytes = new Uint8Array(buffer);
+      
+      let offset = 0;
+      
+      // Sender length (u32 LE)
+      view.setUint32(offset, senderBytes.length, true);
+      offset += 4;
+      
+      // Sender bytes
+      bytes.set(senderBytes, offset);
+      offset += senderBytes.length;
+      
+      // Timestamp (u64 LE)
+      view.setBigUint64(offset, msg.header.timestamp, true);
+      offset += 8;
+      
+      // Payload type (u8)
+      view.setUint8(offset, msg.payloadType);
+      offset += 1;
+      
+      // Payload length (u32 LE)
+      view.setUint32(offset, payloadBytes.length, true);
+      offset += 4;
+      
+      // Payload bytes
+      bytes.set(payloadBytes, offset);
+      
+      return bytes;
+      ```
+      
+      }
+      
+      /**
+      - Decode a message from bytes.
+        */
+        export function decodeMessage(bytes: Uint8Array): Message {
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const decoder = new TextDecoder();
+      
+      ```
+      let offset = 0;
+      
+      // Sender length
+      const senderLen = view.getUint32(offset, true);
+      offset += 4;
+      
+      if (senderLen > MAX_SENDER_LEN) {
+        throw new Error('Sender ID too long');
+      }
+      
+      // Sender
+      const senderBytes = bytes.slice(offset, offset + senderLen);
+      const sender = decoder.decode(senderBytes);
+      offset += senderLen;
+      
+      // Timestamp
+      const timestamp = view.getBigUint64(offset, true);
+      offset += 8;
+      
+      // Payload type
+      const payloadType = view.getUint8(offset) as MessagePayloadType;
+      offset += 1;
+      
+      // Payload length
+      const payloadLen = view.getUint32(offset, true);
+      offset += 4;
+      
+      if (payloadLen > MAX_PAYLOAD_SIZE) {
+        throw new Error('Payload too large');
+      }
+      
+      // Payload
+      const payloadBytes = bytes.slice(offset, offset + payloadLen);
+      const payload =
+        payloadType === MessagePayloadType.Text
+          ? decoder.decode(payloadBytes)
+          : payloadBytes;
+      
+      return {
+        header: { sender, timestamp },
+        payload,
+        payloadType,
+      };
+      ```
+      
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // VALIDATION
+      // ═══════════════════════════════════════════════════════════════════
+      
+      /**
+      - Validate that a WASM module’s imports match the expected ABI.
+        */
+        export function validateImports(
+        imports: Array<{ module: string; name: string }>
+        ): { valid: boolean; errors: string[] } {
+        const errors: string[] = [];
+      
+      ```
+      for (const { module, name } of imports) {
+        if (module === IMPORT_MODULE) {
+          if (!(name in HOST_FUNCTIONS)) {
+            errors.push(`Unknown host function: ${name}`);
+          }
+        }
+      }
+      
+      return {
+        valid: errors.length === 0,
+        errors,
+      };
+      ```
+      
+      }
+      
+      /**
+      - Get all host functions in a category.
+        */
+        export function getFunctionsByCategory(
+        category: HostFunctionCategory
+        ): HostFunctionInfo[] {
+        return Object.values(HOST_FUNCTIONS).filter(
+        (f) => f.category === category
+        );
+        }
+    - name: “create-ts-tests”
+      description: “Create TypeScript ABI tests”
+      action: “create_file”
+      path: “packages/vudo-runtime/src/abi/index.test.ts”
+      content: |
+      import { describe, it, expect } from ‘vitest’;
+      import {
+      HOST_FUNCTIONS,
+      ABI_VERSION,
+      IMPORT_MODULE,
+      LogLevel,
+      LOG_LEVEL_NAMES,
+      ResultCode,
+      isOk,
+      encodeMessage,
+      decodeMessage,
+      validateImports,
+      getFunctionsByCategory,
+      MessagePayloadType,
+      } from ‘./index’;
+      
+      describe(‘ABI Constants’, () => {
+      it(‘should have correct ABI version’, () => {
+      expect(ABI_VERSION).toBe(‘0.1.0’);
+      });
+      
+      ```
+      it('should have correct import module', () => {
+        expect(IMPORT_MODULE).toBe('vudo');
+      });
+      ```
+      
+      });
+      
+      describe(‘Host Functions’, () => {
+      it(‘should have all expected functions’, () => {
+      const expected = [
+      ‘vudo_print’, ‘vudo_println’, ‘vudo_log’, ‘vudo_error’,
+      ‘vudo_alloc’, ‘vudo_free’, ‘vudo_realloc’,
+      ‘vudo_now’, ‘vudo_sleep’, ‘vudo_monotonic_now’,
+      ‘vudo_send’, ‘vudo_recv’, ‘vudo_pending’, ‘vudo_broadcast’, ‘vudo_free_message’,
+      ‘vudo_random’, ‘vudo_random_bytes’,
+      ‘vudo_emit_effect’, ‘vudo_subscribe’,
+      ‘vudo_breakpoint’, ‘vudo_assert’, ‘vudo_panic’,
+      ];
+      
+      ```
+        const actual = Object.keys(HOST_FUNCTIONS);
+        expect(actual.sort()).toEqual(expected.sort());
+      });
+      
+      it('should have correct signature for vudo_print', () => {
+        const sig = HOST_FUNCTIONS.vudo_print.signature;
+        expect(sig.params).toEqual(['i32', 'i32']);
+        expect(sig.result).toBeUndefined();
+      });
+      
+      it('should have correct signature for vudo_now', () => {
+        const sig = HOST_FUNCTIONS.vudo_now.signature;
+        expect(sig.params).toEqual([]);
+        expect(sig.result).toBe('i64');
+      });
+      
+      it('should have correct signature for vudo_send', () => {
+        const sig = HOST_FUNCTIONS.vudo_send.signature;
+        expect(sig.params).toEqual(['i32', 'i32', 'i32', 'i32']);
+        expect(sig.result).toBe('i32');
+      });
+      
+      it('should categorize functions correctly', () => {
+        expect(HOST_FUNCTIONS.vudo_print.category).toBe('io');
+        expect(HOST_FUNCTIONS.vudo_alloc.category).toBe('memory');
+        expect(HOST_FUNCTIONS.vudo_now.category).toBe('time');
+        expect(HOST_FUNCTIONS.vudo_send.category).toBe('messaging');
+        expect(HOST_FUNCTIONS.vudo_random.category).toBe('random');
+      });
+      ```
+      
+      });
+      
+      describe(‘LogLevel’, () => {
+      it(‘should have correct values’, () => {
+      expect(LogLevel.Debug).toBe(0);
+      expect(LogLevel.Info).toBe(1);
+      expect(LogLevel.Warn).toBe(2);
+      expect(LogLevel.Error).toBe(3);
+      });
+      
+      ```
+      it('should have correct names', () => {
+        expect(LOG_LEVEL_NAMES[LogLevel.Debug]).toBe('DEBUG');
+        expect(LOG_LEVEL_NAMES[LogLevel.Error]).toBe('ERROR');
+      });
+      ```
+      
+      });
+      
+      describe(‘ResultCode’, () => {
+      it(‘should have correct values’, () => {
+      expect(ResultCode.Ok).toBe(0);
+      expect(ResultCode.Error).toBe(-1);
+      expect(ResultCode.OutOfMemory).toBe(-3);
+      });
+      
+      ```
+      it('should check success correctly', () => {
+        expect(isOk(ResultCode.Ok)).toBe(true);
+        expect(isOk(ResultCode.Error)).toBe(false);
+        expect(isOk(0)).toBe(true);
+        expect(isOk(-1)).toBe(false);
+      });
+      ```
+      
+      });
+      
+      describe(‘Message Encoding’, () => {
+      it(‘should roundtrip text message’, () => {
+      const original = {
+      header: { sender: ‘spirit-1’, timestamp: 1234567890n },
+      payload: ‘Hello, World!’,
+      payloadType: MessagePayloadType.Text,
+      };
+      
+      ```
+        const encoded = encodeMessage(original);
+        const decoded = decodeMessage(encoded);
+      
+        expect(decoded.header.sender).toBe('spirit-1');
+        expect(decoded.header.timestamp).toBe(1234567890n);
+        expect(decoded.payload).toBe('Hello, World!');
+        expect(decoded.payloadType).toBe(MessagePayloadType.Text);
+      });
+      
+      it('should roundtrip binary message', () => {
+        const original = {
+          header: { sender: 'spirit-2', timestamp: 0n },
+          payload: new Uint8Array([1, 2, 3, 4, 5]),
+          payloadType: MessagePayloadType.Binary,
+        };
+      
+        const encoded = encodeMessage(original);
+        const decoded = decodeMessage(encoded);
+      
+        expect(decoded.header.sender).toBe('spirit-2');
+        expect(decoded.payload).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+        expect(decoded.payloadType).toBe(MessagePayloadType.Binary);
+      });
+      
+      it('should reject oversized sender', () => {
+        const original = {
+          header: { sender: 'x'.repeat(300), timestamp: 0n },
+          payload: 'test',
+          payloadType: MessagePayloadType.Text,
+        };
+      
+        expect(() => encodeMessage(original)).toThrow('Sender ID too long');
+      });
+      ```
+      
+      });
+      
+      describe(‘Import Validation’, () => {
+      it(‘should accept valid imports’, () => {
+      const imports = [
+      { module: ‘vudo’, name: ‘vudo_print’ },
+      { module: ‘vudo’, name: ‘vudo_alloc’ },
+      { module: ‘env’, name: ‘memory’ }, // Non-vudo import, ignored
+      ];
+      
+      ```
+        const result = validateImports(imports);
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+      
+      it('should reject unknown functions', () => {
+        const imports = [
+          { module: 'vudo', name: 'vudo_unknown' },
+        ];
+      
+        const result = validateImports(imports);
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContain('Unknown host function: vudo_unknown');
+      });
+      ```
+      
+      });
+      
+      describe(‘Category Filtering’, () => {
+      it(‘should get IO functions’, () => {
+      const ioFuncs = getFunctionsByCategory(‘io’);
+      expect(ioFuncs.length).toBe(4);
+      expect(ioFuncs.map(f => f.name)).toContain(‘vudo_print’);
+      });
+      
+      ```
+      it('should get messaging functions', () => {
+        const msgFuncs = getFunctionsByCategory('messaging');
+        expect(msgFuncs.length).toBe(5);
+        expect(msgFuncs.map(f => f.name)).toContain('vudo_send');
+      });
+      ```
+      
+      });
+  
+  validation:
+  commands:
+  - “cd packages/vudo-runtime && npm test – –run src/abi/index.test.ts”
+  success_criteria:
+  - “All TypeScript tests pass”
+  - “Types match Rust definitions”
+
+# =============================================================================
+
+# PHASE 3: DOCUMENTATION
+
+# =============================================================================
+
+- name: “phase3-documentation”
+  description: “Create ABI documentation”
+  depends_on: [“phase2-typescript-abi”]
+  
+  agents:
+  - name: “doc-writer”
+    role: “Document the ABI”
+    
+    tasks:
+    - name: “create-abi-docs”
+      description: “Create comprehensive ABI documentation”
+      action: “create_file”
+      path: “docs/ABI-SPECIFICATION.md”
+      content: |
+      
+      # DOL ABI Specification
+    
+    > **Version:** 0.1.0  
+    > **Status:** Stable  
+    > **Last Updated:** 2026-02-04
+      
+      -----
+      
+      ## Overview
+      
+      The DOL Application Binary Interface (ABI) defines the contract between
+      DOL-compiled WASM modules and the VUDO runtime. All host functions are
+      imported from the `"vudo"` module namespace.
+      
+      ```
+      ┌─────────────────────────────────────────────────────────────────┐
+      │                     DOL Spirit (WASM)                           │
+      │                                                                 │
+      │   fun main() {                                                  │
+      │       println("Hello from Spirit!")   ─────┐                   │
+      │       send(target, message)           ─────┼─── WASM imports   │
+      │       let t = now()                   ─────┘                   │
+      │   }                                                             │
+      └────────────────────────────────────────────┬────────────────────┘
+                                                  │
+                             import "vudo" "vudo_*"
+                                                  │
+      ┌────────────────────────────────────────────┴────────────────────┐
+      │                     VUDO Runtime                                │
+      │                                                                 │
+      │   vudo_println(ptr, len)    → console.log(decodeString(...))   │
+      │   vudo_send(...)            → messageBus.send(...)              │
+      │   vudo_now()                → BigInt(Date.now())                │
+      │                                                                 │
+      └─────────────────────────────────────────────────────────────────┘
+      ```
+      
+      -----
+      
+      ## Host Functions
+      
+      ### I/O Functions
+      
+      |Function      |Signature                         |Description                    |
+      |--------------|----------------------------------|-------------------------------|
+      |`vudo_print`  |`(ptr: i32, len: i32)`            |Print UTF-8 string (no newline)|
+      |`vudo_println`|`(ptr: i32, len: i32)`            |Print UTF-8 string with newline|
+      |`vudo_log`    |`(level: i32, ptr: i32, len: i32)`|Structured logging             |
+      |`vudo_error`  |`(ptr: i32, len: i32)`            |Log error message              |
+      
+      **Log Levels:**
+      - `0` = DEBUG
+      - `1` = INFO
+      - `2` = WARN
+      - `3` = ERROR
+      
+      ### Memory Functions
+      
+      |Function      |Signature                              |Description                                |
+      |--------------|---------------------------------------|-------------------------------------------|
+      |`vudo_alloc`  |`(size: i32) -> i32`                   |Allocate memory (returns ptr, 0 on failure)|
+      |`vudo_free`   |`(ptr: i32, size: i32)`                |Free memory                                |
+      |`vudo_realloc`|`(ptr: i32, old: i32, new: i32) -> i32`|Reallocate memory                          |
+      
+      ### Time Functions
+      
+      |Function            |Signature  |Description                          |
+      |--------------------|-----------|-------------------------------------|
+      |`vudo_now`          |`() -> i64`|Timestamp in milliseconds since epoch|
+      |`vudo_sleep`        |`(ms: i32)`|Sleep for milliseconds               |
+      |`vudo_monotonic_now`|`() -> i64`|Monotonic time in nanoseconds        |
+      
+      ### Messaging Functions
+      
+      |Function           |Signature                                                  |Description                     |
+      |-------------------|-----------------------------------------------------------|--------------------------------|
+      |`vudo_send`        |`(target_ptr, target_len, payload_ptr, payload_len) -> i32`|Send message                    |
+      |`vudo_recv`        |`() -> i32`                                                |Receive message (ptr, 0 if none)|
+      |`vudo_pending`     |`() -> i32`                                                |Count pending messages          |
+      |`vudo_broadcast`   |`(ptr: i32, len: i32) -> i32`                              |Broadcast to all Spirits        |
+      |`vudo_free_message`|`(ptr: i32)`                                               |Free received message           |
+      
+      ### Random Functions
+      
+      |Function           |Signature             |Description                  |
+      |-------------------|----------------------|-----------------------------|
+      |`vudo_random`      |`() -> f64`           |Random f64 in [0, 1)         |
+      |`vudo_random_bytes`|`(ptr: i32, len: i32)`|Fill buffer with random bytes|
+      
+      ### Effect Functions
+      
+      |Function          |Signature                             |Description                |
+      |------------------|--------------------------------------|---------------------------|
+      |`vudo_emit_effect`|`(id: i32, ptr: i32, len: i32) -> i32`|Emit side effect           |
+      |`vudo_subscribe`  |`(ptr: i32, len: i32) -> i32`         |Subscribe to effect channel|
+      
+      ### Debug Functions
+      
+      |Function         |Signature                        |Description              |
+      |-----------------|---------------------------------|-------------------------|
+      |`vudo_breakpoint`|`()`                             |Trigger breakpoint       |
+      |`vudo_assert`    |`(cond: i32, ptr: i32, len: i32)`|Assert with message      |
+      |`vudo_panic`     |`(ptr: i32, len: i32)`           |Panic (terminates Spirit)|
+      
+      -----
+      
+      ## Result Codes
+      
+      |Code|Name          |Description            |
+      |----|--------------|-----------------------|
+      |`0` |Ok            |Success                |
+      |`-1`|Error         |Generic error          |
+      |`-2`|InvalidArg    |Invalid argument       |
+      |`-3`|OutOfMemory   |Allocation failed      |
+      |`-4`|NotFound      |Target not found       |
+      |`-5`|NotPermitted  |Operation not permitted|
+      |`-6`|Timeout       |Operation timed out    |
+      |`-7`|BufferTooSmall|Buffer too small       |
+      
+      -----
+      
+      ## Message Wire Format
+      
+      Messages in WASM linear memory use this layout:
+      
+      ```
+      ┌─────────────┬────────────────┬───────────┬─────────────┬─────────────┬─────────────┐
+      │ sender_len  │ sender (UTF-8) │ timestamp │ payload_type│ payload_len │ payload     │
+      │ (4 bytes)   │ (variable)     │ (8 bytes) │ (1 byte)    │ (4 bytes)   │ (variable)  │
+      └─────────────┴────────────────┴───────────┴─────────────┴─────────────┴─────────────┘
+      ```
+      - All integers are **little-endian**
+      - `sender_len`: max 256 bytes
+      - `payload_len`: max 1 MB
+      - `payload_type`: 0=Text, 1=Binary, 2=Structured
+      
+      -----
+      
+      ## Usage in DOL
+      
+      DOL’s effect system automatically infers which functions are effectful:
+      
+      ```dol
+      // This function is pure
+      fun add(a: Int64, b: Int64) -> Int64 {
+          return a + b
+      }
+      
+      // This function is effectful (calls println)
+      fun greet(name: String) {
+          println("Hello, " + name)  // Compiles to vudo_println
+      }
+      
+      // Messaging is effectful
+      fun chat(target: String, msg: String) {
+          send(target, msg)  // Compiles to vudo_send
+          
+          if pending() > 0 {  // Compiles to vudo_pending
+              let reply = recv()  // Compiles to vudo_recv
+              println("Got: " + reply)
+          }
+      }
+      ```
+      
+      -----
+      
+      ## Implementation Notes
+      
+      ### For Runtime Implementers
+    1. **Memory Safety**: Validate all pointers before dereferencing
+    1. **String Encoding**: Always UTF-8, validate before decoding
+    1. **Allocation**: Track allocations for leak detection
+    1. **Threading**: Host functions may be called from any thread
+      
+      ### For Compiler Implementers
+    1. **Import Generation**: Emit imports for all used host functions
+    1. **String Handling**: Write strings to linear memory before calling
+    1. **Result Checking**: Check return codes from fallible functions
+    1. **Effect Tracking**: Mark functions that call host functions as effectful
+      
+      -----
+      
+      ## Version History
+      
+      |Version|Date      |Changes              |
+      |-------|----------|---------------------|
+      |0.1.0  |2026-02-04|Initial specification|
+
+# =============================================================================
+
+# FINAL VALIDATION
+
+# =============================================================================
+
+final_validation:
+commands:
+- “cd crates/dol-abi && cargo test”
+- “cd crates/dol-abi && cargo doc –no-deps”
+- “cd packages/vudo-runtime && npm test – –run src/abi/”
+success_criteria:
+- “All Rust tests pass”
+- “All TypeScript tests pass”
+- “Documentation builds without warnings”
+- “Rust and TypeScript types are in sync”
+
+# =============================================================================
+
+# ARTIFACTS SUMMARY
+
+# =============================================================================
+
+artifacts:
+rust:
+- “crates/dol-abi/Cargo.toml”
+- “crates/dol-abi/src/lib.rs”
+- “crates/dol-abi/src/host.rs”
+- “crates/dol-abi/src/message.rs”
+- “crates/dol-abi/src/types.rs”
+- “crates/dol-abi/src/error.rs”
+
+typescript:
+- “packages/vudo-runtime/src/abi/index.ts”
+- “packages/vudo-runtime/src/abi/index.test.ts”
+
+documentation:
+- “docs/ABI-SPECIFICATION.md”
+
+# =============================================================================
+
+# EXIT CRITERIA
+
+# =============================================================================
+
+exit_criteria:
+
+- “dol-abi crate builds and all tests pass”
+- “TypeScript ABI types match Rust definitions”
+- “Message encode/decode roundtrips correctly”
+- “All 22 host functions documented with signatures”
+- “ABI version is 0.1.0”
