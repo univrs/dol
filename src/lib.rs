@@ -59,6 +59,7 @@
 //! - [`transform`]: AST transformation framework with passes
 //! - [`codegen`]: Code generation from DOL declarations
 //! - [`sex`]: Side Effect eXecution system for purity tracking
+//! - [`message`]: Spirit-to-Spirit message wire format (requires `serde` feature)
 //! - [`mcp`]: Model Context Protocol server (requires `serde` feature)
 //! - [`mlir`]: MLIR code generation backend (requires `mlir` feature)
 //! - [`wasm`]: WebAssembly compilation and runtime (requires `wasm` feature)
@@ -99,6 +100,10 @@ pub mod swarm;
 // Spirit REPL (interactive evaluation)
 pub mod repl;
 
+// Spirit-to-Spirit message wire format (requires serde feature)
+#[cfg(feature = "serde")]
+pub mod message;
+
 // MCP server (requires serde feature)
 #[cfg(feature = "serde")]
 pub mod mcp;
@@ -123,9 +128,11 @@ pub use ast::{Declaration, DolFile, Evo, Gen, Rule, Span, Statement, System, Tra
 // Backward compatibility re-exports (deprecated)
 #[allow(deprecated)]
 pub use ast::{Constraint, Evolution, Gene};
-pub use error::{LexError, ParseError, ValidationError};
+pub use error::{AbiError, LexError, ParseError, ValidationError};
 pub use eval::{EvalError, Interpreter, Value};
 pub use lexer::{Lexer, Token, TokenKind};
+#[cfg(feature = "serde")]
+pub use message::{Message, MessageHeader, MessagePayload};
 pub use parser::Parser;
 pub use typechecker::{Type, TypeChecker, TypeEnv, TypeError};
 #[cfg(feature = "serde")]

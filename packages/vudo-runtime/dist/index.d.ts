@@ -288,6 +288,129 @@ declare function createLoggingLoa(logger: {
 }): Loa;
 
 /**
+ * MessageBus - Inter-Spirit communication
+ *
+ * Enables Spirits to send and receive messages within a Séance session.
+ * Messages are queued per-Spirit and can be consumed synchronously.
+ */
+
+/**
+ * A message sent between Spirits
+ */
+interface Message$1 {
+    /** Source Spirit name */
+    from: string;
+    /** Destination Spirit name */
+    to: string;
+    /** Message type/channel identifier */
+    channel: number;
+    /** Raw payload bytes */
+    payload: Uint8Array;
+    /** Timestamp when message was sent */
+    timestamp: number;
+}
+/**
+ * Message handler callback type
+ */
+type MessageHandler = (message: Message$1) => void;
+/**
+ * Message bus for Spirit-to-Spirit communication
+ *
+ * @example
+ * ```typescript
+ * const bus = new MessageBus();
+ *
+ * // Register Spirits
+ * bus.register('ping');
+ * bus.register('pong');
+ *
+ * // Send a message
+ * bus.send('ping', 'pong', 1, new Uint8Array([1, 2, 3]));
+ *
+ * // Receive message
+ * const msg = bus.recv('pong', 1);
+ * ```
+ */
+declare class MessageBus {
+    /** Message queues per Spirit name */
+    private queues;
+    /** Global message handlers */
+    private handlers;
+    /** Debug mode flag */
+    private debug;
+    constructor(options?: {
+        debug?: boolean;
+    });
+    /**
+     * Register a Spirit to receive messages
+     */
+    register(name: string): void;
+    /**
+     * Unregister a Spirit from the message bus
+     */
+    unregister(name: string): void;
+    /**
+     * Check if a Spirit is registered
+     */
+    isRegistered(name: string): boolean;
+    /**
+     * Send a message to a Spirit
+     *
+     * @param from - Source Spirit name
+     * @param to - Destination Spirit name
+     * @param channel - Message channel/type identifier
+     * @param payload - Raw bytes to send
+     * @returns true if message was delivered, false if destination not found
+     */
+    send(from: string, to: string, channel: number, payload: Uint8Array): boolean;
+    /**
+     * Receive a message for a Spirit
+     *
+     * @param name - Spirit name to receive for
+     * @param channel - Optional channel filter (0 = any channel)
+     * @returns Next message or undefined if queue is empty
+     */
+    recv(name: string, channel?: number): Message$1 | undefined;
+    /**
+     * Peek at the next message without removing it
+     */
+    peek(name: string, channel?: number): Message$1 | undefined;
+    /**
+     * Get the number of pending messages for a Spirit
+     */
+    pending(name: string, channel?: number): number;
+    /**
+     * Add a message handler for a Spirit
+     */
+    onMessage(name: string, handler: MessageHandler): void;
+    /**
+     * Clear all messages for a Spirit
+     */
+    clear(name: string): void;
+    /**
+     * Clear all messages in the bus
+     */
+    clearAll(): void;
+    /**
+     * Get all registered Spirit names
+     */
+    spirits(): string[];
+}
+/**
+ * Create a messaging Loa that provides vudo_send and vudo_recv functions
+ *
+ * @param bus - MessageBus instance
+ * @param spiritName - Name of the Spirit using this Loa
+ */
+declare function createMessagingLoa(bus: MessageBus, spiritName: string): Loa;
+/**
+ * Create a new MessageBus
+ */
+declare function createMessageBus(options?: {
+    debug?: boolean;
+}): MessageBus;
+
+/**
  * Séance - Session management for multiple Spirit instances
  *
  * A Séance coordinates multiple Spirits, allowing them to interact
@@ -316,10 +439,12 @@ declare function createLoggingLoa(logger: {
 declare class Seance implements SeanceInstance {
     private spiritMap;
     private registry;
+    private messageBus;
     private debug;
     private defaultOptions;
     constructor(options?: {
         loas?: LoaRegistry;
+        messageBus?: MessageBus;
         debug?: boolean;
         defaultLoadOptions?: LoadOptions;
     });
@@ -365,15 +490,56 @@ declare class Seance implements SeanceInstance {
      */
     get loas(): LoaRegistry;
     /**
+     * Get the MessageBus for this session
+     */
+    get messages(): MessageBus;
+    /**
      * Get the number of summoned Spirits
      */
     get size(): number;
+    /**
+     * Send a message from one Spirit to another
+     *
+     * @param from - Source Spirit name
+     * @param to - Destination Spirit name
+     * @param channel - Message channel identifier
+     * @param payload - Data to send
+     * @returns true if message was delivered
+     *
+     * @example
+     * ```typescript
+     * seance.send('ping', 'pong', 1, new Uint8Array([1, 2, 3]));
+     * ```
+     */
+    send(from: string, to: string, channel: number, payload: Uint8Array): boolean;
+    /**
+     * Check number of pending messages for a Spirit
+     *
+     * @param name - Spirit name
+     * @param channel - Optional channel filter (0 = all channels)
+     */
+    pending(name: string, channel?: number): number;
+    /**
+     * Broadcast a message to all Spirits except the sender
+     *
+     * @param from - Source Spirit name
+     * @param channel - Message channel identifier
+     * @param payload - Data to send
+     * @returns Number of Spirits that received the message
+     *
+     * @example
+     * ```typescript
+     * seance.broadcast('coordinator', 1, new Uint8Array([0xFF]));
+     * ```
+     */
+    broadcast(from: string, channel: number, payload: Uint8Array): number;
 }
 /**
  * Create a new Séance session
  */
 declare function createSeance(options?: {
     loas?: LoaRegistry;
+    messageBus?: MessageBus;
     debug?: boolean;
 }): Seance;
 /**
@@ -391,6 +557,7 @@ declare function createSeance(options?: {
  */
 declare function withSeance<T>(fn: (seance: Seance) => Promise<T>, options?: {
     loas?: LoaRegistry;
+    messageBus?: MessageBus;
     debug?: boolean;
 }): Promise<T>;
 
@@ -541,4 +708,642 @@ declare function getTypeAlignment(type: GeneField['type']): number;
  */
 declare function calculateLayout(name: string, fields: Omit<GeneField, 'offset'>[]): GeneLayout;
 
-export { BumpAllocator, type GeneField, type GeneFieldType, type GeneLayout, type GeneValues, type Loa, type LoaContext, LoaRegistry, type LoadOptions, type MemoryManager, Seance, type SeanceInstance, Spirit, type SpiritInstance, SpiritLoader, SpiritMemoryManager, calculateLayout, coreLoa, createLoa, createLoggingLoa, createSeance, decodeString, encodeString, getTypeAlignment, getTypeSize, loadSpirit, readGene, withSeance, writeGene };
+/**
+ * Type definitions for the DOL ABI
+ *
+ * These types mirror the Rust ABI definitions and are designed
+ * to serialize/deserialize cleanly with serde_json.
+ */
+/**
+ * A qualified identifier in DOL (e.g., "domain.property" or "domain.property.version")
+ *
+ * @example
+ * const id = new QualifiedId('container', 'exists');
+ * const idWithVersion = new QualifiedId('container', 'exists', '1.0.0');
+ */
+declare class QualifiedId {
+    /**
+     * Domain part of the identifier
+     */
+    domain: string;
+    /**
+     * Property part of the identifier
+     */
+    property: string;
+    /**
+     * Optional version part (semantic version)
+     */
+    version?: string;
+    /**
+     * Create a new qualified identifier
+     * @param domain - Domain part
+     * @param property - Property part
+     * @param version - Optional version part
+     */
+    constructor(domain: string, property: string, version?: string);
+    /**
+     * Convert to string representation (e.g., "domain.property.1.0.0")
+     */
+    toString(): string;
+    /**
+     * Parse a qualified identifier string into a QualifiedId
+     * @param input - String in format "domain.property" or "domain.property.version"
+     * @returns Parsed QualifiedId
+     */
+    static parse(input: string): QualifiedId;
+}
+/**
+ * Serializable version of QualifiedId for JSON serialization
+ * Mirrors the Rust serde representation
+ */
+interface QualifiedIdSerialized {
+    domain: string;
+    property: string;
+    version?: string;
+}
+/**
+ * Standard effect type for logging and tracing
+ * Used to represent side effects and state changes
+ */
+interface StandardEffect {
+    /** Type of effect (e.g., "log", "state_change", "function_call") */
+    effect_type: string;
+    /** Payload data for the effect */
+    payload: unknown;
+    /** Unix timestamp of when the effect occurred */
+    timestamp: number;
+}
+/**
+ * Standard event type for event-driven communication
+ * Compatible with the event bus architecture
+ */
+interface StandardEvent {
+    /** Unique event identifier */
+    id: string;
+    /** Event type classifier */
+    event_type: string;
+    /** Originating component/module */
+    source: string;
+    /** Event payload data */
+    data: unknown;
+    /** Unix timestamp of event creation */
+    timestamp: number;
+    /** Optional metadata key-value pairs */
+    metadata?: Record<string, unknown>;
+}
+/**
+ * Logging level enumeration
+ * Ordered from least to most severe
+ */
+declare enum LogLevel {
+    Debug = 0,
+    Info = 1,
+    Warn = 2,
+    Error = 3
+}
+/**
+ * Result code enumeration for operation status
+ * Mirrors Rust enum with numeric discriminants
+ */
+declare enum ResultCode {
+    Success = 0,
+    Error = 1,
+    Pending = 2,
+    Timeout = 3
+}
+/**
+ * Convert LogLevel enum value to string
+ * @param level - LogLevel enum value
+ * @returns String representation
+ */
+declare function logLevelToString(level: LogLevel): string;
+/**
+ * Convert string to LogLevel enum
+ * @param str - String representation
+ * @returns LogLevel enum value
+ */
+declare function stringToLogLevel(str: string): LogLevel;
+/**
+ * Convert ResultCode enum value to string
+ * @param code - ResultCode enum value
+ * @returns String representation
+ */
+declare function resultCodeToString(code: ResultCode): string;
+/**
+ * Convert string to ResultCode enum
+ * @param str - String representation
+ * @returns ResultCode enum value
+ */
+declare function stringToResultCode(str: string): ResultCode;
+
+/**
+ * Message types for host-to-ABI communication
+ *
+ * These types define the message protocol between the DOL runtime (host)
+ * and WASM modules (guests). All types are JSON-serializable.
+ */
+/**
+ * Header information for a message
+ * Contains metadata about the message for routing and tracking
+ */
+interface MessageHeader {
+    /** Unique message identifier for request-response matching */
+    id: string;
+    /** Message type classifier (e.g., "init", "call", "event") */
+    msg_type: string;
+    /** Source identifier (host or module name) */
+    source: string;
+    /** Destination identifier (module or host) */
+    destination: string;
+    /** Unix timestamp of message creation */
+    timestamp: number;
+    /** Message version/protocol version */
+    version: string;
+    /** Optional correlation ID for tracing message chains */
+    correlation_id?: string;
+    /** Message priority (0-3, higher = more important) */
+    priority?: number;
+    /** Optional timeout in milliseconds */
+    timeout_ms?: number;
+}
+/**
+ * Message payload wrapper
+ * Encapsulates the actual data being transmitted
+ */
+interface MessagePayload {
+    /** Payload data (can be any JSON-serializable value) */
+    data: unknown;
+    /** Optional encoding hint (e.g., "utf-8", "base64") */
+    encoding?: string;
+    /** Optional content type (e.g., "application/json") */
+    content_type?: string;
+    /** Optional compression hint (e.g., "gzip") */
+    compression?: string;
+}
+/**
+ * A message from the host to a WASM module or vice versa
+ *
+ * This is the primary communication unit in the ABI. It combines
+ * header information with payload data in a single serializable structure.
+ *
+ * @example
+ * const msg = new Message(
+ *   '123',
+ *   'call',
+ *   { function: 'init', args: [] },
+ *   { source: 'host', destination: 'spirit-1' }
+ * );
+ */
+declare class Message {
+    /** Message header with metadata */
+    header: MessageHeader;
+    /** Message payload wrapper */
+    payload: MessagePayload;
+    /**
+     * Create a new message
+     * @param id - Unique message identifier
+     * @param msg_type - Type of message
+     * @param data - Payload data
+     * @param options - Optional message configuration
+     */
+    constructor(id: string, msg_type: string, data: unknown, options?: {
+        source?: string;
+        destination?: string;
+        timestamp?: number;
+        version?: string;
+        correlation_id?: string;
+        priority?: number;
+        timeout_ms?: number;
+        encoding?: string;
+        content_type?: string;
+        compression?: string;
+    });
+    /**
+     * Serialize to JSON (for transmission)
+     * @returns JSON string representation
+     */
+    toJSON(): string;
+    /**
+     * Deserialize from JSON string
+     * @param json - JSON string representation
+     * @returns Parsed Message
+     */
+    static fromJSON(json: string): Message;
+    /**
+     * Create a response to this message
+     * @param success - Whether the operation succeeded
+     * @param data - Response data
+     * @param error - Optional error message
+     * @returns Response message
+     */
+    response(success: boolean, data: unknown, error?: string): Response;
+}
+/**
+ * A response message from a WASM module to the host (or vice versa)
+ *
+ * Responses are typically created in reply to a Message and include
+ * a status code and optional error information.
+ *
+ * @example
+ * const response = new Response(
+ *   'req-123',
+ *   true,
+ *   { result: 42 },
+ *   { source: 'spirit-1', destination: 'host' }
+ * );
+ */
+declare class Response {
+    /** Message header with metadata */
+    header: MessageHeader;
+    /** Response status: true for success, false for error */
+    success: boolean;
+    /** Response data payload */
+    data: unknown;
+    /** Optional error message */
+    error?: string;
+    /**
+     * Create a new response
+     * @param id - Unique response identifier (should match request)
+     * @param success - Whether the operation succeeded
+     * @param data - Response data
+     * @param options - Optional response configuration
+     */
+    constructor(id: string, success: boolean, data: unknown, options?: {
+        source?: string;
+        destination?: string;
+        timestamp?: number;
+        version?: string;
+        correlation_id?: string;
+        priority?: number;
+        error?: string;
+    });
+    /**
+     * Create a successful response with data
+     * @param id - Response identifier
+     * @param data - Response data
+     * @param options - Optional configuration
+     * @returns Response instance
+     */
+    static success(id: string, data: unknown, options?: {
+        source?: string;
+        destination?: string;
+        version?: string;
+        priority?: number;
+    }): Response;
+    /**
+     * Create a failed response with error message
+     * @param id - Response identifier
+     * @param error - Error message
+     * @param options - Optional configuration
+     * @returns Response instance
+     */
+    static error(id: string, error: string, options?: {
+        source?: string;
+        destination?: string;
+        version?: string;
+        priority?: number;
+    }): Response;
+    /**
+     * Serialize to JSON (for transmission)
+     * @returns JSON string representation
+     */
+    toJSON(): string;
+    /**
+     * Deserialize from JSON string
+     * @param json - JSON string representation
+     * @returns Parsed Response
+     */
+    static fromJSON(json: string): Response;
+}
+/**
+ * Options for sending a message
+ * Allows customization of timeout and retry behavior
+ */
+interface SendOptions {
+    /** Timeout in milliseconds (default: 30000) */
+    timeout?: number;
+    /** Number of retry attempts on failure (default: 3) */
+    retries?: number;
+    /** Delay between retries in milliseconds (default: 100) */
+    retryDelay?: number;
+    /** Whether to throw on error (default: true) */
+    throwOnError?: boolean;
+}
+/**
+ * Message filter predicate
+ * Returns true if message should be processed
+ */
+type MessageFilter = (message: Message) => boolean;
+
+/**
+ * Error types for the DOL ABI
+ *
+ * These types mirror the Rust error enum and provide structured
+ * error handling across the host-guest boundary.
+ */
+/**
+ * Discriminant enum for ABI error types
+ * Must match the Rust enum variant order
+ */
+declare enum AbiErrorType {
+    InvalidConfig = "InvalidConfig",
+    InvalidMessage = "InvalidMessage",
+    HostError = "HostError",
+    TypeMismatch = "TypeMismatch",
+    Other = "Other"
+}
+/**
+ * Base ABI error class
+ *
+ * All ABI errors inherit from this class. It provides structured
+ * error information that can be serialized for transmission across
+ * the host-guest boundary.
+ *
+ * @example
+ * try {
+ *   // Some operation
+ * } catch (err) {
+ *   if (err instanceof AbiError) {
+ *     console.error(`${err.type}: ${err.message}`);
+ *   }
+ * }
+ */
+declare class AbiError extends Error {
+    /** Type of error (for serialization and matching) */
+    type: AbiErrorType;
+    /** Error code for programmatic handling */
+    code: string;
+    /** Nested error details (if any) */
+    details?: unknown;
+    /** Stack trace context */
+    context?: string;
+    /**
+     * Create a new AbiError
+     * @param message - Human-readable error message
+     * @param type - Error type discriminant
+     * @param code - Error code for programmatic matching
+     * @param details - Optional error details
+     */
+    constructor(message: string, type?: AbiErrorType, code?: string, details?: unknown);
+    /**
+     * Serialize error to JSON-compatible object
+     * Suitable for transmission in Response messages
+     */
+    toJSON(): {
+        type: string;
+        code: string;
+        message: string;
+        details?: unknown;
+        stack?: string;
+    };
+    /**
+     * Serialize error to string for logging
+     */
+    toString(): string;
+    /**
+     * Create an InvalidConfig error
+     * @param message - Error message
+     * @param details - Optional error details
+     * @returns AbiError instance
+     */
+    static invalidConfig(message: string, details?: unknown): AbiError;
+    /**
+     * Create an InvalidMessage error
+     * @param message - Error message
+     * @param details - Optional error details
+     * @returns AbiError instance
+     */
+    static invalidMessage(message: string, details?: unknown): AbiError;
+    /**
+     * Create a HostError
+     * @param message - Error message
+     * @param details - Optional error details
+     * @returns AbiError instance
+     */
+    static hostError(message: string, details?: unknown): AbiError;
+    /**
+     * Create a TypeMismatch error
+     * @param expected - Expected type
+     * @param received - Received type
+     * @param details - Optional error details
+     * @returns AbiError instance
+     */
+    static typeMismatch(expected: string, received: string, details?: unknown): AbiError;
+    /**
+     * Create a generic error
+     * @param message - Error message
+     * @param details - Optional error details
+     * @returns AbiError instance
+     */
+    static other(message: string, details?: unknown): AbiError;
+}
+/**
+ * Result type for ABI operations
+ * Mirrors Rust's Result<T, E> pattern
+ *
+ * @example
+ * const result: AbiResult<number> = {
+ *   ok: true,
+ *   value: 42
+ * };
+ *
+ * const error: AbiResult<number> = {
+ *   ok: false,
+ *   error: new AbiError('Operation failed')
+ * };
+ */
+type AbiResult<T> = {
+    ok: true;
+    value: T;
+} | {
+    ok: false;
+    error: AbiError;
+};
+/**
+ * Create a successful result
+ * @param value - Result value
+ * @returns AbiResult with ok=true
+ */
+declare function ok<T>(value: T): AbiResult<T>;
+/**
+ * Create an error result
+ * @param error - Error value
+ * @returns AbiResult with ok=false
+ */
+declare function err<T>(error: AbiError | string): AbiResult<T>;
+/**
+ * Check if a result is ok
+ * @param result - Result to check
+ * @returns True if ok
+ */
+declare function isOk<T>(result: AbiResult<T>): result is {
+    ok: true;
+    value: T;
+};
+/**
+ * Check if a result is an error
+ * @param result - Result to check
+ * @returns True if error
+ */
+declare function isErr<T>(result: AbiResult<T>): result is {
+    ok: false;
+    error: AbiError;
+};
+/**
+ * Extract value from result or throw
+ * @param result - Result to unwrap
+ * @returns Value if ok
+ * @throws {AbiError} If result is error
+ */
+declare function unwrap<T>(result: AbiResult<T>): T;
+/**
+ * Extract value with default fallback
+ * @param result - Result to unwrap
+ * @param defaultValue - Default value if error
+ * @returns Value if ok, otherwise defaultValue
+ */
+declare function unwrapOr<T>(result: AbiResult<T>, defaultValue: T): T;
+/**
+ * Transform result value with a mapping function
+ * @param result - Result to map
+ * @param fn - Mapping function
+ * @returns New result with mapped value
+ */
+declare function map<T, U>(result: AbiResult<T>, fn: (value: T) => U): AbiResult<U>;
+/**
+ * Chain results with a function that returns a result
+ * @param result - Result to chain
+ * @param fn - Function returning a result
+ * @returns Chained result
+ */
+declare function flatMap<T, U>(result: AbiResult<T>, fn: (value: T) => AbiResult<U>): AbiResult<U>;
+/**
+ * Helper to convert promises to AbiResult
+ * @param promise - Promise to convert
+ * @returns AbiResult of the resolved value
+ */
+declare function fromPromise<T>(promise: Promise<T>): Promise<AbiResult<T>>;
+
+/**
+ * DOL ABI (Application Binary Interface) Module
+ *
+ * This module provides the core ABI types and interfaces for DOL WASM-based applications.
+ * It defines the contract between the DOL runtime and compiled DOL programs.
+ *
+ * The ABI is based on the Rust dol-abi crate and provides TypeScript equivalents
+ * for seamless interoperability across the host-guest boundary.
+ *
+ * @example
+ * ```typescript
+ * import {
+ *   Message,
+ *   Response,
+ *   AbiError,
+ *   QualifiedId,
+ *   ABI_VERSION,
+ *   IMPORT_MODULE
+ * } from '@vudo/runtime/abi';
+ *
+ * // Create a qualified identifier
+ * const id = new QualifiedId('container', 'exists', '1.0.0');
+ * console.log(id.toString()); // "container.exists.1.0.0"
+ *
+ * // Create a message
+ * const msg = new Message(
+ *   'msg-1',
+ *   'call',
+ *   { function: 'init', args: [] },
+ *   { source: 'host', destination: 'spirit-1' }
+ * );
+ *
+ * // Create a response
+ * const response = Response.success('msg-1', { result: 'ok' });
+ * console.log(response.toJSON());
+ *
+ * // Handle errors
+ * const error = AbiError.invalidConfig('Missing required field');
+ * console.error(error.toString());
+ * ```
+ */
+
+/**
+ * ABI version string
+ * Used for version negotiation between host and guest
+ * @constant
+ */
+declare const ABI_VERSION = "0.1.0";
+/**
+ * WASM import module name
+ * This is the namespace used for WASM imports (e.g., IMPORT_MODULE.sendMessage)
+ * @constant
+ */
+declare const IMPORT_MODULE = "vudo";
+
+/**
+ * Type guard to check if a value is a QualifiedId
+ * @param value - Value to check
+ * @returns True if value is a QualifiedId
+ */
+declare function isQualifiedId(value: unknown): value is QualifiedId;
+/**
+ * Type guard to check if a value is a Message
+ * @param value - Value to check
+ * @returns True if value is a Message
+ */
+declare function isMessage(value: unknown): value is Message;
+/**
+ * Type guard to check if a value is a Response
+ * @param value - Value to check
+ * @returns True if value is a Response
+ */
+declare function isResponse(value: unknown): value is Response;
+/**
+ * Type guard to check if a value is an AbiError
+ * @param value - Value to check
+ * @returns True if value is an AbiError
+ */
+declare function isAbiError(value: unknown): value is AbiError;
+/**
+ * ABI compatibility checker
+ * Verifies that host and guest are compatible versions
+ */
+declare class AbiCompat {
+    /**
+     * Check if two ABI versions are compatible
+     * Uses semantic versioning rules
+     * @param hostVersion - Host ABI version
+     * @param guestVersion - Guest ABI version
+     * @returns True if versions are compatible
+     */
+    static compatible(hostVersion: string, guestVersion: string): boolean;
+    /**
+     * Get a version negotiation message
+     * @param version - Version string
+     * @returns Message requesting version negotiation
+     */
+    static versionMessage(version: string): Message;
+}
+/**
+ * Serialized form of AbiError for transmission
+ */
+interface SerializedAbiError {
+    type: string;
+    code: string;
+    message: string;
+    details?: unknown;
+    stack?: string;
+}
+/**
+ * Serialize an AbiError to JSON-compatible format
+ * @param error - Error to serialize
+ * @returns Serialized error
+ */
+declare function serializeError(error: AbiError): SerializedAbiError;
+/**
+ * Deserialize an error from JSON format
+ * @param data - Serialized error data
+ * @returns AbiError instance
+ */
+declare function deserializeError(data: SerializedAbiError): AbiError;
+
+export { ABI_VERSION, AbiCompat, AbiError, AbiErrorType, type AbiResult, BumpAllocator, type GeneField, type GeneFieldType, type GeneLayout, type GeneValues, IMPORT_MODULE, type Loa, type LoaContext, LoaRegistry, type LoadOptions, LogLevel, type MemoryManager, type Message$1 as Message, MessageBus, type MessageFilter, type MessageHandler, type MessageHeader, type MessagePayload, QualifiedId, type QualifiedIdSerialized, Response, ResultCode, Seance, type SeanceInstance, type SendOptions, type SerializedAbiError, Spirit, type SpiritInstance, SpiritLoader, SpiritMemoryManager, type StandardEffect, type StandardEvent, calculateLayout, coreLoa, createLoa, createLoggingLoa, createMessageBus, createMessagingLoa, createSeance, decodeString, deserializeError, encodeString, err, flatMap, fromPromise, getTypeAlignment, getTypeSize, isAbiError, isErr, isMessage, isOk, isQualifiedId, isResponse, loadSpirit, logLevelToString, map, ok, readGene, resultCodeToString, serializeError, stringToLogLevel, stringToResultCode, unwrap, unwrapOr, withSeance, writeGene };

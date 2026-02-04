@@ -1,6 +1,5 @@
 //! Message types for host-to-ABI communication
 
-use crate::types::QualifiedId;
 use serde::{Deserialize, Serialize};
 
 /// A message from the host to the ABI
