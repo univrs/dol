@@ -9,7 +9,9 @@
 //! # Example
 //!
 //! ```rust
-//! use metadol::types::{LogLevel, ResultCode, StandardEffect};
+//! use metadol::types::{LogLevel, ResultCode};
+//! #[cfg(feature = "serde")]
+//! use metadol::types::StandardEffect;
 //!
 //! // Create a log level
 //! let level = LogLevel::Info;

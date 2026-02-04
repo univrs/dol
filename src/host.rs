@@ -41,7 +41,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_print;
+    /// # use metadol::host::vudo_print;
     /// let msg = "Hello, World!";
     /// unsafe {
     ///     vudo_print(msg.as_ptr(), msg.len());
@@ -65,7 +65,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_println;
+    /// # use metadol::host::vudo_println;
     /// let msg = "Hello, World!";
     /// unsafe {
     ///     vudo_println(msg.as_ptr(), msg.len());
@@ -90,7 +90,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_log;
+    /// # use metadol::host::vudo_log;
     /// const INFO: u32 = 2;
     /// let msg = "System initialized";
     /// unsafe {
@@ -119,7 +119,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_error;
+    /// # use metadol::host::vudo_error;
     /// let error = "Failed to initialize module";
     /// let error_code = unsafe {
     ///     vudo_error(error.as_ptr(), error.len())
@@ -150,7 +150,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::{vudo_alloc, vudo_free};
+    /// # use metadol::host::{vudo_alloc, vudo_free};
     /// unsafe {
     ///     let ptr = vudo_alloc(1024);
     ///     if !ptr.is_null() {
@@ -177,7 +177,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::{vudo_alloc, vudo_free};
+    /// # use metadol::host::{vudo_alloc, vudo_free};
     /// unsafe {
     ///     let ptr = vudo_alloc(1024);
     ///     // Use memory...
@@ -209,7 +209,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::{vudo_alloc, vudo_realloc, vudo_free};
+    /// # use metadol::host::{vudo_alloc, vudo_realloc, vudo_free};
     /// unsafe {
     ///     let mut ptr = vudo_alloc(1024);
     ///     // Need more space...
@@ -236,7 +236,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_now;
+    /// # use metadol::host::vudo_now;
     /// let start = unsafe { vudo_now() };
     /// // Do work...
     /// let elapsed = unsafe { vudo_now() } - start;
@@ -257,7 +257,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_sleep;
+    /// # use metadol::host::vudo_sleep;
     /// unsafe {
     ///     vudo_sleep(1000); // Sleep for 1 second
     /// }
@@ -275,7 +275,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_monotonic_now;
+    /// # use metadol::host::vudo_monotonic_now;
     /// let start = unsafe { vudo_monotonic_now() };
     /// // Do work...
     /// let elapsed = unsafe { vudo_monotonic_now() } - start;
@@ -308,7 +308,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_send;
+    /// # use metadol::host::vudo_send;
     /// let target = "agent-42";
     /// let message = b"Hello, agent!";
     /// let result = unsafe {
@@ -349,7 +349,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_recv;
+    /// # use metadol::host::vudo_recv;
     /// let mut buffer = [0u8; 1024];
     /// let bytes_read = unsafe {
     ///     vudo_recv(1000, buffer.as_mut_ptr(), buffer.len())
@@ -370,7 +370,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_pending;
+    /// # use metadol::host::vudo_pending;
     /// let count = unsafe { vudo_pending() };
     /// if count > 0 {
     ///     // Process messages...
@@ -397,7 +397,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_broadcast;
+    /// # use metadol::host::vudo_broadcast;
     /// let announcement = b"System shutting down";
     /// let recipient_count = unsafe {
     ///     vudo_broadcast(announcement.as_ptr(), announcement.len())
@@ -435,7 +435,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_random;
+    /// # use metadol::host::vudo_random;
     /// let random_value = unsafe { vudo_random() };
     /// let coin_flip = random_value < 0.5;
     /// ```
@@ -456,7 +456,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_random_bytes;
+    /// # use metadol::host::vudo_random_bytes;
     /// let mut nonce = [0u8; 32];
     /// unsafe {
     ///     vudo_random_bytes(nonce.as_mut_ptr(), nonce.len());
@@ -487,7 +487,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_emit_effect;
+    /// # use metadol::host::vudo_emit_effect;
     /// let effect = r#"{"type": "state_change", "value": 42}"#;
     /// let effect_id = unsafe {
     ///     vudo_emit_effect(effect.as_ptr(), effect.len())
@@ -514,7 +514,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_subscribe;
+    /// # use metadol::host::vudo_subscribe;
     /// let pattern = "state_change.*";
     /// let sub_id = unsafe {
     ///     vudo_subscribe(pattern.as_ptr(), pattern.len())
@@ -534,7 +534,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_breakpoint;
+    /// # use metadol::host::vudo_breakpoint;
     /// # let suspicious_value = 42;
     /// if suspicious_value > 100 {
     ///     unsafe { vudo_breakpoint(); }
@@ -559,7 +559,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_assert;
+    /// # use metadol::host::vudo_assert;
     /// # let value = 42;
     /// let message = "Value must be less than 100";
     /// unsafe {
@@ -587,7 +587,7 @@ extern "C" {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use univrs_dol::host::vudo_panic;
+    /// # use metadol::host::vudo_panic;
     /// let error = "Unrecoverable error occurred";
     /// unsafe {
     ///     vudo_panic(error.as_ptr(), error.len())
