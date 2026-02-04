@@ -107,3 +107,9 @@ export {
   type Message,
   type MessageHandler,
 } from './messagebus.js';
+
+// ============================================================================
+// ABI (Application Binary Interface)
+// ============================================================================
+
+export * from './abi/index.js';

@@ -1,0 +1,266 @@
+// effects.dol - Effect System Usage
+// This example demonstrates the effect system through the ABI,
+// showing how to emit effects and subscribe to effect patterns.
+
+// Host function: Emit an effect to the effect system
+// Parameters: effect_type (string), payload (string)
+// Returns: ResultCode (0 = success, 1 = invalid type, 2 = buffer full)
+sex fun vudo_emit_effect(effect_type: String, payload: String) -> i32
+
+// Host function: Subscribe to effects matching a pattern
+// Parameters: pattern (wildcard string, e.g., "state.*" or "error")
+// Returns: subscription_id (>0 on success, -1 on error)
+sex fun vudo_subscribe(pattern: String) -> i32
+
+// Host function: Unsubscribe from effect notifications
+// Parameters: subscription_id (from vudo_subscribe)
+// Returns: ResultCode (0 = success, 1 = subscription not found)
+sex fun vudo_unsubscribe(subscription_id: i32) -> i32
+
+// Host function: Check for subscribed effects
+// Returns: effect string (empty if none pending)
+sex fun vudo_get_effect() -> String
+
+// Host function: Print a string to standard output
+sex fun vudo_println(ptr: i32, len: i32) -> i32
+
+// Represents an effect that can be emitted in the system
+gen StandardEffect {
+    has effect_type: String
+    has source_id: i32
+    has payload: String
+    has timestamp: i64
+
+    fun new(type_str: String, src_id: i32, data: String, ts: i64) {
+        this.effect_type = type_str
+        this.source_id = src_id
+        this.payload = data
+        this.timestamp = ts
+    }
+
+    fun display() {
+        let output = "Effect[" + this.effect_type + "] from " +
+                    this.source_id.to_string() + ": " + this.payload
+        vudo_println(output)
+    }
+}
+
+// A spirit that monitors the effect system
+gen EffectMonitor {
+    has name: String
+    has subscription_id: i32
+    has effects_received: Int
+
+    fun new(monitor_name: String) {
+        this.name = monitor_name
+        this.subscription_id = -1
+        this.effects_received = 0
+    }
+
+    // Subscribe to effects matching a pattern
+    // Demonstrates vudo_subscribe usage
+    fun subscribe_to_pattern(pattern: String) {
+        let msg = "Monitor: Subscribing to pattern '" + pattern + "'"
+        vudo_println(msg)
+
+        // Subscribe to the effect pattern
+        let sub_id = vudo_subscribe(pattern)
+
+        if sub_id > 0 {
+            this.subscription_id = sub_id
+            let success_msg = "Successfully subscribed with ID: " + sub_id.to_string()
+            vudo_println(success_msg)
+        } else {
+            vudo_println("Error: Failed to subscribe to pattern")
+        }
+    }
+
+    // Process pending effects
+    // Demonstrates vudo_get_effect usage
+    fun process_effects() {
+        let effect = vudo_get_effect()
+
+        if effect.length > 0 {
+            let msg = "Monitor received effect: " + effect
+            vudo_println(msg)
+            this.effects_received = this.effects_received + 1
+        }
+    }
+
+    // Unsubscribe from the pattern
+    // Demonstrates vudo_unsubscribe usage
+    fun unsubscribe() {
+        if this.subscription_id > 0 {
+            let result = vudo_unsubscribe(this.subscription_id)
+
+            if result == 0 {
+                vudo_println("Successfully unsubscribed")
+                this.subscription_id = -1
+            } else {
+                vudo_println("Error: Failed to unsubscribe")
+            }
+        }
+    }
+
+    fun get_effect_count() -> Int {
+        return this.effects_received
+    }
+}
+
+// A spirit that emits effects based on state changes
+gen EffectEmitter {
+    has emitter_id: i32
+    has state: String
+    has effects_emitted: Int
+
+    fun new(id: i32) {
+        this.emitter_id = id
+        this.state = "initialized"
+        this.effects_emitted = 0
+    }
+
+    // Change state and emit an effect
+    // Demonstrates vudo_emit_effect with result code checking
+    fun change_state(new_state: String) {
+        let old_state = this.state
+        this.state = new_state
+
+        // Create effect payload describing the state change
+        let payload = "From " + old_state + " to " + new_state
+
+        vudo_println("Emitting state change effect...")
+
+        // Emit the effect to the system
+        let result = vudo_emit_effect("state.changed", payload)
+
+        if result == 0 {
+            let msg = "Effect emitted successfully. New state: " + new_state
+            vudo_println(msg)
+            this.effects_emitted = this.effects_emitted + 1
+        } else if result == 1 {
+            vudo_println("Error: Invalid effect type")
+        } else if result == 2 {
+            vudo_println("Error: Effect buffer is full")
+        }
+    }
+
+    // Emit a health status effect
+    // Demonstrates multiple effect emissions
+    fun emit_health_status(status: String) {
+        let payload = "Health check: " + status
+        let result = vudo_emit_effect("health.status", payload)
+
+        if result == 0 {
+            this.effects_emitted = this.effects_emitted + 1
+            let msg = "Health status emitted: " + status
+            vudo_println(msg)
+        } else {
+            vudo_println("Failed to emit health status")
+        }
+    }
+
+    // Emit an error effect
+    // Demonstrates error effect emission
+    fun emit_error(error_msg: String) {
+        let payload = "Error from emitter #" + this.emitter_id.to_string() +
+                     ": " + error_msg
+
+        let result = vudo_emit_effect("error", payload)
+
+        if result == 0 {
+            this.effects_emitted = this.effects_emitted + 1
+            vudo_println("Error effect emitted")
+        }
+    }
+
+    fun get_state() -> String {
+        return this.state
+    }
+
+    fun get_emitted_count() -> Int {
+        return this.effects_emitted
+    }
+}
+
+// A complex example combining emission and subscription
+gen EffectSystem {
+    has emitter: EffectEmitter
+    has monitor: EffectMonitor
+
+    fun new() {
+        this.emitter = EffectEmitter { emitter_id: 1, state: "initialized", effects_emitted: 0 }
+        this.monitor = EffectMonitor { name: "Monitor1", subscription_id: -1, effects_received: 0 }
+    }
+
+    // Run the effect system example
+    fun run() {
+        vudo_println("=== Effect System Example ===")
+
+        // Monitor subscribes to state changes
+        this.monitor.subscribe_to_pattern("state.*")
+
+        // Emitter changes state (emits an effect)
+        vudo_println("Emitter: Changing state...")
+        this.emitter.change_state("running")
+
+        // Monitor processes the effect
+        vudo_println("Monitor: Checking for effects...")
+        this.monitor.process_effects()
+
+        // More state changes
+        this.emitter.change_state("stopping")
+        this.monitor.process_effects()
+
+        // Health status effect
+        vudo_println("Emitter: Sending health status...")
+        this.emitter.emit_health_status("healthy")
+
+        // Error effect
+        vudo_println("Emitter: Reporting error...")
+        this.emitter.emit_error("Connection timeout")
+
+        // Final stats
+        let stats = "Stats - Emitted: " + this.emitter.get_emitted_count().to_string() +
+                   ", Received: " + this.monitor.get_effect_count().to_string()
+        vudo_println(stats)
+
+        // Cleanup
+        this.monitor.unsubscribe()
+    }
+}
+
+docs {
+    This example demonstrates the effect system through the ABI:
+
+    1. Emitting Effects:
+       - vudo_emit_effect(effect_type, payload): Emit an effect to the system
+       - Returns: 0 = success, 1 = invalid type, 2 = buffer full
+       - Effects are named strings (e.g., "state.changed", "health.status")
+
+    2. Subscribing to Effects:
+       - vudo_subscribe(pattern): Register interest in effects matching a pattern
+       - Patterns support wildcards (e.g., "state.*" matches "state.changed")
+       - Returns: subscription_id (positive) or error (-1)
+
+    3. Processing Effects:
+       - vudo_get_effect(): Retrieve the next effect for subscriptions
+       - Effects are returned as strings containing all relevant data
+
+    4. Cleanup:
+       - vudo_unsubscribe(subscription_id): Cancel a subscription
+       - Returns: 0 = success, 1 = subscription not found
+
+    5. Result Code Checking:
+       - All effect ABI functions return result codes that indicate success/failure
+       - Code should check these and handle errors appropriately
+
+    6. StandardEffect Structure:
+       - effect_type: The name/type of the effect
+       - source_id: Which spirit emitted the effect
+       - payload: The effect data/message
+       - timestamp: When the effect occurred
+
+    The effect system is the primary mechanism for decoupling spirits and
+    enabling reactive architectures. Effects flow through the system,
+    allowing subscribers to react to state changes and system events.
+}

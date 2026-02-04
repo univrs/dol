@@ -50,7 +50,7 @@
 //! - [`lexer`]: Tokenization of DOL source text
 //! - [`parser`]: Recursive descent parser producing AST
 //! - [`error`]: Error types with source location information
-//! - [`types`]: Common ABI types (LogLevel, ResultCode, StandardEffect)
+//! - [`types`]: Common ABI types (LogLevel, ResultCode, StandardEffect requires `serde`)
 //! - [`host`]: Host function imports for WASM runtime
 //! - [`validator`]: Semantic validation rules
 //! - [`typechecker`]: DOL 2.0 type inference and checking

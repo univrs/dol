@@ -140,11 +140,12 @@ export class AbiError extends Error {
    */
   static typeMismatch(expected: string, received: string, details?: unknown): AbiError {
     const message = `Expected ${expected} but received ${received}`;
-    return new AbiError(message, AbiErrorType.TypeMismatch, 'TYPE_MISMATCH', {
+    const detailsObj = {
       expected,
       received,
-      ...details,
-    });
+      ...(typeof details === 'object' && details !== null ? (details as Record<string, unknown>) : {}),
+    };
+    return new AbiError(message, AbiErrorType.TypeMismatch, 'TYPE_MISMATCH', detailsObj);
   }
 
   /**

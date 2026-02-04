@@ -31,8 +31,6 @@
 //! # }
 //! ```
 
-use std::convert::TryFrom;
-
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -371,7 +369,7 @@ pub struct StandardEffect {
 impl StandardEffect {
     /// Create a new StandardEffect with the given type and timestamp.
     ///
-    /// The payload is initialized to `null`.
+    /// The payload is initialized to an empty object.
     ///
     /// # Arguments
     ///
@@ -389,13 +387,13 @@ impl StandardEffect {
     /// let effect = StandardEffect::new("LOG".to_string(), 1234567890.0);
     /// assert_eq!(effect.effect_type, "LOG");
     /// assert_eq!(effect.timestamp, 1234567890.0);
-    /// assert_eq!(effect.payload, json!(null));
+    /// assert_eq!(effect.payload, json!({}));
     /// # }
     /// ```
     pub fn new(effect_type: String, timestamp: f64) -> Self {
         StandardEffect {
             effect_type,
-            payload: serde_json::Value::Null,
+            payload: serde_json::json!({}),
             timestamp,
         }
     }
@@ -489,7 +487,7 @@ impl std::fmt::Display for StandardEffect {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "serde"))]
 mod tests {
     use super::*;
 
@@ -583,7 +581,7 @@ mod tests {
         let effect = StandardEffect::new("TEST".to_string(), 123.456);
         assert_eq!(effect.effect_type, "TEST");
         assert_eq!(effect.timestamp, 123.456);
-        assert_eq!(effect.payload, serde_json::Value::Null);
+        assert_eq!(effect.payload, serde_json::json!({}));
     }
 
     #[test]
