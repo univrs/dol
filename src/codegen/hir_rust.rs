@@ -11,6 +11,7 @@ pub struct HirRustCodegen {
     output: String,
     indent: usize,
     symbols: SymbolTable,
+    wasm_mode: bool,
 }
 
 impl HirRustCodegen {
@@ -20,6 +21,7 @@ impl HirRustCodegen {
             output: String::new(),
             indent: 0,
             symbols: SymbolTable::new(),
+            wasm_mode: false,
         }
     }
 
@@ -29,7 +31,14 @@ impl HirRustCodegen {
             output: String::new(),
             indent: 0,
             symbols,
+            wasm_mode: false,
         }
+    }
+
+    /// Enable WASM mode (adds wasm-bindgen annotations)
+    pub fn with_wasm_mode(mut self, enabled: bool) -> Self {
+        self.wasm_mode = enabled;
+        self
     }
 
     /// Generate Rust code from a HIR module
@@ -39,6 +48,12 @@ impl HirRustCodegen {
         // Module header
         self.emit_line("// Generated from DOL HIR");
         self.emit_line("");
+
+        // Add wasm-bindgen import if in WASM mode
+        if self.wasm_mode {
+            self.emit_line("use wasm_bindgen::prelude::*;");
+            self.emit_line("");
+        }
 
         // Generate declarations
         for decl in &module.decls {
@@ -293,6 +308,11 @@ impl HirRustCodegen {
     /// Generate a function declaration
     fn gen_function_decl(&mut self, decl: &HirFunctionDecl) {
         let name = self.sym(decl.name).to_string();
+
+        // Add wasm_bindgen attribute in WASM mode
+        if self.wasm_mode {
+            self.emit_line("#[wasm_bindgen]");
+        }
 
         // Function signature
         self.emit_indent();

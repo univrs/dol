@@ -282,8 +282,8 @@ impl BuildOrchestrator {
                 ));
             }
 
-            // Generate Rust code
-            let mut codegen = HirRustCodegen::with_symbols(ctx.symbols);
+            // Generate Rust code with WASM bindings
+            let mut codegen = HirRustCodegen::with_symbols(ctx.symbols).with_wasm_mode(true);
             let rust_code = codegen.generate(&hir);
 
             // Write to generated/ directory

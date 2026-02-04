@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>DOL → WASM Test</title>
+</head>
+<body>
+    <h1>DOL → WASM Test</h1>
+    <div id="output"></div>
+
+    <script type="module">
+        import init, { add, multiply, is_positive } from './target/spirit/pkg/minimal_test.js';
+
+        async function run() {
+            await init();
+
+            const output = document.getElementById('output');
+            const results = [];
+
+            // Test add
+            const sum = add(5, 3);
+            results.push(`add(5, 3) = ${sum}`);
+
+            // Test multiply
+            const product = multiply(4, 7);
+            results.push(`multiply(4, 7) = ${product}`);
+
+            // Test is_positive
+            const pos = is_positive(10);
+            const neg = is_positive(-5);
+            results.push(`is_positive(10) = ${pos}`);
+            results.push(`is_positive(-5) = ${neg}`);
+
+            output.innerHTML = results.map(r => `<p>✓ ${r}</p>`).join('');
+        }
+
+        run().catch(console.error);
+    </script>
+</body>
+</html>
