@@ -1,15 +1,8 @@
 gen ChatMessage {
-  @crdt(immutable)
-  message has id: String
-
-  @crdt(peritext)
-  message has content: String
-
-  @crdt(or_set)
-  message has reactions: Set<String>
-
-  @crdt(pn_counter)
-  message has likes: i64
+  @crdt(immutable) has id: String
+  @crdt(peritext) has content: String
+  @crdt(or_set) has reactions: Set<String>
+  @crdt(pn_counter) has likes: i64
 }
 
 exegesis {

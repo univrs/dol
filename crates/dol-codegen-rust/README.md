@@ -90,10 +90,10 @@ impl ChatMessage {
 
 ```rust
 use dol_codegen_rust::{generate_rust, CodegenOptions, Target};
-use dol::parse_file;
+use dol::parse_dol_file;
 
 let source = std::fs::read_to_string("chat.dol")?;
-let file = parse_file(&source)?;
+let file = parse_dol_file(&source)?;
 
 let options = CodegenOptions {
     target: Target::AutomergeRust,

@@ -11,6 +11,8 @@
 //!
 //! # Available Tools
 //!
+//! ## General Tools
+//!
 //! - **parse**: Parse DOL source code into an AST
 //! - **typecheck**: Type check DOL expressions and validate types
 //! - **compile_rust**: Generate Rust code from DOL declarations
@@ -21,6 +23,13 @@
 //! - **format**: Format DOL source code (future)
 //! - **list_macros**: List all available macros
 //! - **expand_macro**: Expand a specific macro invocation
+//!
+//! ## CRDT-Specific Tools
+//!
+//! - **validate_schema**: Validate DOL schema with CRDT annotations
+//! - **recommend_crdt**: Recommend CRDT strategy for a field
+//! - **explain_strategy**: Explain CRDT strategy trade-offs
+//! - **generate_example**: Generate example DOL schema with CRDT annotations
 //!
 //! # Example
 //!
@@ -39,14 +48,25 @@
 //! The server implements the Model Context Protocol specification,
 //! allowing DOL to be used as a tool by AI assistants like Claude.
 
+pub mod diagnostics;
+pub mod recommendations;
 pub mod server;
 pub mod tools;
 
+pub use diagnostics::{
+    DiagnosticCategory, DiagnosticIssue, DiagnosticSeverity, Impact, Optimization,
+    OptimizationCategory, SchemaDiagnostics,
+};
+pub use recommendations::{
+    Alternative, Confidence, ConsistencyLevel, CrdtRecommendation, CrdtRecommender, TradeOffs,
+    UsagePattern,
+};
 pub use server::{McpServer, ParamDef, ServerManifest, ToolArgs, ToolDef, ToolResult};
 
 /// DOL tools available through the MCP server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DolTool {
+    // General tools
     /// Parse DOL source code into an AST
     Parse,
     /// Type check DOL expressions
@@ -67,6 +87,16 @@ pub enum DolTool {
     ListMacros,
     /// Expand a macro
     ExpandMacro,
+
+    // CRDT-specific tools
+    /// Validate DOL schema with CRDT annotations
+    ValidateSchema,
+    /// Recommend CRDT strategy for a field
+    RecommendCrdt,
+    /// Explain CRDT strategy trade-offs
+    ExplainStrategy,
+    /// Generate example DOL schema
+    GenerateExample,
 }
 
 impl DolTool {
@@ -83,6 +113,10 @@ impl DolTool {
             DolTool::Format => "format",
             DolTool::ListMacros => "list_macros",
             DolTool::ExpandMacro => "expand_macro",
+            DolTool::ValidateSchema => "validate_schema",
+            DolTool::RecommendCrdt => "recommend_crdt",
+            DolTool::ExplainStrategy => "explain_strategy",
+            DolTool::GenerateExample => "generate_example",
         }
     }
 
@@ -99,6 +133,10 @@ impl DolTool {
             "format" => Some(DolTool::Format),
             "list_macros" => Some(DolTool::ListMacros),
             "expand_macro" => Some(DolTool::ExpandMacro),
+            "validate_schema" => Some(DolTool::ValidateSchema),
+            "recommend_crdt" => Some(DolTool::RecommendCrdt),
+            "explain_strategy" => Some(DolTool::ExplainStrategy),
+            "generate_example" => Some(DolTool::GenerateExample),
             _ => None,
         }
     }

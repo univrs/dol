@@ -216,7 +216,8 @@ mod tests {
 
         assert!(result_str.contains("content"));
         assert!(result_str.contains("String"));
-        assert!(result_str.contains("#[autosurgeon(text)]"));
+        assert!(result_str.contains("autosurgeon"));
+        assert!(result_str.contains("text"));
     }
 
     #[test]

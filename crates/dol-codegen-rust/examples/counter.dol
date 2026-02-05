@@ -1,9 +1,6 @@
 gen Counter {
-  @crdt(immutable)
-  counter has id: String
-
-  @crdt(pn_counter)
-  counter has value: i64
+  @crdt(immutable) has id: String
+  @crdt(pn_counter) has value: i64
 }
 
 exegesis {

@@ -1,24 +1,11 @@
 gen Document {
-  @crdt(immutable)
-  doc has id: String
-
-  @crdt(lww)
-  doc has title: String
-
-  @crdt(peritext)
-  doc has body: String
-
-  @crdt(rga)
-  doc has paragraphs: Vec<String>
-
-  @crdt(or_set)
-  doc has tags: Set<String>
-
-  @crdt(lww)
-  doc has author: String
-
-  @crdt(pn_counter)
-  doc has views: i64
+  @crdt(immutable) has id: String
+  @crdt(lww) has title: String
+  @crdt(peritext) has body: String
+  @crdt(rga) has paragraphs: Vec<String>
+  @crdt(or_set) has tags: Set<String>
+  @crdt(lww) has author: String
+  @crdt(pn_counter) has views: i64
 }
 
 exegesis {

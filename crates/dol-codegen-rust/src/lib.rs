@@ -14,7 +14,7 @@
 //!
 //! ```rust
 //! use dol_codegen_rust::{generate_rust, CodegenOptions, Target};
-//! use dol::parse_file;
+//! use dol::parse_dol_file;
 //!
 //! let source = r#"
 //! gen ChatMessage {
@@ -33,7 +33,7 @@
 //! }
 //! "#;
 //!
-//! let decl = parse_file(source).unwrap();
+//! let file = parse_dol_file(source).unwrap();
 //! let options = CodegenOptions {
 //!     target: Target::Rust,
 //!     ..Default::default()
@@ -149,11 +149,6 @@ pub fn generate_rust(file: &DolFile, options: &CodegenOptions) -> Result<String,
                 // Sex variables are not part of the data model
                 continue;
             }
-            _ => {
-                return Err(CodegenError::UnsupportedDeclaration(
-                    format!("{:?}", decl)
-                ));
-            }
         }
     }
 
@@ -242,13 +237,3 @@ fn extract_fields(gen: &Gen) -> Vec<&dol::ast::HasField> {
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_has_crdt_annotations() {
-        // This would require constructing a Gen with CRDT annotations
-        // Left as a placeholder for actual test implementation
-    }
-}
