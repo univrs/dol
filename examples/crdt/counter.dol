@@ -1,0 +1,14 @@
+gen Counter {
+  @crdt(immutable)
+  has counter_id: String
+
+  @crdt(pn_counter)
+  has value: i64
+}
+
+docs {
+  A distributed counter using PN-Counter CRDT strategy.
+
+  The counter_id is immutable to ensure identity.
+  The value uses a positive-negative counter for commutative increment/decrement operations.
+}

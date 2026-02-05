@@ -1,0 +1,34 @@
+gen Document {
+  @crdt(immutable)
+  doc has id: String
+
+  @crdt(lww)
+  doc has title: String
+
+  @crdt(peritext)
+  doc has body: String
+
+  @crdt(rga)
+  doc has paragraphs: Vec<String>
+
+  @crdt(or_set)
+  doc has tags: Set<String>
+
+  @crdt(lww)
+  doc has author: String
+
+  @crdt(pn_counter)
+  doc has views: i64
+}
+
+exegesis {
+  A collaborative document with multiple CRDT strategies for different fields.
+
+  This demonstrates the full range of CRDT types available in DOL:
+  - Immutable ID for identity
+  - LWW for simple metadata (title, author)
+  - Peritext for collaborative rich text editing (body)
+  - RGA for ordered paragraph management
+  - OR-Set for tags with add-wins semantics
+  - PN-Counter for view tracking
+}

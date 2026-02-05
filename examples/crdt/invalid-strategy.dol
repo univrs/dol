@@ -1,0 +1,15 @@
+gen InvalidExample {
+  @crdt(or_set)
+  has name: String
+
+  @crdt(pn_counter)
+  has description: String
+}
+
+docs {
+  This example demonstrates invalid CRDT strategy usage.
+
+  OR-Set cannot be used with String type (should use Set).
+  PN-Counter cannot be used with String type (should use integer types).
+  Running dol-check on this file will produce errors.
+}

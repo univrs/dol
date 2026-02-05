@@ -1,0 +1,44 @@
+// Example: Collaborative Chat Message with CRDT Annotations
+// From RFC-001: DOL 2.0 CRDT Annotations
+
+gen message.chat {
+  // Immutable identity fields - set once, never modified
+  @crdt(immutable)
+  has id: String
+
+  @crdt(immutable)
+  has created_at: String
+
+  @crdt(immutable)
+  has author: String
+
+  // Last-write-wins for simple edits
+  @crdt(lww)
+  has edited_at: String
+
+  // Collaborative rich text editing with Peritext CRDT
+  @crdt(peritext, formatting="full", max_length=100000)
+  has content: String
+
+  // Add-wins set for emoji reactions
+  @crdt(or_set)
+  has reactions: Set<String>
+
+  // PN-Counter for view tracking
+  @crdt(pn_counter, min_value=0)
+  has view_count: Int
+}
+
+docs {
+  A collaborative chat message demonstrating CRDT annotations for local-first
+  distributed systems.
+
+  This example showcases:
+  - Immutable fields (id, created_at, author) that cannot change
+  - Last-write-wins fields (edited_at) for simple updates
+  - Peritext CRDT for collaborative rich text editing
+  - OR-Set CRDT for add-wins emoji reactions
+  - PN-Counter CRDT for distributed view counting
+
+  See RFC-001 for complete CRDT strategy semantics and type compatibility rules.
+}

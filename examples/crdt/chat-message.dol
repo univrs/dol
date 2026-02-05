@@ -1,0 +1,22 @@
+gen ChatMessage {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(peritext, formatting="full")
+  has content: String
+
+  @crdt(or_set)
+  has reactions: Set<String>
+
+  @crdt(lww)
+  has edited_at: Option<i64>
+}
+
+docs {
+  A collaborative chat message with CRDT merge strategies.
+
+  The id is immutable (set once, never changes).
+  The content uses Peritext for collaborative rich text editing.
+  Reactions use an OR-Set for add-wins semantics.
+  The edit timestamp uses last-write-wins.
+}

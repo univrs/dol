@@ -1,0 +1,258 @@
+// DOL CRDT Example: Collaborative Task Board
+// Demonstrates: rga (Replicated Growable Array) strategy
+
+gen task.item {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  title: String
+
+  @crdt(peritext, formatting="markdown")
+  description: RichText
+
+  @crdt(lww)
+  status: TaskStatus  // todo | in_progress | done | archived
+
+  @crdt(or_set)
+  assignees: Set<Identity>
+
+  @crdt(or_set)
+  tags: Set<String>
+
+  @crdt(pn_counter, min_value=0)
+  estimate_hours: Int
+
+  @crdt(pn_counter, min_value=0)
+  actual_hours: Int
+
+  @crdt(lww)
+  priority: Priority  // low | medium | high | critical
+
+  @crdt(lww)
+  due_date: Option<Timestamp>
+}
+
+gen column.kanban {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  name: String
+
+  @crdt(lww)
+  color: Color
+
+  @crdt(pn_counter, min_value=0)
+  wip_limit: Int  // Work-in-progress limit
+
+  // RGA: Replicated Growable Array for ordered task list
+  @crdt(rga)
+  task_order: List<TaskId>
+}
+
+gen board.kanban {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  name: String
+
+  @crdt(or_set)
+  collaborators: Set<Identity>
+
+  // RGA: Ordered column list preserving drag-and-drop operations
+  @crdt(rga)
+  column_order: List<ColumnId>
+
+  @crdt(or_set)
+  tasks: Set<TaskItem>
+}
+
+constraint board.task_ownership {
+  all tasks belong_to exactly_one column
+  all assignees are collaborators
+}
+
+constraint board.column_consistency {
+  column_order has no_duplicates
+  all columns in column_order exist
+}
+
+constraint column.wip_enforcement {
+  column.task_count <= column.wip_limit
+}
+
+docs {
+  Collaborative Kanban task board demonstrating RGA (Replicated Growable Array)
+  CRDT strategy for ordered sequences.
+
+  **RGA Strategy (task_order, column_order):**
+
+  RGA maintains causal ordering for list operations:
+  - Each element has unique ID (vertex) and "left origin" reference
+  - Insertions record position relative to existing elements
+  - Concurrent insertions at same position ordered by timestamp + actor ID
+  - Deletions tombstone elements (preserve causal structure)
+
+  **Data Structure:**
+
+  ```rust
+  struct RGA<T> {
+      sequence: Vec<Vertex<T>>,
+      tombstones: Set<VertexId>,
+  }
+
+  struct Vertex<T> {
+      id: VertexId,           // Unique identifier
+      element: T,             // Actual data (TaskId, ColumnId)
+      left_origin: Option<VertexId>,  // Predecessor
+      timestamp: Timestamp,
+  }
+  ```
+
+  **Merge Algorithm:**
+
+  1. Union all vertices from both replicas
+  2. Topological sort by causal precedence:
+     - If v1.id = v2.left_origin, then v1 < v2
+     - Else if v1.timestamp < v2.timestamp, then v1 < v2
+     - Else order by v1.id < v2.id (deterministic tie-break)
+  3. Filter out tombstoned vertices for visible sequence
+
+  **Example: Concurrent Task Reordering**
+
+  Initial state (both replicas):
+  ```
+  task_order = [A, B, C, D]
+  ```
+
+  Concurrent operations:
+  - Replica 1: Move task D between A and B
+    ```
+    Remove D from position 3
+    Insert D at position 1
+    Result: [A, D, B, C]
+    ```
+
+  - Replica 2: Move task B to end
+    ```
+    Remove B from position 1
+    Insert B at position 3
+    Result: [A, C, D, B]
+    ```
+
+  RGA merge:
+  ```
+  Vertices after operations:
+  Replica 1: A, D(left=A), B(left=D), C(left=B)
+  Replica 2: A, C(left=A), D(left=C), B(left=D)
+
+  Causal precedence:
+  A < D(replica1, left=A)
+  A < C(replica2, left=A)
+  D(replica1) and C(replica2) concurrent → order by timestamp
+
+  If replica1.timestamp < replica2.timestamp:
+    Final order: [A, D, C, B]
+  Else:
+    Final order: [A, C, D, B]
+
+  Deterministic result across all replicas!
+  ```
+
+  **Example: Concurrent Task Addition**
+
+  Initial state:
+  ```
+  task_order = [Task1, Task2, Task3]
+  ```
+
+  Concurrent insertions at position 1 (between Task1 and Task2):
+  - User A: Insert TaskA at position 1
+  - User B: Insert TaskB at position 1
+
+  Both operations record left_origin = Task1.id
+
+  RGA merge:
+  ```
+  Vertices:
+  Task1
+  TaskA(left=Task1, timestamp=t1, actor=A)
+  TaskB(left=Task1, timestamp=t2, actor=B)
+  Task2
+  Task3
+
+  If t1 < t2: [Task1, TaskA, TaskB, Task2, Task3]
+  If t2 < t1: [Task1, TaskB, TaskA, Task2, Task3]
+  ```
+
+  Intent preserved: Both tasks inserted "after Task1", order by timestamp.
+
+  **Use Cases:**
+
+  1. **Column Reordering**: Drag-and-drop column order
+     - User A moves "Done" column to position 2
+     - User B adds new "Review" column at position 2
+     - RGA merge preserves causal intent
+
+  2. **Task Prioritization**: Reorder tasks within column
+     - Multiple users reprioritize concurrently
+     - All changes merge deterministically
+     - No manual conflict resolution
+
+  3. **Subtask Ordering**: Nested task lists
+     - Nested RGA for subtasks within tasks
+     - Preserves hierarchy across concurrent edits
+
+  **Performance Considerations:**
+
+  - Insert: O(n) worst case (find insertion point by causal order)
+  - Delete: O(1) (add to tombstone set)
+  - Merge: O(n log n) (topological sort)
+  - Query (visible elements): O(n) (filter tombstones)
+
+  Optimization: Maintain sorted index for O(log n) inserts
+
+  **Tombstone Garbage Collection:**
+
+  Problem: Deleted elements accumulate as tombstones
+  Solution: Periodic compaction after all replicas observe deletion
+
+  ```
+  if all_replicas_have_seen(deletion_timestamp) {
+      remove_tombstone(vertex_id);  // Safe to permanently delete
+  }
+  ```
+
+  Condition: No replica has network partition longer than GC period
+
+  **Comparison with OR-Set:**
+
+  OR-Set (unordered collection):
+  - tasks: Set<TaskItem> → OR-Set CRDT
+  - No ordering, just membership
+  - Add-wins semantics
+
+  RGA (ordered sequence):
+  - task_order: List<TaskId> → RGA CRDT
+  - Causal ordering preserved
+  - Position conflicts resolved by timestamp
+
+  **Offline Behavior:**
+
+  1. User reorders tasks offline
+  2. Operations recorded in local RGA
+  3. When reconnected, RGA state synced to peers
+  4. Merge produces deterministic order
+  5. UI updates reflect merged state
+
+  All without manual conflict resolution!
+
+  **Implementation Notes:**
+
+  - Use Automerge's list CRDT (implements RGA semantics)
+  - Vertex IDs: (ActorId, LocalCounter) for uniqueness
+  - Timestamps: Hybrid Logical Clocks for causal ordering
+  - Snapshot compression: Periodic compaction reduces memory
+}

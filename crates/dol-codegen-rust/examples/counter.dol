@@ -1,0 +1,12 @@
+gen Counter {
+  @crdt(immutable)
+  counter has id: String
+
+  @crdt(pn_counter)
+  counter has value: i64
+}
+
+exegesis {
+  A distributed counter that can be incremented and decremented
+  concurrently without conflicts.
+}

@@ -1,0 +1,22 @@
+gen ChatMessage {
+  @crdt(immutable)
+  message has id: String
+
+  @crdt(peritext)
+  message has content: String
+
+  @crdt(or_set)
+  message has reactions: Set<String>
+
+  @crdt(pn_counter)
+  message has likes: i64
+}
+
+exegesis {
+  A collaborative chat message with CRDT-based conflict resolution.
+
+  - id: Immutable identifier set once at creation
+  - content: Rich text with operational transformation for concurrent edits
+  - reactions: Set of emoji reactions, add-wins semantics
+  - likes: Distributed counter with commutativity
+}

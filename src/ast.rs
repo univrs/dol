@@ -1773,10 +1773,107 @@ pub struct LawDecl {
     pub span: Span,
 }
 
+/// CRDT strategy for conflict-free replicated data types.
+///
+/// Represents the merge strategy for a field in a distributed system.
+/// See RFC-001 for detailed semantics of each strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CrdtStrategy {
+    /// Immutable: Value set exactly once, never modified
+    Immutable,
+    /// Last-Write-Wins: Most recent write wins
+    Lww,
+    /// Observed-Remove Set: Add-wins semantics for sets
+    OrSet,
+    /// Positive-Negative Counter: Commutative counter operations
+    PnCounter,
+    /// Peritext: Rich text CRDT for collaborative editing
+    Peritext,
+    /// Replicated Growable Array: Ordered sequence with causal insertion
+    Rga,
+    /// Multi-Value Register: Keeps all concurrent values
+    MvRegister,
+}
+
+impl CrdtStrategy {
+    /// Returns the string representation of the strategy.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CrdtStrategy::Immutable => "immutable",
+            CrdtStrategy::Lww => "lww",
+            CrdtStrategy::OrSet => "or_set",
+            CrdtStrategy::PnCounter => "pn_counter",
+            CrdtStrategy::Peritext => "peritext",
+            CrdtStrategy::Rga => "rga",
+            CrdtStrategy::MvRegister => "mv_register",
+        }
+    }
+
+    /// Parses a strategy from a string.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "immutable" => Some(CrdtStrategy::Immutable),
+            "lww" => Some(CrdtStrategy::Lww),
+            "or_set" => Some(CrdtStrategy::OrSet),
+            "pn_counter" => Some(CrdtStrategy::PnCounter),
+            "peritext" => Some(CrdtStrategy::Peritext),
+            "rga" => Some(CrdtStrategy::Rga),
+            "mv_register" => Some(CrdtStrategy::MvRegister),
+            _ => None,
+        }
+    }
+}
+
+/// CRDT annotation option (key-value pair).
+///
+/// Represents optional configuration for CRDT strategies,
+/// such as tie_break, min_value, max_value, etc.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CrdtOption {
+    /// Option key (e.g., "tie_break", "min_value")
+    pub key: String,
+    /// Option value (e.g., "actor_id", "0")
+    pub value: Expr,
+    /// Source location
+    pub span: Span,
+}
+
+/// CRDT annotation for field declarations.
+///
+/// Represents a `@crdt(strategy, options)` annotation that specifies
+/// how a field should be merged in a distributed system.
+///
+/// # Example
+///
+/// ```dol
+/// gen ChatMessage {
+///   @crdt(immutable)
+///   id: String
+///
+///   @crdt(peritext, formatting="full")
+///   content: String
+///
+///   @crdt(or_set)
+///   reactions: Set<String>
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CrdtAnnotation {
+    /// The CRDT merge strategy
+    pub strategy: CrdtStrategy,
+    /// Optional configuration options
+    pub options: Vec<CrdtOption>,
+    /// Source location
+    pub span: Span,
+}
+
 /// Field declaration in a gene with optional default value.
 ///
-/// Represents a field in a gene declaration, potentially with default value
-/// and constraint.
+/// Represents a field in a gene declaration, potentially with default value,
+/// constraint, and CRDT annotation.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HasField {
@@ -1788,6 +1885,8 @@ pub struct HasField {
     pub default: Option<Expr>,
     /// Optional constraint on the field
     pub constraint: Option<Expr>,
+    /// Optional CRDT annotation for distributed merging (RFC-001)
+    pub crdt_annotation: Option<CrdtAnnotation>,
     /// Source location
     pub span: Span,
 }
