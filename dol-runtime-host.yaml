@@ -1,0 +1,673 @@
+# =============================================================================
+# DOL RUNTIME HOST - Phase 3: TypeScript Host Function Implementation
+# =============================================================================
+# claude-flow v3alpha workflow
+#
+# PURPOSE: Implement all 22 host functions in @vudo/runtime that WASM calls
+# DEPENDS: Phase 1 (dol-abi) + Phase 2 (compiler imports) complete
+# EXIT CRITERIA: WASM Spirit can call all host functions and get correct results
+#
+# Run with:
+#   npx claude-flow@alpha swarm dol-runtime-host.yaml
+# =============================================================================
+
+name: "dol-runtime-host"
+version: "1.0.0"
+description: |
+  Phase 3 of Host Function Bindings: Implement TypeScript host functions
+  that WASM modules call at runtime. This is where println() actually prints,
+  send() actually sends messages, and now() actually returns timestamps.
+
+# =============================================================================
+# WORKFLOW CONFIGURATION
+# =============================================================================
+
+config:
+  max_concurrency: 4
+  checkpoint_on_phase: true
+  require_tests_pass: true
+  
+prerequisites:
+  - name: "vudo-runtime package exists"
+    check: "test -f packages/vudo-runtime/package.json"
+  - name: "ABI types exist"
+    check: "test -f packages/vudo-runtime/src/abi/types.ts"
+  - name: "Phase 2 complete (compiler imports)"
+    check: "test -f crates/dol-codegen-wasm/src/imports/emitter.rs"
+
+# =============================================================================
+# PHASE 1: MEMORY INTERFACE
+# =============================================================================
+
+phases:
+  - name: "phase1-memory-interface"
+    description: "Create memory read/write interface for host functions"
+    
+    agents:
+      - name: "memory-architect"
+        role: "Design and implement WASM linear memory interface"
+        
+        tasks:
+          - name: "create-wasm-memory"
+            description: |
+              Create WasmMemory class that provides typed access to WASM linear memory.
+              
+              Implementation requirements:
+              - readString(ptr, len): Read UTF-8 string from memory
+              - writeString(ptr, str): Write UTF-8 string, return bytes written
+              - readBytes(ptr, len): Read raw bytes (return copy, not view)
+              - writeBytes(ptr, data): Write raw bytes
+              - readI32/writeI32, readI64/writeI64: Integer operations
+              - readF32/writeF32, readF64/writeF64: Float operations
+              - isValidRange(ptr, len): Bounds checking
+              - grow(pages): Memory growth
+              
+              Use TextEncoder/TextDecoder for UTF-8.
+              Use DataView for numeric types (little-endian).
+              Throw MemoryError on out-of-bounds access.
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/memory.ts"
+                template: "wasm-memory-interface"
+
+          - name: "create-bump-allocator"
+            description: |
+              Create BumpAllocator for simple memory allocation.
+              
+              Implementation:
+              - Bump pointer forward on alloc
+              - Align to 8 bytes
+              - Grow memory if needed
+              - Track allocation offset
+              - Reset capability for reuse
+              
+              Constants from MemoryLayout:
+              - HEAP_BASE: 0x10000 (64KB)
+              - STACK_SIZE: 0x8000 (32KB)
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/allocator.ts"
+                template: "bump-allocator"
+
+          - name: "create-memory-tests"
+            description: |
+              Create unit tests for memory operations:
+              - String read/write (ASCII and Unicode)
+              - Byte read/write
+              - Numeric types (i32, i64, f32, f64)
+              - Bounds checking
+              - Memory growth
+              - Allocator alignment
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/__tests__/memory.test.ts"
+                template: "memory-tests"
+
+    validation:
+      commands:
+        - "cd packages/vudo-runtime && npm test -- --grep 'WasmMemory'"
+      success_criteria:
+        - "String encoding/decoding works"
+        - "Numeric types round-trip correctly"
+        - "Bounds checking throws MemoryError"
+
+  # =============================================================================
+  # PHASE 2: I/O HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase2-io-functions"
+    description: "Implement I/O host functions: print, println, log, error"
+    depends_on: ["phase1-memory-interface"]
+    
+    agents:
+      - name: "io-implementer"
+        role: "Implement I/O host functions"
+        
+        tasks:
+          - name: "create-io-host"
+            description: |
+              Implement I/O host functions:
+              
+              vudo_print(ptr: i32, len: i32) -> void
+                Read string from memory, output without newline
+              
+              vudo_println(ptr: i32, len: i32) -> void
+                Read string from memory, output with newline
+              
+              vudo_log(level: i32, ptr: i32, len: i32) -> void
+                Log with level: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
+              
+              vudo_error(ptr: i32, len: i32) -> void
+                Output error message
+              
+              Create IOutputHandler interface for testability.
+              Provide ConsoleOutputHandler (real) and BufferedOutputHandler (test).
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/io.ts"
+                template: "io-host-functions"
+
+    validation:
+      commands:
+        - "cd packages/vudo-runtime && npm test -- --grep 'IoHost'"
+
+  # =============================================================================
+  # PHASE 3: MEMORY MANAGEMENT HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase3-memory-functions"
+    description: "Implement memory management: alloc, free, realloc"
+    depends_on: ["phase2-io-functions"]
+    
+    agents:
+      - name: "memory-implementer"
+        role: "Implement memory management host functions"
+        
+        tasks:
+          - name: "create-memory-host"
+            description: |
+              Implement memory management host functions:
+              
+              vudo_alloc(size: i32) -> i32
+                Allocate size bytes, return pointer or 0 on failure
+              
+              vudo_free(ptr: i32, size: i32) -> void
+                Free previously allocated memory
+              
+              vudo_realloc(ptr: i32, old_size: i32, new_size: i32) -> i32
+                Reallocate to new size, return new pointer or 0
+              
+              Track allocation statistics:
+              - totalAllocated
+              - totalFreed
+              - allocationCount
+              - peakUsage
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/memory-host.ts"
+                template: "memory-host-functions"
+
+  # =============================================================================
+  # PHASE 4: TIME HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase4-time-functions"
+    description: "Implement time functions: now, sleep, monotonic_now"
+    depends_on: ["phase3-memory-functions"]
+    
+    agents:
+      - name: "time-implementer"
+        role: "Implement time host functions"
+        
+        tasks:
+          - name: "create-time-host"
+            description: |
+              Implement time host functions:
+              
+              vudo_now() -> i64
+                Return Unix timestamp in milliseconds (Date.now())
+              
+              vudo_sleep(ms: i32) -> void
+                Sleep for milliseconds (store promise for async handling)
+              
+              vudo_monotonic_now() -> i64
+                Return monotonic time in nanoseconds (performance.now() or hrtime)
+              
+              Create ITimeProvider interface:
+              - RealTimeProvider: Uses system time
+              - MockTimeProvider: For testing, with advance() method
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/time.ts"
+                template: "time-host-functions"
+
+  # =============================================================================
+  # PHASE 5: MESSAGING HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase5-messaging-functions"
+    description: "Implement messaging: send, recv, pending, broadcast, free_message"
+    depends_on: ["phase4-time-functions"]
+    
+    agents:
+      - name: "messaging-implementer"
+        role: "Implement messaging host functions"
+        
+        tasks:
+          - name: "create-messaging-host"
+            description: |
+              Implement messaging host functions:
+              
+              vudo_send(target_ptr, target_len, payload_ptr, payload_len: i32) -> i32
+                Send message to target Spirit
+                Return: 0=SUCCESS, 1=TARGET_NOT_FOUND, 2=QUEUE_FULL, 3=INVALID_PAYLOAD
+              
+              vudo_recv() -> i32
+                Receive next message, return pointer to message struct or 0
+                Message struct layout (32 bytes):
+                  - sender_ptr: i32
+                  - sender_len: i32
+                  - payload_ptr: i32
+                  - payload_len: i32
+                  - timestamp: i64
+                  - flags: i32
+                  - reserved: i32
+              
+              vudo_pending() -> i32
+                Return count of pending messages
+              
+              vudo_broadcast(payload_ptr, payload_len: i32) -> i32
+                Broadcast to all Spirits, return recipient count
+              
+              vudo_free_message(msg_ptr: i32) -> void
+                Free message struct and its contents
+              
+              Create IMessageBus interface:
+              - InMemoryMessageBus: For testing
+              - (Future: NetworkMessageBus for real P2P)
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/messaging.ts"
+                template: "messaging-host-functions"
+
+  # =============================================================================
+  # PHASE 6: RANDOM HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase6-random-functions"
+    description: "Implement random: random, random_bytes"
+    depends_on: ["phase5-messaging-functions"]
+    
+    agents:
+      - name: "random-implementer"
+        role: "Implement random host functions"
+        
+        tasks:
+          - name: "create-random-host"
+            description: |
+              Implement random host functions:
+              
+              vudo_random() -> f64
+                Return random float in [0, 1)
+                Use crypto.getRandomValues for security
+              
+              vudo_random_bytes(ptr: i32, len: i32) -> void
+                Fill buffer with random bytes
+                Use crypto.getRandomValues or crypto.randomBytes (Node)
+              
+              Create IRandomProvider interface:
+              - SecureRandomProvider: Uses crypto APIs
+              - SeededRandomProvider: For deterministic testing (Mulberry32 PRNG)
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/random.ts"
+                template: "random-host-functions"
+
+  # =============================================================================
+  # PHASE 7: EFFECTS HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase7-effects-functions"
+    description: "Implement effects: emit_effect, subscribe"
+    depends_on: ["phase6-random-functions"]
+    
+    agents:
+      - name: "effects-implementer"
+        role: "Implement effect system host functions"
+        
+        tasks:
+          - name: "create-effects-host"
+            description: |
+              Implement effect host functions:
+              
+              vudo_emit_effect(effect_id: i32, payload_ptr: i32, payload_len: i32) -> i32
+                Emit effect request to runtime
+                Return: 0=SUCCESS, 1=UNKNOWN_EFFECT, 2=PERMISSION_DENIED, 3=INVALID_PAYLOAD
+              
+              vudo_subscribe(effect_id: i32, callback_ptr: i32) -> i32
+                Subscribe to effect type (placeholder for future)
+                Return subscription ID or 0 on failure
+              
+              Effect types (enum):
+              - FS_READ=1, FS_WRITE=2, FS_DELETE=3, FS_LIST=4
+              - HTTP_GET=10, HTTP_POST=11, HTTP_PUT=12
+              - TIMER_SET=20, TIMER_CANCEL=21
+              - CRYPTO_SIGN=30, CRYPTO_VERIFY=31
+              
+              Create IEffectSystem interface:
+              - registerHandler(effectType, handler)
+              - emit(request) -> Promise<result>
+              - isAllowed(spiritId, effectType)
+              - grant/revoke permissions
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/effects.ts"
+                template: "effects-host-functions"
+
+  # =============================================================================
+  # PHASE 8: DEBUG HOST FUNCTIONS
+  # =============================================================================
+
+  - name: "phase8-debug-functions"
+    description: "Implement debug: breakpoint, assert, panic"
+    depends_on: ["phase7-effects-functions"]
+    
+    agents:
+      - name: "debug-implementer"
+        role: "Implement debug host functions"
+        
+        tasks:
+          - name: "create-debug-host"
+            description: |
+              Implement debug host functions:
+              
+              vudo_breakpoint() -> void
+                Trigger debugger breakpoint if enabled
+                Call `debugger;` statement
+              
+              vudo_assert(condition: i32, msg_ptr: i32, msg_len: i32) -> void
+                If condition == 0 (false):
+                  - Emit ASSERTION_FAILED event
+                  - If assertionsFatal: throw AssertionError
+              
+              vudo_panic(msg_ptr: i32, msg_len: i32) -> void
+                Always throws SpiritPanicError
+                Log error message
+              
+              Create error classes:
+              - SpiritPanicError extends Error
+              - AssertionError extends Error
+              
+              DebugConfig:
+              - breakpointsEnabled: boolean
+              - assertionsFatal: boolean
+              - verbose: boolean
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/debug.ts"
+                template: "debug-host-functions"
+
+  # =============================================================================
+  # PHASE 9: HOST FUNCTION REGISTRY
+  # =============================================================================
+
+  - name: "phase9-registry"
+    description: "Create unified registry combining all host functions"
+    depends_on: ["phase8-debug-functions"]
+    
+    agents:
+      - name: "registry-builder"
+        role: "Build unified host function registry"
+        
+        tasks:
+          - name: "create-registry"
+            description: |
+              Create HostFunctionRegistry that:
+              
+              1. Accepts configuration:
+                 - spiritId: string
+                 - outputHandler?: IOutputHandler
+                 - timeProvider?: ITimeProvider
+                 - randomProvider?: IRandomProvider
+                 - messageBus?: IMessageBus
+                 - effectSystem?: IEffectSystem
+                 - debugConfig?: Partial<DebugConfig>
+              
+              2. Provides initialize(wasmMemory) method:
+                 - Create WasmMemory wrapper
+                 - Create BumpAllocator
+                 - Instantiate all host function classes
+              
+              3. Provides getImportObject() -> WebAssembly.Imports:
+                 Return { vudo: { vudo_print, vudo_println, ... } }
+              
+              4. Provides cleanup() for resource release
+              
+              Export HOST_FUNCTION_NAMES array (22 items)
+              Export HOST_FUNCTION_COUNT = 22
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/registry.ts"
+                template: "host-registry"
+
+          - name: "create-host-index"
+            description: |
+              Create index.ts that exports all host modules:
+              - WasmMemory, BumpAllocator, MemoryLayout, MemoryError
+              - IoHostFunctions, ConsoleOutputHandler, BufferedOutputHandler
+              - MemoryHostFunctions, AllocationStats
+              - TimeHostFunctions, RealTimeProvider, MockTimeProvider
+              - MessagingHostFunctions, InMemoryMessageBus, SendResult
+              - RandomHostFunctions, SecureRandomProvider, SeededRandomProvider
+              - EffectHostFunctions, EffectSystem, EffectType, EmitResult
+              - DebugHostFunctions, SpiritPanicError, AssertionError
+              - HostFunctionRegistry, createHostFunctions, HOST_FUNCTION_NAMES
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/index.ts"
+                template: "host-index"
+
+    validation:
+      commands:
+        - "cd packages/vudo-runtime && npx tsc --noEmit"
+      success_criteria:
+        - "All exports compile without errors"
+        - "HOST_FUNCTION_COUNT equals 22"
+
+  # =============================================================================
+  # PHASE 10: INTEGRATION TESTS
+  # =============================================================================
+
+  - name: "phase10-integration-tests"
+    description: "End-to-end tests with actual WASM execution"
+    depends_on: ["phase9-registry"]
+    
+    agents:
+      - name: "integration-tester"
+        role: "Create comprehensive integration tests"
+        
+        tasks:
+          - name: "create-integration-tests"
+            description: |
+              Create integration tests that:
+              
+              1. Set up complete host environment:
+                 - WebAssembly.Memory
+                 - HostFunctionRegistry with mock providers
+              
+              2. Test each category:
+                 - I/O: println writes to BufferedOutputHandler
+                 - Memory: alloc returns valid pointers, stats track correctly
+                 - Time: now returns bigint, mock time advances
+                 - Messaging: send/recv between Spirits
+                 - Random: deterministic with SeededRandomProvider
+                 - Debug: assert throws AssertionError on failure
+              
+              3. Verify all 22 functions exist in import object
+              
+              4. Test cleanup releases resources
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/src/host/__tests__/integration.test.ts"
+                template: "integration-tests"
+
+    validation:
+      commands:
+        - "cd packages/vudo-runtime && npm test -- --grep 'Integration'"
+      success_criteria:
+        - "All 22 host functions callable"
+        - "All integration tests pass"
+
+  # =============================================================================
+  # PHASE 11: DOCUMENTATION
+  # =============================================================================
+
+  - name: "phase11-documentation"
+    description: "Create documentation for host functions"
+    depends_on: ["phase10-integration-tests"]
+    
+    agents:
+      - name: "doc-writer"
+        role: "Write comprehensive documentation"
+        
+        tasks:
+          - name: "create-host-docs"
+            description: |
+              Create HOST-FUNCTIONS.md documenting:
+              
+              1. Overview: Bridge between WASM and runtime
+              
+              2. Function table by category:
+                 | Function | Signature | Description |
+              
+              3. Detailed documentation per function:
+                 - Parameters and return values
+                 - Error codes where applicable
+                 - Memory layout for structs
+              
+              4. Usage example:
+                 ```typescript
+                 const registry = new HostFunctionRegistry({ spiritId: 'my-spirit' });
+                 const { instance } = await WebAssembly.instantiateStreaming(...);
+                 registry.initialize(instance.exports.memory);
+                 instance.exports.main();
+                 registry.cleanup();
+                 ```
+              
+              5. Testing guide
+            
+            files_to_create:
+              - path: "packages/vudo-runtime/docs/HOST-FUNCTIONS.md"
+                template: "host-docs"
+
+# =============================================================================
+# FINAL VALIDATION
+# =============================================================================
+
+final_validation:
+  commands:
+    - "cd packages/vudo-runtime && npm run build"
+    - "cd packages/vudo-runtime && npm test"
+    - "cd packages/vudo-runtime && npm run lint"
+  success_criteria:
+    - "All 22 host functions implemented"
+    - "All tests pass (unit + integration)"
+    - "No TypeScript errors"
+    - "Documentation complete"
+
+# =============================================================================
+# ARTIFACTS SUMMARY
+# =============================================================================
+
+artifacts:
+  core_modules:
+    - path: "packages/vudo-runtime/src/host/memory.ts"
+      description: "WasmMemory interface for linear memory access"
+      lines: ~200
+    
+    - path: "packages/vudo-runtime/src/host/allocator.ts"
+      description: "BumpAllocator for memory allocation"
+      lines: ~100
+    
+    - path: "packages/vudo-runtime/src/host/io.ts"
+      description: "I/O functions: print, println, log, error"
+      lines: ~150
+    
+    - path: "packages/vudo-runtime/src/host/memory-host.ts"
+      description: "Memory functions: alloc, free, realloc"
+      lines: ~100
+    
+    - path: "packages/vudo-runtime/src/host/time.ts"
+      description: "Time functions: now, sleep, monotonic_now"
+      lines: ~150
+    
+    - path: "packages/vudo-runtime/src/host/messaging.ts"
+      description: "Messaging functions: send, recv, pending, broadcast, free_message"
+      lines: ~250
+    
+    - path: "packages/vudo-runtime/src/host/random.ts"
+      description: "Random functions: random, random_bytes"
+      lines: ~100
+    
+    - path: "packages/vudo-runtime/src/host/effects.ts"
+      description: "Effect functions: emit_effect, subscribe"
+      lines: ~200
+    
+    - path: "packages/vudo-runtime/src/host/debug.ts"
+      description: "Debug functions: breakpoint, assert, panic"
+      lines: ~150
+    
+    - path: "packages/vudo-runtime/src/host/registry.ts"
+      description: "HostFunctionRegistry combining all functions"
+      lines: ~200
+    
+    - path: "packages/vudo-runtime/src/host/index.ts"
+      description: "Module exports"
+      lines: ~100
+  
+  tests:
+    - path: "packages/vudo-runtime/src/host/__tests__/memory.test.ts"
+      description: "Memory interface unit tests"
+      lines: ~200
+    
+    - path: "packages/vudo-runtime/src/host/__tests__/integration.test.ts"
+      description: "End-to-end integration tests"
+      lines: ~300
+  
+  documentation:
+    - path: "packages/vudo-runtime/docs/HOST-FUNCTIONS.md"
+      description: "Complete host function documentation"
+      lines: ~300
+
+  total_estimated_lines: ~2500
+
+# =============================================================================
+# EXIT CRITERIA
+# =============================================================================
+
+exit_criteria:
+  implementation:
+    - "All 22 host functions have TypeScript implementations"
+    - "WasmMemory correctly reads/writes strings, bytes, and numbers"
+    - "HostFunctionRegistry provides valid WASM import object"
+    - "Memory allocation/deallocation works correctly"
+    - "Messaging between Spirits works (send/recv/pending)"
+    - "Time functions return correct values"
+    - "Random functions produce valid output"
+    - "Debug functions (assert, panic) throw appropriately"
+  
+  testing:
+    - "Unit tests for WasmMemory pass"
+    - "Integration tests verify all 22 functions"
+    - "Tests use mock providers for determinism"
+  
+  quality:
+    - "TypeScript compiles without errors"
+    - "No lint warnings"
+    - "All functions have JSDoc comments"
+  
+  documentation:
+    - "HOST-FUNCTIONS.md covers all functions"
+    - "Usage example is complete and working"
+
+# =============================================================================
+# EXECUTION NOTES
+# =============================================================================
+
+notes: |
+  This workflow implements Phase 3 of the Host Function Bindings project.
+  
+  Phase Summary:
+  - Phase 1 (Complete): ABI specification in dol-abi crate
+  - Phase 2 (Complete): WASM import generation in dol-codegen-wasm
+  - Phase 3 (This workflow): TypeScript implementations in @vudo/runtime
+  - Phase 4 (Future): End-to-end Spirit execution
+  
+  Key Design Decisions:
+  1. Use interfaces (IWasmMemory, ITimeProvider, etc.) for testability
+  2. Mock providers allow deterministic testing
+  3. HostFunctionRegistry aggregates all functions
+  4. BumpAllocator is simple but sufficient for short-lived Spirit calls
+  
+  After this phase, the pipeline is:
+  DOL Source → dol-codegen-wasm → WASM with imports → Runtime executes with host functions
