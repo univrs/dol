@@ -1,0 +1,21 @@
+[package]
+name = "dol-codegen-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "WASM code generation for DOL"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core dependencies
+thiserror = "1.0"
+walrus = "0.21"
+
+# DOL dependencies
+dol-abi = { path = "../../dol-abi" }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+wasm-encoder = "0.38"
+wasmparser = "0.118"

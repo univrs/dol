@@ -81,6 +81,7 @@ use std::fmt;
 
 pub mod alloc;
 pub mod compiler;
+pub mod imports;
 pub mod layout;
 pub mod runtime;
 

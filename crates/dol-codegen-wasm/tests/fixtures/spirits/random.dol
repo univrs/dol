@@ -1,0 +1,46 @@
+// Test fixture: Random number operations
+// Tests: vudo_random, vudo_random_bytes import generation
+
+module test.random @ 1.0.0
+
+docs {
+    Randomness test that exercises random imports.
+    Should generate imports for:
+    - vudo_random () -> f64
+    - vudo_random_bytes (i32, i32) -> void
+}
+
+pub fun roll_dice() -> u8 {
+    let r = random()
+    return ((r * 6.0).floor() + 1.0) as u8
+}
+
+pub fun flip_coin() -> bool {
+    return random() >= 0.5
+}
+
+pub fun generate_random_bytes(buffer: i32, count: u32) {
+    random_bytes(buffer, count as i32)
+}
+
+pub fun random_range(min: f64, max: f64) -> f64 {
+    let r = random()
+    return min + (r * (max - min))
+}
+
+pub fun shuffle_deck() -> Vec<u8> {
+    let mut deck = Vec::new()
+    for i in 0..52 {
+        deck.push(i as u8)
+    }
+
+    // Fisher-Yates shuffle using random()
+    for i in 51..0 {
+        let j = (random() * (i + 1) as f64).floor() as usize
+        let temp = deck[i]
+        deck[i] = deck[j]
+        deck[j] = temp
+    }
+
+    return deck
+}

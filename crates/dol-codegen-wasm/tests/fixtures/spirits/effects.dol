@@ -1,0 +1,40 @@
+// Test fixture: Effect system operations
+// Tests: vudo_emit_effect, vudo_subscribe import generation
+
+module test.effects @ 1.0.0
+
+docs {
+    Effect system test that exercises effect imports.
+    Should generate imports for:
+    - vudo_emit_effect (i32, i32, i32) -> i32
+    - vudo_subscribe (i32, i32) -> i32
+}
+
+pub gen EffectData {
+    has effect_type: string
+    has value: f64
+    has timestamp: i64
+}
+
+pub fun emit_temperature_change(temp: f64) -> bool {
+    let effect = EffectData {
+        effect_type: "temperature",
+        value: temp,
+        timestamp: now()
+    }
+    let result = emit_effect("environment", "temperature_change", effect)
+    return result == 0
+}
+
+pub fun subscribe_to_events(event_type: string) -> i32 {
+    return subscribe("environment", event_type)
+}
+
+pub fun emit_state_change(old_state: string, new_state: string) {
+    let data = EffectData {
+        effect_type: "state_change",
+        value: 0.0,
+        timestamp: now()
+    }
+    emit_effect("system", "state", data)
+}

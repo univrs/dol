@@ -1,0 +1,45 @@
+// Test fixture: Message passing operations
+// Tests: vudo_send, vudo_recv, vudo_pending import generation
+
+module test.messaging @ 1.0.0
+
+docs {
+    Message passing test that exercises messaging imports.
+    Should generate imports for:
+    - vudo_send (i32, i32, i32, i32) -> i32
+    - vudo_recv () -> i32
+    - vudo_pending () -> i32
+    - vudo_free_message (i32) -> void
+}
+
+pub gen Message {
+    has target: string
+    has payload: string
+}
+
+pub fun send_greeting(target: string) -> bool {
+    let msg = Message {
+        target: target,
+        payload: "Hello"
+    }
+    let result = send(target, "greeting", msg)
+    return result == 0
+}
+
+pub fun check_messages() -> u32 {
+    return pending()
+}
+
+pub fun receive_message() -> Message {
+    let msg_ptr = recv()
+    if msg_ptr == 0 {
+        return Message { target: "", payload: "" }
+    }
+    let msg = deserialize_message(msg_ptr)
+    free_message(msg_ptr)
+    return msg
+}
+
+fun deserialize_message(ptr: i32) -> Message {
+    return Message { target: "unknown", payload: "data" }
+}

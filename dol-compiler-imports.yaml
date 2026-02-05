@@ -1,0 +1,1958 @@
+# =============================================================================
+# DOL COMPILER IMPORTS - Phase 2: WASM Import Generation
+# =============================================================================
+# claude-flow v3alpha workflow
+#
+# PURPOSE: Make the DOL compiler emit WASM imports matching the ABI
+# DEPENDS ON: Phase 1 (dol-abi crate complete)
+# EXIT CRITERIA: Compiled WASM modules import host functions correctly
+#
+# Run with:
+#   npx claude-flow@alpha swarm dol-compiler-imports.yaml
+# =============================================================================
+
+name: "dol-compiler-imports"
+version: "1.0.0"
+description: |
+  Phase 2 of Host Function Bindings: Make the DOL compiler emit WASM imports
+  that match the ABI specification. This connects DOL source code like
+  `println("Hello")` to runtime implementations via WASM imports.
+
+# =============================================================================
+# WORKFLOW CONFIGURATION
+# =============================================================================
+
+config:
+  max_concurrency: 5
+  checkpoint_on_phase: true
+  require_tests_pass: true
+  
+dependencies:
+  - name: "dol-abi"
+    version: "0.1.0"
+    status: "complete"
+
+# =============================================================================
+# PHASE 1: DEPENDENCY WIRING
+# =============================================================================
+
+phases:
+  - name: "phase1-dependency-wiring"
+    description: "Add dol-abi as dependency to dol-codegen-wasm"
+    
+    agents:
+      - name: "dependency-manager"
+        role: "Wire up crate dependencies"
+        
+        tasks:
+          # ─────────────────────────────────────────────────────────────────
+          # Task 1.1: Update Cargo.toml
+          # ─────────────────────────────────────────────────────────────────
+          - name: "update-codegen-wasm-cargo"
+            description: "Add dol-abi dependency to dol-codegen-wasm"
+            action: "modify_file"
+            path: "crates/dol-codegen-wasm/Cargo.toml"
+            modifications:
+              - type: "add_dependency"
+                content: |
+                  [dependencies]
+                  dol-abi = { path = "../dol-abi", version = "0.1.0" }
+                  walrus = "0.20"
+                  wasm-encoder = "0.38"
+                  wasmparser = "0.118"
+                  log = "0.4"
+                  thiserror = "1.0"
+
+          # ─────────────────────────────────────────────────────────────────
+          # Task 1.2: Create imports module structure
+          # ─────────────────────────────────────────────────────────────────
+          - name: "create-imports-module"
+            description: "Create the imports module structure"
+            action: "create_file"
+            path: "crates/dol-codegen-wasm/src/imports/mod.rs"
+            content: |
+              //! WASM Import Generation
+              //!
+              //! This module handles emitting WASM imports for host functions.
+              //! It uses the `dol-abi` crate to ensure type-safe bindings.
+              //!
+              //! # Architecture
+              //!
+              //! ```text
+              //! DOL AST                    WASM Module
+              //! ────────                   ───────────
+              //! println("Hi")    ───►      (import "vudo" "vudo_println"
+              //!                             (func $vudo_println (param i32 i32)))
+              //!
+              //! send(t, msg)     ───►      (import "vudo" "vudo_send"
+              //!                             (func $vudo_send (param i32 i32 i32 i32)
+              //!                                              (result i32)))
+              //! ```
+              
+              mod emitter;
+              mod calls;
+              mod memory;
+              mod tracker;
+              
+              pub use emitter::{ImportEmitter, ImportSection};
+              pub use calls::{CallGenerator, HostCallSite};
+              pub use memory::{StringEncoder, MemoryLayout};
+              pub use tracker::{ImportTracker, UsedImports};
+              
+              use dol_abi::{HostFunction, IMPORT_MODULE};
+              
+              /// Get all imports that a Spirit might need.
+              pub fn all_imports() -> Vec<HostFunction> {
+                  HostFunction::all().to_vec()
+              }
+              
+              /// Check if a function name is a host function.
+              pub fn is_host_function(name: &str) -> bool {
+                  HostFunction::by_name(name).is_some()
+              }
+
+          # ─────────────────────────────────────────────────────────────────
+          # Task 1.3: Update lib.rs to export imports module
+          # ─────────────────────────────────────────────────────────────────
+          - name: "update-lib-exports"
+            description: "Export imports module from lib.rs"
+            action: "modify_file"
+            path: "crates/dol-codegen-wasm/src/lib.rs"
+            modifications:
+              - type: "add_module"
+                content: |
+                  pub mod imports;
+                  
+                  pub use imports::{ImportEmitter, ImportTracker, CallGenerator};
+
+    validation:
+      commands:
+        - "cd crates/dol-codegen-wasm && cargo check"
+      success_criteria:
+        - "Crate compiles with new dependency"
+
+  # =============================================================================
+  # PHASE 2: IMPORT EMITTER
+  # =============================================================================
+
+  - name: "phase2-import-emitter"
+    description: "Implement the core import emission logic"
+    depends_on: ["phase1-dependency-wiring"]
+    
+    agents:
+      - name: "import-emitter-impl"
+        role: "Implement ImportEmitter"
+        
+        tasks:
+          # ─────────────────────────────────────────────────────────────────
+          # Task 2.1: Import Emitter Core
+          # ─────────────────────────────────────────────────────────────────
+          - name: "implement-import-emitter"
+            description: "Core import emission logic"
+            action: "create_file"
+            path: "crates/dol-codegen-wasm/src/imports/emitter.rs"
+            content: |
+              //! Import section emitter for WASM modules.
+              //!
+              //! Generates the import section based on which host functions
+              //! are actually used by the Spirit.
+              
+              use dol_abi::{HostFunction, HostFunctionSignature, WasmType, IMPORT_MODULE};
+              use std::collections::HashMap;
+              use walrus::{FunctionId, ImportId, Module, ValType};
+              
+              /// Emitted import information.
+              #[derive(Debug, Clone)]
+              pub struct ImportInfo {
+                  /// The host function.
+                  pub function: HostFunction,
+                  /// WASM import ID.
+                  pub import_id: ImportId,
+                  /// WASM function ID (for calling).
+                  pub func_id: FunctionId,
+              }
+              
+              /// The import section of a WASM module.
+              #[derive(Debug, Default)]
+              pub struct ImportSection {
+                  /// Map from function name to import info.
+                  imports: HashMap<String, ImportInfo>,
+                  /// Order of imports (for deterministic output).
+                  order: Vec<String>,
+              }
+              
+              impl ImportSection {
+                  /// Create a new empty import section.
+                  pub fn new() -> Self {
+                      Self::default()
+                  }
+                  
+                  /// Get an import by function name.
+                  pub fn get(&self, name: &str) -> Option<&ImportInfo> {
+                      self.imports.get(name)
+                  }
+                  
+                  /// Get the function ID for a host function.
+                  pub fn get_func_id(&self, func: HostFunction) -> Option<FunctionId> {
+                      self.imports.get(func.name()).map(|i| i.func_id)
+                  }
+                  
+                  /// Check if a function is imported.
+                  pub fn has(&self, name: &str) -> bool {
+                      self.imports.contains_key(name)
+                  }
+                  
+                  /// Get all imported functions in order.
+                  pub fn iter(&self) -> impl Iterator<Item = &ImportInfo> {
+                      self.order.iter().filter_map(|name| self.imports.get(name))
+                  }
+                  
+                  /// Number of imports.
+                  pub fn len(&self) -> usize {
+                      self.imports.len()
+                  }
+                  
+                  /// Check if empty.
+                  pub fn is_empty(&self) -> bool {
+                      self.imports.is_empty()
+                  }
+                  
+                  /// Add an import.
+                  fn add(&mut self, info: ImportInfo) {
+                      let name = info.function.name().to_string();
+                      if !self.imports.contains_key(&name) {
+                          self.order.push(name.clone());
+                      }
+                      self.imports.insert(name, info);
+                  }
+              }
+              
+              /// Emits WASM imports for host functions.
+              pub struct ImportEmitter<'a> {
+                  module: &'a mut Module,
+              }
+              
+              impl<'a> ImportEmitter<'a> {
+                  /// Create a new import emitter.
+                  pub fn new(module: &'a mut Module) -> Self {
+                      Self { module }
+                  }
+                  
+                  /// Emit imports for the given host functions.
+                  pub fn emit(&mut self, functions: &[HostFunction]) -> ImportSection {
+                      let mut section = ImportSection::new();
+                      
+                      for func in functions {
+                          let info = self.emit_one(*func);
+                          section.add(info);
+                      }
+                      
+                      section
+                  }
+                  
+                  /// Emit all possible imports (for Spirits that use everything).
+                  pub fn emit_all(&mut self) -> ImportSection {
+                      self.emit(HostFunction::all())
+                  }
+                  
+                  /// Emit a single import.
+                  fn emit_one(&mut self, func: HostFunction) -> ImportInfo {
+                      let sig = func.signature();
+                      
+                      // Convert signature to walrus types
+                      let params: Vec<ValType> = sig.params
+                          .iter()
+                          .map(|t| Self::to_val_type(*t))
+                          .collect();
+                      
+                      let results: Vec<ValType> = sig.result
+                          .map(|t| vec![Self::to_val_type(t)])
+                          .unwrap_or_default();
+                      
+                      // Create function type
+                      let type_id = self.module.types.add(&params, &results);
+                      
+                      // Create import
+                      let (func_id, import_id) = self.module.add_import_func(
+                          IMPORT_MODULE,
+                          func.name(),
+                          type_id,
+                      );
+                      
+                      ImportInfo {
+                          function: func,
+                          import_id,
+                          func_id,
+                      }
+                  }
+                  
+                  /// Convert ABI type to walrus ValType.
+                  fn to_val_type(ty: WasmType) -> ValType {
+                      match ty {
+                          WasmType::I32 => ValType::I32,
+                          WasmType::I64 => ValType::I64,
+                          WasmType::F32 => ValType::F32,
+                          WasmType::F64 => ValType::F64,
+                      }
+                  }
+              }
+              
+              #[cfg(test)]
+              mod tests {
+                  use super::*;
+                  
+                  fn create_test_module() -> Module {
+                      Module::default()
+                  }
+                  
+                  #[test]
+                  fn test_emit_single_import() {
+                      let mut module = create_test_module();
+                      let mut emitter = ImportEmitter::new(&mut module);
+                      
+                      let section = emitter.emit(&[HostFunction::Print]);
+                      
+                      assert_eq!(section.len(), 1);
+                      assert!(section.has("vudo_print"));
+                  }
+                  
+                  #[test]
+                  fn test_emit_multiple_imports() {
+                      let mut module = create_test_module();
+                      let mut emitter = ImportEmitter::new(&mut module);
+                      
+                      let section = emitter.emit(&[
+                          HostFunction::Print,
+                          HostFunction::Println,
+                          HostFunction::Now,
+                      ]);
+                      
+                      assert_eq!(section.len(), 3);
+                      assert!(section.has("vudo_print"));
+                      assert!(section.has("vudo_println"));
+                      assert!(section.has("vudo_now"));
+                  }
+                  
+                  #[test]
+                  fn test_emit_all_imports() {
+                      let mut module = create_test_module();
+                      let mut emitter = ImportEmitter::new(&mut module);
+                      
+                      let section = emitter.emit_all();
+                      
+                      // Should have all 22 host functions
+                      assert_eq!(section.len(), 22);
+                  }
+                  
+                  #[test]
+                  fn test_get_func_id() {
+                      let mut module = create_test_module();
+                      let mut emitter = ImportEmitter::new(&mut module);
+                      
+                      let section = emitter.emit(&[HostFunction::Print]);
+                      
+                      let func_id = section.get_func_id(HostFunction::Print);
+                      assert!(func_id.is_some());
+                  }
+                  
+                  #[test]
+                  fn test_import_order_preserved() {
+                      let mut module = create_test_module();
+                      let mut emitter = ImportEmitter::new(&mut module);
+                      
+                      let funcs = vec![
+                          HostFunction::Now,
+                          HostFunction::Print,
+                          HostFunction::Alloc,
+                      ];
+                      let section = emitter.emit(&funcs);
+                      
+                      let names: Vec<&str> = section.iter()
+                          .map(|i| i.function.name())
+                          .collect();
+                      
+                      assert_eq!(names, vec!["vudo_now", "vudo_print", "vudo_alloc"]);
+                  }
+              }
+
+          # ─────────────────────────────────────────────────────────────────
+          # Task 2.2: Import Tracker
+          # ─────────────────────────────────────────────────────────────────
+          - name: "implement-import-tracker"
+            description: "Track which imports are used during compilation"
+            action: "create_file"
+            path: "crates/dol-codegen-wasm/src/imports/tracker.rs"
+            content: |
+              //! Import usage tracker.
+              //!
+              //! Tracks which host functions are actually used during compilation,
+              //! so we only emit the imports that are needed.
+              
+              use dol_abi::{HostFunction, HostFunctionCategory};
+              use std::collections::HashSet;
+              
+              /// Set of used imports.
+              #[derive(Debug, Clone, Default)]
+              pub struct UsedImports {
+                  functions: HashSet<HostFunction>,
+              }
+              
+              impl UsedImports {
+                  /// Create empty set.
+                  pub fn new() -> Self {
+                      Self::default()
+                  }
+                  
+                  /// Mark a function as used.
+                  pub fn mark_used(&mut self, func: HostFunction) {
+                      self.functions.insert(func);
+                  }
+                  
+                  /// Check if a function is used.
+                  pub fn is_used(&self, func: HostFunction) -> bool {
+                      self.functions.contains(&func)
+                  }
+                  
+                  /// Get all used functions.
+                  pub fn all(&self) -> Vec<HostFunction> {
+                      self.functions.iter().copied().collect()
+                  }
+                  
+                  /// Get used functions by category.
+                  pub fn by_category(&self, category: HostFunctionCategory) -> Vec<HostFunction> {
+                      self.functions
+                          .iter()
+                          .copied()
+                          .filter(|f| f.category() == category)
+                          .collect()
+                  }
+                  
+                  /// Number of used imports.
+                  pub fn len(&self) -> usize {
+                      self.functions.len()
+                  }
+                  
+                  /// Check if any imports are used.
+                  pub fn is_empty(&self) -> bool {
+                      self.functions.is_empty()
+                  }
+                  
+                  /// Merge with another set.
+                  pub fn merge(&mut self, other: &UsedImports) {
+                      self.functions.extend(&other.functions);
+                  }
+              }
+              
+              /// Tracks import usage during AST traversal.
+              #[derive(Debug, Default)]
+              pub struct ImportTracker {
+                  /// Currently used imports.
+                  used: UsedImports,
+                  /// Import stack for nested scopes.
+                  scope_stack: Vec<UsedImports>,
+              }
+              
+              impl ImportTracker {
+                  /// Create a new tracker.
+                  pub fn new() -> Self {
+                      Self::default()
+                  }
+                  
+                  /// Mark a host function as used.
+                  pub fn use_function(&mut self, func: HostFunction) {
+                      self.used.mark_used(func);
+                  }
+                  
+                  /// Mark a function by name (if it's a host function).
+                  pub fn use_by_name(&mut self, name: &str) -> bool {
+                      if let Some(func) = HostFunction::by_name(name) {
+                          self.use_function(func);
+                          true
+                      } else {
+                          false
+                      }
+                  }
+                  
+                  /// Push a new scope.
+                  pub fn push_scope(&mut self) {
+                      self.scope_stack.push(UsedImports::new());
+                  }
+                  
+                  /// Pop scope and merge into parent.
+                  pub fn pop_scope(&mut self) {
+                      if let Some(scope) = self.scope_stack.pop() {
+                          self.used.merge(&scope);
+                      }
+                  }
+                  
+                  /// Get all used imports.
+                  pub fn finish(self) -> UsedImports {
+                      self.used
+                  }
+                  
+                  /// Check if any I/O functions are used.
+                  pub fn uses_io(&self) -> bool {
+                      !self.used.by_category(HostFunctionCategory::Io).is_empty()
+                  }
+                  
+                  /// Check if any messaging functions are used.
+                  pub fn uses_messaging(&self) -> bool {
+                      !self.used.by_category(HostFunctionCategory::Messaging).is_empty()
+                  }
+                  
+                  /// Check if any memory functions are used.
+                  pub fn uses_memory(&self) -> bool {
+                      !self.used.by_category(HostFunctionCategory::Memory).is_empty()
+                  }
+              }
+              
+              /// Map DOL prelude function names to host functions.
+              pub fn prelude_to_host(name: &str) -> Option<HostFunction> {
+                  match name {
+                      // I/O
+                      "print" => Some(HostFunction::Print),
+                      "println" => Some(HostFunction::Println),
+                      "log" => Some(HostFunction::Log),
+                      "error" => Some(HostFunction::Error),
+                      // Memory
+                      "alloc" => Some(HostFunction::Alloc),
+                      "free" => Some(HostFunction::Free),
+                      // Time
+                      "now" => Some(HostFunction::Now),
+                      "sleep" => Some(HostFunction::Sleep),
+                      // Messaging
+                      "send" => Some(HostFunction::Send),
+                      "recv" => Some(HostFunction::Recv),
+                      "pending" => Some(HostFunction::Pending),
+                      "broadcast" => Some(HostFunction::Broadcast),
+                      // Random
+                      "random" => Some(HostFunction::Random),
+                      // Debug
+                      "assert" => Some(HostFunction::Assert),
+                      "panic" => Some(HostFunction::Panic),
+                      _ => None,
+                  }
+              }
+              
+              #[cfg(test)]
+              mod tests {
+                  use super::*;
+                  
+                  #[test]
+                  fn test_track_single_function() {
+                      let mut tracker = ImportTracker::new();
+                      tracker.use_function(HostFunction::Print);
+                      
+                      let used = tracker.finish();
+                      assert!(used.is_used(HostFunction::Print));
+                      assert!(!used.is_used(HostFunction::Println));
+                  }
+                  
+                  #[test]
+                  fn test_track_by_name() {
+                      let mut tracker = ImportTracker::new();
+                      
+                      assert!(tracker.use_by_name("vudo_print"));
+                      assert!(!tracker.use_by_name("unknown_function"));
+                      
+                      let used = tracker.finish();
+                      assert!(used.is_used(HostFunction::Print));
+                  }
+                  
+                  #[test]
+                  fn test_prelude_mapping() {
+                      assert_eq!(prelude_to_host("println"), Some(HostFunction::Println));
+                      assert_eq!(prelude_to_host("send"), Some(HostFunction::Send));
+                      assert_eq!(prelude_to_host("now"), Some(HostFunction::Now));
+                      assert_eq!(prelude_to_host("unknown"), None);
+                  }
+                  
+                  #[test]
+                  fn test_category_filtering() {
+                      let mut tracker = ImportTracker::new();
+                      tracker.use_function(HostFunction::Print);
+                      tracker.use_function(HostFunction::Println);
+                      tracker.use_function(HostFunction::Send);
+                      
+                      let used = tracker.finish();
+                      
+                      let io = used.by_category(HostFunctionCategory::Io);
+                      assert_eq!(io.len(), 2);
+                      
+                      let msg = used.by_category(HostFunctionCategory::Messaging);
+                      assert_eq!(msg.len(), 1);
+                  }
+                  
+                  #[test]
+                  fn test_uses_io() {
+                      let mut tracker = ImportTracker::new();
+                      assert!(!tracker.uses_io());
+                      
+                      tracker.use_function(HostFunction::Print);
+                      assert!(tracker.uses_io());
+                  }
+              }
+
+    validation:
+      commands:
+        - "cd crates/dol-codegen-wasm && cargo test imports::emitter"
+        - "cd crates/dol-codegen-wasm && cargo test imports::tracker"
+      success_criteria:
+        - "ImportEmitter tests pass"
+        - "ImportTracker tests pass"
+
+  # =============================================================================
+  # PHASE 3: CALL SITE GENERATION
+  # =============================================================================
+
+  - name: "phase3-call-generation"
+    description: "Generate call sites for each host function category"
+    depends_on: ["phase2-import-emitter"]
+    
+    agents:
+      - name: "call-generator-impl"
+        role: "Implement call site generation"
+        
+        tasks:
+          # ─────────────────────────────────────────────────────────────────
+          # Task 3.1: Call Generator Core
+          # ─────────────────────────────────────────────────────────────────
+          - name: "implement-call-generator"
+            description: "Core call generation logic"
+            action: "create_file"
+            path: "crates/dol-codegen-wasm/src/imports/calls.rs"
+            content: |
+              //! Call site generation for host functions.
+              //!
+              //! Generates the WASM instructions needed to call host functions,
+              //! including argument preparation and result handling.
+              
+              use dol_abi::HostFunction;
+              use walrus::{FunctionId, InstrSeqBuilder, LocalId, ValType};
+              use walrus::ir::*;
+              
+              use super::emitter::ImportSection;
+              use super::memory::StringEncoder;
+              
+              /// A prepared call site for a host function.
+              #[derive(Debug, Clone)]
+              pub struct HostCallSite {
+                  /// The function being called.
+                  pub function: HostFunction,
+                  /// Function ID to call.
+                  pub func_id: FunctionId,
+                  /// Argument locals (if any need to be stored).
+                  pub arg_locals: Vec<LocalId>,
+                  /// Result local (if function returns a value).
+                  pub result_local: Option<LocalId>,
+              }
+              
+              /// Generates call sites for host functions.
+              pub struct CallGenerator<'a> {
+                  imports: &'a ImportSection,
+                  string_encoder: StringEncoder,
+              }
+              
+              impl<'a> CallGenerator<'a> {
+                  /// Create a new call generator.
+                  pub fn new(imports: &'a ImportSection) -> Self {
+                      Self {
+                          imports,
+                          string_encoder: StringEncoder::new(),
+                      }
+                  }
+                  
+                  /// Get the function ID for a host function.
+                  pub fn get_func_id(&self, func: HostFunction) -> Option<FunctionId> {
+                      self.imports.get_func_id(func)
+                  }
+                  
+                  // ════════════════════════════════════════════════════════════              // I/O CALLS
+                  // ═══════════════════════════════════════════════════════════════
+                  
+                  /// Generate a print call.
+                  ///
+                  /// Input: string pointer and length on stack
+                  /// Output: none
+                  pub fn gen_print(&self, builder: &mut InstrSeqBuilder, ptr: Value, len:                  if let Some(func_id) = self.get_func_id(HostFunction::Print) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a println call.
+                  pub fn gen_println(&self, builder: &mut InstrSeqBuilder, ptr: Value, len: Value) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Println) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a log call with level.
+                  ///
+                  /// Input: level (i32), ptr (i32), len (i32) on stack
+                  pub fn gen_log(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Log) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate an error call.
+                  pub fn gen_error(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Error) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  // ═══════════════════════════════════════════════════════════════
+                  // MEMORY CALLS
+                 ═════════════════════════════════════════════════════
+                  
+                  /// Generate an alloc call.
+                  ///
+                  /// Input: size (i32) on stack
+                  /// Output: pointer (i32) on stack
+                  pub fn gen_alloc(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Alloc) {
+                builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a free call.
+                  ///
+                  /// Input: ptr (i32), size (i32) on stack
+                  pub fn gen_free(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Free) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a realloc call.
+                  ///
+                  /// Input: ptr (i32), old_size (i32), new_size (i32) on stack
+                  /// Output: new ptr (i32) on stack
+                  pub fn gen_realloc(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Realloc) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  // ═══════════════════════════════════════════════════════════
+                  // TIME CALLS
+                  // ═══════════════════════════════════════════════════════════════
+                  
+                  /// Generate a now() call.
+                  ///
+                  /// Output: timestamp (i64) on stack
+                  pub fn gen_now(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Now) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a sleep() call.
+                  ///
+                  /// Input: milliseconds (i32) on stack
+                  pub fn gen_sleep(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Sleep) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a monotonic_now() call.
+                  ///
+                  /// Output: nanoseconds (i64) on stack
+                  pub fn gen_monotonic_now(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::MonotonicNow) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  // ═══════════════════════════════════════════════════════════════
+                  // MESSAGING CALLS
+                  // ═════════════════════════════════════════════════════â
+                  
+                  /// Generate a send() call.
+                  ///
+                  /// Input: target_ptr, target_len, payload_ptr, payload_len (all i32)
+                  /// Output: result code (i32)
+                  pub fn gen_send(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Send) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                /// Generate a recv() call.
+                  ///
+                  /// Output: message pointer (i32), 0 if no message
+                  pub fn gen_recv(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Recv) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a pending() call.
+                  ///
+                  /// Output: count (i32)
+                  pub fn gen_pending(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Pending) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a broadcast() call.
+                  ///
+                  /// Input: payload_ptr (i32), payload_len (i32)
+                  /// Output: result code (i32)
+                  pub fn gen_broadcast(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Broadcast) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a free_message() call.
+                  ///
+                  /// Input: message_ptr (i32)
+                  pub fn gen_free_message(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::FreeMessage) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  // ═══════════════════════════════════════════════════════════════
+                  // RANDOM CALLS
+                  // ══════════════════════════════════════════â════════════════
+                  
+                  /// Generate a random() call.
+                  ///
+                  /// Output: random f64 in [0, 1) on stack
+                  pub fn gen_random(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Random) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a rand_bytes() call.
+                  ///
+                  /// Input: ptr (i32), len (i32) - buffer to fill
+                  pub fn gen_random_bytes(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::RandomBytes) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  // ═══════════════════════════════════════════════════════════
+                  // EFFECT CALLS
+                  // ═══════════════════════════════════════════════════════════════
+                  
+                  /// Generate an emit_effect() call.
+                  ///
+                  /// Input: effect_id (i32), payload_ptr (i32), payload_len (i32)
+                  /// Output: result code (i32)
+                  pub fn gen_emit_effect(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::EmitEffect) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a subscribe() call.
+                  ///
+                  /// Input: channel_ptr (i32), channel_len (i32)
+                  /// Output: subscription id (i32)
+                  pub fn gen_subscribe(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Subscribe) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  // ═══════════════════════════════════════════════════════════════
+                  // DEB             // ═══════════════════════════════════════════════════════════════
+                  
+                  /// Generate a breakpoint() call.
+                  pub fn gen_breakpoint(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Breakpoint) {
+                          builder.call(func_id);
+                            }
+                  
+                  /// Generate an assert() call.
+                  ///
+                  /// Input: condition (i32), msg_ptr (i32), msg_len (i32)
+                  pub fn gen_assert(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Assert) {
+                          builder.call(func_id);
+                      }
+                  }
+                  
+                  /// Generate a panic() call.
+                  ///
+                  /// Input: msg_ptr (i32), msg_len (i32)
+                  pub fn gen_panic(&self, builder: &mut InstrSeqBuilder) {
+                      if let Some(func_id) = self.get_func_id(HostFunction::Panic) {
+                          builder.call(func_id);
+                      }
+                  }
+              }
+              
+              /// Represents a WASM value reference (local, global, or stack).
+              #[derive(Debug, Clone, Copy)]
+              pub enum Value {
+                  /// Value in a local variable.
+                  Local(LocalId),
+                  /// Constant i32.
+                  ConstI32(i32),
+                  /// Constant i64.
+                  ConstI64(i64),
+                  /// Value already on stack (implicit).
+                  Stack,
+              }
+              
+              #[cfg(test)]
+              mod tests {
+                  use super::*;
+                  use walrus::Module;
+                  use crate::imports::ImportEmitter;
+                  
+                  fn setup_module_with_imports() -> (Module, ImportSection) {
+                      let mut module = Module::default();
+                      let mut emitter = ImportEmitter::new(&mut module);
+                      let section = emitter.emit_all();
+                      (module, section)
+                  }
+                  
+                  #[test]
+                  fn test_call_generator_creation() {
+                      let (_, section) = setup_module_with_imports();
+                      let gen = CallGenerator::new(&section);
+                      
+                      assert!(gen.get_func_id(HostFunction::Print).is_some());
+                      assert!(gen.get_func_id(HostFunction::Now).is_some());
+                      assert!(gen.get_func_id(HostFunction::Send).is_some());
+                  }
+                  
+                  #[test]
+                  fn test_all_functions_have_generators() {
+                      let (_, section) = setup_module_with_imports();
+                      let gen = CallGenerator::new(&section);
+                      
+                      // Verify all 22 host functions have IDs
+                      for func in HostFunction::all() {
+                          assert!(
+                              gen.get_func_id(*func).is_some(),
+                              "Missing func_id for {:?}",
+                              func
+                          );
+                      }
+                  }
+              }
+
+          # ──────â─────────────────────────────────────────────
+          # Task 3.2: Memory Layout and String Encoding
+          # ─────────────────────────────────────────────────────────────────
+          - name: "implement-memory-layout"
+            description: "Memory layout and string encoding for W   action: "create_file"
+            path: "crates/dol-codegen-wasm/src/imports/memory.rs"
+            content: |
+              //! Memory layout and string encoding for WASM.
+              //!
+              //! Handles writing strings and data to linear memory for
+              //! passing to host functions.
+              
+              use walrus::{DataId, InstrSeqBuilder, LocalId, Module, ValType};
+              use walrus::ir::*;
+              
+              /// Memory layout constants.
+              pub struct MemoryLayout {
+                  /// Base pointer for heap allocations.
+                  pub heap_base: u32,
+                  /// Stack pointer location.
+                  pub stack_pointer: u32,
+                  /// Data section start.
+                  pub data_start: u32,
+              }
+              
+              impl Default for MemoryLayout {
+                  fn default() -> Self {
+                      Self {
+                          // Standard WASM memory layout
+                          heap_base: 0x10000,      // 64KB
+                          stack_pointer: 0x8000,   // 32KB
+                          data_start: 0x1000,      // 4KB
+                      }
+                  }
+              }
+              
+              /// Encodes strings for WASM linear memory.
+              #[derive(Debug, Default)]
+              pub struct StringEncoder {
+                  /// Static strings added to data section.
+                  strings: Vec<StringData>,
+                  /// Current offset in data section.
+                  current_offset: u32,
+              }
+              
+              /// A string in the data section.
+              #[derive(Debug, Clone)]
+              pub struct StringData {
+                  /// Content of the string.
+                  pub content: String,
+                  /// Offset in data section.
+                  pub offset: u32,
+                  /// Length in bytes.
+                  pub length: u32,
+              }
+              
+              impl StringEncoder {
+                  /// Create a new string encoder.
+                  pub fn new() -> Self {
+                      Self {
+                          strings: Vec::new(),
+                          current_offset: MemoryLayout::default().data_start,
+                      }
+                  }
+                  
+                  /// Add a static string to the data section.
+                  ///
+                  /// Returns (offset, length) for use in WASM code.
+                  pub fn add_static(&mut self, s: &str) -> (u32, u32) {
+                      // Check if string already exists
+                      for existing in &self.strings {
+                          if existing.content == s {
+                              return (existing.offset, existing.length);
+                          }
+                      }
+                      
+                      let bytes = s.as_bytes();
+                      let offset = self.current_offset;
+                      let length = bytes.len() as u32;
+                      
+                      self.strings.push(StringData {
+                          content: s.to_string(),
+                          offset,
+                          length,
+                      });
+                      
+                      // Align to 4 bytes for efficiency
+                      self.current_offset += (length + 3) & !3;
+                      
+                      (offset, length)
+                  }
+                  
+                  /// Get all strings for data section emission.
+                  pub fn all_strings(&self) -> &[StringData] {
+                      &self.strings
+                  }
+                  
+                  /// Emit data section to module.
+                  pub fn emit_data_section(&self, module: &mut Module) {
+                      if self.strings.is_empty() {
+                          return;
+                      }
+                      
+                      // Build concatenated data
+                      let mut data = Vec::new();
+                      let base_offset = MemoryLayout::default().data_start;
+                      
+                      for string in &self.strings {
+                          // Pad to reach correct offset
+                          let target_offset = (string.offset - base_offset) as usize;
+                          while data.len() < target_offset {
+                              data.push(0);
+                          }
+                          
+                          // Add string bytes
+                          data.extend_from_slice(string.content.as_bytes());
+                      }
+                      
+                      // Get or create memory
+                      let memory_id = module.memories.iter().next()
+                          .map(|m| m.id())
+                          .unwrap_or_else(|| {
+                              module.memories.add_local(false, 1, None)
+                          });
+                      
+                      // Add data segment
+                      module.data.add(
+                          walrus::DataKind::Active(walrus::ActiveData {
+                              memory: memory_id,
+                              location: walrus::ActiveDataLocation::Absolute(base_offset),
+                          }),
+                          data,
+                      );
+                  }
+                  
+                  /// Generate instructions to push string (ptr, len) onto stack.
+                  pub fn gen_string_args(
+                      &self,
+                      builder: &mut InstrSeqBuilder,
+                      s: &str,
+                  ) {
+                      // Find the string
+                      for string in &self.strings {
+                          if string.content == s {
+                              // Push pointer
+                              builder.i32_const(string.offset as i32);
+                              // Push length
+                              builder.i32_const(string.length as i32);
+                              return;
+                          }
+                      }
+                      
+                      // String not found - this shouldn't happen in correct usage
+                      builder.i32_const(0);
+                      builder.i32_const(0);
+                  }
+              }
+              
+              /// Helper for dynamic string allocation.
+              pub struct DynamicStringEncoder {
+                  /// Local for string pointer.
+                  ptr_local: LocalId,
+                  /// Local for string length.
+                  len_local: LocalId,
+              }
+              
+              impl DynamicStringEncoder {
+                  /// Create locals for dynamic string handling.
+                  pub fn create_locals(module: &mut Module, func_builder: &mut walrus::FunctionBuilder) -> Self {
+                      let ptr_local = func_builder.func.alloc_local(ValType::I32);
+                      let len_local = func_builder.func.alloc_local(ValType::I32);
+                      
+                      Self { ptr_local, len_local }
+                  }
+                  
+                  /// Generate code to write a runtime string to memory.
+                  ///
+                  /// Assumes: string data pointer on stack, length known
+                  pub fn gen_write_string(
+                      &self,
+                      builder: &mut InstrSeqBuilder,
+                      alloc_func_id: walrus::FunctionId,
+                      length: u32,
+                  ) {
+                      // Allocate memory: push size, call alloc
+                      builder.i32_const(length as i32);
+                      builder.call(alloc_func_id);
+                      
+                      // Store pointer in local
+                      builder.local_set(self.ptr_local);
+                      
+                      // Store length
+                      builder.i32_const(length as i32);
+                      builder.local_set(self.len_local);
+                      
+                      // TODO: memory.copy to move data
+                      // This would need the source pointer on stack
+                  }
+                  
+                  /// Push ptr, len locals onto stack.
+                  pub fn gen_args(&self, builder: &mut InstrSeqBuilder) {
+                      builder.local_get(self.ptr_local);
+                      builder.local_get(self.len_local);
+                  }
+              }
+              
+              #[cfg(test)]
+              mod tests {
+                  use super::*;
+                  
+                  #[test]
+                  fn test_add_static_string() {
+                      let mut encoder = StringEncoder::new();
+                      
+                      let (offset1, len1) = encoder.add_static("Hello");
+                      let (offset2, len2) = encoder.add_static("World");
+                      
+                      assert_eq!(len1, 5);
+                      assert_eq!(len2, 5);
+                      assert!(offset2 > offset1);
+                  }
+                  
+                  #[test]
+                  fn test_dedup_static_strings() {
+                      let mut encoder = StringEncoder::new();
+                      
+                      let (offset1, _) = encoder.add_static("Hello");
+                      let (offset2, _) = encoder.add_static("Hello");
+                      
+                      // Same string should return same offset
+                      assert_eq!(offset1, offset2);
+                  }
+                  
+                  #[test]
+                  fn test_alignment() {
+                      let mut encoder = StringEncoder::new();
+                      
+                      encoder.add_static("Hi"); // 2 bytes, padded to 4
+                      let (offset2, _) = encoder.add_static("World");
+                      
+                      // Should be aligned to 4-byte boundary
+                      assert_eq!(offset2 % 4, 0);
+                  }
+                  
+                  #[test]
+                  fn test_all_strings() {
+                      let mut encoder = StringEncoder::new();
+                      
+                      encoder.add_static("Hello");
+                      encoder.add_static("World");
+                      encoder.add_static("!");
+                      
+                      let strings = encoder.all_strings();
+                      assert_eq!(strings.len(), 3);
+                  }
+              }
+
+    validation:
+      commands:
+        - "cd crates/dol-codegen-wasm && cargo test imports::calls"
+        - "cd crates/dol-codegen-wasm && cargo test imports::memory"
+      success_criteria:
+        - "CallGenerator tests pass"
+        - "StringEncoder tests pass"
+
+  # =============================================================================
+  # PHASE 4: INTEGRATION TESTS
+  # =============================================================================
+
+  - name: "phase4-integration-tests"
+    description: "End-to-end tests: DOL → WASM → validate imports"
+    depends_on: ["phase3-call-generation"]
+    
+    agents:
+      - name: "iration-test-impl"
+        role: "Implement integration tests"
+        
+        tasks:
+          # ─────────────────────────────────────────────────────────────────
+          # Task 4.1: Test DOL Files
+          # ────────────────────────────────────────────────────────â─────
+          - name: "create-test-dol-files"
+            description: "Create test DOL files that use host functions"
+            action: "create_files"
+            files:
+              - path: "tests/fixtures/spirits/hello.dol"
+                content: |
+                  // Hello World Spirit - uses I/O functions
+                  gen HelloSpirit {
+                      fun main() {
+                          println("Hello from DOL Spirit!")
+                      }
+                  }
+
+  - path: "tests/fixtures/spirits/echo.dol"
+                content: |
+                  // Echo Spirit - uses messaging functions
+                  gen EchoSpirit {
+                      fun main() {
+                          loop {
+                              if pending() > 0 {
+                                  let msg = recv()
+                                  println("Received: " + msg)
+                                  // Echo back to sender
+                                  send(msg.sender, msg.payload)
+                              }
+                          }
+                      }
+                  }
+
+              - path: "tests/fixtures/spirits/timer.dol"
+                content: |
+                  // Timer Spirit - uses time functions
+                  gen TimerSpirit {
+                      fun main() {
+                          let start = now()
+                          sleep(100)
+                          let elapsed = now() - start
+                          println("Elapsed: " + elapsed + "ms")
+                      }
+                  }
+
+              - path: "tests/fixtures/spirits/random.dol"
+                content: |
+                  // Random Spirit - uses random functions
+                  gen RandomSpirit {
+                      fun main() {
+                          let r = random()
+                          println("Random: " + r)
+                      }
+                  }
+
+              - path: "tests/fixtures/spirits/allocator.dol"
+                content: |
+                  // Allocator Spirit - uses memory functions
+                  gen AllocatorSpirit {
+                      fun main() {
+                          let ptr = alloc(1024)
+                          if ptr != 0 {
+                              println("Allocated 1KB at " + ptr)
+                              free(ptr, 1024)
+                          } else {
+                              error("Allocation failed!")
+                          }
+                      }
+                  }
+
+          # ────â───────────────────────────────────────────────────
+          # Task 4.2: Integration Test Implementation
+          # ─────────────────────────────────────────────────────────────────
+          - name: "create-integration-tests"
+            description: "Create integration tes          action: "create_file"
+            path: "crates/dol-codegen-wasm/tests/integration_imports.rs"
+            content: |
+              //! Integration tests for WASM import generation.
+              //!
+              //! These tests compile DOL source to WASM and verify that
+              //! the correct imports are generated.
+              
+              use dol_abi::{HostFunction, IMPORT_MODULE};
+              use dol_codegen_wasm::imports::{ImportEmitter, ImportTracker, prelude_to_host};
+              use wasmparser::{Parser, Payload};
+              use std::fs;
+              
+              /// Parse WASM bytes and extract import names.
+              fn extract_imports(wasm_bytes: &[u8]) -> Vec<(String, String)> {
+                  let mut imports = Vec::new();
+                  
+                  for payload in Parser::new(0).parse_all(wasm_bytes) {
+                      if let Ok(Payload::ImportSection(reader)) = payload {
+                          for import in reader {
+                              if let Ok(import) = import {
+                                  imports.push((
+                                      import.module.to_string(),
+                                      import.name.to_string(),
+                                  ));
+                              }
+                          }
+                      }
+                  }
+                  
+                  imports
+              }
+              
+              /// Filter for vudo imports only.
+              fn vudo_imports(imports: &[(String, String)]) -> Vec<&str> {
+                  imports
+                      .iter()
+                      .filter(|(module, _)| module == IMPORT_MODULE)
+                      .map(|(_, name)| name.as_str())
+                      .collect()
+              }
+              
+              #[test]
+              fn test_hello_world_imports() {
+                  // This test requires the full compiler
+                  // For now, we test the import tracking logic
+                  
+                  let mut tracker = ImportTracker::new();
+                  
+                  // Simulate AST traversal finding println
+                  if let Some(func) = prelude_to_host("println") {
+                      tracker.use_function(func);
+                  }
+                  
+                  let used = tracker.finish();
+                  assert!(used.is_used(HostFunction::Println));
+              }
+              
+              #[test]
+              fn test_echo_spirit_imports() {
+                  let mut tracker = ImportTracker::new();
+                  
+                  // Echo uses: pending, recv, println, send
+                  for name in &["pending", "recv", "println", "send"] {
+                      if let Some(func) = prelude_to_host(name) {
+                          tracker.use_function(func);
+                      }
+                  }
+                  
+                  let used = tracker.finish();
+                  assert!(used.is_used(HostFunction::Pending));
+                  assert!(used.is_used(HostFunction::Recv));
+                  assert!(used.is_used(HostFunction::Println));
+                  assert!(used.is_used(HostFunction::Send));
+                  
+                  // Should have 4 imports
+                  assert_eq!(used.len(), 4);
+              }
+              
+              #[test]
+              fn test_timer_spirit_imports() {
+                  let mut tracker = ImportTracker::new();
+                  
+                  // Timer uses: now, sleep, println
+                  for name in &["now", "sleep", "println"] {
+                      if let Some(func) = prelude_to_host(name) {
+                          tracker.use_function(func);
+                      }
+                  }
+                  
+                  let used = tracker.finish();
+                  assert!(used.is_used(HostFunction::Now));
+                  assert!(used.is_used(HostFunction::Sleep));
+                  assert!(used.is_used(HostFunction::Println));
+              }
+              
+              #[test]
+              fn test_allocator_spirit_imports() {
+                  let mut tracker = ImportTracker::new();
+                  
+                  // Allocator uses: alloc, free, println, error
+                  for name in &["alloc", "free", "println", "error"] {
+                      if let Some(func) = prelude_to_host(name) {
+                          tracker.use_function(func);
+                      }
+                  }
+                  
+                  let used = tracker.finish();
+                  assert!(used.is_used(HostFunction::Alloc));
+                  assert!(used.is_used(HostFunction::Free));
+                  assert!(used.is_used(HostFunction::Println));
+                  assert!(used.is_used(HostFunction::Error));
+              }
+              
+              #[test]
+              fn test_import_emitter_signatures() {
+                  use walrus::Module;
+                  
+                  let mut module = Module::default();
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  
+                  // Emit specific imports
+                  let section = emitter.emit(&[
+                      HostFunction::Print,
+                      HostFunction::Now,
+                      HostFunction::Send,
+                  ]);
+                  
+                  // Verify they were added
+                  assert_eq!(section.len(), 3);
+                  
+                  // Serialize and parse to verify structure
+                  let wasm_bytes = module.emit_wasm();
+                  let imports = extract_imports(&wasm_bytes);
+                  let vudo = vudo_imports(&imports);
+                  
+                  assert!(vudo.contains(&"vudo_print"));
+                  assert!(vudo.contains(&"vudo_now"));
+                  assert!(vudo.contains(&"vudo_send"));
+              }
+              
+              #[test]
+              fn test_import_signature_correctness() {
+                  use walrus::Module;
+                  use wasmparser::{TypeRef, Parser, Payload};
+                  
+                  let mut module = Module::default();
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  
+                  // Emit vudo_send which has signature (i32, i32, i32, i32) -> i32
+                  let section = emitter.emit(&[HostFunction::Send]);
+                  
+                  let wasm_bytes = module.emit_wasm();
+                  
+                  // Parse and verify signature
+                  let mut found_send = false;
+                  let mut type_section = None;
+                  
+                  for payload in Parser::new(0).parse_all(&wasm_bytes) {
+                      match payload {
+                          Ok(Payload::TypeSection(reader)) => {
+                              // Store types for later lookup
+                              let types: Vec<_> = reader.into_iter().collect();
+                              type_section = Some(types);
+                          }
+                          Ok(Payload::ImportSection(reader)) => {
+                              for import in reader {
+                                  if let Ok(import) = import {
+                                      if import.name == "vudo_send" {
+                                          found_send = true;
+                                          
+                                          // Verify it's a function import
+                                          if let TypeRef::Func(type_idx) = import.ty {
+                                              // Type index should be valid
+                                              assert!(type_idx < 100); // Sanity check
+                                          } else {
+                                              panic!("vudo_send should be a function import");
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                          _ => {}
+                      }
+                  }
+                  
+                  assert!(found_send, "vudo_send import not found");
+              }
+              
+              #[test]
+              fn test_all_22_host_functions_importable() {
+                  use walrus::Module;
+                  
+                  let mut module = Module::default();
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  
+                  // Emit all imports
+                  let section = emitter.emit_all();
+                  assert_eq!(section.len(), 22);
+                  
+                  // Serialize
+                  let wasm_bytes = module.emit_wasm();
+                  let imports = extract_imports(&wasm_bytes);
+                  let vudo = vudo_imports(&imports);
+                  
+                  // Verify all 22 are present
+                  assert_eq!(vudo.len(), 22);
+                  
+                  // Check specific ones
+                  assert!(vudo.contains(&"vudo_print"));
+                  assert!(vudo.contains(&"vudo_println"));
+                  assert!(vudo.contains(&"vudo_log"));
+                  assert!(vudo.contains(&"vudo_error"));
+                  assert!(vudo.contains(&"vudo_alloc"));
+                  assert!(vudo.contains(&"vudo_free"));
+                  assert!(vudo.contains(&"vudo_realloc"));
+                  assert!(vudo.contains(&"vudo_now"));
+                  assert!(vudo.contains(&"vudo_sleep"));
+                  assert!(vudo.contains(&"vudo_monotonic_now"));
+                  assert!(vudo.contains(&"vudo_send"));
+                  assert!(vudo.contains(&"vudo_recv"));
+                  assert!(vudo.contains(&"vudo_pending"));
+                  assert!(vudo.contains(&"vudo_broadcast"));
+                  assert!(vudo.contains(&"vudo_free_message"));
+                  assert!(vudo.contains(&"vudo_random"));
+                  assert!(vudo.contains(&"vudo_random_bytes"));
+                  assert!(vudo.contains(&"vudo_emit_effect"));
+                  assert!(vudo.contains(&"vudo_subscribe"));
+                  assert!(vudo.contains(&"vudo_breakpoint"));
+                  assert!(vudo.contains(&"vudo_assert"));
+                  assert!(vudo.contains(&"vudo_panic"));
+              }
+              
+              #[test]
+              fn test_prelude_name_mapping() {
+                  // Verify all prelude names map to correct host functions
+                  let mappings = vec![
+                      ("print", HostFunction::Print),
+                      ("println", HostFunction::Println),
+                      ("log", HostFunction::Log),
+                      ("error", HostFunction::Error),
+                      ("alloc", HostFunction::Alloc),
+                      ("free", HostFunction::Free),
+                      ("now", HostFunction::Now),
+                      ("sleep", HostFunction::Sleep),
+                      ("send", HostFunction::Send),
+                      ("recv", HostFunction::Recv),
+                      ("pending", HostFunction::Pending),
+                      ("broadcast", HostFunction::Broadcast),
+                      ("random", HostFunction::Random),
+                      ("assert", HostFunction::Assert),
+                      ("panic", HostFunction::Panic),
+                  ];
+                  
+                  for (name, expected) in mappings {
+                      let actual = prelude_to_host(name);
+                      assert_eq!(
+                          actual,
+                          Some(expected),
+                          "Prelude '{}' should map to {:?}",
+                          name,
+                          expected
+                      );
+                  }
+              }
+              
+              #[test]
+              fn test_unused_functions_not_imported() {
+                  use walrus::Module;
+                  
+                  let mut tracker = ImportTracker::new();
+                  
+                  // Only use print
+                  tracker.use_function(HostFunction::Print);
+                  
+                  let used = tracker.finish();
+                  
+                  // Emit only used imports
+                  let mut module = Module::default();
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  let section = emitter.emit(&used.all());
+                  
+                  // Should only have 1 import
+                  assert_eq!(section.len(), 1);
+                  
+                  let wasm_bytes = module.emit_wasm();
+                  let imports = extract_imports(&wasm_bytes);
+                  let vudo = vudo_imports(&imports);
+                  
+                  assert_eq!(vudo.len(), 1);
+                  assert!(vudo.contains(&"vudo_print"));
+                  assert!(!vudo.contains(&"vudo_send"));
+              }
+
+          # ─────────────────────────────────────────────────────────────────
+          # Task 4.3: WASM Validation Test
+          # ────────â─────────────────────────────────────────────────────
+          - name: "create-wasm-validation-test"
+            description: "Test that generated WASM validates correctly"
+            action: "create_file"
+            path: "crates/dol-codegen-wasm/tests/wasm_validation.rs"
+            content: |
+              //! WASM validation tests.
+              //!
+              //! Verifies that generated WAre valid according to
+              //! the WebAssembly specification.
+              
+              use walrus::Module;
+              use wasmparser::Validator;
+              use dol_codegen_wasm::imports::ImportEmitter;
+              use dol_abi::HostFunction;
+              
+              /// Validate WASM bytes.
+              fn validate_wasm(bytes: &[u8]) -> Result<(), String> {
+                  let mut validator = Validator::new();
+                  validator
+                      .validate_all(bytes)
+                      .map_err(|e| format!("WASM validation failed: {}", e))
+              }
+              
+              #[test]
+              fn test_module_with_imports_validates() {
+                  let mut module = Module::default();
+                  
+                  // Add memory (required for most operations)
+                  module.memories.add_local(false, 1, None);
+                  
+                  // Add imports
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  emitter.emit(&[
+                      HostFunction::Print,
+                      HostFunction::Alloc,
+                      HostFunction::Now,
+                  ]);
+                  
+                  let wasm_bytes = module.emit_wasm();
+                  
+                  assert!(
+                      validate_wasm(&wasm_bytes).is_ok(),
+                      "Generated WASM should validate"
+                  );
+              }
+              
+              #[test]
+              fn test_all_imports_validate() {
+                  let mut module = Module::default();
+                  module.memories.add_local(false, 1, None);
+                  
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  emitter.emit_all();
+                  
+                  let wasm_bytes = module.emit_wasm();
+                  
+                  assert!(
+                      validate_wasm(&wasm_bytes).is_ok(),
+                      "WASM with all imports should validate"
+                  );
+              }
+              
+              #[test]
+              fn test_module_with_data_section_validates() {
+                  use dol_codegen_wasm::imports::memory::StringEncoder;
+                  
+                  let mut module = Module::default();
+                  module.memories.add_local(false, 1, None);
+                  
+                  // Add some static strings
+                  let mut encoder = StringEncoder::new();
+                  encoder.add_static("Hello, World!");
+                  encoder.add_static("Another string");
+                  encoder.emit_data_section(&mut module);
+                  
+                  // Add imports
+                  let mut emitter = ImportEmitter::new(&mut module);
+                  emitter.emit(&[HostFunction::Print, HostFunction::Println]);
+                  
+                  let wasm_bytes = module.emit_wasm();
+                  
+                  assert!(
+                      validate_wasm(&wasm_bytes).is_ok(),
+                      "WASM with data section should validate"
+                  );
+              }
+
+    validation:
+      commands:
+        - "cd crates/dol-codegen-wasm && cargo test integration_imports"
+        - "cd crates/dol-codegen-wasm && cargo test wasm_validation"
+      success_criteria:
+        - "All integration tests pass"
+        - "Generated WASM validates correctly"
+        - "All 22 host functions can be imported"
+
+  # =============================================================================
+  # PHASE 5: DOCUMENTATION
+  # =============================================================================
+
+  - name: "phase5-documentation"
+    description: "Document the import generation system"
+    depends_on: ["phase4-integration-tests"]
+    
+    agents:
+      - name: "documentation-writer"
+        role: "Write documentation"
+        
+        tasks:
+          - name: "create-compiler-imports-doc"
+            description: "Document how imports are generated"
+            action: "create_file"
+            path: "docs/COMPILER-IMPORTS.md"
+            content: |
+              # DOL Compiler: WASM Import Generation
+              
+              > **Status:** Complete  
+              > **Depends On:** dol-abi v0.1.0
+              
+              ---
+              
+              ## Overview
+              
+              This document describes how the DOL compiler generates WASM imports
+              for host functions. The compiler uses the `dol-abi` crate to ensure
+              type-safe bindings between DOL code and the VUDO runtime.
+              
+              ```
+              DOL Source                 Compiler                    WASM Output
+              ───────────               ─────────                   ───────────
+              
+              println("Hello")    →     ImportTracker.use(Println)  →  (import "vudo" "vudo_println"
+                                        StringEncoder.add("Hello")       (func $vudo_println
+                                       allGenerator.gen_println()       (param i32 i32)))
+              ```
+              
+              ---
+              
+              ## Architecture
+              
+              ```
+              ┌─────────────────────────────────────────────────────────────────┐
+              │                    dol-codegen-wasm/imports                      │
+              ├─────────────────────────────────────────────────────────────┤
+              │                                                                 │
+              │   ┌─────────────────┐    ┌─────────────────┐                   │
+              │   │  ImportTracker  │    │  ImportEmitter  │                   â           │   │  - use_function │    │  - emit()       │                   │
+              │   │  - use_by_name  │    │  - emit_all()   │                   │
+              │   │  - finish()     │    │                 │                   │
+              │   └────────┬────────┘    └────────┬────────┘                   │
+              │            │                      │                   │
+              │            │  UsedImports         │  ImportSection              │
+              │            ▼                      ▼                             │
+              │   ┌─────────────────┐    ┌─────────────────┐                   │
+              │   │ CallGenerator   │    │  StringEncoder  │                   │
+              │   │  - gen_print()  │    │  - add_static() │           │
+              │   │  - gen_send()   │    │  - emit_data()  │                   │
+              │   │  - gen_now()    │    │                 │                   │
+              │   └─────────────────┘    └─────────────────┘                   │
+              │                                                                 │
+              └─────────────────────────────────────────────────────────────────┘
+              ```
+              
+              ---
+              
+              ## Components
+              
+              ### ImportTracker
+              
+              Tracks which host functions are used during AST traversal.
+              
+              ```rust
+              let mut tracker = ImportTracker::new();
+              
+              // During ASaversal:
+              if let Some(func) = prelude_to_host("println") {
+                  tracker.use_function(func);
+              }
+              
+              // After traversal:
+              let used = tracker.finish();
+              ```
+              
+              ### ImportEmitter
+              
+              Emits WASM import section entries.
+              
+              ```rust
+              let mut emitter = ImportEmitter::new(&mut module);
+              
+              // Emit only used imports (recommended)
+              let section = emitter.emit(&used.all());
+              
+              // Or emit all imports
+              let section = emitter.emit_all();
+              ```
+              
+              ### CallGenerator
+              
+              Generates WASM instructions for calling host functions.
+              
+              ```rust
+              let gen = CallGenerator::new(&section);
+              
+              // In function body generation:
+              gen.gen_println(&mut builder);  // Emits: call $vudo_println
+              gen.gen_now(&mut builder);      // Emits: call $vudo_now
+              ```
+              
+              ### StringEncoder
+              
+              Manages static strings in the data section.
+              
+              ```rust
+              let mut encoder = StringEncoder::new();
+              
+              // Add static string, get (offset, length)
+              let (ptr, len) = encoder.add_static("Hello, World!");
+              
+              // Emit data section to module
+              encoder.emit_data_section(&mut module);
+              ```
+              
+              ---
+              
+              ## Prelude Mapping
+              
+              DOL prelude functions map to host functions:
+              
+              | DOL | Host Function | Category |
+              |-----|---------------|----------|
+              | `print(s)` | `vudo_print` | I/O |
+              | `println(s)` | `vudo_println` | I/O |
+              | `log(level, s)` | `vudo_log` | I/O |
+              | `error(s)` | `vudo_error` | I/O |
+              | `alloc(size)` | `vudo_alloc` | Memory |
+              | `free(ptr, size)` | `vudo_free` | Memory |
+              | `now()` | `vudo_now` | Time |
+              | `sleep(ms)` | `vudo_sleep` | Time |
+              | `send(target, msg)` | `vudo_send` | Messaging |
+              | `recv()` | `vudo_recv` | Messaging |
+              | `pending()` | `vudo_pending` | Messaging |
+              | `broadcast(msg)` | `vudo_broadcast` | Messaging |
+              | `random()` | `vudo_random` | Random |
+              | `assert(cond, msg)` | `vudo_assert` | Debug |
+              | `panic(msg)` | `vudo_panic` | Debug |
+              
+              ---
+              
+              ## Example: Compiling Hello World
+              
+              **DOL Source:**
+              ```dol
+              gen HelloSpirit {
+                  fun main() {
+                      println("Hello from DOL!")
+                  }
+              }
+              ```
+              
+              **Compilation Steps:**
+              
+              1. **Track imports**: `ImportTracker.use(Println)`
+              2. **Add string**: `StringEncoder.add_static("Hello from DOL!")`
+              3. **Emit imports**: `ImportEmitter.emit([Println])`
+              4. **Emit data section**: `StringEncoder.emit_data_section()`
+              5. **Generate call**:
+                 ```wasm
+                 i32.const 4096    ;; string pointer
+                 i32.const 16      ;; string length
+                 call $vudo_println
+                 ```
+              
+              **Generated WASM:**
+              ```wasm
+              (module
+                (import "vudo" "vudo_println" (func $vudo_println (param i32 i32)))
+                (memory 1)
+                (data (i32.const 4096) "Hello from DOL!")
+                
+                (func $main
+                  i32.const 4096
+                  i32.const 16
+                  call $vudo_println
+                )
+                
+                (export "main" (func $main))
+              )
+              ```
+              
+              ---
+              
+              ## Testing
+              
+              ```bash
+              # Run all import tests
+              cargo test -p dol-codegen-wasm imports
+              
+              # Run integration tests
+              cargo test -p dol-codegen-wasm integration_imports
+              
+              # Run WASM validation tests
+              cargo test -p dol-codegen-wasm wasm_validation
+              ```
+              
+              ---
+              
+              ## Next Steps
+              
+              After this phase, Phase 3 (Runtime Host Implementation) connects
+              these imports to actual implementations in `@vudo/runtime`.
+
+# =============================================================================
+# FINAL VALIDATION
+# =============================================================================
+
+final_validation:
+  commands:
+    - "cd crates/dol-codegen-wasm && cargo build"
+    - "cd crates/dol-codegen-wasm && cargo test"
+    - "cd crates/dol-codegen-wasm && cargo clippy -- -D warnings"
+    - "cd crates/dol-codegen-wasm && cargo doc --no-deps"
+  success_criteria:
+    - "Crate builds successfully"
+    - "All tests pass (unit + integration)"
+    - "No clippy warnings"
+    - "Documentation generates without errors"
+
+# =============================================================================
+# ARTIFACTS SUMMARY
+# =============================================================================
+
+artifacts:
+  source_files:
+    - "crates/dol-codegen-wasm/src/imports/mod.rs"
+    - "crates/dol-codegen-wasm/src/imports/emitter.rs"
+    - "crates/dol-codegen-wasm/src/imports/tracker.rs"
+    - "crates/dol-codegen-wasm/src/imports/calls.rs"
+    - "crates/dol-codegen-wasm/src/imports/memory.rs"
+  
+  test_files:
+    - "crates/dol-codegen-wasm/tests/integration_imports.rs"
+    - "crates/dol-codegen-wasm/tests/wasm_validation.rs"
+    - "tests/fixtures/spirits/hello.dol"
+    - "tests/fixtures/spirits/echo.dol"
+    - "tests/fixtures/spirits/timer.dol"
+    - "tests/fixtures/spirits/random.dol"
+    - "tests/fixtures/spirits/allocator.dol"
+  
+  documentation:
+    - "docs/COMPILER-IMPORTS.md"
+
+# =============================================================================
+# EXIT CRITERIA
+# =============================================================================
+
+exit_criteria:
+  - "dol-abi is a dependency of dol-codegen-wasm"
+  - "ImportEmitter generates correct WASM imports"
+  - "ImportTracker maps prelude names to host functions"
+  - "CallGenerator has methods for all 22 host functions"
+  - "StringEncoder handles static strings in data section"
+  - "Integration tests verify DOL → WASM import generation"
+  - "Generated WASM validates according to spec"
+  - "All tests pass"

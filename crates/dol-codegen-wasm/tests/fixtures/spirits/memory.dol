@@ -1,0 +1,54 @@
+// Test fixture: Memory management operations
+// Tests: vudo_alloc, vudo_free, vudo_realloc import generation
+
+module test.memory @ 1.0.0
+
+docs {
+    Memory management test that exercises memory imports.
+    Should generate imports for:
+    - vudo_alloc (i32) -> i32
+    - vudo_free (i32, i32) -> void
+    - vudo_realloc (i32, i32, i32) -> i32
+}
+
+pub gen Buffer {
+    has ptr: i32
+    has size: u32
+    has capacity: u32
+}
+
+pub fun allocate_buffer(size: u32) -> Buffer {
+    let ptr = alloc(size as i32)
+    return Buffer {
+        ptr: ptr,
+        size: size,
+        capacity: size
+    }
+}
+
+pub fun free_buffer(buffer: Buffer) {
+    free(buffer.ptr, buffer.capacity as i32)
+}
+
+pub fun resize_buffer(buffer: Buffer, new_size: u32) -> Buffer {
+    if new_size <= buffer.capacity {
+        return Buffer {
+            ptr: buffer.ptr,
+            size: new_size,
+            capacity: buffer.capacity
+        }
+    }
+
+    let new_ptr = realloc(buffer.ptr, buffer.capacity as i32, new_size as i32)
+    return Buffer {
+        ptr: new_ptr,
+        size: new_size,
+        capacity: new_size
+    }
+}
+
+pub fun create_string(content: string) -> Buffer {
+    let len = content.len()
+    let buf = allocate_buffer(len as u32)
+    return buf
+}

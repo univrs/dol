@@ -1,0 +1,89 @@
+// Test fixture: Custom allocator implementation
+// Tests: Memory management with allocation patterns
+
+module test.allocator @ 1.0.0
+
+docs {
+    Custom allocator that exercises all memory imports.
+    Should generate imports for:
+    - vudo_alloc (i32) -> i32
+    - vudo_free (i32, i32) -> void
+    - vudo_realloc (i32, i32, i32) -> i32
+}
+
+pub gen Allocator {
+    has total_allocated: u64
+    has total_freed: u64
+    has peak_usage: u64
+    has allocation_count: u32
+}
+
+pub fun create_allocator() -> Allocator {
+    return Allocator {
+        total_allocated: 0,
+        total_freed: 0,
+        peak_usage: 0,
+        allocation_count: 0
+    }
+}
+
+pub fun alloc_tracked(allocator: Allocator, size: u32) -> (Allocator, i32) {
+    let ptr = alloc(size as i32)
+
+    let new_total = allocator.total_allocated + (size as u64)
+    let new_peak = if new_total > allocator.peak_usage {
+        new_total
+    } else {
+        allocator.peak_usage
+    }
+
+    let updated = Allocator {
+        total_allocated: new_total,
+        total_freed: allocator.total_freed,
+        peak_usage: new_peak,
+        allocation_count: allocator.allocation_count + 1
+    }
+
+    return (updated, ptr)
+}
+
+pub fun free_tracked(allocator: Allocator, ptr: i32, size: u32) -> Allocator {
+    free(ptr, size as i32)
+
+    return Allocator {
+        total_allocated: allocator.total_allocated,
+        total_freed: allocator.total_freed + (size as u64),
+        peak_usage: allocator.peak_usage,
+        allocation_count: allocator.allocation_count
+    }
+}
+
+pub fun realloc_tracked(allocator: Allocator, ptr: i32, old_size: u32, new_size: u32) -> (Allocator, i32) {
+    let new_ptr = realloc(ptr, old_size as i32, new_size as i32)
+
+    let size_diff = if new_size > old_size {
+        (new_size - old_size) as u64
+    } else {
+        0
+    }
+
+    let new_total = allocator.total_allocated + size_diff
+    let new_peak = if new_total > allocator.peak_usage {
+        new_total
+    } else {
+        allocator.peak_usage
+    }
+
+    let updated = Allocator {
+        total_allocated: new_total,
+        total_freed: allocator.total_freed,
+        peak_usage: new_peak,
+        allocation_count: allocator.allocation_count
+    }
+
+    return (updated, new_ptr)
+}
+
+pub fun get_current_usage(allocator: Allocator) -> u64 {
+    return allocator.total_allocated - allocator.total_freed
+}

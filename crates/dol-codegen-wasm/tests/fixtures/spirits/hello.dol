@@ -1,0 +1,19 @@
+// Test fixture: Basic I/O operations
+// Tests: vudo_println import generation
+
+module test.hello @ 1.0.0
+
+docs {
+    Simple hello world program that tests I/O import generation.
+    Should generate imports for:
+    - vudo_println (i32, i32) -> void
+}
+
+pub fun main() {
+    println("Hello, World!")
+    println("Testing DOL imports")
+}
+
+pub fun greet(name: string) {
+    println("Hello, " + name + "!")
+}
