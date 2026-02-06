@@ -236,7 +236,7 @@ mod tests {
         );
 
         let initial_timestamp = doc.last_modified;
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_millis(1100)); // Sleep for > 1 second
         doc.touch();
 
         assert!(doc.last_modified > initial_timestamp);

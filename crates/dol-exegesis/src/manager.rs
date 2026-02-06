@@ -25,10 +25,11 @@ use vudo_state::{DocumentId, StateEngine};
 /// ```no_run
 /// use dol_exegesis::ExegesisManager;
 /// use vudo_state::StateEngine;
+/// use std::sync::Arc;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let state_engine = StateEngine::new().await?;
+///     let state_engine = Arc::new(StateEngine::new().await?);
 ///     let manager = ExegesisManager::new(state_engine).await?;
 ///
 ///     // Create exegesis
@@ -53,7 +54,7 @@ use vudo_state::{DocumentId, StateEngine};
 /// ```
 pub struct ExegesisManager {
     /// State engine for CRDT storage.
-    state_engine: Arc<StateEngine>,
+    pub(crate) state_engine: Arc<StateEngine>,
 }
 
 impl ExegesisManager {
@@ -179,10 +180,10 @@ impl ExegesisManager {
                     if let automerge::ScalarValue::Str(smol_str) = s.as_ref() {
                         Ok(smol_str.to_string())
                     } else {
-                        Err(ExegesisError::Internal("Content is not a string".to_string()))
+                        Err(vudo_state::StateError::Internal("Content is not a string".to_string()))
                     }
                 }
-                _ => Err(ExegesisError::NotFound(gene_id.to_string(), gene_version.to_string())),
+                _ => Err(vudo_state::StateError::Internal("Content not found".to_string())),
             }
         })?;
 
@@ -259,10 +260,10 @@ impl ExegesisManager {
                     if let automerge::ScalarValue::Str(smol_str) = s.as_ref() {
                         smol_str.to_string()
                     } else {
-                        return Err(ExegesisError::Internal("gene_id is not a string".to_string()));
+                        return Err(vudo_state::StateError::Internal("gene_id is not a string".to_string()));
                     }
                 }
-                _ => return Err(ExegesisError::NotFound(gene_id.to_string(), gene_version.to_string())),
+                _ => return Err(vudo_state::StateError::Internal("gene_id not found".to_string())),
             };
 
             let gene_version_val = match doc.get(ROOT, "gene_version")? {
@@ -270,10 +271,10 @@ impl ExegesisManager {
                     if let automerge::ScalarValue::Str(smol_str) = s.as_ref() {
                         smol_str.to_string()
                     } else {
-                        return Err(ExegesisError::Internal("gene_version is not a string".to_string()));
+                        return Err(vudo_state::StateError::Internal("gene_version is not a string".to_string()));
                     }
                 }
-                _ => return Err(ExegesisError::NotFound(gene_id.to_string(), gene_version.to_string())),
+                _ => return Err(vudo_state::StateError::Internal("gene_version not found".to_string())),
             };
 
             let content = match doc.get(ROOT, "content")? {
@@ -281,10 +282,10 @@ impl ExegesisManager {
                     if let automerge::ScalarValue::Str(smol_str) = s.as_ref() {
                         smol_str.to_string()
                     } else {
-                        return Err(ExegesisError::Internal("content is not a string".to_string()));
+                        return Err(vudo_state::StateError::Internal("content is not a string".to_string()));
                     }
                 }
-                _ => return Err(ExegesisError::NotFound(gene_id.to_string(), gene_version.to_string())),
+                _ => return Err(vudo_state::StateError::Internal("content not found".to_string())),
             };
 
             let last_modified = match doc.get(ROOT, "last_modified")? {
@@ -292,7 +293,7 @@ impl ExegesisManager {
                     if let automerge::ScalarValue::Int(val) = s.as_ref() {
                         *val
                     } else {
-                        return Err(ExegesisError::Internal("last_modified is not an int".to_string()));
+                        return Err(vudo_state::StateError::Internal("last_modified is not an int".to_string()));
                     }
                 }
                 _ => Utc::now().timestamp(),

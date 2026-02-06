@@ -20,11 +20,12 @@
 //! ```no_run
 //! use dol_exegesis::{ExegesisManager, ExegesisDocument};
 //! use vudo_state::StateEngine;
+//! use std::sync::Arc;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Initialize state engine
-//!     let state_engine = StateEngine::new().await?;
+//!     let state_engine = Arc::new(StateEngine::new().await?);
 //!     let manager = ExegesisManager::new(state_engine).await?;
 //!
 //!     // Create exegesis for a Gene

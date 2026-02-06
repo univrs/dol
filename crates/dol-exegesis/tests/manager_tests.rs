@@ -7,7 +7,7 @@
 //! - Contributor tracking
 //! - Error handling
 
-use dol_exegesis::{ExegesisManager, ExegesisDocument};
+use dol_exegesis::ExegesisManager;
 use std::sync::Arc;
 use vudo_state::StateEngine;
 
@@ -397,8 +397,8 @@ async fn test_last_modified_updated() {
     let doc1 = manager.get_exegesis("user.profile", "1.0.0").await.unwrap();
     let first_modified = doc1.last_modified;
 
-    // Wait a bit to ensure timestamp changes
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    // Wait a bit to ensure timestamp changes (> 1 second for Unix timestamp resolution)
+    tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
 
     // Edit the exegesis
     manager
