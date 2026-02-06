@@ -303,6 +303,11 @@ impl MutualCreditScheduler {
         self.escrow_manager.get(account_id, &self.device_id)
     }
 
+    /// Set device escrow (for testing)
+    pub fn set_device_escrow(&self, account_id: &str, escrow: DeviceEscrow) {
+        self.escrow_manager.set(account_id, &self.device_id, escrow);
+    }
+
     /// Clone for spawning tasks
     fn clone(&self) -> Self {
         Self {
@@ -314,8 +319,10 @@ impl MutualCreditScheduler {
         }
     }
 
-    /// Create a mock scheduler for testing
-    #[cfg(test)]
+    /// Create a mock scheduler for testing and examples
+    ///
+    /// This is a convenience method for testing and documentation examples.
+    /// In production, use `new()` with your actual state engine and BFT committee.
     pub async fn new_mock() -> Result<Self> {
         let state_engine = Arc::new(StateEngine::new().await?);
         let bft_committee = Arc::new(BftCommittee::new_mock(4).await?);

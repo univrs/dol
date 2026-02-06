@@ -65,9 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("   Allocated: ${:.2}", escrow.allocated as f64 / 100.0);
 
-    scheduler
-        .escrow_manager
-        .set("did:peer:alice", "laptop-device-456", escrow.clone());
+    scheduler.set_device_escrow("did:peer:alice", escrow.clone());
 
     // 4. Spend most of the escrow
     println!("\n4. Making multiple payments to deplete escrow...");

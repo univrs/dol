@@ -65,9 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Expires in {} days", escrow.time_until_expiry() / 86400);
 
     // Store escrow in scheduler
-    scheduler
-        .escrow_manager
-        .set("did:peer:alice", "phone-device-123", escrow.clone());
+    scheduler.set_device_escrow("did:peer:alice", escrow.clone());
 
     // 6. Make offline payment (< 1ms, no network)
     println!("\n6. Making offline payment...");

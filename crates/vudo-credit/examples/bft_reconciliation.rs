@@ -60,9 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .grant_escrow(&alice_account, "tablet-device-789", tier)
         .await?;
 
-    scheduler
-        .escrow_manager
-        .set("did:peer:alice", "tablet-device-789", escrow);
+    scheduler.set_device_escrow("did:peer:alice", escrow);
 
     println!(
         "   Initial confirmed balance: ${:.2}",

@@ -262,8 +262,10 @@ impl BftCommittee {
         self.votes.write().await.remove(account_id);
     }
 
-    /// Create a mock committee for testing
-    #[cfg(test)]
+    /// Create a mock committee for testing and examples
+    ///
+    /// This is a convenience method for testing and documentation examples.
+    /// In production, use `new()` with your actual committee member DIDs.
     pub async fn new_mock(size: usize) -> Result<Self> {
         let members: Vec<String> = (0..size).map(|i| format!("member{}", i)).collect();
         Self::new(members)

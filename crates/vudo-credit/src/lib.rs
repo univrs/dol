@@ -73,14 +73,18 @@
 //! ## BFT Reconciliation
 //!
 //! ```rust
-//! use vudo_credit::BftCommittee;
+//! use vudo_credit::{BftCommittee, CreditAccountHandle};
+//! use vudo_state::StateEngine;
+//! use std::sync::Arc;
 //! # use vudo_credit::error::Result;
 //!
 //! # async fn example() -> Result<()> {
-//! # let committee = BftCommittee::new_mock(4).await?;
-//! # let account_id = "alice";
+//! let state_engine = Arc::new(StateEngine::new().await?);
+//! let committee = BftCommittee::new_mock(4).await?;
+//! let account = CreditAccountHandle::create(&state_engine, "alice".to_string(), 10_000).await?;
+//!
 //! // Reconcile account via BFT consensus
-//! let result = committee.reconcile_balance(account_id).await?;
+//! let result = committee.reconcile_balance(&account).await?;
 //!
 //! if result.consensus {
 //!     println!("New confirmed balance: {}", result.new_confirmed_balance);
