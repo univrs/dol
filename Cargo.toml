@@ -125,6 +125,17 @@ tempfile = "3.9"
 lto = true
 codegen-units = 1
 strip = true
+opt-level = 3  # Maximum optimization
+
+[profile.release.package."*"]
+opt-level = 3  # Optimize dependencies too
+
+# WASM-specific optimizations (use with --target wasm32-unknown-unknown)
+[profile.release-wasm]
+inherits = "release"
+opt-level = 'z'  # Optimize for size
+panic = 'abort'  # Smaller panic handler
+overflow-checks = false  # Disable overflow checks for size
 
 [profile.dev]
 opt-level = 0
@@ -132,6 +143,11 @@ debug = true
 
 [profile.test]
 opt-level = 1
+
+[profile.bench]
+inherits = "release"
+lto = true
+codegen-units = 1
 
 [[example]]
 name = "compile_counter"

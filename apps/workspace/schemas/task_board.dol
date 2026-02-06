@@ -1,0 +1,221 @@
+gen workspace.task_board {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(lww)
+  has name: String
+
+  @crdt(rga)
+  has columns: Vec<Column>
+
+  @crdt(rga)
+  has members: Vec<String>
+
+  @crdt(lww)
+  has owner: String
+
+  @crdt(lww)
+  has created_at: i64
+
+  @crdt(lww)
+  has last_modified: i64
+
+  @crdt(or_set)
+  has tags: Set<String>
+}
+
+gen workspace.column {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(lww)
+  has name: String
+
+  @crdt(mv_register)
+  has color: String
+
+  @crdt(rga)
+  has tasks: Vec<Task>
+
+  @crdt(pn_counter, min_value=0)
+  has wip_limit: i32
+
+  @crdt(lww)
+  has position: i32
+}
+
+gen workspace.task {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(lww)
+  has title: String
+
+  @crdt(peritext, formatting="basic", max_length=10000)
+  has description: String
+
+  @crdt(lww)
+  has assignee: Option<String>
+
+  @crdt(lww)
+  has status: TaskStatus
+
+  @crdt(lww)
+  has priority: TaskPriority
+
+  @crdt(or_set)
+  has labels: Set<String>
+
+  @crdt(lww)
+  has created_at: i64
+
+  @crdt(lww)
+  has due_date: Option<i64>
+
+  @crdt(lww)
+  has completed_at: Option<i64>
+
+  @crdt(rga)
+  has comments: Vec<TaskComment>
+
+  @crdt(rga)
+  has attachments: Vec<TaskAttachment>
+
+  @crdt(lww)
+  has estimate_hours: Option<f64>
+
+  @crdt(pn_counter, min_value=0)
+  has actual_hours: f64
+}
+
+gen workspace.task_comment {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(immutable)
+  has author: String
+
+  @crdt(peritext, formatting="basic", max_length=5000)
+  has content: String
+
+  @crdt(immutable)
+  has created_at: i64
+
+  @crdt(lww)
+  has edited_at: Option<i64>
+
+  @crdt(or_set)
+  has reactions: Set<String>
+}
+
+gen workspace.task_attachment {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(lww)
+  has name: String
+
+  @crdt(immutable)
+  has content_hash: String
+
+  @crdt(immutable)
+  has content_type: String
+
+  @crdt(immutable)
+  has size_bytes: i64
+
+  @crdt(immutable)
+  has uploaded_by: String
+
+  @crdt(immutable)
+  has uploaded_at: i64
+}
+
+constraint workspace.task_status {
+  TaskStatus is enum {
+    Todo,
+    InProgress,
+    InReview,
+    Blocked,
+    Done,
+    Archived
+  }
+}
+
+constraint workspace.task_priority {
+  TaskPriority is enum {
+    Low,
+    Medium,
+    High,
+    Urgent
+  }
+}
+
+trait workspace.kanban_board {
+  requires has columns: Vec<Column>
+  requires has tasks: Vec<Task>
+
+  fn move_task(task_id: String, from_column: String, to_column: String, position: i32) -> Result<(), String>
+  fn add_column(name: String, position: i32) -> Result<Column, String>
+  fn remove_column(column_id: String) -> Result<(), String>
+  fn reorder_columns(column_ids: Vec<String>) -> Result<(), String>
+  fn get_column_tasks(column_id: String) -> Vec<Task>
+  fn check_wip_limit(column_id: String) -> bool
+}
+
+trait workspace.taskable {
+  requires has id: String
+  requires has title: String
+  requires has status: TaskStatus
+
+  fn assign_to(did: String) -> Result<(), String>
+  fn unassign() -> Result<(), String>
+  fn add_comment(author: String, content: String) -> Result<TaskComment, String>
+  fn add_label(label: String) -> Result<(), String>
+  fn set_priority(priority: TaskPriority) -> Result<(), String>
+  fn mark_complete() -> Result<(), String>
+  fn add_time_entry(hours: f64) -> Result<(), String>
+}
+
+docs {
+  The workspace.task_board gen models a collaborative Kanban-style task board
+  with drag-and-drop task management using RGA CRDT for list operations.
+
+  Key Features:
+  - RGA (Replicated Growable Array) for columns and tasks enables drag-and-drop
+  - Movable List CRDT semantics allow concurrent reordering
+  - MV-Register for column colors (preserves all concurrent color choices)
+  - PN-Counter for WIP limits (monotonic increases)
+  - Peritext for task descriptions and comments
+
+  Conflict Resolution Strategy:
+  - Task moves: RGA preserves insertion order, concurrent moves to different
+    columns both succeed, moves to same column use timestamp tiebreaker
+  - Column reordering: RGA handles concurrent reorders by merging position changes
+  - Task assignments: LWW resolves concurrent assignments to last modifier
+  - WIP limits: PN-Counter ensures limits only increase (never decrease concurrently)
+  - Labels: OR-Set uses add-wins semantics
+
+  Drag-and-Drop Implementation:
+  1. User drags task from Column A (position 3) to Column B (position 1)
+  2. Generate operation: {task_id, from_col, to_col, position, timestamp}
+  3. Apply locally: Remove from A.tasks RGA, insert into B.tasks RGA at position
+  4. Broadcast operation to peers via Iroh sync
+  5. Peers merge: RGA CRDT handles concurrent moves deterministically
+
+  WIP Limit Enforcement:
+  - Client-side soft limit (visual warning)
+  - Server-side hard limit (if centralized enforcement needed)
+  - PN-Counter ensures limit increases are monotonic
+
+  Permission Model:
+  - Board owner can add/remove members and modify board structure
+  - Members can create/edit/move tasks within the board
+  - Guests can view but not modify (enforced via UCAN)
+
+  Implementation Notes:
+  - Use Automerge.List for RGA implementation of columns and tasks
+  - Store task positions as fractional indices for efficient reordering
+  - Background task cleans up archived tasks older than 90 days
+  - Attachment storage uses content-addressed IPFS/IPLD references
+}

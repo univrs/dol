@@ -1,0 +1,279 @@
+gen workspace.user_profile {
+  @crdt(immutable)
+  has did: String
+
+  @crdt(lww) @personal
+  has display_name: String
+
+  @crdt(lww) @personal
+  has email: Option<String>
+
+  @crdt(lww) @personal
+  has avatar_url: String
+
+  @crdt(lww)
+  has public_bio: String
+
+  @crdt(lww)
+  has timezone: String
+
+  @crdt(lww)
+  has language: String
+
+  @crdt(lww)
+  has theme: UserTheme
+
+  @crdt(lww)
+  has online_status: OnlineStatus
+
+  @crdt(lww)
+  has last_seen: i64
+
+  @crdt(or_set)
+  has skills: Set<String>
+
+  @crdt(rga)
+  has organizations: Vec<String>
+
+  @crdt(lww)
+  has notification_preferences: NotificationPreferences
+
+  has credit_account: CreditAccount
+
+  @crdt(rga)
+  has activity_log: Vec<ActivityEntry>
+}
+
+gen workspace.credit_account {
+  @crdt(immutable)
+  has account_id: String
+
+  @crdt(pn_counter)
+  has balance: i64
+
+  @crdt(pn_counter, min_value=0)
+  has total_earned: i64
+
+  @crdt(pn_counter, min_value=0)
+  has total_spent: i64
+
+  @crdt(rga)
+  has transaction_history: Vec<CreditTransaction>
+
+  @crdt(lww)
+  has credit_limit: i64
+
+  @crdt(rga)
+  has trust_relationships: Vec<TrustRelationship>
+}
+
+gen workspace.credit_transaction {
+  @crdt(immutable)
+  has transaction_id: String
+
+  @crdt(immutable)
+  has from: String
+
+  @crdt(immutable)
+  has to: String
+
+  @crdt(immutable)
+  has amount: i64
+
+  @crdt(immutable)
+  has timestamp: i64
+
+  @crdt(lww)
+  has status: TransactionStatus
+
+  @crdt(lww)
+  has description: String
+
+  @crdt(immutable)
+  has escrow_proof: Option<String>
+
+  @crdt(lww)
+  has completed_at: Option<i64>
+}
+
+gen workspace.trust_relationship {
+  @crdt(immutable)
+  has peer_did: String
+
+  @crdt(lww)
+  has trust_limit: i64
+
+  @crdt(lww)
+  has established_at: i64
+
+  @crdt(pn_counter, min_value=0)
+  has successful_transactions: i32
+
+  @crdt(lww)
+  has last_transaction_at: Option<i64>
+}
+
+gen workspace.activity_entry {
+  @crdt(immutable)
+  has id: String
+
+  @crdt(immutable)
+  has timestamp: i64
+
+  @crdt(immutable)
+  has activity_type: ActivityType
+
+  @crdt(immutable)
+  has resource_id: String
+
+  @crdt(immutable)
+  has resource_type: String
+
+  has metadata: Map<String, String>
+}
+
+gen workspace.notification_preferences {
+  @crdt(lww)
+  has email_enabled: bool
+
+  @crdt(lww)
+  has push_enabled: bool
+
+  @crdt(lww)
+  has mentions_enabled: bool
+
+  @crdt(lww)
+  has task_updates_enabled: bool
+
+  @crdt(lww)
+  has comment_replies_enabled: bool
+
+  @crdt(lww)
+  has quiet_hours_start: Option<i32>
+
+  @crdt(lww)
+  has quiet_hours_end: Option<i32>
+}
+
+constraint workspace.user_theme {
+  UserTheme is enum {
+    Light,
+    Dark,
+    Auto,
+    HighContrast
+  }
+}
+
+constraint workspace.online_status {
+  OnlineStatus is enum {
+    Online,
+    Away,
+    Busy,
+    Offline
+  }
+}
+
+constraint workspace.transaction_status {
+  TransactionStatus is enum {
+    Pending,
+    InEscrow,
+    Completed,
+    Failed,
+    Cancelled
+  }
+}
+
+constraint workspace.activity_type {
+  ActivityType is enum {
+    DocumentCreated,
+    DocumentEdited,
+    TaskCreated,
+    TaskCompleted,
+    TaskAssigned,
+    CommentAdded,
+    CreditTransferred,
+    CollaboratorAdded
+  }
+}
+
+trait workspace.profile_owner {
+  requires has did: String
+  requires has display_name: String
+
+  fn update_profile(field: String, value: String) -> Result<(), String>
+  fn set_online_status(status: OnlineStatus) -> Result<(), String>
+  fn add_skill(skill: String) -> Result<(), String>
+  fn update_notification_preferences(prefs: NotificationPreferences) -> Result<(), String>
+}
+
+trait workspace.credit_holder {
+  requires has credit_account: CreditAccount
+
+  fn transfer_credit(to_did: String, amount: i64, description: String) -> Result<CreditTransaction, String>
+  fn request_credit(from_did: String, amount: i64, description: String) -> Result<CreditTransaction, String>
+  fn establish_trust(peer_did: String, trust_limit: i64) -> Result<TrustRelationship, String>
+  fn get_balance() -> i64
+  fn get_credit_limit() -> i64
+  fn can_afford(amount: i64) -> bool
+}
+
+docs {
+  The workspace.user_profile gen models user identity and preferences with
+  integrated mutual credit system for value exchange within the workspace.
+
+  Key Features:
+  - Immutable DID (Decentralized Identifier) for sovereign identity
+  - @personal annotation marks fields that require explicit consent to sync
+  - LWW for user preferences and profile information
+  - OR-Set for skills (add-wins semantics)
+  - PN-Counter for credit balance (ensures monotonic operations)
+  - RGA for activity log (append-only, preserves order)
+
+  Privacy Architecture:
+  - @personal fields require UCAN capability to read/write
+  - Public fields (bio, skills, online status) sync freely
+  - Private fields (email, full activity log) require permission
+  - GDPR cryptographic deletion support for all personal data
+
+  Mutual Credit System:
+  - Based on t3.2 Escrow-Based Mutual Credit System
+  - PN-Counter ensures credit balances are always consistent
+  - Balance = total_earned - total_spent (derived, not stored)
+  - Trust relationships establish peer-to-peer credit limits
+  - Escrow proofs enable Byzantine fault-tolerant transactions
+
+  Online/Offline Status:
+  - LWW with timestamp determines current status
+  - last_seen timestamp updated on every sync operation
+  - Clients show "last seen X minutes ago" for offline users
+  - Presence heartbeat every 30 seconds when active
+
+  Activity Log:
+  - RGA ensures append-only, ordered activity stream
+  - Immutable entries prevent history tampering
+  - Used for audit trails and activity feeds
+  - Pruned after 90 days (configurable)
+
+  Credit Transaction Flow:
+  1. Alice requests to transfer 100 credits to Bob for task completion
+  2. System checks: Alice.balance >= 100 && Bob.trust_limit >= 100
+  3. Create transaction with status=InEscrow
+  4. Generate escrow_proof (cryptographic commitment)
+  5. Bob confirms task completion
+  6. Transaction status=Completed, balances updated atomically
+  7. If Alice or Bob is Byzantine, escrow proof enables dispute resolution
+
+  Permission Model:
+  - Owner can read/write all fields including @personal fields
+  - Peers with "profile:read" UCAN can read public fields
+  - Peers with "profile:read:personal" UCAN can read @personal fields
+  - Only owner can write profile fields
+  - Credit transfers require "credit:transfer" UCAN
+
+  Implementation Notes:
+  - Use Automerge for all CRDT operations
+  - Store avatar_url as content-addressed hash (IPFS/IPLD)
+  - Encrypt @personal fields with owner's keypair
+  - Activity log uses ring buffer (max 10000 entries)
+  - Credit transactions use optimistic updates with rollback on conflict
+}

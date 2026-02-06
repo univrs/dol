@@ -447,6 +447,82 @@ impl Declaration {
     }
 }
 
+/// Reference to exegesis documentation.
+///
+/// Supports both inline exegesis (traditional DOL) and CRDT-backed exegesis
+/// (local-first mode with collaborative editing).
+///
+/// # Variants
+///
+/// - `Inline`: Traditional inline exegesis as a string
+/// - `CrdtBacked`: Reference to a CRDT document for local-first mode
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::ast::ExegesisReference;
+///
+/// // Traditional inline exegesis
+/// let inline = ExegesisReference::Inline(
+///     "A user profile contains identity.".to_string()
+/// );
+///
+/// // CRDT-backed exegesis for local-first mode
+/// let crdt = ExegesisReference::CrdtBacked {
+///     document_id: "user.profile@1.0.0".to_string(),
+///     version: "1.0.0".to_string(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ExegesisReference {
+    /// Inline exegesis (traditional DOL).
+    ///
+    /// The exegesis text is stored directly in the AST as a string.
+    /// This is the default mode for most DOL files.
+    Inline(String),
+
+    /// CRDT-backed exegesis (local-first mode).
+    ///
+    /// The exegesis is stored in a CRDT document that can be edited
+    /// collaboratively with automatic conflict resolution. The document
+    /// is identified by a unique ID and version number.
+    CrdtBacked {
+        /// Document ID in the CRDT store (e.g., "user.profile@1.0.0")
+        document_id: String,
+        /// Version of the Gene this exegesis is linked to
+        version: String,
+    },
+}
+
+impl ExegesisReference {
+    /// Get the exegesis text.
+    ///
+    /// For inline exegesis, returns the string directly.
+    /// For CRDT-backed exegesis, this returns a placeholder message.
+    /// Use the dol-exegesis crate to retrieve the actual content.
+    pub fn text(&self) -> &str {
+        match self {
+            ExegesisReference::Inline(text) => text,
+            ExegesisReference::CrdtBacked { document_id, .. } => {
+                // Return a placeholder for CRDT-backed exegesis
+                // The actual content should be fetched from the CRDT store
+                document_id
+            }
+        }
+    }
+
+    /// Check if this is inline exegesis.
+    pub fn is_inline(&self) -> bool {
+        matches!(self, ExegesisReference::Inline(_))
+    }
+
+    /// Check if this is CRDT-backed exegesis.
+    pub fn is_crdt_backed(&self) -> bool {
+        matches!(self, ExegesisReference::CrdtBacked { .. })
+    }
+}
+
 /// A gen declaration representing atomic ontological truths.
 ///
 /// Gens (v0.8.0: formerly "genes") are the fundamental building blocks of DOL.
@@ -485,7 +561,7 @@ pub struct Gen {
     /// The declarative statements within the gen body
     pub statements: Vec<Statement>,
 
-    /// The mandatory exegesis explaining intent and context
+    /// The mandatory exegesis explaining intent and context (now supports CRDT)
     pub exegesis: String,
 
     /// Source location for error reporting

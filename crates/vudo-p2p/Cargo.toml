@@ -64,10 +64,9 @@ tempfile = "3.9"
 rand = "0.8"      # For test key generation
 chrono = "0.4"    # For timestamp formatting in examples
 
-# Benchmarks commented out - to be implemented
-# [[bench]]
-# name = "sync_performance"
-# harness = false
+[[bench]]
+name = "sync_performance"
+harness = false
 
 [lib]
 name = "vudo_p2p"
