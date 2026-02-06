@@ -1887,6 +1887,8 @@ pub struct HasField {
     pub constraint: Option<Expr>,
     /// Optional CRDT annotation for distributed merging (RFC-001)
     pub crdt_annotation: Option<CrdtAnnotation>,
+    /// Personal data annotation for GDPR compliance (@personal)
+    pub personal: bool,
     /// Source location
     pub span: Span,
 }

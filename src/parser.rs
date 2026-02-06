@@ -1259,6 +1259,20 @@ impl<'a> Parser<'a> {
             None
         };
 
+        // Handle @personal annotation for GDPR compliance
+        let personal = if self.current.kind == TokenKind::At {
+            // Peek ahead to check if this is @personal
+            if self.peek().kind == TokenKind::Identifier && self.peek().lexeme == "personal" {
+                self.advance(); // consume @
+                self.advance(); // consume 'personal'
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
         // Handle DOL 2.0 'has' field declarations: has name: Type [= default]
         if self.current.kind == TokenKind::Has {
             self.advance();
@@ -1280,6 +1294,7 @@ impl<'a> Parser<'a> {
                     default,
                     constraint: None,
                     crdt_annotation,
+                    personal,
                     span: start_span.merge(&self.previous.span),
                 })));
             } else {
@@ -1446,6 +1461,7 @@ impl<'a> Parser<'a> {
                         default,
                         constraint: None,
                         crdt_annotation: None,
+                        personal: false,
                         span: start_span.merge(&self.previous.span),
                     })))
                 } else {
@@ -1529,6 +1545,7 @@ impl<'a> Parser<'a> {
                     default,
                     constraint: None,
                     crdt_annotation: None,
+                    personal: false,
                     span: start_span.merge(&self.previous.span),
                 })))
             }
@@ -1818,6 +1835,7 @@ impl<'a> Parser<'a> {
             default,
             constraint,
             crdt_annotation: None,
+            personal: false,
             span: start_span.merge(&self.previous.span),
         })
     }
