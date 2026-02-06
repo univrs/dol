@@ -1,0 +1,40 @@
+[package]
+name = "vudo-storage-browser"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Browser storage adapter for VUDO Runtime with OPFS support"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+vudo-storage = { path = "../vudo-storage" }
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+bytes = "1.5"
+thiserror = "2.0"
+parking_lot = "0.12"
+dashmap = "6.0"
+tracing = "0.1"
+
+# WASM-specific dependencies (optional for now)
+# Uncomment when WASM target is needed
+# wasm-bindgen = { version = "0.2", optional = true }
+# wasm-bindgen-futures = { version = "0.4", optional = true }
+# web-sys = { version = "0.3", features = ["Window", "Storage"], optional = true }
+# js-sys = { version = "0.3", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+
+[lib]
+name = "vudo_storage_browser"
+path = "src/lib.rs"
+# crate-type = ["cdylib", "rlib"]  # Uncomment for WASM
+
+# [features]
+# default = []
+# wasm = ["wasm-bindgen", "wasm-bindgen-futures", "web-sys", "js-sys"]

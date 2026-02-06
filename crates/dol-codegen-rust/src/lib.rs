@@ -44,6 +44,7 @@
 //! ```
 
 pub mod automerge_backend;
+pub mod migration_codegen;
 pub mod type_mapper;
 
 #[cfg(feature = "wasm")]

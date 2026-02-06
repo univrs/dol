@@ -1,0 +1,61 @@
+[package]
+name = "vudo-state"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Platform-agnostic local state management for VUDO Runtime with Automerge CRDT support"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# CRDT backend
+automerge = "0.6"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+# Concurrency primitives
+parking_lot = "0.12"  # Fast RwLock
+dashmap = "6.0"       # Concurrent HashMap
+
+# Async channels
+tokio-stream = "0.1"
+async-trait = "0.1"
+
+# Schema versioning
+semver = { version = "1.0", features = ["serde"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3.9"
+criterion = { version = "0.5", features = ["async_tokio"] }
+tokio-test = "0.4"
+tracing-subscriber = "0.3"
+proptest = "1.4"
+
+[[bench]]
+name = "state_engine"
+harness = false
+
+[[bench]]
+name = "document_store"
+harness = false
+
+[[bench]]
+name = "reactive"
+harness = false
+
+[lib]
+name = "vudo_state"
+path = "src/lib.rs"
