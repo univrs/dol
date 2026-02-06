@@ -1,0 +1,249 @@
+// DOL CRDT Example: Peritext Rich Text Strategy
+// Specification: §5.5 - Peritext Rich Text CRDT
+
+gen document.editor {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  title: String
+
+  @crdt(peritext, formatting="full", max_length=1000000)
+  content: String
+
+  @crdt(peritext, formatting="markdown")
+  description: String
+
+  @crdt(lww)
+  author: Identity
+
+  @crdt(or_set)
+  collaborators: Set<Identity>
+}
+
+docs {
+  Demonstrates Peritext CRDT strategy for collaborative rich text editing.
+
+  **Strategy: peritext**
+
+  Semantics: Collaborative rich text with character-level merge and formatting.
+             Combines RGA for text sequence with mark-based formatting.
+  Merge Rule: Character-level RGA + mark conflict resolution
+  Data Loss: None (all edits preserved)
+
+  **Use Cases:**
+  - Document content (Google Docs-style)
+  - Comments and notes
+  - Rich text fields
+  - Markdown editing
+  - Any collaborative text editing
+
+  **Architecture:**
+
+  ```
+  Peritext = RGA (character sequence) + Marks (formatting)
+
+  RGA: Replicated Growable Array for characters
+  Marks: {bold, italic, underline, link, color, ...}
+  ```
+
+  **Operations:**
+
+  ```
+  insert(position: UInt, text: String)
+  delete(position: UInt, length: UInt)
+  format(range: Range, mark: FormatMark)
+  ```
+
+  **Concurrent Insert Example:**
+
+  Initial state:
+  ```
+  content: "Hello"
+  ```
+
+  Concurrent operations:
+  - Alice: insert(5, " world")  → "Hello world"
+  - Bob: insert(5, " there")    → "Hello there"
+
+  Both insert at position 5 (end of "Hello"):
+
+  Merge result (using RGA):
+  ```
+  If Alice.timestamp < Bob.timestamp:
+    "Hello world there"
+  Else:
+    "Hello there world"
+  ```
+
+  Causal ordering preserved!
+
+  **Concurrent Edit Example:**
+
+  Initial state:
+  ```
+  content: "The quick brown fox"
+  ```
+
+  Concurrent operations:
+  - Alice: delete(4, 6)  → "The brown fox" (delete "quick ")
+  - Bob: insert(10, "lazy ")  → "The quick lazy brown fox"
+
+  Merge result:
+  ```
+  Alice's view:
+    1. Delete "quick "
+    2. Receive Bob's insert
+    3. "quick" already deleted, insert "lazy " at updated position
+    Result: "The lazy brown fox"
+
+  Bob's view:
+    1. Insert "lazy "
+    2. Receive Alice's delete
+    3. Delete "quick ", preserving "lazy "
+    Result: "The lazy brown fox"
+
+  ✓ Convergence: both replicas reach same state!
+  ```
+
+  **Formatting Example:**
+
+  Initial state:
+  ```
+  content: "Hello world"
+  ```
+
+  Concurrent formatting:
+  - Alice: bold(0, 5)  → "**Hello** world"
+  - Bob: italic(6, 11) → "Hello *world*"
+
+  Merge result:
+  ```
+  content: "**Hello** *world*"
+  Marks: {
+    bold: [(0, 5)],
+    italic: [(6, 11)]
+  }
+  ```
+
+  No conflict: marks apply to different ranges.
+
+  **Formatting Conflict Example:**
+
+  Initial state:
+  ```
+  content: "Hello"
+  ```
+
+  Concurrent operations:
+  - Alice: bold(0, 5)  → "**Hello**"
+  - Bob: italic(0, 5)  → "*Hello*"
+
+  Merge result (both marks apply):
+  ```
+  content: "***Hello***"
+  Marks: {
+    bold: [(0, 5)],
+    italic: [(0, 5)]
+  }
+  ```
+
+  Both formats preserved (if supported by rendering).
+
+  **Expand Semantics:**
+
+  When inserting at mark boundary:
+
+  ```
+  Initial: "**Hello**"
+  Insert at position 5 (end of bold):
+
+  Expand-right: "**Hello world**" (bold extends)
+  Expand-left: "**Hello** world" (bold doesn't extend)
+  ```
+
+  Peritext specifies expand semantics per mark type.
+
+  **Properties:**
+  - ✓ Character-level merge (no data loss)
+  - ✓ Formatting preserves intent
+  - ✓ Causal consistency
+  - ✓ Commutative and idempotent
+  - ⚠️ Space overhead: O(n) where n=character count
+
+  **Constraint Enforcement:**
+
+  Category A (CRDT-safe):
+  - "content is valid UTF-8" - Enforced by character operations
+
+  Category B (Eventually-Consistent):
+  - "content length <= max_length" - May be temporarily violated
+
+  **Type Compatibility:**
+  - ✓ String (plain text, auto-converted)
+  - ✓ RichText (native rich text type)
+
+  **Options:**
+  - formatting: "full" | "markdown" | "plain"
+    - "full": All formatting (bold, italic, link, color, etc.)
+    - "markdown": Markdown-compatible marks only
+    - "plain": No formatting (plain text RGA)
+  - max_length: Integer (character limit)
+
+  **Formatting Modes:**
+
+  Full formatting:
+  ```
+  @crdt(peritext, formatting="full")
+  content: String
+
+  Supported marks: bold, italic, underline, strikethrough, link, color, font, etc.
+  ```
+
+  Markdown formatting:
+  ```
+  @crdt(peritext, formatting="markdown")
+  description: String
+
+  Supported marks: bold (**), italic (*), link, code (`)
+  ```
+
+  Plain text:
+  ```
+  @crdt(peritext, formatting="plain")
+  notes: String
+
+  No marks, just character-level RGA
+  ```
+
+  **When NOT to Use Peritext:**
+  - Simple strings (names, IDs) → use lww or immutable
+  - Numeric fields → use pn_counter or lww
+  - Collections → use or_set, rga
+
+  **Implementation Notes:**
+  1. Use Automerge.Text, Yjs.Text, or Loro.Text
+  2. Character sequence: RGA with tombstones
+  3. Formatting: Mark trees with expand semantics
+  4. Cursor positions: Causally ordered
+  5. Garbage collect tombstones periodically
+
+  **Performance Considerations:**
+  - Insert: O(log n) with tree-based RGA
+  - Delete: O(log n) (tombstone insertion)
+  - Merge: O(n + m) where n, m = operation counts
+  - Memory: O(total characters including deleted)
+
+  **Garbage Collection:**
+
+  Tombstones (deleted characters) accumulate:
+  ```
+  "Hello world" → delete "world" → "Hello _____ " (tombstones)
+  ```
+
+  Compact after all replicas observe deletion:
+  ```
+  if all_replicas_have_seen(deletion):
+    remove_tombstones()
+  ```
+}

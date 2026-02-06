@@ -1,0 +1,270 @@
+// DOL CRDT Example: Multi-Value Register Strategy
+// Specification: §5.7 - Multi-Value Register
+
+gen config.app {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(mv_register)
+  theme: Theme  // light | dark | auto
+
+  @crdt(mv_register)
+  language: Language  // en | es | fr | de
+
+  @crdt(mv_register)
+  notification_settings: NotificationConfig
+
+  @crdt(lww)
+  last_sync: Timestamp
+}
+
+docs {
+  Demonstrates Multi-Value (MV) Register CRDT strategy for conflict detection.
+
+  **Strategy: mv_register**
+
+  Semantics: Keeps all concurrent values until explicitly resolved.
+             Detects conflicts for application-level resolution.
+  Merge Rule: Keep all concurrent values (non-dominated by vector clocks)
+  Data Loss: None (all concurrent values preserved)
+
+  **Use Cases:**
+  - Conflict detection (alert user to divergent choices)
+  - User-driven conflict resolution
+  - Configuration with divergent preferences
+  - Any scenario requiring conflict awareness
+
+  **Data Structure:**
+
+  ```rust
+  struct MVRegister<T> {
+    values: Map<VectorClock, T>
+  }
+
+  struct VectorClock {
+    clocks: Map<ActorId, UInt>
+  }
+
+  impl VectorClock {
+    fn dominates(&self, other: &VectorClock) -> bool {
+      // self dominates other if all clocks >= and at least one >
+      self.clocks.iter().all(|(actor, count)| {
+        count >= other.clocks.get(actor).unwrap_or(&0)
+      }) && self.clocks.iter().any(|(actor, count)| {
+        count > other.clocks.get(actor).unwrap_or(&0)
+      })
+    }
+  }
+  ```
+
+  **Operations:**
+
+  ```
+  set(value: T, clock: VectorClock):
+    # Remove causally dominated values
+    values.retain(|vc, _| !clock.dominates(vc))
+    values.insert(clock, value)
+
+  get() -> Vec<T>:
+    return values.values()
+
+  has_conflict() -> bool:
+    return values.len() > 1
+  ```
+
+  **No Conflict Example:**
+
+  Initial state:
+  ```
+  theme: "light" (clock: {A: 1})
+  ```
+
+  Sequential operation:
+  - Alice: set("dark", clock: {A: 2})
+    - {A: 2} dominates {A: 1}
+    - Remove "light"
+    - Result: "dark"
+
+  Result:
+  ```
+  theme: "dark" (clock: {A: 2})
+  has_conflict() = false
+  ```
+
+  **Conflict Example:**
+
+  Initial state:
+  ```
+  theme: "light" (clock: {A: 1, B: 1})
+  ```
+
+  Concurrent operations:
+  - Alice: set("dark", clock: {A: 2, B: 1})
+  - Bob: set("auto", clock: {A: 1, B: 2})
+
+  Neither clock dominates the other:
+  - {A: 2, B: 1} does not dominate {A: 1, B: 2} (A: 2 > 1, but B: 1 < 2)
+  - {A: 1, B: 2} does not dominate {A: 2, B: 1} (B: 2 > 1, but A: 1 < 2)
+
+  Merge result:
+  ```
+  theme: ["dark", "auto"] (clocks: {A: 2, B: 1} and {A: 1, B: 2})
+  has_conflict() = true
+  ```
+
+  Application must resolve conflict!
+
+  **Conflict Resolution Strategies:**
+
+  1. **User Selection:**
+  ```
+  [Conflict Dialog]
+  Theme has concurrent changes:
+  ○ dark (Alice, 2:30 PM)
+  ○ auto (Bob, 2:35 PM)
+
+  Choose one or merge manually.
+  ```
+
+  2. **Union (if applicable):**
+  ```
+  notification_settings: [
+    { email: true, push: false },  # Alice's choice
+    { email: false, push: true }   # Bob's choice
+  ]
+
+  Merged: { email: true, push: true }  # Union of both
+  ```
+
+  3. **Custom Logic:**
+  ```
+  if conflict_detected():
+    # Application-specific rules
+    if user_preference == "alice_priority":
+      resolve_to(alice_value)
+    else:
+      resolve_to(bob_value)
+  ```
+
+  4. **Keep All (Multi-Valued State):**
+  ```
+  language: ["en", "es"]  # User speaks both languages
+  # Application supports multi-valued state
+  ```
+
+  **Resolving Conflicts:**
+
+  After user chooses "dark":
+  ```
+  set("dark", clock: {A: 3, B: 2})
+
+  New clock {A: 3, B: 2} dominates both:
+  - {A: 3, B: 2} dominates {A: 2, B: 1} (all clocks >=, A: 3 > 2)
+  - {A: 3, B: 2} dominates {A: 1, B: 2} (all clocks >=, A: 3 > 1)
+
+  Result:
+  theme: "dark" (clock: {A: 3, B: 2})
+  has_conflict() = false
+  ```
+
+  **Merge Algorithm:**
+
+  ```
+  merge(local: MVRegister<T>, remote: MVRegister<T>) -> MVRegister<T>:
+    result.values = {}
+
+    # Union all values
+    for (clock, value) in union(local.values, remote.values):
+      # Keep value if not dominated by any other value
+      is_dominated = exists (other_clock, _) in result.values
+                     where other_clock.dominates(clock) and other_clock != clock
+
+      if not is_dominated:
+        result.values.insert(clock, value)
+
+    # Remove dominated values
+    result.values.retain(|vc1, _| {
+      !exists (vc2, _) in result.values
+        where vc2 != vc1 and vc2.dominates(vc1)
+    })
+
+    return result
+  ```
+
+  **Properties:**
+  - ✓ No data loss (all concurrent values preserved)
+  - ✓ Conflict detection (multi-valued state)
+  - ✓ Commutative and idempotent
+  - ✓ Application chooses resolution strategy
+  - ⚠️ Space overhead: O(k) where k=concurrent value count
+
+  **Constraint Enforcement:**
+
+  Category B (Eventually-Consistent):
+  - "theme is valid" - May have multiple valid themes during conflict
+
+  **Type Compatibility:**
+  - ✓ Any type T
+  - Scalar types: String, Int, Bool, Enum
+  - Complex types: Custom structs
+
+  **When to Use MV-Register:**
+  - Conflict detection is important
+  - User-driven resolution preferred
+  - Divergent choices need to be preserved
+  - Multi-valued state is acceptable
+
+  **When NOT to Use MV-Register:**
+  - Automatic conflict resolution desired → use lww, or_set, etc.
+  - Performance critical (low overhead) → use lww
+  - Text content → use peritext
+  - Collections → use or_set, rga
+
+  **Vector Clock Maintenance:**
+
+  Each actor maintains its own clock:
+  ```
+  on_local_write():
+    vector_clock[self_actor] += 1
+
+  on_merge(remote_clock):
+    for actor in remote_clock:
+      vector_clock[actor] = max(vector_clock[actor], remote_clock[actor])
+  ```
+
+  **Implementation Notes:**
+  1. Maintain vector clocks per value
+  2. Check dominance during merge
+  3. Remove dominated values
+  4. Expose conflict detection to application
+  5. Provide resolution API
+  6. Persist vector clocks with values
+
+  **Comparison with LWW:**
+
+  LWW (data loss):
+  ```
+  @crdt(lww)
+  theme: Theme
+
+  Concurrent writes:
+  - Alice: theme = "dark"
+  - Bob: theme = "auto"
+
+  Result: "auto" (if Bob's timestamp > Alice's)
+  ⚠️ Alice's choice is lost
+  ```
+
+  MV-Register (conflict detection):
+  ```
+  @crdt(mv_register)
+  theme: Theme
+
+  Concurrent writes:
+  - Alice: theme = "dark"
+  - Bob: theme = "auto"
+
+  Result: ["dark", "auto"]
+  ✓ Both choices preserved, user can decide
+  ```
+}

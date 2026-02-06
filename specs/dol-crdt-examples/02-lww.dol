@@ -1,0 +1,119 @@
+// DOL CRDT Example: Last-Write-Wins Strategy
+// Specification: §5.2 - Last-Write-Wins Register
+
+gen user.profile {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  display_name: String
+
+  @crdt(lww)
+  avatar_url: String
+
+  @crdt(lww, tie_break="content_hash")
+  bio: String  // Content-hash tie-breaking for identical concurrent edits
+
+  @crdt(lww)
+  theme: Theme  // Enum: light | dark | auto
+
+  @crdt(lww)
+  email: String
+}
+
+docs {
+  Demonstrates Last-Write-Wins (LWW) CRDT strategy for user metadata.
+
+  **Strategy: lww**
+
+  Semantics: Most recent write (by Lamport timestamp) wins.
+  Merge Rule: Latest timestamp wins, tie-break by actor_id or content_hash
+  Data Loss: Concurrent updates may be lost (only latest survives)
+
+  **Use Cases:**
+  - User metadata (name, email, avatar)
+  - Configuration settings
+  - Status flags
+  - Simple mutable attributes
+
+  **Merge Example:**
+
+  Initial state:
+  ```
+  display_name: "Alice" (timestamp t0)
+  ```
+
+  Concurrent operations:
+  - Replica A (timestamp t1): display_name = "Alice Smith"
+  - Replica B (timestamp t2, t2 > t1): display_name = "Alice Johnson"
+
+  Merge result:
+  ```
+  display_name: "Alice Johnson"  // t2 > t1, last write wins
+  ```
+
+  **Data Loss Example:**
+
+  If t1 = t2 (concurrent writes at same logical time):
+  ```
+  Replica A: display_name = "Alice Smith" (actor_id = "a")
+  Replica B: display_name = "Alice Johnson" (actor_id = "b")
+
+  Merge result (tie_break="actor_id"):
+  display_name: "Alice Johnson"  // "b" > "a" lexicographically
+
+  ⚠️ "Alice Smith" is lost!
+  ```
+
+  **Content-Hash Tie-Breaking:**
+
+  For bio field with tie_break="content_hash":
+  ```
+  Replica A: bio = "Software engineer" (hash h1)
+  Replica B: bio = "Software engineer" (hash h2)
+
+  Since content is identical, h1 = h2:
+  - No conflict (both values identical)
+  - Merge produces "Software engineer"
+  ```
+
+  Different content:
+  ```
+  Replica A: bio = "Software engineer" (hash h1)
+  Replica B: bio = "Product manager" (hash h2)
+
+  h1 ≠ h2, compare hashes lexicographically
+  Result: deterministic choice based on hash comparison
+  ```
+
+  **Properties:**
+  - ✓ Commutative: merge(A, B) = merge(B, A)
+  - ✓ Idempotent: merge(A, A) = A
+  - ⚠️ Data loss: Concurrent updates may be lost
+  - ✓ Low overhead: Only timestamp + value
+
+  **Constraint Enforcement:**
+
+  Category B (Eventually-Consistent):
+  - "email is unique" - May be temporarily violated, eventual reconciliation
+
+  **Type Compatibility:**
+  - ✓ Scalar types: String, Int, Float, Bool, Enum
+  - ✓ Custom structs
+  - ✗ Collections: Set, List, Map (use or_set, rga instead)
+
+  **Options:**
+  - tie_break: "actor_id" (default) | "content_hash" | "custom"
+
+  **When NOT to Use LWW:**
+  - Collaborative text editing → use peritext
+  - Collections (tags, lists) → use or_set, rga
+  - Counters → use pn_counter
+  - Conflict detection → use mv_register
+
+  **Implementation Notes:**
+  1. Store (value, timestamp, actor_id) tuple
+  2. On write: update timestamp to current logical time
+  3. On merge: compare timestamps, keep latest
+  4. Tie-break: actor_id or content_hash
+}

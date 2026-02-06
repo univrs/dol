@@ -1,0 +1,276 @@
+// DOL CRDT Example: Replicated Growable Array Strategy
+// Specification: §5.6 - Replicated Growable Array
+
+gen task.board {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  name: String
+
+  @crdt(rga)
+  task_order: List<TaskId>
+
+  @crdt(rga)
+  column_order: List<ColumnId>
+
+  @crdt(or_set)
+  members: Set<Identity>
+}
+
+docs {
+  Demonstrates Replicated Growable Array (RGA) CRDT strategy for ordered lists.
+
+  **Strategy: rga**
+
+  Semantics: Ordered sequence with causal insertion order.
+             Each element has unique ID and "left origin" reference.
+  Merge Rule: Topological sort by causal order
+  Data Loss: None (all insertions preserved)
+
+  **Use Cases:**
+  - Task lists (ordered by priority)
+  - Column order in Kanban boards
+  - Playlists
+  - Timeline events
+  - Any ordered collection
+
+  **Data Structure:**
+
+  ```rust
+  struct RGA<T> {
+    sequence: Vec<Vertex<T>>,
+    tombstones: Set<VertexId>
+  }
+
+  struct Vertex<T> {
+    id: VertexId,              // Unique (ActorId, Counter)
+    element: T,
+    left_origin: Option<VertexId>,  // Predecessor
+    timestamp: Timestamp
+  }
+  ```
+
+  **Operations:**
+
+  ```
+  insert(position: UInt, element: T) -> VertexId:
+    left = visible_vertex_at(position - 1)
+    vertex = Vertex {
+      id: new_vertex_id(),
+      element: element,
+      left_origin: left.id,
+      timestamp: now()
+    }
+    insert_by_causal_order(vertex)
+    return vertex.id
+
+  delete(position: UInt):
+    vertex = visible_vertex_at(position)
+    tombstones.add(vertex.id)
+
+  move(from: UInt, to: UInt):
+    element = get(from)
+    delete(from)
+    insert(to, element)
+  ```
+
+  **Concurrent Insert Example:**
+
+  Initial state:
+  ```
+  task_order: [Task1, Task2, Task3]
+  ```
+
+  Concurrent insertions at position 1 (after Task1):
+  - Alice: insert(1, TaskA)  → left_origin = Task1.id, timestamp = t1
+  - Bob: insert(1, TaskB)    → left_origin = Task1.id, timestamp = t2
+
+  Both operations record left_origin = Task1.id
+
+  Merge (causal order):
+  ```
+  Vertices:
+  - Task1 (id=v1, left_origin=null, t=t0)
+  - TaskA (id=vA, left_origin=v1, t=t1)  ← Alice's insert
+  - TaskB (id=vB, left_origin=v1, t=t2)  ← Bob's insert
+  - Task2 (id=v2, left_origin=..., t=t0)
+  - Task3 (id=v3, left_origin=..., t=t0)
+
+  Causal order (TaskA and TaskB both follow Task1):
+  If t1 < t2:
+    [Task1, TaskA, TaskB, Task2, Task3]
+  Else:
+    [Task1, TaskB, TaskA, Task2, Task3]
+  ```
+
+  Both tasks inserted "after Task1", ordered by timestamp.
+
+  **Concurrent Move Example:**
+
+  Initial state:
+  ```
+  task_order: [A, B, C, D]
+  ```
+
+  Concurrent operations:
+  - Replica 1: Move D between A and B
+    ```
+    delete(D) → tombstone D
+    insert(1, D) → left_origin = A, timestamp = t1
+    Result: [A, D, B, C]
+    ```
+
+  - Replica 2: Move B to end
+    ```
+    delete(B) → tombstone B
+    insert(3, B) → left_origin = D, timestamp = t2
+    Result: [A, C, D, B]
+    ```
+
+  Merge:
+  ```
+  Vertices after operations:
+  Replica 1: A, D(left=A, t=t1), B(left=D, tombstoned), C
+  Replica 2: A, C(left=A), D(left=C, tombstoned), B(left=D, t=t2)
+
+  Causal precedence:
+  - A is origin
+  - D has two versions: (left=A, t=t1) and (left=C, t=t2)
+  - Both D's are tombstoned in original positions
+  - New insertions: D after A (t=t1), B after D (t=t2)
+
+  Final order:
+  [A, D, C, B]  or  [A, C, D, B]  (depends on t1 vs t2)
+
+  Deterministic result across all replicas!
+  ```
+
+  **Causal Ordering Algorithm:**
+
+  ```
+  by_causal_order(v1, v2):
+    # If v1 is left origin of v2, v1 comes first
+    if v1.id = v2.left_origin:
+      return v1 < v2
+
+    # If v2 is left origin of v1, v2 comes first
+    else if v2.id = v1.left_origin:
+      return v2 < v1
+
+    # If timestamps differ, earlier timestamp first
+    else if v1.timestamp < v2.timestamp:
+      return v1 < v2
+
+    # Timestamps equal, tie-break by vertex ID
+    else if v1.timestamp = v2.timestamp:
+      return v1.id < v2.id
+
+    # Later timestamp first
+    else:
+      return v2 < v1
+  ```
+
+  **Deletion Example:**
+
+  Initial state:
+  ```
+  task_order: [Task1, Task2, Task3]
+  ```
+
+  Concurrent operations:
+  - Alice: delete(1)  → tombstone Task2
+  - Bob: insert(1, TaskX) after Task1
+
+  Merge:
+  ```
+  Vertices:
+  - Task1 (id=v1)
+  - Task2 (id=v2, tombstoned)
+  - TaskX (id=vX, left_origin=v1)
+  - Task3 (id=v3)
+
+  Visible sequence (filter tombstones):
+  [Task1, TaskX, Task3]
+  ```
+
+  Task2 deleted, TaskX inserted after Task1.
+
+  **Properties:**
+  - ✓ Causal order preserved
+  - ✓ No data loss (all insertions preserved)
+  - ✓ Commutative and idempotent
+  - ✓ Deterministic (same result on all replicas)
+  - ⚠️ Space overhead: O(n) including tombstones
+
+  **Constraint Enforcement:**
+
+  Category A (CRDT-safe):
+  - "column_order has no duplicates" - Enforced by unique vertex IDs
+
+  Category B (Eventually-Consistent):
+  - "all columns in column_order exist" - Eventually consistent
+
+  **Type Compatibility:**
+  - ✓ List<T>, Vec<T>, Array<T>
+  - Element type T can be any type
+
+  **When NOT to Use RGA:**
+  - Unordered collections → use or_set
+  - Simple values → use lww or immutable
+  - Counters → use pn_counter
+  - Text content → use peritext (specialized RGA for text)
+
+  **Garbage Collection:**
+
+  Problem: Tombstones accumulate
+  ```
+  Initial: [A, B, C]
+  Delete B: [A, _, C]  (B tombstoned)
+  Delete C: [A, _, _]  (B, C tombstoned)
+  ```
+
+  Solution: Compact after all replicas observe deletion
+  ```
+  if all_replicas_have_seen(deletion_timestamp):
+    permanently_remove_tombstone(vertex_id)
+  ```
+
+  **Performance:**
+  - Insert: O(n) worst case (find insertion point)
+  - Delete: O(1) (add to tombstone set)
+  - Merge: O(n log n) (topological sort)
+  - Query: O(n) (filter tombstones)
+
+  Optimization: Maintain sorted index for O(log n) inserts.
+
+  **Comparison with OR-Set:**
+
+  OR-Set (unordered):
+  ```
+  @crdt(or_set)
+  tasks: Set<TaskItem>
+
+  - No ordering
+  - Add-wins semantics
+  - No move operation
+  ```
+
+  RGA (ordered):
+  ```
+  @crdt(rga)
+  task_order: List<TaskId>
+
+  - Causal ordering preserved
+  - Move via delete + insert
+  - Position conflicts resolved deterministically
+  ```
+
+  **Implementation Notes:**
+  1. Use (ActorId, Counter) for vertex IDs
+  2. Store sequence as vector of vertices
+  3. Maintain tombstone set
+  4. Merge: topological sort by causal order
+  5. Query: filter out tombstoned vertices
+  6. GC: remove tombstones after global acknowledgment
+}

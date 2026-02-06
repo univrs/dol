@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://univrs.org/schemas/dol-crdt-v1.0.json",
+  "title": "DOL CRDT Schema v1.0",
+  "description": "JSON Schema for DOL CRDT-annotated data structures",
+  "type": "object",
+  "required": ["name", "version", "fields"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the data structure",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version (X.Y.Z)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Optional namespace (e.g., 'message', 'task.board')",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Field definitions with CRDT annotations",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/field"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "description": "Optional constraint declarations",
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+    "documentation": {
+      "type": "string",
+      "description": "Human-readable documentation"
+    }
+  },
+  "$defs": {
+    "field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Field name",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "description": "Type specification (String, Int, Set<T>, etc.)",
+          "pattern": "^[A-Z][A-Za-z0-9_<>, ]*$"
+        },
+        "crdt": {
+          "$ref": "#/$defs/crdtAnnotation",
+          "description": "CRDT strategy annotation"
+        },
+        "optional": {
+          "type": "boolean",
+          "description": "Whether field is optional (Option<T>)",
+          "default": false
+        },
+        "documentation": {
+          "type": "string",
+          "description": "Field-level documentation"
+        }
+      }
+    },
+    "crdtAnnotation": {
+      "type": "object",
+      "required": ["strategy"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "description": "CRDT strategy identifier",
+          "enum": [
+            "immutable",
+            "lww",
+            "or_set",
+            "pn_counter",
+            "peritext",
+            "rga",
+            "mv_register"
+          ]
+        },
+        "options": {
+          "type": "object",
+          "description": "Strategy-specific options",
+          "properties": {
+            "tie_break": {
+              "type": "string",
+              "enum": ["actor_id", "content_hash", "custom"],
+              "description": "Tie-breaking strategy for LWW"
+            },
+            "min_value": {
+              "type": "integer",
+              "description": "Minimum value for PN-Counter"
+            },
+            "max_value": {
+              "type": "integer",
+              "description": "Maximum value for PN-Counter"
+            },
+            "overflow_strategy": {
+              "type": "string",
+              "enum": ["saturate", "wrap", "error"],
+              "description": "Overflow handling for PN-Counter"
+            },
+            "formatting": {
+              "type": "string",
+              "enum": ["full", "markdown", "plain"],
+              "description": "Formatting mode for Peritext"
+            },
+            "max_length": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum character length for Peritext"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "strategy": { "const": "lww" } }
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "properties": {
+                  "tie_break": true
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "strategy": { "const": "pn_counter" } }
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "properties": {
+                  "min_value": true,
+                  "max_value": true,
+                  "overflow_strategy": true
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "strategy": { "const": "peritext" } }
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "properties": {
+                  "formatting": true,
+                  "max_length": true
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "enum": ["immutable", "or_set", "rga", "mv_register"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["name", "category"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Constraint name",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["crdt_safe", "eventually_consistent", "strong_consistency"],
+          "description": "Constraint category (A, B, or C)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable constraint description"
+        },
+        "fields": {
+          "type": "array",
+          "description": "Fields involved in this constraint",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "ChatMessage",
+      "version": "1.0.0",
+      "namespace": "message",
+      "fields": [
+        {
+          "name": "id",
+          "type": "Uuid",
+          "crdt": {
+            "strategy": "immutable"
+          }
+        },
+        {
+          "name": "content",
+          "type": "String",
+          "crdt": {
+            "strategy": "peritext",
+            "options": {
+              "formatting": "full",
+              "max_length": 100000
+            }
+          }
+        },
+        {
+          "name": "reactions",
+          "type": "Set<String>",
+          "crdt": {
+            "strategy": "or_set"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": "Timestamp",
+          "crdt": {
+            "strategy": "lww"
+          },
+          "optional": true
+        }
+      ],
+      "constraints": [
+        {
+          "name": "immutability",
+          "category": "crdt_safe",
+          "description": "ID never changes",
+          "fields": ["id"]
+        }
+      ],
+      "documentation": "A collaborative chat message with CRDT merge strategies"
+    }
+  ]
+}
