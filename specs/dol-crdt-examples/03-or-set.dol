@@ -6,10 +6,10 @@ gen document.collaborative {
   id: Uuid
 
   @crdt(lww)
-  title: String
+  title: string
 
   @crdt(or_set)
-  tags: Set<String>
+  tags: Set<string>
 
   @crdt(or_set)
   collaborators: Set<Identity>
@@ -138,7 +138,7 @@ docs {
 
   **Type Compatibility:**
   - ✓ Set<T> where T is hashable and comparable
-  - Element type T can be: String, Int, Uuid, custom types
+  - Element type T can be: String, i32, Uuid, custom types
 
   **Garbage Collection:**
 

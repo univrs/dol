@@ -1,6 +1,6 @@
 # DOL Specifications
 
-This directory contains formal specifications and standards materials for the Distributed Ontology Language (DOL) project.
+This directory contains formal specifications and standards materials for the Design Ontology Language (DOL) project.
 
 ## Contents
 
@@ -63,11 +63,11 @@ The DOL CRDT Schema supports seven core strategies:
 | Strategy | Use Case | Example |
 |----------|----------|---------|
 | **immutable** | IDs, timestamps | `@crdt(immutable) id: Uuid` |
-| **lww** | Metadata, settings | `@crdt(lww) name: String` |
-| **or_set** | Tags, collections | `@crdt(or_set) tags: Set<String>` |
-| **pn_counter** | Metrics, scores | `@crdt(pn_counter) likes: Int` |
-| **peritext** | Rich text | `@crdt(peritext) content: String` |
-| **rga** | Ordered lists | `@crdt(rga) tasks: List<TaskId>` |
+| **lww** | Metadata, settings | `@crdt(lww) name: string` |
+| **or_set** | Tags, collections | `@crdt(or_set) tags: Set<string>` |
+| **pn_counter** | Metrics, scores | `@crdt(pn_counter) likes: i32` |
+| **peritext** | Rich text | `@crdt(peritext) content: string` |
+| **rga** | Ordered lists | `@crdt(rga) tasks: Vec<TaskId>` |
 | **mv_register** | Conflict detection | `@crdt(mv_register) theme: Theme` |
 
 ## Usage

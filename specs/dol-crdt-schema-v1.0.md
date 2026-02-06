@@ -116,7 +116,7 @@ Type signatures use a Rust-inspired notation:
 - `T` - generic type parameter
 - `Option<T>` - optional value
 - `Set<T>` - unordered collection
-- `List<T>` or `Vec<T>` - ordered sequence
+- `Vec<T>` - ordered sequence
 - `Map<K, V>` - key-value mapping
 
 ---
@@ -206,7 +206,7 @@ CRDT annotations MUST appear immediately before the field declaration they annot
 **Valid:**
 ```
 @crdt(lww)
-name: String
+name: string
 ```
 
 **Invalid:**
@@ -332,7 +332,7 @@ merge(local, remote, ts_local, ts_remote) =
 - Low overhead (timestamp + value)
 
 **Type Compatibility:**
-- Scalar types: `String`, `Int`, `Float`, `Bool`, `Enum`
+- Scalar types: `string`, `i32`, `f32`, `bool`, `Enum`
 - Composite types: Custom structs
 - NOT compatible: Collections (`Set`, `List`, `Map`)
 
@@ -342,7 +342,7 @@ merge(local, remote, ts_local, ts_remote) =
 **Example:**
 ```
 @crdt(lww)
-name: String
+name: string
 
 @crdt(lww, tie_break="content_hash")
 bio: String  // Content-based tie-breaking
@@ -419,7 +419,7 @@ merge(local: ORSet<T>, remote: ORSet<T>) -> ORSet<T>:
 **Example:**
 ```
 @crdt(or_set)
-tags: Set<String>
+tags: Set<string>
 
 @crdt(or_set)
 collaborators: Set<UserId>
@@ -483,9 +483,9 @@ merge(local: PNCounter, remote: PNCounter) -> PNCounter:
 - Space overhead: O(n) where n=number of replicas
 
 **Type Compatibility:**
-- `Int`, `i64`, `i32`
-- `UInt`, `u64`, `u32` (with `min_value=0`)
-- NOT recommended: `Float` (precision loss)
+- `i32`, `i64`, `i32`
+- `u32`, `u64`, `u32` (with `min_value=0`)
+- NOT recommended: `f32` (precision loss)
 
 **Options:**
 - `min_value`: Integer (enforce lower bound, default: none)
@@ -495,13 +495,13 @@ merge(local: PNCounter, remote: PNCounter) -> PNCounter:
 **Example:**
 ```
 @crdt(pn_counter, min_value=0)
-likes: Int
+likes: i32
 
 @crdt(pn_counter)
-karma_score: Int
+karma_score: i32
 
 @crdt(pn_counter, min_value=0, max_value=100, overflow_strategy="saturate")
-completion_percentage: Int
+completion_percentage: i32
 ```
 
 **Validation Rules:**
@@ -548,7 +548,7 @@ Uses RGA merge for character sequence plus mark conflict resolution.
 - Space overhead: O(n) where n=character count
 
 **Type Compatibility:**
-- `String` (plain text, auto-converted)
+- `string` (plain text, auto-converted)
 - `RichText` (native rich text type)
 
 **Options:**
@@ -558,14 +558,14 @@ Uses RGA merge for character sequence plus mark conflict resolution.
 **Example:**
 ```
 @crdt(peritext, formatting="full")
-content: String
+content: string
 
 @crdt(peritext, formatting="markdown", max_length=100000)
-description: String
+description: string
 ```
 
 **Validation Rules:**
-- V5.1: Type MUST be `String` or `RichText`
+- V5.1: Type MUST be `string` or `RichText`
 - V5.2: If `max_length` specified, length MUST be <= max_length
 - V5.3: Formatting marks MUST be valid for specified formatting mode
 
@@ -649,17 +649,17 @@ by_causal_order(v1, v2):
 - Space overhead: O(n) where n=total insertions (including deleted)
 
 **Type Compatibility:**
-- `List<T>`, `Vec<T>`, `Array<T>`
+- `Vec<T>`, `Vec<T>`, `Array<T>`
 
 **Options:** None
 
 **Example:**
 ```
 @crdt(rga)
-tasks: List<TaskId>
+tasks: Vec<TaskId>
 
 @crdt(rga)
-column_order: List<ColumnId>
+column_order: Vec<ColumnId>
 ```
 
 **Validation Rules:**
@@ -765,15 +765,15 @@ The following matrix specifies which CRDT strategies are compatible with which t
 
 | Type Category | immutable | lww | or_set | pn_counter | peritext | rga | mv_register |
 |---------------|-----------|-----|--------|------------|----------|-----|-------------|
-| `String` | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| `Int`, `UInt` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| `Float` | ✅ | ✅ | ❌ | ⚠️ | ❌ | ❌ | ✅ |
-| `Bool` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `string` | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| `i32`, `u32` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| `f32` | ✅ | ✅ | ❌ | ⚠️ | ❌ | ❌ | ✅ |
+| `bool` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `Enum` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `Uuid`, `Id` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `Timestamp` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `Set<T>` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| `List<T>`, `Vec<T>` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `Vec<T>`, `Vec<T>` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `Map<K,V>` | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ | ✅ |
 | `RichText` | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | Custom Struct | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -790,10 +790,10 @@ The following matrix specifies which CRDT strategies are compatible with which t
 
 2. **Map with or_set** (⚠️): Maps can be modeled as OR-Set of key-value pairs, but per-key strategies are often more appropriate. Consider using nested CRDT annotations for map values.
 
-3. **Nested Collections**: For types like `List<Set<T>>`, apply CRDT annotations at each level:
+3. **Nested Collections**: For types like `Vec<Set<T>>`, apply CRDT annotations at each level:
    ```
    @crdt(rga)  // Outer list
-   items: List<@crdt(or_set) Set<Tag>>  // Inner sets
+   items: Vec<@crdt(or_set) Set<Tag>>  // Inner sets
    ```
 
 ### 6.1 Validation Rule
@@ -804,7 +804,7 @@ The following matrix specifies which CRDT strategies are compatible with which t
 ```
 Error: Invalid CRDT strategy
   Field: tags
-  Type: Set<String>
+  Type: Set<string>
   Strategy: lww
   Reason: LWW strategy is incompatible with Set types. Use or_set instead.
 ```
@@ -967,7 +967,7 @@ CRDT-annotated schemas SHOULD be serializable to JSON for machine processing:
     },
     {
       "name": "reactions",
-      "type": "Set<String>",
+      "type": "Set<string>",
       "crdt": {
         "strategy": "or_set"
       }
@@ -1161,7 +1161,7 @@ gen ChatMessage v1.0.0 {
   author: Identity
 
   @crdt(peritext, formatting="full", max_length=100000)
-  content: String
+  content: string
 
   @crdt(or_set)
   reactions: Set<Reaction>
@@ -1170,13 +1170,13 @@ gen ChatMessage v1.0.0 {
   edited_at: Option<Timestamp>
 }
 
-constraint ChatMessage.immutability {
+rule ChatMessage.immutability {
   message never changes id
   message never changes created_at
   message never changes author
 }
 
-constraint ChatMessage.reaction_validity {
+rule ChatMessage.reaction_validity {
   all reactions from authenticated_users
 }
 

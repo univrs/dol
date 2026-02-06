@@ -3,10 +3,10 @@
 
 gen registry.RegistryState {
     @crdt(immutable)
-    has registry_id: String  // Registry identifier
+    has registry_id: string  // Registry identifier
 
     @crdt(or_set)
-    has modules: Set<String>  // Set of module IDs
+    has modules: Set<string>  // Set of module IDs
 
     @crdt(pn_counter)
     has total_downloads: i64
@@ -20,7 +20,7 @@ gen registry.RegistryState {
     @crdt(rga)
     has peers: Vec<PeerInfo>  // Connected peers
 
-    exegesis {
+    docs {
         RegistryState maintains global registry metadata including
         module index, download statistics, and peer list. Uses CRDTs
         for offline-first operation and P2P synchronization.
@@ -29,7 +29,7 @@ gen registry.RegistryState {
 
 gen registry.PeerInfo {
     @crdt(immutable)
-    has peer_id: String  // Iroh NodeId
+    has peer_id: string  // Iroh NodeId
 
     @crdt(lww)
     has last_seen: Timestamp
@@ -38,12 +38,12 @@ gen registry.PeerInfo {
     has modules_shared: i64
 
     @crdt(lww)
-    has endpoint: String  // Network endpoint
+    has endpoint: string  // Network endpoint
 
     @crdt(lww)
-    has relay: Bool  // Is relay server
+    has relay: bool  // Is relay server
 
-    exegesis {
+    docs {
         PeerInfo tracks connected peers in the P2P network.
         Used for peer discovery and gossip protocol.
     }
@@ -52,18 +52,18 @@ gen registry.PeerInfo {
 // Willow Protocol namespace mapping
 gen registry.Namespace {
     @crdt(immutable)
-    has namespace_id: String  // Hashed from registry_id
+    has namespace_id: string  // Hashed from registry_id
 
     @crdt(immutable)
-    has owner_did: String
+    has owner_did: string
 
     @crdt(lww)
     has created_at: Timestamp
 
     @crdt(or_set)
-    has authorized_publishers: Set<String>  // DIDs with publish capability
+    has authorized_publishers: Set<string>  // DIDs with publish capability
 
-    exegesis {
+    docs {
         Namespace represents a Willow Protocol namespace for the registry.
         Maps to DOL System → Willow Namespace as per vudo-p2p architecture.
 
@@ -77,13 +77,13 @@ gen registry.Namespace {
 // Meadowcap capability for publishing
 gen registry.PublishCapability {
     @crdt(immutable)
-    has capability_id: String
+    has capability_id: string
 
     @crdt(immutable)
-    has namespace_id: String
+    has namespace_id: string
 
     @crdt(immutable)
-    has delegate_did: String  // Who can publish
+    has delegate_did: string  // Who can publish
 
     @crdt(lww)
     has granted_at: Timestamp
@@ -92,12 +92,12 @@ gen registry.PublishCapability {
     has expires_at: Timestamp
 
     @crdt(or_set)
-    has allowed_modules: Set<String>  // Restricted module IDs (empty = all)
+    has allowed_modules: Set<string>  // Restricted module IDs (empty = all)
 
     @crdt(lww)
-    has revoked: Bool
+    has revoked: bool
 
-    exegesis {
+    docs {
         PublishCapability grants permission to publish modules using
         Meadowcap capability system. Supports delegation and expiration
         for security. Revocation is CRDT-safe via tombstone pattern.
@@ -107,7 +107,7 @@ gen registry.PublishCapability {
 // Sync protocol state
 gen registry.SyncState {
     @crdt(immutable)
-    has peer_id: String
+    has peer_id: string
 
     @crdt(lww)
     has last_sync: Timestamp
@@ -122,9 +122,9 @@ gen registry.SyncState {
     has modules_synced: i64
 
     @crdt(lww)
-    has sync_status: String  // "idle" | "syncing" | "error"
+    has sync_status: string  // "idle" | "syncing" | "error"
 
-    exegesis {
+    docs {
         SyncState tracks synchronization progress with peers.
         Used for bandwidth monitoring and sync scheduling.
     }

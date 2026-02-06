@@ -115,7 +115,7 @@ pub struct GenModule {
     pub description: String,
     pub author_did: String,
     pub license: String,
-    pub tags: HashSet<String>,
+    pub tags: HashSet<string>,
     pub versions: Vec<ModuleVersion>,
     pub latest_version: String,
     pub created_at: DateTime<Utc>,

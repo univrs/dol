@@ -3,28 +3,28 @@
 
 gen registry.GenModule {
     @crdt(immutable)
-    has id: String  // Unique module identifier (e.g., "org.example.user")
+    has id: string  // Unique module identifier (e.g., "org.example.user")
 
     @crdt(lww)
-    has name: String  // Display name
+    has name: string  // Display name
 
     @crdt(lww)
-    has description: String  // Module description
+    has description: string  // Module description
 
     @crdt(immutable)
-    has author_did: String  // Publisher's DID
+    has author_did: string  // Publisher's DID
 
     @crdt(lww)
-    has license: String  // License (MIT, Apache-2.0, etc.)
+    has license: string  // License (MIT, Apache-2.0, etc.)
 
     @crdt(or_set)
-    has tags: Set<String>  // Search tags (e.g., "database", "authentication")
+    has tags: Set<string>  // Search tags (e.g., "database", "authentication")
 
     @crdt(rga)
     has versions: Vec<ModuleVersion>  // Version history
 
     @crdt(lww)
-    has latest_version: String  // Current stable version
+    has latest_version: string  // Current stable version
 
     @crdt(immutable)
     has created_at: Timestamp
@@ -38,15 +38,15 @@ gen registry.GenModule {
     @crdt(rga)
     has dependencies: Vec<Dependency>  // Required modules
 
-    constraint valid_id {
+    rule valid_id {
         this.id.matches("^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
     }
 
-    constraint valid_license {
+    rule valid_license {
         this.license in ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "ISC"]
     }
 
-    exegesis {
+    docs {
         A GenModule represents a published DOL Gen definition in the
         community registry. Modules are identified by reverse-domain
         notation (e.g., "io.univrs.user") and support semantic versioning
@@ -59,37 +59,37 @@ gen registry.GenModule {
 
 gen registry.ModuleVersion {
     @crdt(immutable)
-    has version: String  // Semver (e.g., "1.2.3")
+    has version: string  // Semver (e.g., "1.2.3")
 
     @crdt(immutable)
     has published_at: Timestamp
 
     @crdt(immutable)
-    has wasm_hash: String  // SHA-256 hash of WASM module
+    has wasm_hash: string  // SHA-256 hash of WASM module
 
     @crdt(immutable)
-    has wasm_size: UInt64  // Bytes
+    has wasm_size: u64  // Bytes
 
     @crdt(lww)
-    has changelog: String  // Version notes
+    has changelog: string  // Version notes
 
     @crdt(immutable)
-    has signature: String  // Cryptographic signature
+    has signature: string  // Cryptographic signature
 
     @crdt(rga)
     has capabilities: Vec<Capability>  // Exported functions/types
 
     @crdt(lww)
-    has deprecated: Bool  // Deprecation flag
+    has deprecated: bool  // Deprecation flag
 
     @crdt(lww)
-    has yanked: Bool  // Yanked from registry
+    has yanked: bool  // Yanked from registry
 
-    constraint valid_semver {
+    rule valid_semver {
         this.version.matches("^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$")
     }
 
-    exegesis {
+    docs {
         A ModuleVersion represents a specific published version of a Gen
         module. Each version is immutable and cryptographically signed
         to prevent tampering. The WASM hash enables content-addressable
@@ -99,15 +99,15 @@ gen registry.ModuleVersion {
 
 gen registry.Dependency {
     @crdt(immutable)
-    has module_id: String  // Dependent module
+    has module_id: string  // Dependent module
 
     @crdt(lww)
-    has version_requirement: String  // Semver range (e.g., "^1.0.0")
+    has version_requirement: string  // Semver range (e.g., "^1.0.0")
 
     @crdt(lww)
-    has optional: Bool  // Optional dependency
+    has optional: bool  // Optional dependency
 
-    exegesis {
+    docs {
         Dependency specifies a required module with version constraints.
         Dependencies form a DAG (directed acyclic graph) that the registry
         resolves during installation.
@@ -116,15 +116,15 @@ gen registry.Dependency {
 
 gen registry.Capability {
     @crdt(immutable)
-    has name: String  // Function/type name
+    has name: string  // Function/type name
 
     @crdt(immutable)
-    has kind: String  // "function" | "type" | "trait"
+    has kind: string  // "function" | "type" | "trait"
 
     @crdt(lww)
-    has signature: String  // Type signature
+    has signature: string  // Type signature
 
-    exegesis {
+    docs {
         Capability describes an exported function, type, or trait from
         a Gen module. Used for search and type-checking during composition.
     }
@@ -133,10 +133,10 @@ gen registry.Capability {
 // Search index for efficient discovery
 gen registry.SearchIndex {
     @crdt(immutable)
-    has module_id: String
+    has module_id: string
 
     @crdt(or_set)
-    has keywords: Set<String>  // Extracted from name + description + tags
+    has keywords: Set<string>  // Extracted from name + description + tags
 
     @crdt(pn_counter)
     has popularity_score: i64  // Based on downloads + ratings
@@ -144,7 +144,7 @@ gen registry.SearchIndex {
     @crdt(lww)
     has last_indexed: Timestamp
 
-    exegesis {
+    docs {
         SearchIndex provides efficient full-text and tag-based search.
         Keywords are extracted from module metadata and indexed in a
         CRDT-based inverted index for P2P search.
@@ -154,16 +154,16 @@ gen registry.SearchIndex {
 // User ratings (CRDT-backed)
 gen registry.Rating {
     @crdt(immutable)
-    has module_id: String
+    has module_id: string
 
     @crdt(immutable)
-    has user_did: String
+    has user_did: string
 
     @crdt(lww)
-    has stars: UInt8  // 1-5 stars
+    has stars: u8  // 1-5 stars
 
     @crdt(lww)
-    has review: String  // Optional text review
+    has review: string  // Optional text review
 
     @crdt(immutable)
     has created_at: Timestamp
@@ -171,11 +171,11 @@ gen registry.Rating {
     @crdt(lww)
     has updated_at: Timestamp
 
-    constraint valid_stars {
+    rule valid_stars {
         this.stars >= 1 && this.stars <= 5
     }
 
-    exegesis {
+    docs {
         Rating allows users to rate and review modules. Each user can
         only rate a module once (enforced by user_did uniqueness).
         Ratings use LWW-CRDT for conflict resolution.
@@ -185,21 +185,21 @@ gen registry.Rating {
 // User's installed modules (local-first)
 gen registry.InstalledModule {
     @crdt(immutable)
-    has module_id: String
+    has module_id: string
 
     @crdt(lww)
-    has version: String
+    has version: string
 
     @crdt(lww)
     has installed_at: Timestamp
 
     @crdt(lww)
-    has auto_update: Bool
+    has auto_update: bool
 
     @crdt(rga)
     has update_history: Vec<UpdateRecord>
 
-    exegesis {
+    docs {
         InstalledModule tracks locally installed Gen modules.
         Supports auto-update and maintains update history for rollback.
     }
@@ -207,18 +207,18 @@ gen registry.InstalledModule {
 
 gen registry.UpdateRecord {
     @crdt(immutable)
-    has from_version: String
+    has from_version: string
 
     @crdt(immutable)
-    has to_version: String
+    has to_version: string
 
     @crdt(immutable)
     has updated_at: Timestamp
 
     @crdt(lww)
-    has success: Bool
+    has success: bool
 
-    exegesis {
+    docs {
         UpdateRecord logs version updates for auditing and rollback.
     }
 }

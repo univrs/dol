@@ -6,13 +6,13 @@ gen document.editor {
   id: Uuid
 
   @crdt(lww)
-  title: String
+  title: string
 
   @crdt(peritext, formatting="full", max_length=1000000)
-  content: String
+  content: string
 
   @crdt(peritext, formatting="markdown")
-  description: String
+  description: string
 
   @crdt(lww)
   author: Identity
@@ -50,8 +50,8 @@ docs {
   **Operations:**
 
   ```
-  insert(position: UInt, text: String)
-  delete(position: UInt, length: UInt)
+  insert(position: u32, text: String)
+  delete(position: u32, length: u32)
   format(range: Range, mark: FormatMark)
   ```
 
@@ -195,7 +195,7 @@ docs {
   Full formatting:
   ```
   @crdt(peritext, formatting="full")
-  content: String
+  content: string
 
   Supported marks: bold, italic, underline, strikethrough, link, color, font, etc.
   ```
@@ -203,7 +203,7 @@ docs {
   Markdown formatting:
   ```
   @crdt(peritext, formatting="markdown")
-  description: String
+  description: string
 
   Supported marks: bold (**), italic (*), link, code (`)
   ```
@@ -211,7 +211,7 @@ docs {
   Plain text:
   ```
   @crdt(peritext, formatting="plain")
-  notes: String
+  notes: string
 
   No marks, just character-level RGA
   ```

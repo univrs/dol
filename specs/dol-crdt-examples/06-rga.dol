@@ -6,13 +6,13 @@ gen task.board {
   id: Uuid
 
   @crdt(lww)
-  name: String
+  name: string
 
   @crdt(rga)
-  task_order: List<TaskId>
+  task_order: Vec<TaskId>
 
   @crdt(rga)
-  column_order: List<ColumnId>
+  column_order: Vec<ColumnId>
 
   @crdt(or_set)
   members: Set<Identity>
@@ -54,7 +54,7 @@ docs {
   **Operations:**
 
   ```
-  insert(position: UInt, element: T) -> VertexId:
+  insert(position: u32, element: T) -> VertexId:
     left = visible_vertex_at(position - 1)
     vertex = Vertex {
       id: new_vertex_id(),
@@ -65,11 +65,11 @@ docs {
     insert_by_causal_order(vertex)
     return vertex.id
 
-  delete(position: UInt):
+  delete(position: u32):
     vertex = visible_vertex_at(position)
     tombstones.add(vertex.id)
 
-  move(from: UInt, to: UInt):
+  move(from: u32, to: u32):
     element = get(from)
     delete(from)
     insert(to, element)
@@ -212,7 +212,7 @@ docs {
   - "all columns in column_order exist" - Eventually consistent
 
   **Type Compatibility:**
-  - ✓ List<T>, Vec<T>, Array<T>
+  - ✓ Vec<T>, Vec<T>, Array<T>
   - Element type T can be any type
 
   **When NOT to Use RGA:**
@@ -259,7 +259,7 @@ docs {
   RGA (ordered):
   ```
   @crdt(rga)
-  task_order: List<TaskId>
+  task_order: Vec<TaskId>
 
   - Causal ordering preserved
   - Move via delete + insert

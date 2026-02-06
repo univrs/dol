@@ -89,7 +89,7 @@ Gen Registry is a local-first P2P registry for DOL Gen modules, built on the VUD
 **Algorithm**: Topological sort with cycle detection
 
 **Features**:
-- Semver constraint matching
+- Semver rule matching
 - Dependency DAG resolution
 - Circular dependency detection
 - Optimal install order
@@ -127,7 +127,7 @@ gen registry.GenModule {
     @crdt(immutable) has id: String
     @crdt(lww) has name: String
     @crdt(lww) has description: String
-    @crdt(or_set) has tags: Set<String>
+    @crdt(or_set) has tags: Set<string>
     @crdt(rga) has versions: Vec<ModuleVersion>
     @crdt(pn_counter) has download_count: i64
 }

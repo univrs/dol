@@ -6,10 +6,10 @@ gen user.profile {
   id: Uuid
 
   @crdt(lww)
-  display_name: String
+  display_name: string
 
   @crdt(lww)
-  avatar_url: String
+  avatar_url: string
 
   @crdt(lww, tie_break="content_hash")
   bio: String  // Content-hash tie-breaking for identical concurrent edits
@@ -18,7 +18,7 @@ gen user.profile {
   theme: Theme  // Enum: light | dark | auto
 
   @crdt(lww)
-  email: String
+  email: string
 }
 
 docs {
@@ -98,7 +98,7 @@ docs {
   - "email is unique" - May be temporarily violated, eventual reconciliation
 
   **Type Compatibility:**
-  - ✓ Scalar types: String, Int, Float, Bool, Enum
+  - ✓ Scalar types: String, i32, f32, bool, Enum
   - ✓ Custom structs
   - ✗ Collections: Set, List, Map (use or_set, rga instead)
 

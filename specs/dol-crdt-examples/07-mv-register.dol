@@ -42,7 +42,7 @@ docs {
   }
 
   struct VectorClock {
-    clocks: Map<ActorId, UInt>
+    clocks: Map<ActorId, u32>
   }
 
   impl VectorClock {
@@ -205,7 +205,7 @@ docs {
 
   **Type Compatibility:**
   - ✓ Any type T
-  - Scalar types: String, Int, Bool, Enum
+  - Scalar types: String, i32, bool, Enum
   - Complex types: Custom structs
 
   **When to Use MV-Register:**

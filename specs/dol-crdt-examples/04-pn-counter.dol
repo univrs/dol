@@ -6,19 +6,19 @@ gen post.social {
   id: Uuid
 
   @crdt(lww)
-  content: String
+  content: string
 
   @crdt(pn_counter, min_value=0)
-  likes: Int
+  likes: i32
 
   @crdt(pn_counter, min_value=0)
-  view_count: Int
+  view_count: i32
 
   @crdt(pn_counter)
-  karma_score: Int  // Can be negative
+  karma_score: i32  // Can be negative
 
   @crdt(pn_counter, min_value=0, max_value=100, overflow_strategy="saturate")
-  completion_percentage: Int
+  completion_percentage: i32
 }
 
 docs {
@@ -42,21 +42,21 @@ docs {
 
   ```rust
   struct PNCounter {
-    increments: Map<ActorId, UInt>  // Per-actor increment counter
-    decrements: Map<ActorId, UInt>  // Per-actor decrement counter
+    increments: Map<ActorId, u32>  // Per-actor increment counter
+    decrements: Map<ActorId, u32>  // Per-actor decrement counter
   }
   ```
 
   **Operations:**
 
   ```
-  increment(amount: UInt):
+  increment(amount: u32):
     increments[actor_id] += amount
 
-  decrement(amount: UInt):
+  decrement(amount: u32):
     decrements[actor_id] += amount
 
-  value() -> Int:
+  value() -> i32:
     return sum(increments.values()) - sum(decrements.values())
   ```
 
@@ -153,9 +153,9 @@ docs {
   - "karma_score >= -100" - May be temporarily violated
 
   **Type Compatibility:**
-  - ✓ Int, i64, i32
-  - ✓ UInt, u64, u32 (with min_value=0)
-  - ⚠️ Float (precision loss, not recommended)
+  - ✓ i32, i64, i32
+  - ✓ u32, u64, u32 (with min_value=0)
+  - ⚠️ f32 (precision loss, not recommended)
 
   **Options:**
   - min_value: Integer (enforce lower bound)

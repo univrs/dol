@@ -619,7 +619,7 @@ fn check_migration_safety(from: &CrdtStrategy, to: &CrdtStrategy) -> MigrationSa
 ```rust
 // Generated from:
 // @crdt(lww)
-// name: String
+// name: string
 
 use automerge::{Automerge, AutoCommit, ReadDoc};
 use autosurgeon::{Reconcile, Hydrate};
