@@ -108,6 +108,9 @@ pub mod message;
 #[cfg(feature = "serde")]
 pub mod mcp;
 
+// LSP server for IDE support
+pub mod lsp;
+
 // MLIR backend (requires mlir feature)
 pub mod mlir;
 
@@ -206,6 +209,12 @@ pub use wasm::{WasmModule, WasmRuntime};
 pub use compiler::spirit::{
     compile_file, compile_source, compile_spirit_project, CompiledSpirit, CompilerError,
     CompilerWarning, SourceMap, SourceMapEntry,
+};
+
+// LSP re-exports
+pub use lsp::{
+    CompletionContext, CompletionItem, CompletionItemKind, CompletionProvider,
+    CrdtStrategyCompletion, Diagnostic, DiagnosticSeverity, DolLspServer, FieldTypeCompletion,
 };
 
 /// Parse a DOL source string into an AST.

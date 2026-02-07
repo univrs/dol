@@ -120,6 +120,7 @@ pretty_assertions = "1.4"
 insta = "1.34"  # Snapshot testing
 criterion = "0.5"  # Benchmarking
 tempfile = "3.9"
+proptest = "1.5"  # Property-based testing
 
 [profile.release]
 lto = true

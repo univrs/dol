@@ -5,7 +5,10 @@
 
 use super::{
     diagnostics::SchemaDiagnostics,
+    nl_to_dol::{NlRequirement, NlToDolConverter},
     recommendations::{ConsistencyLevel, CrdtRecommender, UsagePattern},
+    schema_validator::{SchemaValidator, ValidationContext},
+    suggestions::{SuggestionContext, SuggestionEngine},
     DolTool,
 };
 use crate::{
@@ -83,6 +86,13 @@ impl McpServer {
             DolTool::RecommendCrdt => self.tool_recommend_crdt(args),
             DolTool::ExplainStrategy => self.tool_explain_strategy(args),
             DolTool::GenerateExample => self.tool_generate_example(args),
+
+            // AI-powered tools (M3.1-M3.3)
+            DolTool::GenerateSchemaFromDescription => {
+                self.tool_generate_schema_from_description(args)
+            }
+            DolTool::ValidateAndSuggest => self.tool_validate_and_suggest(args),
+            DolTool::GetSuggestions => self.tool_get_suggestions(args),
         }
     }
 
@@ -509,6 +519,130 @@ exegesis {
         };
 
         Ok(ToolResult::text(example.to_string()))
+    }
+
+    // === AI-Powered Tools (M3.1-M3.3) ===
+
+    fn tool_generate_schema_from_description(&self, args: ToolArgs) -> Result<ToolResult, String> {
+        let description = args.get_string("description")?;
+        let entity_name = args.get_optional_string("entity_name");
+        let constraints = args
+            .get_optional_string("constraints")
+            .map(|c| c.split(',').map(|s| s.trim().to_string()).collect())
+            .unwrap_or_else(Vec::new);
+
+        let requirement = NlRequirement {
+            description,
+            entity_name,
+            constraints,
+        };
+
+        let converter = NlToDolConverter::new();
+        match converter.convert(requirement) {
+            Ok(schema) => {
+                #[cfg(feature = "serde")]
+                {
+                    let json = serde_json::to_string_pretty(&schema)
+                        .map_err(|e| format!("Serialization error: {}", e))?;
+                    Ok(ToolResult::json(json))
+                }
+                #[cfg(not(feature = "serde"))]
+                {
+                    Ok(ToolResult::text(schema.dol_source))
+                }
+            }
+            Err(e) => Err(format!("Schema generation error: {}", e)),
+        }
+    }
+
+    fn tool_validate_and_suggest(&self, args: ToolArgs) -> Result<ToolResult, String> {
+        let source = args.get_string("source")?;
+
+        let validator = SchemaValidator::new();
+        let report = validator.validate_schema(&source, ValidationContext::default());
+
+        #[cfg(feature = "serde")]
+        {
+            let json = serde_json::to_string_pretty(&report)
+                .map_err(|e| format!("Serialization error: {}", e))?;
+            Ok(ToolResult::json(json))
+        }
+        #[cfg(not(feature = "serde"))]
+        {
+            let mut output = format!("Validation Score: {}/100\n", report.score);
+            output.push_str(&format!("Summary: {}\n\n", report.summary));
+            output.push_str(&format!("Errors: {}\n", report.error_count));
+            output.push_str(&format!("Warnings: {}\n", report.warning_count));
+            output.push_str(&format!("Info: {}\n\n", report.info_count));
+
+            if !report.issues.is_empty() {
+                output.push_str("Issues:\n");
+                for issue in &report.issues {
+                    output.push_str(&format!(
+                        "  [{:?}] {}: {}\n",
+                        issue.severity, issue.location, issue.message
+                    ));
+                    if let Some(suggestion) = &issue.suggestion {
+                        output.push_str(&format!("    Suggestion: {}\n", suggestion));
+                    }
+                }
+            }
+
+            Ok(ToolResult::text(output))
+        }
+    }
+
+    fn tool_get_suggestions(&self, args: ToolArgs) -> Result<ToolResult, String> {
+        let source = args.get_string("source")?;
+        let use_case = args.get_optional_string("use_case");
+        let expected_scale = args.get_optional_string("expected_scale");
+        let performance_priority = args
+            .get_optional_string("performance_priority")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+        let security_priority = args
+            .get_optional_string("security_priority")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        let context = SuggestionContext {
+            use_case,
+            expected_scale,
+            performance_priority,
+            security_priority,
+        };
+
+        let engine = SuggestionEngine::new();
+        let suggestions = engine.analyze_and_suggest(&source, context);
+
+        #[cfg(feature = "serde")]
+        {
+            let json = serde_json::to_string_pretty(&suggestions)
+                .map_err(|e| format!("Serialization error: {}", e))?;
+            Ok(ToolResult::json(json))
+        }
+        #[cfg(not(feature = "serde"))]
+        {
+            let mut output = format!("Health Score: {}/100\n", suggestions.health_score);
+            output.push_str(&format!("{}\n\n", suggestions.summary));
+
+            if !suggestions.suggestions.is_empty() {
+                output.push_str("Suggestions:\n");
+                for (i, suggestion) in suggestions.suggestions.iter().enumerate() {
+                    output.push_str(&format!(
+                        "\n{}. {} [{:?}]\n",
+                        i + 1,
+                        suggestion.title,
+                        suggestion.priority
+                    ));
+                    output.push_str(&format!("   {}\n", suggestion.description));
+                    output.push_str(&format!("   Rationale: {}\n", suggestion.rationale));
+                    output.push_str(&format!("   Example: {}\n", suggestion.code_example));
+                }
+            }
+
+            Ok(ToolResult::text(output))
+        }
     }
 
     /// Returns the server manifest describing available tools.
