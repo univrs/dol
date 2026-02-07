@@ -1638,6 +1638,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -1662,6 +1663,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -1685,6 +1687,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -1711,6 +1714,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -1737,6 +1741,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -1761,6 +1766,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -1792,6 +1798,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
