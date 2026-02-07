@@ -12,7 +12,7 @@ gen user.profile {
   avatar_url: string
 
   @crdt(lww, tie_break="content_hash")
-  bio: String  // Content-hash tie-breaking for identical concurrent edits
+  bio: string  // Content-hash tie-breaking for identical concurrent edits
 
   @crdt(lww)
   theme: Theme  // Enum: light | dark | auto
@@ -98,7 +98,7 @@ docs {
   - "email is unique" - May be temporarily violated, eventual reconciliation
 
   **Type Compatibility:**
-  - ✓ Scalar types: String, i32, f32, bool, Enum
+  - ✓ Scalar types: string, i32, f32, bool, Enum
   - ✓ Custom structs
   - ✗ Collections: Set, List, Map (use or_set, rga instead)
 

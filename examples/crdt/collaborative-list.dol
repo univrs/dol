@@ -1,9 +1,9 @@
 gen CollaborativeList {
   @crdt(immutable)
-  has list_id: String
+  has list_id: string
 
   @crdt(rga)
-  has items: Vec<String>
+  has items: Vec<string>
 }
 
 docs {

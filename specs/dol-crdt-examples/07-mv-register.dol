@@ -205,7 +205,7 @@ docs {
 
   **Type Compatibility:**
   - ✓ Any type T
-  - Scalar types: String, i32, bool, Enum
+  - Scalar types: string, i32, bool, Enum
   - Complex types: Custom structs
 
   **When to Use MV-Register:**

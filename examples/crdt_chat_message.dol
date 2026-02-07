@@ -4,25 +4,25 @@
 gen message.chat {
   // Immutable identity fields - set once, never modified
   @crdt(immutable)
-  has id: String
+  has id: string
 
   @crdt(immutable)
-  has created_at: String
+  has created_at: string
 
   @crdt(immutable)
-  has author: String
+  has author: string
 
   // Last-write-wins for simple edits
   @crdt(lww)
-  has edited_at: String
+  has edited_at: string
 
   // Collaborative rich text editing with Peritext CRDT
   @crdt(peritext, formatting="full", max_length=100000)
-  has content: String
+  has content: string
 
   // Add-wins set for emoji reactions
   @crdt(or_set)
-  has reactions: Set<String>
+  has reactions: Set<string>
 
   // PN-Counter for view tracking
   @crdt(pn_counter, min_value=0)

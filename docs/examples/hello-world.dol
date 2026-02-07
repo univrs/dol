@@ -11,11 +11,11 @@ sex fun vudo_strlen(ptr: i32) -> i32
 
 // A simple spirit that demonstrates basic I/O
 gen HelloWorld {
-    has name: String
+    has name: string
     has greeting_count: Int
 
     // Initialize the spirit with a name
-    fun new(person_name: String) {
+    fun new(person_name: string) {
         this.name = person_name
         this.greeting_count = 0
     }
@@ -88,7 +88,7 @@ docs {
     1. Host Function Declaration: The "sex fun" keyword marks functions
        provided by the host system (vudo_println in this case).
 
-    2. String Handling: The runtime automatically converts DOL strings
+    2. string Handling: The runtime automatically converts DOL strings
        to pointer/length pairs when calling host functions. The programmer
        doesn't need to worry about memory management.
 

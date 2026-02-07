@@ -9,7 +9,7 @@ spirit MathLib {
 
     has lib: "src/lib.dol"
 
-    exegesis {
+    docs {
         Pure mathematical functions for DOL.
         No side effects, no dependencies.
 

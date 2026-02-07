@@ -1,6 +1,6 @@
 gen Counter {
   @crdt(immutable)
-  has counter_id: String
+  has counter_id: string
 
   @crdt(pn_counter)
   has value: i64

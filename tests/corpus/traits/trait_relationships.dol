@@ -1,11 +1,11 @@
 module tests.trait_relationships @ 1.0.0
 
-/// A simple gene for testing
-pub gene SimpleValue {
-    has value: String
+/// A simple gen for testing
+pub gen SimpleValue {
+    has value: string
     has count: Int64 = 0
 
-    fun get_value() -> String {
+    fun get_value() -> string {
         return this.value
     }
 }
@@ -13,18 +13,18 @@ pub gene SimpleValue {
 /// Trait for display functionality
 pub trait Displayable {
     /// Return string representation
-    is display() -> String
+    is display() -> string
 }
 
 /// Gene that wraps strings
-pub gene StringWrapper {
-    has value: String
+pub gen StringWrapper {
+    has value: string
 
-    fun to_string() -> String {
+    fun to_string() -> string {
         return this.value
     }
 }
 
-exegesis {
+docs {
     Tests for trait definitions and relationships.
 }

@@ -9,7 +9,7 @@ sex fun vudo_send(recipient_id: i32, msg_ptr: i32, msg_len: i32) -> i32
 
 // Host function: Receive a pending message
 // Returns: message string (or empty if no messages pending)
-sex fun vudo_recv() -> String
+sex fun vudo_recv() -> string
 
 // Host function: Get the sender ID of the current message
 // Returns: SpiritId of the message sender
@@ -25,11 +25,11 @@ sex fun vudo_println(ptr: i32, len: i32) -> i32
 
 // Represents a message with metadata
 gen Message {
-    has content: String
+    has content: string
     has sender_id: i32
     has timestamp: i64
 
-    fun new(text: String, from_id: i32, ts: i64) {
+    fun new(text: string, from_id: i32, ts: i64) {
         this.content = text
         this.sender_id = from_id
         this.timestamp = ts
@@ -43,11 +43,11 @@ gen Message {
 
 // A spirit that acts as a message broker/relay
 gen MessageBroker {
-    has name: String
+    has name: string
     has messages_processed: Int
     has total_bytes_relayed: Int
 
-    fun new(broker_name: String) {
+    fun new(broker_name: string) {
         this.name = broker_name
         this.messages_processed = 0
         this.total_bytes_relayed = 0
@@ -76,7 +76,7 @@ gen MessageBroker {
 
     // Relay a message to a specific recipient
     // Demonstrates vudo_send with error handling
-    fun relay_message(recipient_id: i32, content: String) -> i32 {
+    fun relay_message(recipient_id: i32, content: string) -> i32 {
         vudo_println("Broker: Relaying message to " + recipient_id.to_string())
 
         // Send the message through the ABI
@@ -119,7 +119,7 @@ gen MessageSender {
 
     // Send a message to a recipient
     // Demonstrates vudo_send usage and result code checking
-    fun send_message(recipient_id: i32, content: String) {
+    fun send_message(recipient_id: i32, content: string) {
         let prefix = "Sender #" + this.sender_id.to_string() + " sending: "
         let message = prefix + content
 
@@ -147,7 +147,7 @@ gen MessageSender {
 gen MessageReceiver {
     has receiver_id: i32
     has messages_received: Int
-    has last_message: String
+    has last_message: string
 
     fun new(id: i32) {
         this.receiver_id = id

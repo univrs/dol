@@ -5,12 +5,12 @@
 // Host function: Emit an effect to the effect system
 // Parameters: effect_type (string), payload (string)
 // Returns: ResultCode (0 = success, 1 = invalid type, 2 = buffer full)
-sex fun vudo_emit_effect(effect_type: String, payload: String) -> i32
+sex fun vudo_emit_effect(effect_type: string, payload: string) -> i32
 
 // Host function: Subscribe to effects matching a pattern
 // Parameters: pattern (wildcard string, e.g., "state.*" or "error")
 // Returns: subscription_id (>0 on success, -1 on error)
-sex fun vudo_subscribe(pattern: String) -> i32
+sex fun vudo_subscribe(pattern: string) -> i32
 
 // Host function: Unsubscribe from effect notifications
 // Parameters: subscription_id (from vudo_subscribe)
@@ -19,19 +19,19 @@ sex fun vudo_unsubscribe(subscription_id: i32) -> i32
 
 // Host function: Check for subscribed effects
 // Returns: effect string (empty if none pending)
-sex fun vudo_get_effect() -> String
+sex fun vudo_get_effect() -> string
 
 // Host function: Print a string to standard output
 sex fun vudo_println(ptr: i32, len: i32) -> i32
 
 // Represents an effect that can be emitted in the system
 gen StandardEffect {
-    has effect_type: String
+    has effect_type: string
     has source_id: i32
-    has payload: String
+    has payload: string
     has timestamp: i64
 
-    fun new(type_str: String, src_id: i32, data: String, ts: i64) {
+    fun new(type_str: string, src_id: i32, data: string, ts: i64) {
         this.effect_type = type_str
         this.source_id = src_id
         this.payload = data
@@ -47,11 +47,11 @@ gen StandardEffect {
 
 // A spirit that monitors the effect system
 gen EffectMonitor {
-    has name: String
+    has name: string
     has subscription_id: i32
     has effects_received: Int
 
-    fun new(monitor_name: String) {
+    fun new(monitor_name: string) {
         this.name = monitor_name
         this.subscription_id = -1
         this.effects_received = 0
@@ -59,7 +59,7 @@ gen EffectMonitor {
 
     // Subscribe to effects matching a pattern
     // Demonstrates vudo_subscribe usage
-    fun subscribe_to_pattern(pattern: String) {
+    fun subscribe_to_pattern(pattern: string) {
         let msg = "Monitor: Subscribing to pattern '" + pattern + "'"
         vudo_println(msg)
 
@@ -110,7 +110,7 @@ gen EffectMonitor {
 // A spirit that emits effects based on state changes
 gen EffectEmitter {
     has emitter_id: i32
-    has state: String
+    has state: string
     has effects_emitted: Int
 
     fun new(id: i32) {
@@ -121,7 +121,7 @@ gen EffectEmitter {
 
     // Change state and emit an effect
     // Demonstrates vudo_emit_effect with result code checking
-    fun change_state(new_state: String) {
+    fun change_state(new_state: string) {
         let old_state = this.state
         this.state = new_state
 
@@ -146,7 +146,7 @@ gen EffectEmitter {
 
     // Emit a health status effect
     // Demonstrates multiple effect emissions
-    fun emit_health_status(status: String) {
+    fun emit_health_status(status: string) {
         let payload = "Health check: " + status
         let result = vudo_emit_effect("health.status", payload)
 
@@ -161,7 +161,7 @@ gen EffectEmitter {
 
     // Emit an error effect
     // Demonstrates error effect emission
-    fun emit_error(error_msg: String) {
+    fun emit_error(error_msg: string) {
         let payload = "Error from emitter #" + this.emitter_id.to_string() +
                      ": " + error_msg
 
@@ -173,7 +173,7 @@ gen EffectEmitter {
         }
     }
 
-    fun get_state() -> String {
+    fun get_state() -> string {
         return this.state
     }
 

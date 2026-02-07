@@ -9,7 +9,7 @@ docs {
     Demonstrates collections and generic types in DOL v0.8.0.
 
     Key changes from earlier versions:
-    - Vec<T> replaces List<T> for dynamic arrays
+    - Vec<T> replaces Vec<T> for dynamic arrays
     - Map<K, V> for key-value collections
     - Option<T> and Result<T, E> for error handling
     - Full generic type parameter support

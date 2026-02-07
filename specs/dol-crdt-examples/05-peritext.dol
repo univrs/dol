@@ -50,7 +50,7 @@ docs {
   **Operations:**
 
   ```
-  insert(position: u32, text: String)
+  insert(position: u32, text: string)
   delete(position: u32, length: u32)
   format(range: Range, mark: FormatMark)
   ```
@@ -180,7 +180,7 @@ docs {
   - "content length <= max_length" - May be temporarily violated
 
   **Type Compatibility:**
-  - ✓ String (plain text, auto-converted)
+  - ✓ string (plain text, auto-converted)
   - ✓ RichText (native rich text type)
 
   **Options:**

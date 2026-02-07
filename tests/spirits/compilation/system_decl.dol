@@ -7,9 +7,9 @@ system ProductionCluster {
     uses @univrs/monitoring: "^1.0"
 
     has config: ClusterConfig
-    has clusters: List<Cluster>
+    has clusters: Vec<Cluster>
 
-    constraint max_containers_per_cluster {
+    rule max_containers_per_cluster {
         forall cluster in this.clusters {
             cluster.containers.len <= this.config.max_containers
         }
@@ -19,7 +19,7 @@ system ProductionCluster {
         // Deploy logic
     }
 
-    exegesis {
+    docs {
         ProductionCluster orchestrates a multi-cluster container deployment.
         Demonstrates System composition of multiple Spirits.
     }

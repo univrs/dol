@@ -294,7 +294,7 @@ pub gen SampleFormat {
         Float64,    // 64-bit float (-1.0 to 1.0)
         Int16,      // 16-bit signed integer
         Int24,      // 24-bit signed integer
-        Int32       // 32-bit signed integer
+        i32       // 32-bit signed integer
     }
 
     docs {

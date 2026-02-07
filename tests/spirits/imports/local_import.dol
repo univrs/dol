@@ -5,7 +5,7 @@ use container
 use container.state
 use internal.helpers
 
-pub gene ServiceHandler {
+pub gen ServiceHandler {
     has container: container.Container
 
     pub fun handle() -> Void {
@@ -13,7 +13,7 @@ pub gene ServiceHandler {
     }
 }
 
-exegesis {
+docs {
     Test case for local module imports.
     Local imports resolve to src/[path].dol files.
 }

@@ -13,11 +13,11 @@ sex fun vudo_send(recipient_id: i32, msg_ptr: i32, msg_len: i32) -> i32
 // Host function: Report an error to the host system
 // Parameters: error_code, error_message
 // Returns: ResultCode (0 = logged, 1 = error queue full)
-sex fun vudo_error(error_code: i32, error_message: String) -> i32
+sex fun vudo_error(error_code: i32, error_message: string) -> i32
 
 // Host function: Receive a message
 // Returns: message string (empty if no pending messages)
-sex fun vudo_recv() -> String
+sex fun vudo_recv() -> string
 
 // Host function: Check for pending messages
 // Returns: count of pending messages
@@ -51,11 +51,11 @@ gen ErrorCodes {
 
 // A spirit that demonstrates safe I/O with error checking
 gen SafeIOSpirit {
-    has name: String
+    has name: string
     has total_errors: Int
     has successful_prints: Int
 
-    fun new(spirit_name: String) {
+    fun new(spirit_name: string) {
         this.name = spirit_name
         this.total_errors = 0
         this.successful_prints = 0
@@ -63,7 +63,7 @@ gen SafeIOSpirit {
 
     // Safe print that checks return codes
     // Returns: true on success, false on error
-    fun safe_print(message: String) -> bool {
+    fun safe_print(message: string) -> bool {
         vudo_println("Attempting to print: " + message)
 
         let result = vudo_println(message)
@@ -99,7 +99,7 @@ gen SafeIOSpirit {
 
     // Print with fallback strategy
     // If printing fails, try a shorter message
-    fun print_with_fallback(message: String) {
+    fun print_with_fallback(message: string) {
         let success = this.safe_print(message)
 
         if !success && message.length > 20 {
@@ -131,7 +131,7 @@ gen SafeMessagingSpirit {
     }
 
     // Safely send a message with detailed error handling
-    fun safe_send(recipient_id: i32, content: String) {
+    fun safe_send(recipient_id: i32, content: string) {
         vudo_println("Attempting to send message...")
 
         let result = vudo_send(recipient_id, content)
@@ -174,7 +174,7 @@ gen SafeMessagingSpirit {
     }
 
     // Send with retry logic
-    fun send_with_retry(recipient_id: i32, content: String, max_retries: Int) {
+    fun send_with_retry(recipient_id: i32, content: string, max_retries: Int) {
         let retry_count = 0
 
         while retry_count < max_retries {
@@ -259,7 +259,7 @@ gen SafeReceiverSpirit {
     }
 
     // Process a single message with error handling
-    fun process_message_safely(message: String) {
+    fun process_message_safely(message: string) {
         if message.length == 0 {
             let error_msg = "Error: Empty message received"
             vudo_println(error_msg)

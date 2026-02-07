@@ -1,35 +1,35 @@
 module tests.nested_generics @ 1.0.0
 
 // Simple generic
-pub gene Container<T> {
+pub gen Container<T> {
     has item: T
 }
 
 // Nested generic
-pub gene Nested<T> {
-    has items: List<T>
-    has mapping: Map<String, T>
+pub gen Nested<T> {
+    has items: Vec<T>
+    has mapping: Map<string, T>
     has optional: Option<T>
-    has result: Result<T, String>
+    has result: Result<T, string>
 }
 
 // Deeply nested
-pub gene DeepNest<T> {
-    has deep: Map<String, List<Option<T>>>
-    has matrix: List<List<T>>
-    has complex: Result<Map<String, List<T>>, String>
+pub gen DeepNest<T> {
+    has deep: Map<string, Vec<Option<T>>>
+    has matrix: Vec<Vec<T>>
+    has complex: Result<Map<string, Vec<T>>, string>
 }
 
 // Multiple type params
-pub gene Multi<K, V> {
+pub gen Multi<K, V> {
     has key: K
     has value: V
-    has pairs: List<Tuple<K, V>>
+    has pairs: Vec<Tuple<K, V>>
 }
 
 // Bounded generics
-pub gene Bounded<T: Comparable> {
-    has items: List<T>
+pub gen Bounded<T: Comparable> {
+    has items: Vec<T>
 
     fun max() -> Option<T> {
         if this.items.is_empty() {
@@ -40,10 +40,10 @@ pub gene Bounded<T: Comparable> {
 }
 
 // Generic with default
-pub gene WithDefault<T = Int64> {
+pub gen WithDefault<T = Int64> {
     has value: T
 }
 
-exegesis {
+docs {
     Tests for nested and complex generic type parameters.
 }

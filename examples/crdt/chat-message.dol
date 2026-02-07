@@ -1,12 +1,12 @@
 gen ChatMessage {
   @crdt(immutable)
-  has id: String
+  has id: string
 
   @crdt(peritext, formatting="full")
-  has content: String
+  has content: string
 
   @crdt(or_set)
-  has reactions: Set<String>
+  has reactions: Set<string>
 
   @crdt(lww)
   has edited_at: Option<i64>
