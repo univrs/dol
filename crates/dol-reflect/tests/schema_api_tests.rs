@@ -58,7 +58,7 @@ exegesis {
 
     // Check specific field properties
     let id_field = gen.get_field("id").unwrap();
-    assert_eq!(id_field.type_name(), "String");
+    assert_eq!(id_field.type_name(), "string");
     assert_eq!(id_field.crdt_strategy(), Some(CrdtStrategy::Immutable));
     assert!(!id_field.is_personal());
 

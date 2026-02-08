@@ -166,7 +166,7 @@ impl CodeGenerator {
                 Literal::Bool(b) => Ok(b.to_string()),
                 _ => Ok("()".to_string()),
             },
-            Expr::Ident(name) => Ok(name.clone()),
+            Expr::Identifier(name) => Ok(name.clone()),
             Expr::Binary { op, left, right } => {
                 let left_code = self.generate_rust_expr(left)?;
                 let right_code = self.generate_rust_expr(right)?;
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_generate_expr_ident() {
         let generator = CodeGenerator::new(CodegenTarget::Rust);
-        let expr = Expr::Ident("x".to_string());
+        let expr = Expr::Identifier("x".to_string());
 
         let result = generator.generate_expr(&expr);
         assert!(result.is_ok());

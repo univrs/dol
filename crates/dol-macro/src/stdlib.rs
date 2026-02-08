@@ -6,7 +6,6 @@
 use crate::declarative::{DeclarativeMacro, MacroRule, MacroTemplate};
 use crate::pattern::{FragmentSpecifier, MacroPattern, RepetitionOperator, RepetitionSeparator};
 use crate::registry::MacroRegistry;
-use metadol::ast::{BinaryOp, Expr, Literal};
 
 /// Registers all standard library macros into the given registry.
 ///
@@ -223,7 +222,7 @@ mod tests {
     use super::*;
     use crate::expand::{MacroExpander, MacroInvocation};
     use crate::hygiene::HygieneContext;
-    use metadol::ast::Span;
+    use metadol::ast::{Expr, Literal, Span};
 
     #[test]
     fn test_const_macro() {

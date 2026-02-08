@@ -21,7 +21,7 @@
 //!
 //! // Check merge semantics for a field
 //! let semantics = MergeSemantics::for_strategy(
-//!     dol::CrdtStrategy::Lww
+//!     metadol::CrdtStrategy::Lww
 //! );
 //!
 //! assert!(semantics.is_commutative());

@@ -25,7 +25,7 @@
 //! // 'temp' gets a unique identifier that can't collide
 //! ```
 
-use metadol::ast::{Declaration, Expr, Span, Stmt};
+use metadol::ast::{Declaration, Expr, Stmt};
 use std::collections::HashMap;
 
 /// Syntax context for hygiene tracking.
@@ -164,40 +164,35 @@ impl HygieneContext {
     /// according to their syntax context.
     pub fn apply_hygiene_to_expr(&mut self, expr: &Expr) -> Expr {
         match expr {
-            Expr::Ident(name) => {
+            Expr::Identifier(name) => {
                 let hygienic_name = self.make_hygienic(name);
-                Expr::Ident(hygienic_name)
+                Expr::Identifier(hygienic_name)
             }
 
             Expr::Binary { op, left, right } => Expr::Binary {
-                op: op.clone(),
+                op: *op,
                 left: Box::new(self.apply_hygiene_to_expr(left)),
                 right: Box::new(self.apply_hygiene_to_expr(right)),
             },
 
             Expr::Unary { op, operand } => Expr::Unary {
-                op: op.clone(),
+                op: *op,
                 operand: Box::new(self.apply_hygiene_to_expr(operand)),
             },
 
-            Expr::Call { func, args } => Expr::Call {
-                func: Box::new(self.apply_hygiene_to_expr(func)),
+            Expr::Call { callee, args } => Expr::Call {
+                callee: Box::new(self.apply_hygiene_to_expr(callee)),
                 args: args.iter().map(|a| self.apply_hygiene_to_expr(a)).collect(),
             },
 
-            Expr::Index { base, index } => Expr::Index {
-                base: Box::new(self.apply_hygiene_to_expr(base)),
-                index: Box::new(self.apply_hygiene_to_expr(index)),
-            },
-
-            Expr::Field { base, field } => Expr::Field {
-                base: Box::new(self.apply_hygiene_to_expr(base)),
+            Expr::Member { object, field } => Expr::Member {
+                object: Box::new(self.apply_hygiene_to_expr(object)),
                 field: field.clone(),
             },
 
-            Expr::Cast { expr, ty } => Expr::Cast {
+            Expr::Cast { expr, target_type } => Expr::Cast {
                 expr: Box::new(self.apply_hygiene_to_expr(expr)),
-                ty: ty.clone(),
+                target_type: target_type.clone(),
             },
 
             Expr::If {
@@ -206,10 +201,10 @@ impl HygieneContext {
                 else_branch,
             } => Expr::If {
                 condition: Box::new(self.apply_hygiene_to_expr(condition)),
-                then_branch: Box::new(self.apply_hygiene_to_block(then_branch)),
+                then_branch: Box::new(self.apply_hygiene_to_expr(then_branch)),
                 else_branch: else_branch
                     .as_ref()
-                    .map(|b| Box::new(self.apply_hygiene_to_block(b))),
+                    .map(|b| Box::new(self.apply_hygiene_to_expr(b))),
             },
 
             Expr::Match { scrutinee, arms } => Expr::Match {
@@ -217,12 +212,13 @@ impl HygieneContext {
                 arms: arms.clone(), // TODO: Apply hygiene to match arms
             },
 
-            Expr::Lambda { params, body } => Expr::Lambda {
+            Expr::Lambda { params, return_type, body } => Expr::Lambda {
                 params: params.clone(), // TODO: Apply hygiene to params
+                return_type: return_type.clone(),
                 body: Box::new(self.apply_hygiene_to_expr(body)),
             },
 
-            Expr::Array(elements) => Expr::Array(
+            Expr::List(elements) => Expr::List(
                 elements
                     .iter()
                     .map(|e| self.apply_hygiene_to_expr(e))
@@ -244,11 +240,12 @@ impl HygieneContext {
     /// Applies hygiene to a block.
     pub fn apply_hygiene_to_block(&mut self, block: &metadol::ast::Block) -> metadol::ast::Block {
         metadol::ast::Block {
-            stmts: block
-                .stmts
+            statements: block
+                .statements
                 .iter()
                 .map(|s| self.apply_hygiene_to_stmt(s))
                 .collect(),
+            final_expr: block.final_expr.as_ref().map(|e| Box::new(self.apply_hygiene_to_expr(e))),
             span: block.span,
         }
     }
@@ -258,58 +255,39 @@ impl HygieneContext {
         match stmt {
             Stmt::Let {
                 name,
-                ty,
+                type_ann,
                 value,
-                span,
             } => {
                 let hygienic_name = self.make_hygienic(name);
                 Stmt::Let {
                     name: hygienic_name,
-                    ty: ty.clone(),
-                    value: value.as_ref().map(|v| self.apply_hygiene_to_expr(v)),
-                    span: *span,
+                    type_ann: type_ann.clone(),
+                    value: self.apply_hygiene_to_expr(value),
                 }
             }
 
             Stmt::Expr(expr) => Stmt::Expr(self.apply_hygiene_to_expr(expr)),
 
-            Stmt::Return { value, span } => Stmt::Return {
-                value: value.as_ref().map(|v| self.apply_hygiene_to_expr(v)),
-                span: *span,
-            },
+            Stmt::Return(value_opt) => Stmt::Return(
+                value_opt.as_ref().map(|v| self.apply_hygiene_to_expr(v))
+            ),
 
-            Stmt::Assign {
-                target,
-                value,
-                span,
-            } => Stmt::Assign {
+            Stmt::Assign { target, value } => Stmt::Assign {
                 target: self.apply_hygiene_to_expr(target),
                 value: self.apply_hygiene_to_expr(value),
-                span: *span,
             },
 
-            Stmt::While {
-                condition,
-                body,
-                span,
-            } => Stmt::While {
+            Stmt::While { condition, body } => Stmt::While {
                 condition: self.apply_hygiene_to_expr(condition),
-                body: self.apply_hygiene_to_block(body),
-                span: *span,
+                body: body.iter().map(|s| self.apply_hygiene_to_stmt(s)).collect(),
             },
 
-            Stmt::For {
-                var,
-                iter,
-                body,
-                span,
-            } => {
-                let hygienic_var = self.make_hygienic(var);
+            Stmt::For { binding, iterable, body } => {
+                let hygienic_var = self.make_hygienic(binding);
                 Stmt::For {
-                    var: hygienic_var,
-                    iter: self.apply_hygiene_to_expr(iter),
-                    body: self.apply_hygiene_to_block(body),
-                    span: *span,
+                    binding: hygienic_var,
+                    iterable: self.apply_hygiene_to_expr(iterable),
+                    body: body.iter().map(|s| self.apply_hygiene_to_stmt(s)).collect(),
                 }
             }
 
@@ -400,10 +378,10 @@ mod tests {
         let mut ctx = HygieneContext::new();
         ctx.enter_expansion();
 
-        let expr = Expr::Ident("x".to_string());
+        let expr = Expr::Identifier("x".to_string());
         let hygienic = ctx.apply_hygiene_to_expr(&expr);
 
-        if let Expr::Ident(name) = hygienic {
+        if let Expr::Identifier(name) = hygienic {
             assert_ne!(name, "x");
             assert!(name.contains("x"));
         } else {
@@ -418,14 +396,14 @@ mod tests {
 
         let expr = Expr::Binary {
             op: metadol::ast::BinaryOp::Add,
-            left: Box::new(Expr::Ident("x".to_string())),
+            left: Box::new(Expr::Identifier("x".to_string())),
             right: Box::new(Expr::Literal(Literal::Int(1))),
         };
 
         let hygienic = ctx.apply_hygiene_to_expr(&expr);
 
         if let Expr::Binary { left, .. } = hygienic {
-            if let Expr::Ident(name) = *left {
+            if let Expr::Identifier(name) = *left {
                 assert_ne!(name, "x");
             } else {
                 panic!("Expected identifier");

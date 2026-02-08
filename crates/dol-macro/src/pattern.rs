@@ -4,7 +4,7 @@
 //! declarative macros, including fragment specifiers and repetition patterns.
 
 use crate::error::{MacroError, MacroResult};
-use metadol::ast::{Block, Declaration, Expr, Literal, Span, Stmt, TypeExpr};
+use metadol::ast::{Block, Declaration, Expr, Literal, Stmt, TypeExpr};
 use std::collections::HashMap;
 
 /// Fragment specifier for macro patterns.
@@ -450,7 +450,7 @@ impl PatternMatcher {
             FragmentSpecifier::Expr => Ok(MacroFragment::Expr(expr.clone())),
 
             FragmentSpecifier::Ident => {
-                if let Expr::Ident(name) = expr {
+                if let Expr::Identifier(name) = expr {
                     Ok(MacroFragment::Ident(name.clone()))
                 } else {
                     Err(MacroError::type_mismatch("identifier", "expression"))
@@ -467,7 +467,7 @@ impl PatternMatcher {
 
             FragmentSpecifier::Path => {
                 // Extract dotted path from identifier
-                if let Expr::Ident(name) = expr {
+                if let Expr::Identifier(name) = expr {
                     let parts: Vec<String> = name.split('.').map(String::from).collect();
                     Ok(MacroFragment::Path(parts))
                 } else {
@@ -544,7 +544,7 @@ mod tests {
     fn test_metavar_pattern_matching() {
         let mut matcher = PatternMatcher::new();
         let pattern = MacroPattern::metavar("x", FragmentSpecifier::Ident);
-        let input = vec![Expr::Ident("foo".to_string())];
+        let input = vec![Expr::Identifier("foo".to_string())];
 
         let result = matcher.match_pattern(&pattern, &input);
         assert!(result.is_ok());
@@ -562,8 +562,8 @@ mod tests {
             MacroPattern::metavar("y", FragmentSpecifier::Ident),
         ]);
         let input = vec![
-            Expr::Ident("foo".to_string()),
-            Expr::Ident("bar".to_string()),
+            Expr::Identifier("foo".to_string()),
+            Expr::Identifier("bar".to_string()),
         ];
 
         let result = matcher.match_pattern(&pattern, &input);

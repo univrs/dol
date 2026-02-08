@@ -36,14 +36,14 @@ impl AstManipulator {
     }
 
     /// Recursively walks an expression tree, applying a transformation.
-    pub fn walk_expr<F>(&self, expr: &Expr, mut f: F) -> ProcMacroResult<Expr>
+    pub fn walk_expr<F>(&self, expr: &Expr, f: &mut F) -> ProcMacroResult<Expr>
     where
         F: FnMut(&Expr) -> ProcMacroResult<Expr>,
     {
         match expr {
             Expr::Binary { op, left, right } => {
-                let left = Box::new(self.walk_expr(left, &mut f)?);
-                let right = Box::new(self.walk_expr(right, &mut f)?);
+                let left = Box::new(self.walk_expr(left, f)?);
+                let right = Box::new(self.walk_expr(right, f)?);
                 f(&Expr::Binary {
                     op: op.clone(),
                     left,
@@ -52,46 +52,40 @@ impl AstManipulator {
             }
 
             Expr::Unary { op, operand } => {
-                let operand = Box::new(self.walk_expr(operand, &mut f)?);
+                let operand = Box::new(self.walk_expr(operand, f)?);
                 f(&Expr::Unary {
                     op: op.clone(),
                     operand,
                 })
             }
 
-            Expr::Call { func, args } => {
-                let func = Box::new(self.walk_expr(func, &mut f)?);
+            Expr::Call { callee, args } => {
+                let callee = Box::new(self.walk_expr(callee, f)?);
                 let args: ProcMacroResult<Vec<Expr>> =
-                    args.iter().map(|a| self.walk_expr(a, &mut f)).collect();
+                    args.iter().map(|a| self.walk_expr(a, f)).collect();
                 f(&Expr::Call {
-                    func,
+                    callee,
                     args: args?,
                 })
             }
 
-            Expr::Index { base, index } => {
-                let base = Box::new(self.walk_expr(base, &mut f)?);
-                let index = Box::new(self.walk_expr(index, &mut f)?);
-                f(&Expr::Index { base, index })
-            }
-
-            Expr::Field { base, field } => {
-                let base = Box::new(self.walk_expr(base, &mut f)?);
-                f(&Expr::Field {
-                    base,
+            Expr::Member { object, field } => {
+                let object = Box::new(self.walk_expr(object, f)?);
+                f(&Expr::Member {
+                    object,
                     field: field.clone(),
                 })
             }
 
-            Expr::Array(elements) => {
+            Expr::List(elements) => {
                 let elements: ProcMacroResult<Vec<Expr>> =
-                    elements.iter().map(|e| self.walk_expr(e, &mut f)).collect();
-                f(&Expr::Array(elements?))
+                    elements.iter().map(|e| self.walk_expr(e, f)).collect();
+                f(&Expr::List(elements?))
             }
 
             Expr::Tuple(elements) => {
                 let elements: ProcMacroResult<Vec<Expr>> =
-                    elements.iter().map(|e| self.walk_expr(e, &mut f)).collect();
+                    elements.iter().map(|e| self.walk_expr(e, f)).collect();
                 f(&Expr::Tuple(elements?))
             }
 
@@ -100,45 +94,36 @@ impl AstManipulator {
     }
 
     /// Walks a statement tree, applying a transformation.
-    pub fn walk_stmt<F>(&self, stmt: &Stmt, mut f: F) -> ProcMacroResult<Stmt>
+    pub fn walk_stmt<F>(&self, stmt: &Stmt, f: &mut F) -> ProcMacroResult<Stmt>
     where
         F: FnMut(&Stmt) -> ProcMacroResult<Stmt>,
     {
         match stmt {
             Stmt::Let {
                 name,
-                ty,
+                type_ann,
                 value,
-                span,
             } => {
-                let value = if let Some(v) = value {
-                    Some(self.walk_expr(v, &mut |e| Ok(e.clone()))?)
-                } else {
-                    None
-                };
+                let value = self.walk_expr(value, &mut |e: &Expr| Ok(e.clone()))?;
                 f(&Stmt::Let {
                     name: name.clone(),
-                    ty: ty.clone(),
+                    type_ann: type_ann.clone(),
                     value,
-                    span: *span,
                 })
             }
 
             Stmt::Expr(expr) => {
-                let expr = self.walk_expr(expr, &mut |e| Ok(e.clone()))?;
+                let expr = self.walk_expr(expr, &mut |e: &Expr| Ok(e.clone()))?;
                 f(&Stmt::Expr(expr))
             }
 
-            Stmt::Return { value, span } => {
+            Stmt::Return(value) => {
                 let value = if let Some(v) = value {
-                    Some(self.walk_expr(v, &mut |e| Ok(e.clone()))?)
+                    Some(self.walk_expr(v, &mut |e: &Expr| Ok(e.clone()))?)
                 } else {
                     None
                 };
-                f(&Stmt::Return {
-                    value,
-                    span: *span,
-                })
+                f(&Stmt::Return(value))
             }
 
             _ => f(stmt),
@@ -154,7 +139,7 @@ impl AstManipulator {
 
     fn collect_identifiers(&self, expr: &Expr, idents: &mut Vec<String>) {
         match expr {
-            Expr::Ident(name) => idents.push(name.clone()),
+            Expr::Identifier(name) => idents.push(name.clone()),
             Expr::Binary { left, right, .. } => {
                 self.collect_identifiers(left, idents);
                 self.collect_identifiers(right, idents);
@@ -162,13 +147,13 @@ impl AstManipulator {
             Expr::Unary { operand, .. } => {
                 self.collect_identifiers(operand, idents);
             }
-            Expr::Call { func, args } => {
-                self.collect_identifiers(func, idents);
+            Expr::Call { callee, args } => {
+                self.collect_identifiers(callee, idents);
                 for arg in args {
                     self.collect_identifiers(arg, idents);
                 }
             }
-            Expr::Array(elements) | Expr::Tuple(elements) => {
+            Expr::List(elements) | Expr::Tuple(elements) => {
                 for elem in elements {
                     self.collect_identifiers(elem, idents);
                 }
@@ -180,7 +165,7 @@ impl AstManipulator {
     /// Replaces all occurrences of an identifier in an expression.
     pub fn replace_identifier(&self, expr: &Expr, old: &str, new: &str) -> Expr {
         match expr {
-            Expr::Ident(name) if name == old => Expr::Ident(new.to_string()),
+            Expr::Identifier(name) if name == old => Expr::Identifier(new.to_string()),
 
             Expr::Binary { op, left, right } => Expr::Binary {
                 op: op.clone(),
@@ -193,8 +178,8 @@ impl AstManipulator {
                 operand: Box::new(self.replace_identifier(operand, old, new)),
             },
 
-            Expr::Call { func, args } => Expr::Call {
-                func: Box::new(self.replace_identifier(func, old, new)),
+            Expr::Call { callee, args } => Expr::Call {
+                callee: Box::new(self.replace_identifier(callee, old, new)),
                 args: args
                     .iter()
                     .map(|a| self.replace_identifier(a, old, new))
@@ -212,10 +197,10 @@ impl AstManipulator {
                 1 + self.count_nodes(left) + self.count_nodes(right)
             }
             Expr::Unary { operand, .. } => 1 + self.count_nodes(operand),
-            Expr::Call { func, args } => {
-                1 + self.count_nodes(func) + args.iter().map(|a| self.count_nodes(a)).sum::<usize>()
+            Expr::Call { callee, args } => {
+                1 + self.count_nodes(callee) + args.iter().map(|a| self.count_nodes(a)).sum::<usize>()
             }
-            Expr::Array(elements) | Expr::Tuple(elements) => {
+            Expr::List(elements) | Expr::Tuple(elements) => {
                 1 + elements.iter().map(|e| self.count_nodes(e)).sum::<usize>()
             }
             _ => 1,
@@ -246,8 +231,8 @@ mod tests {
         // x + y
         let expr = Expr::Binary {
             op: BinaryOp::Add,
-            left: Box::new(Expr::Ident("x".to_string())),
-            right: Box::new(Expr::Ident("y".to_string())),
+            left: Box::new(Expr::Identifier("x".to_string())),
+            right: Box::new(Expr::Identifier("y".to_string())),
         };
 
         let idents = manipulator.find_identifiers(&expr);
@@ -260,10 +245,10 @@ mod tests {
     fn test_replace_identifier() {
         let manipulator = AstManipulator::new();
 
-        let expr = Expr::Ident("x".to_string());
+        let expr = Expr::Identifier("x".to_string());
         let replaced = manipulator.replace_identifier(&expr, "x", "y");
 
-        if let Expr::Ident(name) = replaced {
+        if let Expr::Identifier(name) = replaced {
             assert_eq!(name, "y");
         } else {
             panic!("Expected identifier");
@@ -276,14 +261,14 @@ mod tests {
 
         let expr = Expr::Binary {
             op: BinaryOp::Add,
-            left: Box::new(Expr::Ident("x".to_string())),
+            left: Box::new(Expr::Identifier("x".to_string())),
             right: Box::new(Expr::Literal(Literal::Int(1))),
         };
 
         let replaced = manipulator.replace_identifier(&expr, "x", "y");
 
         if let Expr::Binary { left, .. } = replaced {
-            if let Expr::Ident(name) = *left {
+            if let Expr::Identifier(name) = *left {
                 assert_eq!(name, "y");
             } else {
                 panic!("Expected identifier");
@@ -299,12 +284,12 @@ mod tests {
 
         let expr = Expr::Binary {
             op: BinaryOp::Add,
-            left: Box::new(Expr::Ident("x".to_string())),
+            left: Box::new(Expr::Identifier("x".to_string())),
             right: Box::new(Expr::Literal(Literal::Int(1))),
         };
 
         let count = manipulator.count_nodes(&expr);
-        assert_eq!(count, 3); // Binary + Ident + Literal
+        assert_eq!(count, 3); // Binary + Identifier + Literal
     }
 
     #[test]
@@ -313,7 +298,7 @@ mod tests {
 
         let expr = Expr::Binary {
             op: BinaryOp::Add,
-            left: Box::new(Expr::Ident("x".to_string())),
+            left: Box::new(Expr::Identifier("x".to_string())),
             right: Box::new(Expr::Literal(Literal::Int(1))),
         };
 
@@ -327,14 +312,14 @@ mod tests {
 
         let expr = Expr::Binary {
             op: BinaryOp::Add,
-            left: Box::new(Expr::Ident("x".to_string())),
+            left: Box::new(Expr::Identifier("x".to_string())),
             right: Box::new(Expr::Literal(Literal::Int(1))),
         };
 
         // Walk and count identifier nodes
         let mut count = 0;
-        let _ = manipulator.walk_expr(&expr, |e| {
-            if matches!(e, Expr::Ident(_)) {
+        let _ = manipulator.walk_expr(&expr, &mut |e| {
+            if matches!(e, Expr::Identifier(_)) {
                 count += 1;
             }
             Ok(e.clone())

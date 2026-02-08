@@ -155,7 +155,7 @@ exegesis { Chat message }
     let analysis = introspector.analyze_field(id_field).unwrap();
 
     assert_eq!(analysis.field_name, "id");
-    assert_eq!(analysis.field_type, "String");
+    assert_eq!(analysis.field_type, "string");
     assert_eq!(analysis.strategy, CrdtStrategy::Immutable);
     assert!(analysis.compatible);
     assert!(analysis.issues.is_empty());

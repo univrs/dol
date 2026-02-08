@@ -3,7 +3,6 @@
 //! This module provides the macro expander that processes macro invocations
 //! and expands them using registered macro definitions.
 
-use crate::declarative::DeclarativeMacro;
 use crate::error::{MacroError, MacroResult};
 use crate::hygiene::HygieneContext;
 use crate::registry::MacroRegistry;
@@ -157,8 +156,8 @@ impl MacroExpander {
     fn expand_expr_recursive(&mut self, expr: &Expr) -> MacroResult<Expr> {
         match expr {
             // Check if this is a macro invocation
-            Expr::Call { func, args } => {
-                if let Expr::Ident(name) = &**func {
+            Expr::Call { callee, args } => {
+                if let Expr::Identifier(name) = &**callee {
                     // Check if this is a macro call
                     if name.ends_with('!') || self.registry.has_declarative(name) {
                         let macro_name = name.trim_end_matches('!');
@@ -180,7 +179,7 @@ impl MacroExpander {
                     .collect();
 
                 Ok(Expr::Call {
-                    func: Box::new(self.expand_expr_recursive(func)?),
+                    callee: Box::new(self.expand_expr_recursive(callee)?),
                     args: expanded_args?,
                 })
             }
@@ -196,27 +195,22 @@ impl MacroExpander {
                 operand: Box::new(self.expand_expr_recursive(operand)?),
             }),
 
-            Expr::Index { base, index } => Ok(Expr::Index {
-                base: Box::new(self.expand_expr_recursive(base)?),
-                index: Box::new(self.expand_expr_recursive(index)?),
-            }),
-
-            Expr::Field { base, field } => Ok(Expr::Field {
-                base: Box::new(self.expand_expr_recursive(base)?),
+            Expr::Member { object, field } => Ok(Expr::Member {
+                object: Box::new(self.expand_expr_recursive(object)?),
                 field: field.clone(),
             }),
 
-            Expr::Cast { expr, ty } => Ok(Expr::Cast {
+            Expr::Cast { expr, target_type } => Ok(Expr::Cast {
                 expr: Box::new(self.expand_expr_recursive(expr)?),
-                ty: ty.clone(),
+                target_type: target_type.clone(),
             }),
 
-            Expr::Array(elements) => {
+            Expr::List(elements) => {
                 let expanded: MacroResult<Vec<Expr>> = elements
                     .iter()
                     .map(|e| self.expand_expr_recursive(e))
                     .collect();
-                Ok(Expr::Array(expanded?))
+                Ok(Expr::List(expanded?))
             }
 
             Expr::Tuple(elements) => {
@@ -237,21 +231,15 @@ impl MacroExpander {
         match stmt {
             Stmt::Let {
                 name,
-                ty,
+                type_ann,
                 value,
-                span,
             } => {
-                let expanded_value = if let Some(v) = value {
-                    Some(self.expand_expr_recursive(v)?)
-                } else {
-                    None
-                };
+                let expanded_value = self.expand_expr_recursive(value)?;
 
                 Ok(Stmt::Let {
                     name: name.clone(),
-                    ty: ty.clone(),
+                    type_ann: type_ann.clone(),
                     value: expanded_value,
-                    span: *span,
                 })
             }
 
@@ -260,27 +248,19 @@ impl MacroExpander {
                 Ok(Stmt::Expr(expanded))
             }
 
-            Stmt::Return { value, span } => {
-                let expanded_value = if let Some(v) = value {
+            Stmt::Return(value_opt) => {
+                let expanded_value = if let Some(v) = value_opt {
                     Some(self.expand_expr_recursive(v)?)
                 } else {
                     None
                 };
 
-                Ok(Stmt::Return {
-                    value: expanded_value,
-                    span: *span,
-                })
+                Ok(Stmt::Return(expanded_value))
             }
 
-            Stmt::Assign {
-                target,
-                value,
-                span,
-            } => Ok(Stmt::Assign {
+            Stmt::Assign { target, value } => Ok(Stmt::Assign {
                 target: self.expand_expr_recursive(target)?,
                 value: self.expand_expr_recursive(value)?,
-                span: *span,
             }),
 
             _ => Ok(stmt.clone()),
@@ -315,8 +295,7 @@ impl Default for MacroExpander {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::declarative::MacroRule;
-    use crate::declarative::MacroTemplate;
+    use crate::declarative::{DeclarativeMacro, MacroRule, MacroTemplate};
     use crate::pattern::MacroPattern;
     use metadol::ast::Literal;
 

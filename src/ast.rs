@@ -1853,7 +1853,7 @@ pub struct LawDecl {
 ///
 /// Represents the merge strategy for a field in a distributed system.
 /// See RFC-001 for detailed semantics of each strategy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CrdtStrategy {
     /// Immutable: Value set exactly once, never modified

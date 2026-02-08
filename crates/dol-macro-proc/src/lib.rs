@@ -51,38 +51,20 @@
 //! let sql = sql!("SELECT * FROM users WHERE id = ?", user_id);
 //! ```
 
-use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
-use syn::{parse_macro_input, DeriveInput};
-
-pub mod ast_util;
-pub mod codegen;
-pub mod derive;
-pub mod attribute;
-pub mod function;
-pub mod error;
-
-// Re-export commonly used types
-pub use error::{ProcMacroError, ProcMacroResult};
-pub use derive::{derive_debug, derive_clone, derive_partial_eq, derive_gen_trait};
-pub use attribute::{AttributeMacro, attribute_cached, attribute_async};
-pub use function::{FunctionMacro, function_sql, function_format};
-pub use ast_util::{AstManipulator, AstTransform};
-pub use codegen::{CodeGenerator, generate_rust_code, generate_wit_code};
-
-/// Prelude module for convenient imports.
-pub mod prelude {
-    pub use crate::ast_util::{AstManipulator, AstTransform};
-    pub use crate::attribute::{AttributeMacro, attribute_cached, attribute_async};
-    pub use crate::codegen::{CodeGenerator, generate_rust_code, generate_wit_code};
-    pub use crate::derive::{derive_clone, derive_debug, derive_gen_trait, derive_partial_eq};
-    pub use crate::error::{ProcMacroError, ProcMacroResult};
-    pub use crate::function::{FunctionMacro, function_format, function_sql};
-}
+// Internal modules for proc-macro implementation
+// Note: proc-macro crates cannot export public modules or items
+// except for proc-macro functions themselves
+mod ast_util;
+mod codegen;
+mod derive;
+mod attribute;
+mod function;
+mod error;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::derive::derive_debug;
+    use crate::attribute::attribute_cached;
 
     #[test]
     fn test_basic_imports() {

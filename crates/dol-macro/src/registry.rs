@@ -3,7 +3,6 @@
 //! This module provides a registry for storing and looking up macro definitions.
 
 use crate::declarative::DeclarativeMacro;
-use crate::error::{MacroError, MacroResult};
 use std::collections::HashMap;
 
 /// Registry of macro definitions.

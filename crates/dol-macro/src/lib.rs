@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```rust
-//! use dol_macro::{MacroRegistry, MacroPattern, MacroRule};
+//! use dol_macro::{MacroRegistry, MacroPattern, MacroRule, MacroTemplate, DeclarativeMacro};
 //! use metadol::ast::{Expr, Literal};
 //!
 //! // Create a macro registry
@@ -24,11 +24,11 @@
 //! // macro my_const! {
 //! //     () => { 42 }
 //! // }
-//! let rule = MacroRule::new(
-//!     vec![MacroPattern::Empty],
-//!     vec![Expr::Literal(Literal::Int(42))],
-//! );
-//! registry.register_declarative("my_const", vec![rule]);
+//! let pattern = MacroPattern::Empty;
+//! let template = MacroTemplate::expr(Expr::Literal(Literal::Int(42)));
+//! let rule = MacroRule::new(pattern, template);
+//! let macro_def = DeclarativeMacro::new("my_const", vec![rule]);
+//! registry.register_declarative("my_const", macro_def);
 //!
 //! // Use the macro
 //! // let result = my_const!();
@@ -55,7 +55,7 @@ pub mod registry;
 pub mod stdlib;
 
 // Re-export commonly used types
-pub use declarative::{DeclarativeMacro, MacroRule};
+pub use declarative::{DeclarativeMacro, MacroRule, MacroTemplate};
 pub use error::{MacroError, MacroResult};
 pub use expand::MacroExpander;
 pub use hygiene::{HygieneContext, SyntaxContext};
@@ -70,7 +70,7 @@ pub use registry::MacroRegistry;
 /// use dol_macro::prelude::*;
 /// ```
 pub mod prelude {
-    pub use crate::declarative::{DeclarativeMacro, MacroRule};
+    pub use crate::declarative::{DeclarativeMacro, MacroRule, MacroTemplate};
     pub use crate::error::{MacroError, MacroResult};
     pub use crate::expand::MacroExpander;
     pub use crate::hygiene::{HygieneContext, SyntaxContext};

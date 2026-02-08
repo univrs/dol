@@ -53,7 +53,7 @@
 use crate::error::{MacroError, MacroResult};
 use crate::hygiene::HygieneContext;
 use crate::pattern::{MacroFragment, MacroPattern, PatternMatcher};
-use metadol::ast::{Block, Declaration, Expr, Span, Stmt};
+use metadol::ast::{Declaration, Expr, Stmt};
 use std::collections::HashMap;
 
 /// A macro rule with pattern and template.
@@ -303,14 +303,14 @@ impl MacroTemplate {
 
             MacroFragment::Ident(name) => {
                 let hygienic = hygiene.make_hygienic(name);
-                Ok(vec![Expr::Ident(hygienic)])
+                Ok(vec![Expr::Identifier(hygienic)])
             }
 
             MacroFragment::Literal(lit) => Ok(vec![Expr::Literal(lit.clone())]),
 
             MacroFragment::Path(parts) => {
                 let path = parts.join(".");
-                Ok(vec![Expr::Ident(path)])
+                Ok(vec![Expr::Identifier(path)])
             }
 
             MacroFragment::Repetition(fragments) => {

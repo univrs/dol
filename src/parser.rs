@@ -1247,31 +1247,31 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // Handle CRDT annotation before field declarations: @crdt(strategy) has name: Type
-        let crdt_annotation = if self.current.kind == TokenKind::At {
-            // Peek ahead to check if this is @crdt
-            if self.peek().kind == TokenKind::Identifier && self.peek().lexeme == "crdt" {
-                Some(self.parse_crdt_annotation()?)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        // Handle annotations before field declarations: @crdt(strategy), @personal
+        // Multiple annotations can appear in any order
+        let mut crdt_annotation = None;
+        let mut personal = false;
 
-        // Handle @personal annotation for GDPR compliance
-        let personal = if self.current.kind == TokenKind::At {
-            // Peek ahead to check if this is @personal
-            if self.peek().kind == TokenKind::Identifier && self.peek().lexeme == "personal" {
-                self.advance(); // consume @
-                self.advance(); // consume 'personal'
-                true
+        while self.current.kind == TokenKind::At {
+            if self.peek().kind == TokenKind::Identifier {
+                match self.peek().lexeme.as_str() {
+                    "crdt" => {
+                        crdt_annotation = Some(self.parse_crdt_annotation()?);
+                    }
+                    "personal" => {
+                        self.advance(); // consume @
+                        self.advance(); // consume 'personal'
+                        personal = true;
+                    }
+                    _ => {
+                        // Unknown annotation, stop parsing annotations
+                        break;
+                    }
+                }
             } else {
-                false
+                break;
             }
-        } else {
-            false
-        };
+        }
 
         // Handle DOL 2.0 'has' field declarations: has name: Type [= default]
         if self.current.kind == TokenKind::Has {
@@ -1288,11 +1288,18 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
+                // Parse optional constraint: where expr
+                let constraint = if self.current.kind == TokenKind::Where {
+                    self.advance();
+                    Some(self.parse_expr(0)?)
+                } else {
+                    None
+                };
                 return Ok(Statement::HasField(Box::new(HasField {
                     name,
                     type_,
                     default,
-                    constraint: None,
+                    constraint,
                     crdt_annotation,
                     personal,
                     span: start_span.merge(&self.previous.span),
@@ -1455,13 +1462,20 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
+                    // Parse optional constraint: where expr
+                    let constraint = if self.current.kind == TokenKind::Where {
+                        self.advance();
+                        Some(self.parse_expr(0)?)
+                    } else {
+                        None
+                    };
                     Ok(Statement::HasField(Box::new(HasField {
                         name: property,
                         type_,
                         default,
-                        constraint: None,
-                        crdt_annotation: None,
-                        personal: false,
+                        constraint,
+                        crdt_annotation,
+                        personal,
                         span: start_span.merge(&self.previous.span),
                     })))
                 } else {
@@ -2305,6 +2319,14 @@ impl<'a> Parser<'a> {
             if let Some((left_bp, _right_bp)) = infix_binding_power(&self.current.kind) {
                 if self.current.kind == TokenKind::Dot {
                     // Already handled above
+                    break;
+                }
+                // Special case: @ followed by annotation keywords should not be treated as an operator
+                if self.current.kind == TokenKind::At
+                    && self.peek().kind == TokenKind::Identifier
+                    && matches!(self.peek().lexeme.as_str(), "crdt" | "personal")
+                {
+                    // This is an annotation, not an Apply operator
                     break;
                 }
                 if left_bp < min_bp {

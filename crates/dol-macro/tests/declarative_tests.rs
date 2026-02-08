@@ -196,7 +196,7 @@ fn test_hygiene() {
     let rule = MacroRule::new(pattern, template);
     let macro_def = DeclarativeMacro::new("hygienic", vec![rule]);
 
-    let input = vec![Expr::Ident("temp".to_string())];
+    let input = vec![Expr::Identifier("temp".to_string())];
     let mut hygiene = HygieneContext::new();
     let result = macro_def.expand(&input, &mut hygiene);
 
@@ -205,7 +205,7 @@ fn test_hygiene() {
     assert_eq!(exprs.len(), 1);
 
     // The identifier should be hygienic (modified from original)
-    if let Expr::Ident(name) = &exprs[0] {
+    if let Expr::Identifier(name) = &exprs[0] {
         assert_ne!(name, "temp");
         assert!(name.contains("temp"));
     } else {

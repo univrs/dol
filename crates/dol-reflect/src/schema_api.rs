@@ -686,7 +686,7 @@ exegesis { User profile }
         let gen = registry.get_gen("user.profile").unwrap();
         let name_field = gen.get_field("name");
         assert!(name_field.is_some());
-        assert_eq!(name_field.unwrap().type_name(), "String");
+        assert_eq!(name_field.unwrap().type_name(), "string");
 
         let age_field = gen.get_field("age");
         assert!(age_field.is_some());
