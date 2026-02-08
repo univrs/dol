@@ -1887,7 +1887,7 @@ impl CrdtStrategy {
     }
 
     /// Parses a strategy from a string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_strategy(s: &str) -> Option<Self> {
         match s {
             "immutable" => Some(CrdtStrategy::Immutable),
             "lww" => Some(CrdtStrategy::Lww),
@@ -1898,6 +1898,14 @@ impl CrdtStrategy {
             "mv_register" => Some(CrdtStrategy::MvRegister),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for CrdtStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        CrdtStrategy::parse_strategy(s).ok_or_else(|| format!("Invalid CRDT strategy: {}", s))
     }
 }
 

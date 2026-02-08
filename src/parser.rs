@@ -1890,7 +1890,7 @@ impl<'a> Parser<'a> {
 
         // Parse strategy
         let strategy_str = self.expect_identifier()?;
-        let strategy = CrdtStrategy::from_str(&strategy_str).ok_or_else(|| {
+        let strategy = CrdtStrategy::parse_strategy(&strategy_str).ok_or_else(|| {
             ParseError::InvalidCrdtStrategy {
                 strategy: strategy_str.clone(),
                 span: self.previous.span,

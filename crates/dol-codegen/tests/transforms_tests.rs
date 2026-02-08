@@ -112,15 +112,15 @@ fn test_crdt_strategy_serialization() {
 #[test]
 fn test_crdt_strategy_parsing() {
     assert_eq!(
-        CrdtStrategy::from_str("immutable"),
+        CrdtStrategy::parse_strategy("immutable"),
         Some(CrdtStrategy::Immutable)
     );
-    assert_eq!(CrdtStrategy::from_str("lww"), Some(CrdtStrategy::Lww));
+    assert_eq!(CrdtStrategy::parse_strategy("lww"), Some(CrdtStrategy::Lww));
     assert_eq!(
-        CrdtStrategy::from_str("or_set"),
+        CrdtStrategy::parse_strategy("or_set"),
         Some(CrdtStrategy::OrSet)
     );
-    assert_eq!(CrdtStrategy::from_str("invalid"), None);
+    assert_eq!(CrdtStrategy::parse_strategy("invalid"), None);
 }
 
 #[test]

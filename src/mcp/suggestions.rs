@@ -113,6 +113,7 @@ pub struct SuggestionContext {
 
 /// Suggestion engine for DOL schemas.
 pub struct SuggestionEngine {
+    #[allow(dead_code)]
     recommender: CrdtRecommender,
 }
 
@@ -391,6 +392,7 @@ impl SuggestionEngine {
     }
 
     /// Formats type expression as string.
+    #[allow(clippy::only_used_in_recursion)]
     fn format_type_expr(&self, type_expr: &crate::ast::TypeExpr) -> String {
         use crate::ast::TypeExpr;
         match type_expr {
