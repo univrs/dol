@@ -1,0 +1,52 @@
+// Example 05: Task List with RGA
+// Demonstrates RGA CRDT for ordered lists
+
+gen TaskList {
+    @crdt(immutable)
+    has list_id: string
+
+    @crdt(lww)
+    has name: string
+
+    @crdt(rga)
+    has tasks: Vec<Task>
+
+    fun add_task(task: Task) {
+        this.tasks.push(task)
+    }
+
+    fun insert_task(index: Int, task: Task) {
+        this.tasks.insert(index, task)
+    }
+
+    fun remove_task(index: Int) {
+        this.tasks.remove(index)
+    }
+
+    fun move_task(from: Int, to: Int) {
+        let task = this.tasks.remove(from)
+        this.tasks.insert(to, task)
+    }
+}
+
+gen Task {
+    has id: string
+    has title: string
+    has completed: Bool
+    has priority: Priority
+    has due_date: Option<Int>
+}
+
+gen Priority {
+    enum {
+        Low,
+        Medium,
+        High,
+        Urgent
+    }
+}
+
+docs {
+    Task list using RGA for maintaining causal order.
+    Concurrent insertions are preserved with correct positioning.
+}

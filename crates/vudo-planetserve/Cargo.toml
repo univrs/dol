@@ -1,0 +1,71 @@
+[package]
+name = "vudo-planetserve"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Privacy-preserving sync infrastructure for VUDO Runtime with S-IDA fragmentation, onion routing, and metadata obfuscation"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Local dependencies
+vudo-p2p = { path = "../vudo-p2p" }
+vudo-identity = { path = "../vudo-identity" }
+vudo-state = { path = "../vudo-state" }
+
+# Erasure coding (S-IDA)
+reed-solomon-erasure = "6.0"
+
+# Cryptography
+chacha20poly1305 = "0.10"
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+blake3 = "1.5"
+rand = "0.8"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Data structures
+bytes = "1.5"
+parking_lot = "0.12"
+dashmap = "6.0"
+lru = "0.12"
+
+# UUID for fragment IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+chrono = "0.4"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tokio-test = "0.4"
+tracing-subscriber = "0.3"
+criterion = { version = "0.5", features = ["async_tokio"] }
+tempfile = "3.9"
+
+[[bench]]
+name = "sida_performance"
+harness = false
+
+[[bench]]
+name = "onion_routing_performance"
+harness = false
+
+[lib]
+name = "vudo_planetserve"
+path = "src/lib.rs"

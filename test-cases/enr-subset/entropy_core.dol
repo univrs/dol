@@ -3,14 +3,14 @@
 
 module enr.entropy_core @ 0.1.0
 
-exegesis {
+docs {
     Core entropy calculation functions for the ENR system.
     This is a subset of entropy.dol using only WASM-supported features.
 }
 
 // Network entropy factors
-gene NetworkEntropyInput {
-    exegesis { Network entropy calculation inputs. }
+gen NetworkEntropyInput {
+    docs { Network entropy calculation inputs. }
 
     has hops: i64
     has latency_variance_ms: f64
@@ -37,8 +37,8 @@ fun calculate_network_entropy(input: i32) -> f64 {
 }
 
 // Compute entropy factors
-gene ComputeEntropyInput {
-    exegesis { Compute entropy calculation inputs. }
+gen ComputeEntropyInput {
+    docs { Compute entropy calculation inputs. }
 
     has cpu_cycles: i64
     has memory_bytes: i64

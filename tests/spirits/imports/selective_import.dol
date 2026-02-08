@@ -8,7 +8,7 @@ pub fun math_demo() -> Int64 {
     return add(1, 2)
 }
 
-exegesis {
+docs {
     Test case for selective imports.
     Braces allow importing specific items from a module.
     This keeps the namespace clean.

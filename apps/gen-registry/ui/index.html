@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gen Registry - DOL Community Modules</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🍄</span>
+                    <h1>Gen Registry</h1>
+                </div>
+                <nav class="nav">
+                    <a href="#discover" class="nav-link active">Discover</a>
+                    <a href="#installed" class="nav-link">Installed</a>
+                    <a href="#publish" class="nav-link">Publish</a>
+                </nav>
+                <div class="sync-status online">
+                    <span class="status-dot"></span>
+                    <span id="peer-count">3 peers</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Search Section -->
+        <section class="search-section">
+            <div class="search-container">
+                <input
+                    type="text"
+                    id="search-input"
+                    class="search-input"
+                    placeholder="Search Gen modules..."
+                    autocomplete="off"
+                >
+                <button class="search-button">🔍 Search</button>
+            </div>
+            <div class="filters">
+                <button class="filter-tag">Authentication</button>
+                <button class="filter-tag">Database</button>
+                <button class="filter-tag">HTTP</button>
+                <button class="filter-tag">Crypto</button>
+                <button class="filter-tag">UI</button>
+            </div>
+        </section>
+
+        <!-- Results Grid -->
+        <main class="main-content">
+            <div class="results-header">
+                <h2>Trending Modules</h2>
+                <div class="sort-options">
+                    <select id="sort-by">
+                        <option value="popularity">Most Popular</option>
+                        <option value="recent">Recently Updated</option>
+                        <option value="rating">Highest Rated</option>
+                        <option value="name">Name (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modules-grid" id="modules-grid">
+                <!-- Module cards will be inserted here -->
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3 class="module-name">io.univrs.user</h3>
+                        <span class="module-version">v2.1.0</span>
+                    </div>
+                    <p class="module-description">
+                        User authentication and profile management with JWT tokens,
+                        OAuth integration, and role-based access control.
+                    </p>
+                    <div class="module-stats">
+                        <span class="stat">⭐ 4.8</span>
+                        <span class="stat">⬇️ 15.2k</span>
+                        <span class="stat">📦 95 KB</span>
+                    </div>
+                    <div class="module-tags">
+                        <span class="tag">authentication</span>
+                        <span class="tag">security</span>
+                    </div>
+                    <div class="module-actions">
+                        <button class="btn-primary">Install</button>
+                        <button class="btn-secondary">Info</button>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3 class="module-name">io.univrs.database</h3>
+                        <span class="module-version">v3.0.1</span>
+                    </div>
+                    <p class="module-description">
+                        Type-safe database access with migrations, transactions,
+                        and connection pooling. Supports SQLite, PostgreSQL, MySQL.
+                    </p>
+                    <div class="module-stats">
+                        <span class="stat">⭐ 4.9</span>
+                        <span class="stat">⬇️ 23.5k</span>
+                        <span class="stat">📦 128 KB</span>
+                    </div>
+                    <div class="module-tags">
+                        <span class="tag">database</span>
+                        <span class="tag">sql</span>
+                    </div>
+                    <div class="module-actions">
+                        <button class="btn-primary">Install</button>
+                        <button class="btn-secondary">Info</button>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <h3 class="module-name">io.univrs.http</h3>
+                        <span class="module-version">v4.2.0</span>
+                    </div>
+                    <p class="module-description">
+                        Modern HTTP client and server with async/await, middleware,
+                        routing, and WebSocket support.
+                    </p>
+                    <div class="module-stats">
+                        <span class="stat">⭐ 4.7</span>
+                        <span class="stat">⬇️ 31.8k</span>
+                        <span class="stat">📦 142 KB</span>
+                    </div>
+                    <div class="module-tags">
+                        <span class="tag">http</span>
+                        <span class="tag">networking</span>
+                    </div>
+                    <div class="module-actions">
+                        <button class="btn-primary">Install</button>
+                        <button class="btn-secondary">Info</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Module Details Modal -->
+        <div class="modal" id="module-modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <div class="modal-header">
+                    <h2 id="modal-title">io.univrs.user</h2>
+                    <span class="module-version" id="modal-version">v2.1.0</span>
+                </div>
+                <div class="modal-body">
+                    <p id="modal-description"></p>
+
+                    <h3>Installation</h3>
+                    <pre class="code-block">gen-registry install io.univrs.user</pre>
+
+                    <h3>Versions</h3>
+                    <ul id="version-list" class="version-list">
+                        <li>v2.1.0 (latest) - 2026-02-05</li>
+                        <li>v2.0.5 - 2026-01-20</li>
+                        <li>v2.0.0 - 2025-12-15</li>
+                    </ul>
+
+                    <h3>Dependencies</h3>
+                    <ul id="dependency-list" class="dependency-list">
+                        <li>io.univrs.crypto ^1.0.0</li>
+                        <li>io.univrs.time ^0.5.0</li>
+                    </ul>
+
+                    <h3>Capabilities</h3>
+                    <ul id="capability-list" class="capability-list">
+                        <li><code>fun authenticate(username: String, password: String) -> Result&lt;Token, Error&gt;</code></li>
+                        <li><code>fun create_user(email: String) -> Result&lt;User, Error&gt;</code></li>
+                    </ul>
+
+                    <h3>Reviews</h3>
+                    <div class="reviews">
+                        <div class="review">
+                            <div class="review-header">
+                                <span class="review-stars">⭐⭐⭐⭐⭐</span>
+                                <span class="review-author">did:key:alice...</span>
+                            </div>
+                            <p class="review-text">Excellent authentication module! Easy to integrate.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

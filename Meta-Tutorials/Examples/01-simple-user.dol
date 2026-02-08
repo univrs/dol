@@ -1,0 +1,27 @@
+// Example 01: Simple User Schema
+// Demonstrates basic gen with CRDT annotations
+
+gen User {
+    @crdt(immutable)
+    has id: string
+
+    @crdt(lww)
+    has name: string
+
+    @crdt(lww)
+    has email: string
+
+    @crdt(lww)
+    has created_at: Int
+
+    fun greet() -> string {
+        return "Hello, " + this.name + "!"
+    }
+}
+
+docs {
+    Simple user schema demonstrating:
+    - Immutable ID field
+    - Last-write-wins for mutable fields
+    - Basic method definition
+}

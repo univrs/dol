@@ -609,6 +609,12 @@ fn validate_gene(gene: &Gen, result: &mut ValidationResult) {
             | Statement::Is { .. }
             | Statement::DerivesFrom { .. }
             | Statement::Requires { .. } => {}
+            Statement::HasField(field) => {
+                // Validate CRDT annotations if present
+                if let Some(ref crdt) = field.crdt_annotation {
+                    validate_crdt_type_compatibility(field, crdt, result);
+                }
+            }
             Statement::Uses { span, .. } => {
                 result.add_error(ValidationError::InvalidIdentifier {
                     name: "uses".to_string(),
@@ -619,6 +625,9 @@ fn validate_gene(gene: &Gen, result: &mut ValidationResult) {
             _ => {}
         }
     }
+
+    // Validate CRDT constraints
+    validate_crdt_constraints(gene, result);
 }
 
 /// Validates trait-specific rules.
@@ -925,6 +934,311 @@ fn is_version_greater(version: &str, other: &str) -> bool {
     let v2 = parse_version(other);
 
     v1 > v2
+}
+
+// === CRDT Validation (RFC-001) ===
+
+/// Validates CRDT type-strategy compatibility based on RFC-001 Table 4.1.
+///
+/// This function checks whether a CRDT strategy can be applied to a given field type.
+/// The compatibility matrix is defined in RFC-001 Section 4.
+fn validate_crdt_type_compatibility(
+    field: &HasField,
+    crdt: &CrdtAnnotation,
+    result: &mut ValidationResult,
+) {
+    let is_compatible = match (&field.type_, &crdt.strategy) {
+        // String strategies (both String and string)
+        (TypeExpr::Named(name), CrdtStrategy::Immutable) if is_string_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::Lww) if is_string_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::Peritext) if is_string_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::MvRegister) if is_string_type(name) => true,
+
+        // Integer strategies (i8, i16, i32, i64, i128, u8, u16, u32, u64, u128)
+        (TypeExpr::Named(name), CrdtStrategy::Immutable) if is_integer_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::Lww) if is_integer_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::PnCounter) if is_integer_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::MvRegister) if is_integer_type(name) => true,
+
+        // Float strategies (f32, f64, Float32, Float64)
+        (TypeExpr::Named(name), CrdtStrategy::Immutable) if is_float_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::Lww) if is_float_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::MvRegister) if is_float_type(name) => true,
+
+        // Bool strategies
+        (TypeExpr::Named(name), CrdtStrategy::Immutable) if is_bool_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::Lww) if is_bool_type(name) => true,
+        (TypeExpr::Named(name), CrdtStrategy::MvRegister) if is_bool_type(name) => true,
+
+        // Set strategies
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::Immutable) if name == "Set" => true,
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::OrSet) if name == "Set" => true,
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::MvRegister) if name == "Set" => true,
+
+        // Vec/List strategies
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::Immutable)
+            if name == "Vec" || name == "List" =>
+        {
+            true
+        }
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::Lww) if name == "Vec" || name == "List" => {
+            true
+        }
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::Rga) if name == "Vec" || name == "List" => {
+            true
+        }
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::MvRegister)
+            if name == "Vec" || name == "List" =>
+        {
+            true
+        }
+
+        // Option/Result strategies - all strategies can wrap these
+        (TypeExpr::Generic { name, .. }, _) if name == "Option" || name == "Result" => true,
+
+        // Map strategies
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::Immutable) if name == "Map" => true,
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::Lww) if name == "Map" => true,
+        (TypeExpr::Generic { name, .. }, CrdtStrategy::MvRegister) if name == "Map" => true,
+
+        // Tuple types can use immutable, lww, or mv_register
+        (TypeExpr::Tuple(_), CrdtStrategy::Immutable) => true,
+        (TypeExpr::Tuple(_), CrdtStrategy::Lww) => true,
+        (TypeExpr::Tuple(_), CrdtStrategy::MvRegister) => true,
+
+        // Custom/unknown named types are allowed with these "universal" strategies
+        // (for extensibility with user-defined types)
+        (TypeExpr::Named(_), CrdtStrategy::Immutable) => true,
+        (TypeExpr::Named(_), CrdtStrategy::Lww) => true,
+        (TypeExpr::Named(_), CrdtStrategy::MvRegister) => true,
+
+        // All other combinations are incompatible
+        _ => false,
+    };
+
+    if !is_compatible {
+        let type_str = format_type_expr(&field.type_);
+        let suggestion = suggest_valid_strategies(&field.type_);
+
+        result.add_error(ValidationError::IncompatibleCrdtStrategy {
+            field: field.name.clone(),
+            type_: type_str,
+            strategy: format!("{:?}", crdt.strategy),
+            suggestion,
+            span: field.span,
+        });
+    }
+}
+
+/// Checks if a type name represents a string type.
+fn is_string_type(name: &str) -> bool {
+    matches!(name, "String" | "string")
+}
+
+/// Checks if a type name represents a boolean type.
+fn is_bool_type(name: &str) -> bool {
+    matches!(name, "Bool" | "bool")
+}
+
+/// Checks if a type name represents an integer type.
+fn is_integer_type(name: &str) -> bool {
+    matches!(
+        name,
+        "i8" | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "Int8"
+            | "Int16"
+            | "Int32"
+            | "Int64"
+            | "Int128"
+            | "UInt8"
+            | "UInt16"
+            | "UInt32"
+            | "UInt64"
+            | "UInt128"
+            | "Int"
+            | "int"
+    )
+}
+
+/// Checks if a type name represents a floating-point type.
+fn is_float_type(name: &str) -> bool {
+    matches!(
+        name,
+        "f32" | "f64" | "Float32" | "Float64" | "Float" | "float"
+    )
+}
+
+/// Formats a TypeExpr for display in error messages.
+fn format_type_expr(type_expr: &TypeExpr) -> String {
+    match type_expr {
+        TypeExpr::Named(name) => name.clone(),
+        TypeExpr::Generic { name, args } => {
+            let args_str = args
+                .iter()
+                .map(format_type_expr)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}<{}>", name, args_str)
+        }
+        TypeExpr::Function {
+            params,
+            return_type,
+        } => {
+            let params_str = params
+                .iter()
+                .map(format_type_expr)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({}) -> {}", params_str, format_type_expr(return_type))
+        }
+        TypeExpr::Tuple(types) => {
+            let types_str = types
+                .iter()
+                .map(format_type_expr)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({})", types_str)
+        }
+        TypeExpr::Never => "!".to_string(),
+        TypeExpr::Enum { .. } => "enum { ... }".to_string(),
+    }
+}
+
+/// Suggests valid CRDT strategies for a given type.
+fn suggest_valid_strategies(type_expr: &TypeExpr) -> String {
+    match type_expr {
+        TypeExpr::Named(name) if is_string_type(name) => {
+            "Valid strategies for String: immutable, lww, peritext, mv_register".to_string()
+        }
+        TypeExpr::Named(name) if is_integer_type(name) => {
+            "Valid strategies for integers: immutable, lww, pn_counter, mv_register".to_string()
+        }
+        TypeExpr::Named(name) if is_float_type(name) => {
+            "Valid strategies for floats: immutable, lww, mv_register".to_string()
+        }
+        TypeExpr::Named(name) if is_bool_type(name) => {
+            "Valid strategies for Bool: immutable, lww, mv_register".to_string()
+        }
+        TypeExpr::Generic { name, .. } if name == "Set" => {
+            "Valid strategies for Set: immutable, or_set, mv_register".to_string()
+        }
+        TypeExpr::Generic { name, .. } if name == "Vec" || name == "List" => {
+            "Valid strategies for Vec/List: immutable, lww, rga, mv_register".to_string()
+        }
+        TypeExpr::Generic { name, .. } if name == "Map" => {
+            "Valid strategies for Map: immutable, lww, mv_register".to_string()
+        }
+        _ => "Valid strategies depend on the specific type".to_string(),
+    }
+}
+
+/// Categorizes a constraint based on its compatibility with CRDT semantics.
+///
+/// This implements the three-category framework from RFC-001 Section 5:
+/// - CrdtSafe: Constraint is enforced by the CRDT strategy itself
+/// - EventuallyConsistent: Constraint may temporarily violate during partition
+/// - StrongConsistency: Constraint requires coordination (escrow/BFT)
+#[derive(Debug, PartialEq, Eq)]
+enum ConstraintCategory {
+    /// Category A: Constraint is CRDT-safe (enforced by merge strategy)
+    CrdtSafe,
+    /// Category B: Constraint is eventually consistent
+    EventuallyConsistent,
+    /// Category C: Constraint requires strong consistency
+    StrongConsistency,
+}
+
+/// Categorizes a constraint based on its semantic properties.
+///
+/// This is a simplified heuristic that analyzes constraint patterns.
+/// A full implementation would require constraint expression parsing.
+fn categorize_constraint(constraint_name: &str, _field_name: &str) -> ConstraintCategory {
+    // Heuristics based on constraint naming and common patterns
+    let lower_name = constraint_name.to_lowercase();
+
+    // Immutability and append-only constraints are CRDT-safe
+    if lower_name.contains("immutable")
+        || lower_name.contains("append")
+        || lower_name.contains("monotonic")
+    {
+        return ConstraintCategory::CrdtSafe;
+    }
+
+    // Uniqueness and escrow constraints require strong consistency
+    if lower_name.contains("unique")
+        || lower_name.contains("escrow")
+        || lower_name.contains("balance")
+        || lower_name.contains("capacity")
+        || lower_name.contains("quota")
+    {
+        return ConstraintCategory::StrongConsistency;
+    }
+
+    // Bounds and cardinality constraints are eventually consistent
+    if lower_name.contains("bound")
+        || lower_name.contains("limit")
+        || lower_name.contains("count")
+        || lower_name.contains("size")
+    {
+        return ConstraintCategory::EventuallyConsistent;
+    }
+
+    // Default to eventually consistent for safety
+    ConstraintCategory::EventuallyConsistent
+}
+
+/// Validates constraint-CRDT compatibility for genes with CRDT annotations.
+///
+/// This checks that constraints on CRDT-annotated fields are compatible
+/// with the distributed merge semantics of the chosen CRDT strategy.
+fn validate_crdt_constraints(gene: &Gen, result: &mut ValidationResult) {
+    // Collect all constraints (we would need to pass these from the broader context)
+    // For now, we'll look for constraints within the gene's statements
+    for stmt in &gene.statements {
+        if let Statement::HasField(field) = stmt {
+            if let Some(ref _crdt) = field.crdt_annotation {
+                if let Some(ref constraint_expr) = field.constraint {
+                    // Analyze the constraint expression
+                    let constraint_name = format!("constraint on {}", field.name);
+                    let category = categorize_constraint(&constraint_name, &field.name);
+
+                    match category {
+                        ConstraintCategory::CrdtSafe => {
+                            // No warning - constraint is safe
+                        }
+                        ConstraintCategory::EventuallyConsistent => {
+                            result.add_warning(ValidationWarning::EventuallyConsistent {
+                                constraint: constraint_name,
+                                field: field.name.clone(),
+                                message: format!(
+                                    "Constraint may temporarily violate during network partition. Expression: {:?}",
+                                    constraint_expr
+                                ),
+                                span: field.span,
+                            });
+                        }
+                        ConstraintCategory::StrongConsistency => {
+                            result.add_warning(ValidationWarning::RequiresCoordination {
+                                constraint: constraint_name,
+                                field: field.name.clone(),
+                                message: "Constraint requires coordination to maintain in distributed system".to_string(),
+                                suggestion: "Consider using escrow pattern from RFC-001 Section 5.4 or removing CRDT annotation".to_string(),
+                                span: field.span,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1308,5 +1622,277 @@ mod tests {
         });
         let warnings = result.all_warnings();
         assert_eq!(warnings.len(), 1);
+    }
+
+    // === CRDT Validation Tests ===
+
+    #[test]
+    fn test_crdt_string_immutable_compatible() {
+        let field = HasField {
+            name: "id".to_string(),
+            type_: TypeExpr::Named("String".to_string()),
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::Immutable,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(result.is_valid());
+        assert_eq!(result.errors.len(), 0);
+    }
+
+    #[test]
+    fn test_crdt_string_peritext_compatible() {
+        let field = HasField {
+            name: "content".to_string(),
+            type_: TypeExpr::Named("String".to_string()),
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::Peritext,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_crdt_integer_pn_counter_compatible() {
+        let field = HasField {
+            name: "count".to_string(),
+            type_: TypeExpr::Named("i32".to_string()),
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::PnCounter,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_crdt_set_or_set_compatible() {
+        let field = HasField {
+            name: "tags".to_string(),
+            type_: TypeExpr::Generic {
+                name: "Set".to_string(),
+                args: vec![TypeExpr::Named("String".to_string())],
+            },
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::OrSet,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_crdt_vec_rga_compatible() {
+        let field = HasField {
+            name: "items".to_string(),
+            type_: TypeExpr::Generic {
+                name: "Vec".to_string(),
+                args: vec![TypeExpr::Named("String".to_string())],
+            },
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::Rga,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_crdt_incompatible_strategy() {
+        // OR-Set cannot be used with String
+        let field = HasField {
+            name: "name".to_string(),
+            type_: TypeExpr::Named("String".to_string()),
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::OrSet,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(!result.is_valid());
+        assert_eq!(result.errors.len(), 1);
+        match &result.errors[0] {
+            ValidationError::IncompatibleCrdtStrategy { field, .. } => {
+                assert_eq!(field, "name");
+            }
+            _ => panic!("Expected IncompatibleCrdtStrategy error"),
+        }
+    }
+
+    #[test]
+    fn test_crdt_incompatible_pn_counter_on_string() {
+        // PN-Counter cannot be used with String
+        let field = HasField {
+            name: "text".to_string(),
+            type_: TypeExpr::Named("String".to_string()),
+            default: None,
+            constraint: None,
+            crdt_annotation: Some(CrdtAnnotation {
+                strategy: CrdtStrategy::PnCounter,
+                options: vec![],
+                span: Span::default(),
+            }),
+            personal: false,
+            span: Span::default(),
+        };
+
+        let mut result = ValidationResult::new("test");
+        if let Some(ref crdt) = field.crdt_annotation {
+            validate_crdt_type_compatibility(&field, crdt, &mut result);
+        }
+
+        assert!(!result.is_valid());
+        assert_eq!(result.errors.len(), 1);
+    }
+
+    #[test]
+    fn test_categorize_constraint_immutable() {
+        let category = categorize_constraint("immutable_id", "id");
+        assert_eq!(category, ConstraintCategory::CrdtSafe);
+    }
+
+    #[test]
+    fn test_categorize_constraint_unique() {
+        let category = categorize_constraint("unique_username", "username");
+        assert_eq!(category, ConstraintCategory::StrongConsistency);
+    }
+
+    #[test]
+    fn test_categorize_constraint_escrow() {
+        let category = categorize_constraint("escrow_balance", "balance");
+        assert_eq!(category, ConstraintCategory::StrongConsistency);
+    }
+
+    #[test]
+    fn test_categorize_constraint_bounded() {
+        let category = categorize_constraint("bounded_count", "count");
+        assert_eq!(category, ConstraintCategory::EventuallyConsistent);
+    }
+
+    #[test]
+    fn test_is_integer_type() {
+        assert!(is_integer_type("i32"));
+        assert!(is_integer_type("u64"));
+        assert!(is_integer_type("Int32"));
+        assert!(is_integer_type("UInt64"));
+        assert!(!is_integer_type("String"));
+        assert!(!is_integer_type("f32"));
+    }
+
+    #[test]
+    fn test_is_float_type() {
+        assert!(is_float_type("f32"));
+        assert!(is_float_type("f64"));
+        assert!(is_float_type("Float32"));
+        assert!(is_float_type("Float64"));
+        assert!(!is_float_type("i32"));
+        assert!(!is_float_type("String"));
+    }
+
+    #[test]
+    fn test_format_type_expr_simple() {
+        let type_expr = TypeExpr::Named("String".to_string());
+        assert_eq!(format_type_expr(&type_expr), "String");
+    }
+
+    #[test]
+    fn test_format_type_expr_generic() {
+        let type_expr = TypeExpr::Generic {
+            name: "Vec".to_string(),
+            args: vec![TypeExpr::Named("i32".to_string())],
+        };
+        assert_eq!(format_type_expr(&type_expr), "Vec<i32>");
+    }
+
+    #[test]
+    fn test_suggest_valid_strategies_string() {
+        let type_expr = TypeExpr::Named("String".to_string());
+        let suggestion = suggest_valid_strategies(&type_expr);
+        assert!(suggestion.contains("immutable"));
+        assert!(suggestion.contains("lww"));
+        assert!(suggestion.contains("peritext"));
+    }
+
+    #[test]
+    fn test_suggest_valid_strategies_integer() {
+        let type_expr = TypeExpr::Named("i32".to_string());
+        let suggestion = suggest_valid_strategies(&type_expr);
+        assert!(suggestion.contains("pn_counter"));
+    }
+
+    #[test]
+    fn test_suggest_valid_strategies_set() {
+        let type_expr = TypeExpr::Generic {
+            name: "Set".to_string(),
+            args: vec![],
+        };
+        let suggestion = suggest_valid_strategies(&type_expr);
+        assert!(suggestion.contains("or_set"));
     }
 }

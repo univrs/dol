@@ -1,9 +1,9 @@
 // Test: Spirit-level visibility
 // Expected: pub(spirit) items accessible within same Spirit only
 
-pub gene Container {
+pub gen Container {
     has id: UInt64
-    has name: String
+    has name: string
 }
 
 // Available within this Spirit only
@@ -11,11 +11,11 @@ pub(spirit) fun generate_id() -> UInt64 {
     return 42
 }
 
-pub(spirit) fun log_transition(id: UInt64, state: String) -> Void {
+pub(spirit) fun log_transition(id: UInt64, state: string) -> Void {
     // internal logging
 }
 
-exegesis {
+docs {
     Test case for Spirit-level visibility.
     pub(spirit) is equivalent to Rust's pub(crate).
     Items are accessible within the Spirit but not from other Spirits.

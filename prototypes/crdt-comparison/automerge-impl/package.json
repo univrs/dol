@@ -1,0 +1,20 @@
+{
+  "name": "@crdt-comparison/automerge-impl",
+  "version": "1.0.0",
+  "description": "Automerge 3.0 TodoList implementation for CRDT evaluation",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test",
+    "benchmark": "node dist/benchmark.js"
+  },
+  "dependencies": {
+    "@automerge/automerge": "^2.2.8",
+    "@automerge/automerge-wasm": "^0.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}

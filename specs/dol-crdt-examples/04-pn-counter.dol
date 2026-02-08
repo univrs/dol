@@ -1,0 +1,189 @@
+// DOL CRDT Example: Positive-Negative Counter Strategy
+// Specification: §5.4 - Positive-Negative Counter
+
+gen post.social {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  content: string
+
+  @crdt(pn_counter, min_value=0)
+  likes: i32
+
+  @crdt(pn_counter, min_value=0)
+  view_count: i32
+
+  @crdt(pn_counter)
+  karma_score: i32  // Can be negative
+
+  @crdt(pn_counter, min_value=0, max_value=100, overflow_strategy="saturate")
+  completion_percentage: i32
+}
+
+docs {
+  Demonstrates Positive-Negative (PN) Counter CRDT strategy for metrics.
+
+  **Strategy: pn_counter**
+
+  Semantics: Commutative counter supporting increment and decrement.
+             Each replica maintains separate increment/decrement counters.
+  Merge Rule: value = sum(increments) - sum(decrements)
+  Data Loss: None (all operations preserved)
+
+  **Use Cases:**
+  - Like counts, vote scores
+  - View counts, download counters
+  - Inventory quantities
+  - Karma/reputation scores
+  - Any metric requiring increment/decrement
+
+  **Data Structure:**
+
+  ```rust
+  struct PNCounter {
+    increments: Map<ActorId, u32>  // Per-actor increment counter
+    decrements: Map<ActorId, u32>  // Per-actor decrement counter
+  }
+  ```
+
+  **Operations:**
+
+  ```
+  increment(amount: u32):
+    increments[actor_id] += amount
+
+  decrement(amount: u32):
+    decrements[actor_id] += amount
+
+  value() -> i32:
+    return sum(increments.values()) - sum(decrements.values())
+  ```
+
+  **Merge Example:**
+
+  Initial state:
+  ```
+  likes: 0
+  ```
+
+  Concurrent operations:
+  - Replica A: increment(1)  → increments[A] = 1
+  - Replica B: increment(1)  → increments[B] = 1
+  - Replica C: increment(2)  → increments[C] = 2
+
+  Merge result:
+  ```
+  increments: {A: 1, B: 1, C: 2}
+  decrements: {}
+  value() = 1 + 1 + 2 = 4
+  ```
+
+  **Increment and Decrement:**
+
+  Initial state:
+  ```
+  karma_score: 10
+  increments: {A: 10}
+  decrements: {}
+  ```
+
+  Concurrent operations:
+  - Replica B: increment(5)  → increments[B] = 5
+  - Replica C: decrement(3)  → decrements[C] = 3
+
+  Merge result:
+  ```
+  increments: {A: 10, B: 5}
+  decrements: {C: 3}
+  value() = (10 + 5) - 3 = 12
+  ```
+
+  **Commutative Property:**
+
+  Operations can be applied in any order:
+
+  Scenario 1:
+  ```
+  increment(5) → decrement(3) → increment(2)
+  = (5 + 2) - 3 = 4
+  ```
+
+  Scenario 2 (different order):
+  ```
+  decrement(3) → increment(2) → increment(5)
+  = (2 + 5) - 3 = 4
+  ```
+
+  Same result regardless of order!
+
+  **Min/Max Value Enforcement:**
+
+  With min_value=0:
+  ```
+  Initial: likes = 5
+  Operation: decrement(10)
+
+  Without min_value:
+    Result: -5
+
+  With min_value=0:
+    Result: 0 (saturated)
+    OR: Error (rejected operation)
+  ```
+
+  Overflow strategies:
+  - "saturate": Clamp to min/max
+  - "wrap": Wrap around (modulo)
+  - "error": Reject operation
+
+  **Properties:**
+  - ✓ Commutative: operations apply in any order
+  - ✓ No data loss: all operations preserved
+  - ✓ Monotonic per-replica: each counter only grows
+  - ✓ Idempotent merge: merge(A, A) = A
+  - ⚠️ Space overhead: O(n) where n=number of replicas
+
+  **Constraint Enforcement:**
+
+  Category A (CRDT-safe):
+  - "likes always >= 0" - Enforced by min_value=0
+
+  Category B (Eventually-Consistent):
+  - "karma_score >= -100" - May be temporarily violated
+
+  **Type Compatibility:**
+  - ✓ i32, i64, i32
+  - ✓ u32, u64, u32 (with min_value=0)
+  - ⚠️ f32 (precision loss, not recommended)
+
+  **Options:**
+  - min_value: Integer (enforce lower bound)
+  - max_value: Integer (enforce upper bound)
+  - overflow_strategy: "saturate" | "wrap" | "error"
+
+  **When NOT to Use PN-Counter:**
+  - Non-monotonic values (temperature, arbitrary numbers) → use lww
+  - Text content → use peritext
+  - Collections → use or_set, rga
+
+  **Garbage Collection:**
+
+  Problem: Per-actor counters accumulate
+  Solution: Compact after all replicas sync
+
+  ```
+  if all_replicas_have_seen(actor_counters):
+    total_inc = sum(increments.values())
+    total_dec = sum(decrements.values())
+    increments = {self_actor: total_inc}
+    decrements = {self_actor: total_dec}
+  ```
+
+  **Implementation Notes:**
+  1. Maintain separate increments/decrements maps
+  2. Use actor_id as map key
+  3. Merge: take max per actor
+  4. Value: sum(inc) - sum(dec)
+  5. Enforce min/max bounds at operation time
+}

@@ -251,7 +251,7 @@ pub rule uncertainty_principle {
 }
 
 docs {
-    Unitarity: Quantum evolution preserves probability.
+    Unitarity: Quantum evo preserves probability.
     U†U = I
 }
 

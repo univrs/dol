@@ -2,8 +2,8 @@ module tests.nested_sex @ 1.0.0
 
 // Global mutable state
 sex var COUNTER: Int64 = 0
-sex var LOG: List<String> = []
-sex var CACHE: Map<String, Int64> = Map.new()
+sex var LOG: Vec<string> = []
+sex var CACHE: Map<string, Int64> = Map.new()
 
 // Simple sex function
 sex fun increment() -> Int64 {
@@ -12,7 +12,7 @@ sex fun increment() -> Int64 {
 }
 
 // Sex function with sex block
-sex fun logged_increment(label: String) -> Int64 {
+sex fun logged_increment(label: string) -> Int64 {
     sex {
         LOG.push(label + ": incrementing")
     }
@@ -50,7 +50,7 @@ sex fun deeply_nested() -> Int64 {
 }
 
 // Sex with control flow
-sex fun conditional_effects(cond: Bool) -> Int64 {
+sex fun conditional_effects(cond: bool) -> Int64 {
     if cond {
         sex {
             COUNTER += 10
@@ -75,10 +75,10 @@ sex fun loop_effects(n: Int64) -> Int64 {
 }
 
 // Extern declarations
-sex extern "C" fun printf(fmt: Ptr<Int8>, ...) -> Int32
+sex extern "C" fun printf(fmt: Ptr<Int8>, ...) -> i32
 sex extern "C" fun malloc(size: UInt64) -> Ptr<Void>
 sex extern "C" fun free(ptr: Ptr<Void>)
 
-exegesis {
+docs {
     Tests for various sex block patterns and nesting.
 }

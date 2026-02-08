@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VUDO Workspace - Local-First Collaborative Workspace</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="../config/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="description" content="Local-first collaborative workspace with offline editing, P2P sync, and mutual credit">
+</head>
+<body>
+    <!-- Top Navigation Bar -->
+    <header class="app-header">
+        <div class="header-left">
+            <h1 class="logo">
+                <span class="logo-icon">🍄</span>
+                VUDO Workspace
+            </h1>
+            <nav class="main-nav">
+                <a href="#documents" class="nav-link active">Documents</a>
+                <a href="#boards" class="nav-link">Task Boards</a>
+                <a href="#profile" class="nav-link">Profile</a>
+                <a href="#credit" class="nav-link">
+                    Credit
+                    <span class="credit-badge">+1,250</span>
+                </a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <!-- Online/Offline Status Indicator -->
+            <div class="sync-status online">
+                <span class="status-dot"></span>
+                <span class="status-text">3 peers connected</span>
+            </div>
+
+            <!-- User Avatar and Menu -->
+            <div class="user-menu">
+                <img src="https://via.placeholder.com/40" alt="User avatar" class="user-avatar">
+                <span class="user-name">Alice</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        <!-- Sidebar (Optional Navigation) -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3>Recent Documents</h3>
+                <ul class="document-list">
+                    <li class="document-item">
+                        <span class="doc-icon">📄</span>
+                        <div class="doc-info">
+                            <div class="doc-title">Project Proposal</div>
+                            <div class="doc-meta">2 collaborators • 5 min ago</div>
+                        </div>
+                    </li>
+                    <li class="document-item">
+                        <span class="doc-icon">📄</span>
+                        <div class="doc-info">
+                            <div class="doc-title">Architecture Design</div>
+                            <div class="doc-meta">Offline • 2 hours ago</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Active Boards</h3>
+                <ul class="board-list">
+                    <li class="board-item">
+                        <span class="board-icon">📋</span>
+                        <div class="board-info">
+                            <div class="board-title">Sprint Planning</div>
+                            <div class="board-meta">12 tasks</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Main Content Area (Multi-View) -->
+        <main class="main-content">
+            <!-- VIEW 1: Collaborative Document Editor -->
+            <section id="document-editor" class="view active">
+                <div class="editor-toolbar">
+                    <button class="btn btn-icon" title="Bold">
+                        <strong>B</strong>
+                    </button>
+                    <button class="btn btn-icon" title="Italic">
+                        <em>I</em>
+                    </button>
+                    <button class="btn btn-icon" title="Underline">
+                        <u>U</u>
+                    </button>
+                    <div class="toolbar-divider"></div>
+                    <button class="btn btn-icon" title="Heading">H1</button>
+                    <button class="btn btn-icon" title="List">• List</button>
+                    <button class="btn btn-icon" title="Link">🔗</button>
+                    <div class="toolbar-divider"></div>
+                    <button class="btn btn-primary">Share</button>
+                    <button class="btn">Version History</button>
+                </div>
+
+                <div class="editor-container">
+                    <!-- Collaborative Editor with Peritext CRDT -->
+                    <div class="editor-title">
+                        <input type="text" value="Product Requirements Document" placeholder="Document title..." class="title-input">
+                    </div>
+
+                    <div class="editor-content" contenteditable="true">
+                        <h1>Product Requirements Document</h1>
+                        <p>This document outlines the requirements for our new <strong>local-first collaborative workspace</strong>.</p>
+
+                        <h2>Core Features</h2>
+                        <ul>
+                            <li>Rich text editing with <strong>Peritext CRDT</strong></li>
+                            <li>Task boards with drag-and-drop (Movable List CRDT)</li>
+                            <li>Mutual credit system for value exchange</li>
+                            <li>P2P sync with online/offline support</li>
+                        </ul>
+
+                        <h2>User Cursor Indicators</h2>
+                        <p>
+                            Multiple users can edit simultaneously.
+                            <span class="user-cursor" data-user="bob" style="border-color: #10b981;">
+                                <span class="cursor-caret"></span>
+                                <span class="cursor-label">Bob</span>
+                            </span>
+                        </p>
+                    </div>
+
+                    <!-- Collaborator Presence -->
+                    <div class="collaborators-bar">
+                        <span class="collaborators-label">Editing now:</span>
+                        <div class="collaborator-avatars">
+                            <img src="https://via.placeholder.com/32" alt="Bob" class="collaborator-avatar" title="Bob (online)">
+                            <img src="https://via.placeholder.com/32" alt="Carol" class="collaborator-avatar" title="Carol (online)">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 2: Kanban Task Board -->
+            <section id="task-board" class="view">
+                <div class="board-header">
+                    <h2>Sprint Planning Board</h2>
+                    <div class="board-actions">
+                        <button class="btn">Add Column</button>
+                        <button class="btn btn-primary">Add Task</button>
+                    </div>
+                </div>
+
+                <div class="kanban-board">
+                    <!-- Column 1: To Do -->
+                    <div class="kanban-column">
+                        <div class="column-header">
+                            <h3>To Do</h3>
+                            <span class="task-count">3 tasks</span>
+                        </div>
+                        <div class="column-tasks">
+                            <div class="task-card" draggable="true">
+                                <div class="task-header">
+                                    <span class="task-priority high">High</span>
+                                    <span class="task-id">#T-101</span>
+                                </div>
+                                <h4 class="task-title">Implement CRDT merge logic</h4>
+                                <p class="task-description">Add support for Peritext CRDT in document editor</p>
+                                <div class="task-footer">
+                                    <span class="task-assignee">
+                                        <img src="https://via.placeholder.com/24" alt="Alice">
+                                        Alice
+                                    </span>
+                                    <span class="task-labels">
+                                        <span class="label">Backend</span>
+                                        <span class="label">CRDT</span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="task-card" draggable="true">
+                                <div class="task-header">
+                                    <span class="task-priority medium">Medium</span>
+                                    <span class="task-id">#T-102</span>
+                                </div>
+                                <h4 class="task-title">Design permission UI</h4>
+                                <p class="task-description">Create UI for managing UCAN permissions</p>
+                                <div class="task-footer">
+                                    <span class="task-assignee unassigned">Unassigned</span>
+                                    <span class="task-labels">
+                                        <span class="label">Frontend</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: In Progress -->
+                    <div class="kanban-column">
+                        <div class="column-header">
+                            <h3>In Progress</h3>
+                            <span class="task-count">2 tasks</span>
+                            <span class="wip-limit">WIP: 2/3</span>
+                        </div>
+                        <div class="column-tasks">
+                            <div class="task-card" draggable="true">
+                                <div class="task-header">
+                                    <span class="task-priority high">High</span>
+                                    <span class="task-id">#T-98</span>
+                                </div>
+                                <h4 class="task-title">P2P sync integration</h4>
+                                <p class="task-description">Integrate Iroh for peer-to-peer synchronization</p>
+                                <div class="task-footer">
+                                    <span class="task-assignee">
+                                        <img src="https://via.placeholder.com/24" alt="Bob">
+                                        Bob
+                                    </span>
+                                    <span class="task-labels">
+                                        <span class="label">Backend</span>
+                                        <span class="label">P2P</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 3: Done -->
+                    <div class="kanban-column">
+                        <div class="column-header">
+                            <h3>Done</h3>
+                            <span class="task-count">5 tasks</span>
+                        </div>
+                        <div class="column-tasks">
+                            <div class="task-card completed" draggable="true">
+                                <div class="task-header">
+                                    <span class="task-priority medium">Medium</span>
+                                    <span class="task-id">#T-95</span>
+                                </div>
+                                <h4 class="task-title">Setup DOL schemas</h4>
+                                <p class="task-description">Define DOL schemas for all entities</p>
+                                <div class="task-footer">
+                                    <span class="task-assignee">
+                                        <img src="https://via.placeholder.com/24" alt="Carol">
+                                        Carol
+                                    </span>
+                                    <span class="task-completed">✓ Completed 2 days ago</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 3: User Profile & Credit -->
+            <section id="profile" class="view">
+                <div class="profile-container">
+                    <div class="profile-header">
+                        <img src="https://via.placeholder.com/120" alt="User avatar" class="profile-avatar">
+                        <div class="profile-info">
+                            <h2>Alice Johnson</h2>
+                            <p class="profile-did">did:key:z6Mk...rBhX</p>
+                            <p class="profile-bio">Full-stack developer passionate about decentralized tech</p>
+                        </div>
+                        <button class="btn btn-primary">Edit Profile</button>
+                    </div>
+
+                    <div class="profile-stats">
+                        <div class="stat-card">
+                            <h3>Documents</h3>
+                            <div class="stat-value">42</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Tasks Completed</h3>
+                            <div class="stat-value">128</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Collaborations</h3>
+                            <div class="stat-value">15</div>
+                        </div>
+                    </div>
+
+                    <!-- Mutual Credit Section -->
+                    <div class="credit-section">
+                        <h3>Mutual Credit Balance</h3>
+                        <div class="credit-balance-card">
+                            <div class="balance-amount">+1,250 credits</div>
+                            <div class="balance-details">
+                                <div class="balance-item">
+                                    <span>Total Earned:</span>
+                                    <span class="positive">+2,800</span>
+                                </div>
+                                <div class="balance-item">
+                                    <span>Total Spent:</span>
+                                    <span class="negative">-1,550</span>
+                                </div>
+                                <div class="balance-item">
+                                    <span>Credit Limit:</span>
+                                    <span>5,000</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary">Transfer Credits</button>
+                        </div>
+
+                        <!-- Recent Transactions -->
+                        <h4>Recent Transactions</h4>
+                        <div class="transaction-list">
+                            <div class="transaction-item">
+                                <div class="transaction-info">
+                                    <span class="transaction-peer">Bob Smith</span>
+                                    <span class="transaction-desc">Task completion: P2P sync integration</span>
+                                </div>
+                                <span class="transaction-amount positive">+500</span>
+                                <span class="transaction-time">2 hours ago</span>
+                            </div>
+                            <div class="transaction-item">
+                                <div class="transaction-info">
+                                    <span class="transaction-peer">Carol Davis</span>
+                                    <span class="transaction-desc">Document review service</span>
+                                </div>
+                                <span class="transaction-amount negative">-150</span>
+                                <span class="transaction-time">1 day ago</span>
+                            </div>
+                        </div>
+
+                        <!-- Trust Relationships -->
+                        <h4>Trust Network</h4>
+                        <div class="trust-list">
+                            <div class="trust-item">
+                                <img src="https://via.placeholder.com/40" alt="Bob">
+                                <div class="trust-info">
+                                    <span class="trust-name">Bob Smith</span>
+                                    <span class="trust-limit">Trust limit: 2,000</span>
+                                </div>
+                                <span class="trust-transactions">42 successful txns</span>
+                            </div>
+                            <div class="trust-item">
+                                <img src="https://via.placeholder.com/40" alt="Carol">
+                                <div class="trust-info">
+                                    <span class="trust-name">Carol Davis</span>
+                                    <span class="trust-limit">Trust limit: 1,000</span>
+                                </div>
+                                <span class="trust-transactions">18 successful txns</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Sync Status Toast (Shown during sync) -->
+    <div class="toast sync-toast hidden">
+        <span class="toast-icon">🔄</span>
+        <span class="toast-message">Syncing with 3 peers...</span>
+    </div>
+
+    <!-- Offline Indicator -->
+    <div class="offline-banner hidden">
+        <span>📡 You're offline. Changes will sync when reconnected.</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

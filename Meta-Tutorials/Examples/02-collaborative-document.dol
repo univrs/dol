@@ -1,0 +1,41 @@
+// Example 02: Collaborative Document
+// Demonstrates Peritext CRDT for rich text editing
+
+gen CollaborativeDoc {
+    @crdt(immutable)
+    has doc_id: string
+
+    @crdt(lww)
+    has title: string
+
+    @crdt(peritext, formatting="full")
+    has content: string
+
+    @crdt(or_set)
+    has collaborators: Set<string>
+
+    @crdt(rga)
+    has comments: Vec<Comment>
+
+    @crdt(lww)
+    has last_modified: Int
+
+    fun add_collaborator(user_id: string) {
+        this.collaborators.insert(user_id)
+    }
+
+    fun add_comment(comment: Comment) {
+        this.comments.push(comment)
+    }
+}
+
+gen Comment {
+    has author: string
+    has content: string
+    has timestamp: Int
+}
+
+docs {
+    Collaborative document with Peritext for conflict-free
+    rich text editing and OR-Set for collaborator management.
+}

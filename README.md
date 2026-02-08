@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/univrs/metadol/workflows/CI/badge.svg)](https://github.com/univrs/metadol/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
-[![Rust Version](https://img.shields.io/badge/rust-1.81%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust Version](https://img.shields.io/badge/rust-1.84%2B-orange.svg)](https://www.rust-lang.org)
 [![Tests](https://img.shields.io/badge/tests-1914%20passing-brightgreen)](https://github.com/univrs/metadol/actions)
 
 > [!CAUTION]
@@ -161,7 +161,7 @@ dol/macros/expand   # Expand a macro
 
 ### Prerequisites
 
-- Rust toolchain 1.81 or later ([install from rustup.rs](https://rustup.rs))
+- Rust toolchain 1.84 or later ([install from rustup.rs](https://rustup.rs))
 
 ### Clone and Build
 

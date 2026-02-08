@@ -1,0 +1,42 @@
+[package]
+name = "dol-reflect"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Runtime reflection API for DOL schemas with hot-reload support"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/univrs/dol"
+keywords = ["dol", "reflection", "runtime", "schema", "hot-reload"]
+categories = ["development-tools", "parser-implementations"]
+
+[dependencies]
+# Core DOL library for AST and parsing
+metadol = { path = "../..", package = "dol", version = "0.8.1", features = ["serde"] }
+
+# Error handling
+thiserror = "1.0"
+
+# Serialization support
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# File watching for hot-reload
+notify = "6.1"
+
+# Async runtime for file watching
+tokio = { version = "1.35", features = ["rt", "sync", "time", "fs", "macros", "io-util"] }
+
+# Path utilities
+walkdir = "2.4"
+
+# Time utilities for benchmarking
+instant = "0.1"
+
+[dev-dependencies]
+tempfile = "3.9"
+pretty_assertions = "1.4"
+criterion = "0.5"
+
+[features]
+default = []

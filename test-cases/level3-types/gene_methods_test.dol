@@ -1,6 +1,6 @@
 // Test case: Gene declarations with methods
 //
-// This file tests gene (struct) support in WASM compilation.
+// This file tests gen (struct) support in WASM compilation.
 // Expected features:
 // - Gene declaration with fields
 // - Gene methods (instance methods)
@@ -10,14 +10,14 @@
 
 module gene_methods_test @ 0.1.0
 
-// Test 1: Simple gene with fields
-gene Point {
+// Test 1: Simple gen with fields
+gen Point {
     has x: i64
     has y: i64
 }
 
 // Test 2: Gene with a method
-gene Counter {
+gen Counter {
     has value: i64
 
     fun get() -> i64 {
@@ -30,7 +30,7 @@ gene Counter {
 }
 
 // Test 3: Gene with multiple methods
-gene Calculator {
+gen Calculator {
     has current: i64
 
     fun add(n: i64) -> i64 {
@@ -51,7 +51,7 @@ gene Calculator {
 }
 
 // Test 4: Gene with derived computation
-gene Rectangle {
+gen Rectangle {
     has width: i64
     has height: i64
 
@@ -67,7 +67,7 @@ gene Rectangle {
 }
 
 // Test 5: Gene with float fields
-gene Vector2D {
+gen Vector2D {
     has x: f64
     has y: f64
 
@@ -80,8 +80,8 @@ gene Vector2D {
     }
 }
 
-// Test 6: Gene extending another gene (inheritance)
-gene Animal {
+// Test 6: Gene extending another gen (inheritance)
+gen Animal {
     has age: i64
 
     fun get_age() -> i64 {
@@ -89,7 +89,7 @@ gene Animal {
     }
 }
 
-gene Dog extends Animal {
+gen Dog extends Animal {
     has breed_id: i64
 
     fun bark_count() -> i64 {

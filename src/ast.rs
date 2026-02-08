@@ -447,6 +447,82 @@ impl Declaration {
     }
 }
 
+/// Reference to exegesis documentation.
+///
+/// Supports both inline exegesis (traditional DOL) and CRDT-backed exegesis
+/// (local-first mode with collaborative editing).
+///
+/// # Variants
+///
+/// - `Inline`: Traditional inline exegesis as a string
+/// - `CrdtBacked`: Reference to a CRDT document for local-first mode
+///
+/// # Example
+///
+/// ```rust
+/// use metadol::ast::ExegesisReference;
+///
+/// // Traditional inline exegesis
+/// let inline = ExegesisReference::Inline(
+///     "A user profile contains identity.".to_string()
+/// );
+///
+/// // CRDT-backed exegesis for local-first mode
+/// let crdt = ExegesisReference::CrdtBacked {
+///     document_id: "user.profile@1.0.0".to_string(),
+///     version: "1.0.0".to_string(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ExegesisReference {
+    /// Inline exegesis (traditional DOL).
+    ///
+    /// The exegesis text is stored directly in the AST as a string.
+    /// This is the default mode for most DOL files.
+    Inline(String),
+
+    /// CRDT-backed exegesis (local-first mode).
+    ///
+    /// The exegesis is stored in a CRDT document that can be edited
+    /// collaboratively with automatic conflict resolution. The document
+    /// is identified by a unique ID and version number.
+    CrdtBacked {
+        /// Document ID in the CRDT store (e.g., "user.profile@1.0.0")
+        document_id: String,
+        /// Version of the Gene this exegesis is linked to
+        version: String,
+    },
+}
+
+impl ExegesisReference {
+    /// Get the exegesis text.
+    ///
+    /// For inline exegesis, returns the string directly.
+    /// For CRDT-backed exegesis, this returns a placeholder message.
+    /// Use the dol-exegesis crate to retrieve the actual content.
+    pub fn text(&self) -> &str {
+        match self {
+            ExegesisReference::Inline(text) => text,
+            ExegesisReference::CrdtBacked { document_id, .. } => {
+                // Return a placeholder for CRDT-backed exegesis
+                // The actual content should be fetched from the CRDT store
+                document_id
+            }
+        }
+    }
+
+    /// Check if this is inline exegesis.
+    pub fn is_inline(&self) -> bool {
+        matches!(self, ExegesisReference::Inline(_))
+    }
+
+    /// Check if this is CRDT-backed exegesis.
+    pub fn is_crdt_backed(&self) -> bool {
+        matches!(self, ExegesisReference::CrdtBacked { .. })
+    }
+}
+
 /// A gen declaration representing atomic ontological truths.
 ///
 /// Gens (v0.8.0: formerly "genes") are the fundamental building blocks of DOL.
@@ -485,7 +561,7 @@ pub struct Gen {
     /// The declarative statements within the gen body
     pub statements: Vec<Statement>,
 
-    /// The mandatory exegesis explaining intent and context
+    /// The mandatory exegesis explaining intent and context (now supports CRDT)
     pub exegesis: String,
 
     /// Source location for error reporting
@@ -1773,10 +1849,115 @@ pub struct LawDecl {
     pub span: Span,
 }
 
+/// CRDT strategy for conflict-free replicated data types.
+///
+/// Represents the merge strategy for a field in a distributed system.
+/// See RFC-001 for detailed semantics of each strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CrdtStrategy {
+    /// Immutable: Value set exactly once, never modified
+    Immutable,
+    /// Last-Write-Wins: Most recent write wins
+    Lww,
+    /// Observed-Remove Set: Add-wins semantics for sets
+    OrSet,
+    /// Positive-Negative Counter: Commutative counter operations
+    PnCounter,
+    /// Peritext: Rich text CRDT for collaborative editing
+    Peritext,
+    /// Replicated Growable Array: Ordered sequence with causal insertion
+    Rga,
+    /// Multi-Value Register: Keeps all concurrent values
+    MvRegister,
+}
+
+impl CrdtStrategy {
+    /// Returns the string representation of the strategy.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CrdtStrategy::Immutable => "immutable",
+            CrdtStrategy::Lww => "lww",
+            CrdtStrategy::OrSet => "or_set",
+            CrdtStrategy::PnCounter => "pn_counter",
+            CrdtStrategy::Peritext => "peritext",
+            CrdtStrategy::Rga => "rga",
+            CrdtStrategy::MvRegister => "mv_register",
+        }
+    }
+
+    /// Parses a strategy from a string.
+    pub fn parse_strategy(s: &str) -> Option<Self> {
+        match s {
+            "immutable" => Some(CrdtStrategy::Immutable),
+            "lww" => Some(CrdtStrategy::Lww),
+            "or_set" => Some(CrdtStrategy::OrSet),
+            "pn_counter" => Some(CrdtStrategy::PnCounter),
+            "peritext" => Some(CrdtStrategy::Peritext),
+            "rga" => Some(CrdtStrategy::Rga),
+            "mv_register" => Some(CrdtStrategy::MvRegister),
+            _ => None,
+        }
+    }
+}
+
+impl std::str::FromStr for CrdtStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        CrdtStrategy::parse_strategy(s).ok_or_else(|| format!("Invalid CRDT strategy: {}", s))
+    }
+}
+
+/// CRDT annotation option (key-value pair).
+///
+/// Represents optional configuration for CRDT strategies,
+/// such as tie_break, min_value, max_value, etc.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CrdtOption {
+    /// Option key (e.g., "tie_break", "min_value")
+    pub key: String,
+    /// Option value (e.g., "actor_id", "0")
+    pub value: Expr,
+    /// Source location
+    pub span: Span,
+}
+
+/// CRDT annotation for field declarations.
+///
+/// Represents a `@crdt(strategy, options)` annotation that specifies
+/// how a field should be merged in a distributed system.
+///
+/// # Example
+///
+/// ```dol
+/// gen ChatMessage {
+///   @crdt(immutable)
+///   id: String
+///
+///   @crdt(peritext, formatting="full")
+///   content: String
+///
+///   @crdt(or_set)
+///   reactions: Set<String>
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CrdtAnnotation {
+    /// The CRDT merge strategy
+    pub strategy: CrdtStrategy,
+    /// Optional configuration options
+    pub options: Vec<CrdtOption>,
+    /// Source location
+    pub span: Span,
+}
+
 /// Field declaration in a gene with optional default value.
 ///
-/// Represents a field in a gene declaration, potentially with default value
-/// and constraint.
+/// Represents a field in a gene declaration, potentially with default value,
+/// constraint, and CRDT annotation.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HasField {
@@ -1788,6 +1969,10 @@ pub struct HasField {
     pub default: Option<Expr>,
     /// Optional constraint on the field
     pub constraint: Option<Expr>,
+    /// Optional CRDT annotation for distributed merging (RFC-001)
+    pub crdt_annotation: Option<CrdtAnnotation>,
+    /// Personal data annotation for GDPR compliance (@personal)
+    pub personal: bool,
     /// Source location
     pub span: Span,
 }

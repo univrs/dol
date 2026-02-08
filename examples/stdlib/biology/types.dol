@@ -132,7 +132,7 @@ pub gen Energy {
 // Temporal Types
 // ─────────────────────────────────────────────────────────────────
 
-/// Geological time (for evolution tracking)
+/// Geological time (for evo tracking)
 pub gen GeoTime {
   has mya: f64  // Millions of years ago
 

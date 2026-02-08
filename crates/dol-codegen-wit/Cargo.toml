@@ -1,0 +1,17 @@
+[package]
+name = "dol-codegen-wit"
+version = "0.1.0"
+edition = "2021"
+authors = ["Univrs DOL Team"]
+description = "WIT (WASM Interface Types) generator for DOL Gen declarations"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/univrs/dol"
+
+[dependencies]
+dol = { path = "../..", version = "0.8.1" }
+thiserror = "2.0"
+heck = "0.5"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+indoc = "2.0"

@@ -1,0 +1,661 @@
+//! Schema Evolution in Local-First Context
+//!
+//! This module handles DOL schema evolution across distributed peers with:
+//! - Version embedding in every document
+//! - Deterministic migrations for CRDT consistency
+//! - Lazy migration on read (no proactive migration storms)
+//! - Forward-compatible deserialization (old peers read new schemas)
+//! - Migration conflict detection and resolution
+//!
+//! # Local-First Challenges
+//!
+//! In traditional client-server systems, schema migrations are centralized.
+//! In local-first systems:
+//! - **No central authority** - peers may be offline for weeks/months
+//! - **Concurrent evolution** - different branches may evolve independently
+//! - **Causal consistency** - migrations must maintain CRDT semantics
+//!
+//! # Solution: Deterministic Migrations with CRDT Semantics
+//!
+//! All migrations use a deterministic actor ID (`[0; 32]`) to ensure identical
+//! CRDT operations across all peers. This guarantees that concurrent migrations
+//! on the same document produce identical results when merged.
+//!
+//! # Example
+//!
+//! ```rust
+//! use vudo_state::schema_evolution::{EvolutionEngine, SchemaVersion, Migration};
+//! use vudo_state::StateEngine;
+//! use semver::Version;
+//!
+//! # async fn example() -> vudo_state::error::Result<()> {
+//! let state_engine = StateEngine::new().await?;
+//! let evolution_engine = EvolutionEngine::new(state_engine);
+//!
+//! // Load document with automatic migration
+//! let doc = evolution_engine.load_with_migration("users", "alice").await?;
+//!
+//! // Document is automatically migrated from v1 -> v2 -> v3 if needed
+//! # Ok(())
+//! # }
+//! ```
+
+use crate::document_store::{DocumentHandle, DocumentId};
+use crate::error::{Result, StateError};
+use crate::StateEngine;
+use async_trait::async_trait;
+use automerge::transaction::Transactable;
+use automerge::{ActorId, Automerge, AutoCommit, ReadDoc, ROOT};
+use parking_lot::RwLock;
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+/// Schema version embedded in every Automerge document.
+///
+/// This struct tracks the schema version of a document to enable
+/// lazy migration on read.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchemaVersion {
+    /// DOL Gen name (e.g., "user.profile")
+    pub gen_name: String,
+
+    /// Semantic version (e.g., "1.2.0")
+    pub version: Version,
+
+    /// Schema hash for validation (SHA-256)
+    pub schema_hash: [u8; 32],
+}
+
+impl SchemaVersion {
+    /// Create a new schema version.
+    pub fn new(gen_name: String, version: Version, schema_hash: [u8; 32]) -> Self {
+        Self {
+            gen_name,
+            version,
+            schema_hash,
+        }
+    }
+
+    /// Get the version string.
+    pub fn version_string(&self) -> String {
+        self.version.to_string()
+    }
+}
+
+/// Schema metadata for a DOL Gen.
+///
+/// Contains the current version and all available migration paths.
+#[derive(Debug, Clone)]
+pub struct SchemaMetadata {
+    /// Current schema version
+    pub current: SchemaVersion,
+
+    /// Migration path (e.g., v1 → v2 → v3)
+    pub migrations: Vec<Arc<dyn Migration>>,
+}
+
+impl SchemaMetadata {
+    /// Create new schema metadata.
+    pub fn new(current: SchemaVersion) -> Self {
+        Self {
+            current,
+            migrations: Vec::new(),
+        }
+    }
+
+    /// Add a migration step.
+    pub fn add_migration(&mut self, migration: Arc<dyn Migration>) {
+        self.migrations.push(migration);
+    }
+
+    /// Get all migrations.
+    pub fn migrations(&self) -> &[Arc<dyn Migration>] {
+        &self.migrations
+    }
+}
+
+/// Migration metadata for logging and debugging.
+#[derive(Debug, Clone)]
+pub struct MigrationMetadata {
+    /// Migration name
+    pub name: String,
+
+    /// Source version
+    pub from_version: Version,
+
+    /// Target version
+    pub to_version: Version,
+
+    /// Deterministic actor ID for migration operations
+    /// This ensures all peers produce identical CRDT ops
+    pub actor_id: ActorId,
+}
+
+impl MigrationMetadata {
+    /// Create new migration metadata.
+    pub fn new(name: String, from_version: Version, to_version: Version) -> Self {
+        // Use deterministic actor ID for all migrations
+        let actor_id = ActorId::from(vec![0u8; 32]);
+
+        Self {
+            name,
+            from_version,
+            to_version,
+            actor_id,
+        }
+    }
+
+    /// Get the actor ID as bytes.
+    pub fn actor_id_bytes(&self) -> Vec<u8> {
+        self.actor_id.to_bytes()
+    }
+}
+
+/// Trait for schema migrations.
+///
+/// All migrations must be deterministic - same input produces same output
+/// on all peers. This is critical for maintaining CRDT consistency.
+#[async_trait]
+pub trait Migration: Send + Sync {
+    /// Apply the migration to a document.
+    ///
+    /// MUST be deterministic: same input → same output on all peers.
+    async fn migrate(&self, doc: &mut Automerge) -> Result<()>;
+
+    /// Check if this migration can be applied.
+    ///
+    /// Returns false if preconditions are not met.
+    fn can_migrate(&self, doc: &Automerge) -> bool;
+
+    /// Get migration metadata.
+    fn metadata(&self) -> &MigrationMetadata;
+
+    /// Get the source version.
+    fn from_version(&self) -> &Version {
+        &self.metadata().from_version
+    }
+
+    /// Get the target version.
+    fn to_version(&self) -> &Version {
+        &self.metadata().to_version
+    }
+}
+
+/// Evolution engine for lazy migration on read.
+///
+/// This engine integrates with the state engine to provide transparent
+/// schema migration when documents are loaded.
+pub struct EvolutionEngine {
+    /// Schema registry (all known versions)
+    registry: Arc<RwLock<HashMap<String, SchemaMetadata>>>,
+
+    /// State engine integration
+    state_engine: Arc<StateEngine>,
+}
+
+impl EvolutionEngine {
+    /// Create a new evolution engine.
+    pub fn new(state_engine: Arc<StateEngine>) -> Self {
+        Self {
+            registry: Arc::new(RwLock::new(HashMap::new())),
+            state_engine,
+        }
+    }
+
+    /// Register a schema version.
+    pub fn register_schema(&self, metadata: SchemaMetadata) {
+        let gen_name = metadata.current.gen_name.clone();
+        self.registry.write().insert(gen_name, metadata);
+    }
+
+    /// Get schema metadata.
+    pub fn get_schema(&self, gen_name: &str) -> Option<SchemaMetadata> {
+        self.registry.read().get(gen_name).cloned()
+    }
+
+    /// Load document with automatic migration.
+    ///
+    /// This is the main entry point for lazy migration. Documents are
+    /// migrated on read if their schema version is outdated.
+    pub async fn load_with_migration(
+        &self,
+        namespace: &str,
+        id: &str,
+    ) -> Result<DocumentHandle> {
+        // Load document from state engine
+        let doc_id = DocumentId::new(namespace, id);
+        let handle = self.state_engine.get_document(&doc_id).await?;
+
+        // Check schema version
+        let current_version = self.get_document_version(&handle)?;
+        let target_version = self
+            .registry
+            .read()
+            .get(namespace)
+            .map(|m| m.current.version.clone())
+            .ok_or_else(|| {
+                StateError::SchemaNotFound(format!("Schema not found: {}", namespace))
+            })?;
+
+        // Lazy migration if needed
+        if current_version < target_version {
+            self.migrate_document(&handle, current_version, target_version)
+                .await?;
+        }
+
+        Ok(handle)
+    }
+
+    /// Get the schema version from a document.
+    fn get_document_version(&self, handle: &DocumentHandle) -> Result<Version> {
+        handle.read(|doc| {
+            // Read __schema_version from document
+            match doc.get(&ROOT, "__schema_version")? {
+                Some((automerge::Value::Object(obj_type), obj_id)) => {
+                    if *obj_type == automerge::ObjType::Map {
+                        // Extract version string
+                        match doc.get(obj_id, "version")? {
+                            Some((automerge::Value::Scalar(s), _)) => {
+                                if let automerge::ScalarValue::Str(version_str) = s.as_ref() {
+                                    Version::parse(&version_str.to_string()).map_err(|e| {
+                                        StateError::Internal(format!(
+                                            "Failed to parse version: {}",
+                                            e
+                                        ))
+                                    })
+                                } else {
+                                    Err(StateError::Internal(
+                                        "Version is not a string".to_string(),
+                                    ))
+                                }
+                            }
+                            _ => Err(StateError::Internal("Version field not found".to_string())),
+                        }
+                    } else {
+                        Err(StateError::Internal(
+                            "__schema_version is not a map".to_string(),
+                        ))
+                    }
+                }
+                _ => {
+                    // No version found, assume v0.0.0
+                    Ok(Version::new(0, 0, 0))
+                }
+            }
+        })
+    }
+
+    /// Apply migration chain: v1 → v2 → v3.
+    async fn migrate_document(
+        &self,
+        handle: &DocumentHandle,
+        from: Version,
+        to: Version,
+    ) -> Result<()> {
+        let metadata = self
+            .registry
+            .read()
+            .get(&handle.id.namespace)
+            .ok_or_else(|| {
+                StateError::SchemaNotFound(format!("Schema not found: {}", handle.id.namespace))
+            })?
+            .clone();
+
+        // Find migration path
+        let migrations = self.find_migration_path(&metadata.migrations, &from, &to)?;
+
+        // Apply migrations sequentially (deterministic order)
+        for migration in migrations {
+            handle.update(|doc| {
+                // Get document for checking
+                let doc_ref = doc.document();
+
+                // Check if migration can be applied
+                if !migration.can_migrate(doc_ref) {
+                    return Ok(());
+                }
+
+                // Set deterministic actor ID
+                doc.set_actor(migration.metadata().actor_id.clone());
+
+                // Apply migration to a clone, then apply operations
+                let mut am_doc = doc_ref.clone();
+                futures::executor::block_on(migration.migrate(&mut am_doc))?;
+
+                // Get the changes and apply them
+                // This is a workaround for the AutoCommit/Automerge type mismatch
+                // We save and load to apply the migration changes
+                let bytes = am_doc.save();
+                let migrated = Automerge::load(&bytes).map_err(|e| {
+                    crate::error::StateError::Internal(format!("Failed to load migrated document: {:?}", e))
+                })?;
+
+                // Merge the migrated document
+                let mut temp_autocommit = automerge::AutoCommit::load(&bytes).map_err(|e| {
+                    crate::error::StateError::Internal(format!("Failed to create autocommit: {:?}", e))
+                })?;
+                doc.merge(&mut temp_autocommit)?;
+
+                // Update schema version
+                let version_str = migration.to_version().to_string();
+                let schema_obj = doc.put_object(&ROOT, "__schema_version", automerge::ObjType::Map)?;
+                doc.put(&schema_obj, "gen_name", handle.id.namespace.clone())?;
+                doc.put(&schema_obj, "version", version_str)?;
+
+                Ok(())
+            })?;
+        }
+
+        Ok(())
+    }
+
+    /// Find the migration path from one version to another.
+    fn find_migration_path(
+        &self,
+        migrations: &[Arc<dyn Migration>],
+        from: &Version,
+        to: &Version,
+    ) -> Result<Vec<Arc<dyn Migration>>> {
+        let mut path = Vec::new();
+        let mut current = from.clone();
+
+        while &current < to {
+            // Find next migration step
+            let next = migrations
+                .iter()
+                .find(|m| m.from_version() == &current)
+                .ok_or_else(|| {
+                    StateError::Internal(format!(
+                        "No migration found from {} to {}",
+                        current, to
+                    ))
+                })?;
+
+            path.push(Arc::clone(next));
+            current = next.to_version().clone();
+        }
+
+        Ok(path)
+    }
+
+    /// Embed schema version in a new document.
+    pub fn embed_version(&self, doc: &mut Automerge, version: &SchemaVersion) -> Result<()> {
+        let mut tx = doc.transaction();
+
+        let schema_obj = tx.put_object(&ROOT, "__schema_version", automerge::ObjType::Map)?;
+        tx.put(&schema_obj, "gen_name", version.gen_name.clone())?;
+        tx.put(&schema_obj, "version", version.version_string())?;
+        tx.put(
+            &schema_obj,
+            "schema_hash",
+            version.schema_hash.to_vec(),
+        )?;
+
+        tx.commit();
+        Ok(())
+    }
+}
+
+/// Forward-compatible reader for reading documents with unknown fields.
+///
+/// Old peers can read new schemas by ignoring unknown fields.
+pub struct ForwardCompatibleReader {
+    /// Known fields for this version
+    known_fields: HashSet<String>,
+}
+
+impl ForwardCompatibleReader {
+    /// Create a new forward-compatible reader.
+    pub fn new(known_fields: HashSet<String>) -> Self {
+        Self { known_fields }
+    }
+
+    /// Read a document with forward compatibility.
+    ///
+    /// Unknown fields are ignored, allowing old peers to read new schemas.
+    pub fn read_document<T: for<'de> Deserialize<'de>>(
+        &self,
+        doc: &Automerge,
+    ) -> Result<T> {
+        // Read only known fields
+        let mut map = serde_json::Map::new();
+
+        for field in &self.known_fields {
+            if let Ok(Some((value, _))) = doc.get(&ROOT, field) {
+                // Convert Automerge value to serde_json::Value
+                let json_value = automerge_value_to_json(&value);
+                map.insert(field.clone(), json_value);
+            }
+        }
+
+        // Unknown fields are ignored (forward compatibility)
+        serde_json::from_value(serde_json::Value::Object(map)).map_err(|e| {
+            StateError::Internal(format!("Failed to deserialize document: {}", e))
+        })
+    }
+}
+
+/// Convert Automerge value to serde_json::Value.
+fn automerge_value_to_json(value: &automerge::Value<'_>) -> serde_json::Value {
+    match value {
+        automerge::Value::Scalar(s) => match s.as_ref() {
+            automerge::ScalarValue::Bytes(b) => {
+                serde_json::Value::String(base64::encode(b))
+            }
+            automerge::ScalarValue::Str(s) => serde_json::Value::String(s.to_string()),
+            automerge::ScalarValue::Int(i) => serde_json::Value::Number((*i).into()),
+            automerge::ScalarValue::Uint(u) => serde_json::Value::Number((*u).into()),
+            automerge::ScalarValue::F64(f) => {
+                serde_json::Number::from_f64(*f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null)
+            }
+            automerge::ScalarValue::Counter(c) => {
+                serde_json::Value::Number(c.get().into())
+            }
+            automerge::ScalarValue::Timestamp(t) => serde_json::Value::Number((*t).into()),
+            automerge::ScalarValue::Boolean(b) => serde_json::Value::Bool(*b),
+            automerge::ScalarValue::Null => serde_json::Value::Null,
+            _ => serde_json::Value::Null,
+        },
+        automerge::Value::Object(_) => {
+            // For objects, return a placeholder
+            serde_json::Value::Object(serde_json::Map::new())
+        }
+    }
+}
+
+/// Migration conflict resolver.
+///
+/// Resolves conflicts when two peers both migrate the same document
+/// and then sync.
+pub struct MigrationConflictResolver;
+
+impl MigrationConflictResolver {
+    /// Create a new migration conflict resolver.
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Resolve migration conflicts via CRDT semantics.
+    ///
+    /// Since migrations use deterministic actor ID and operations,
+    /// identical migrations produce identical ops → no conflict!
+    pub fn resolve(
+        &self,
+        doc1: &Automerge,
+        doc2: &Automerge,
+    ) -> Result<Automerge> {
+        // Automerge automatically merges CRDT operations
+        let mut merged = doc1.clone();
+        let mut doc2_mut = doc2.clone();
+        merged.merge(&mut doc2_mut).map_err(|e| {
+            StateError::Internal(format!("Failed to merge documents: {:?}", e))
+        })?;
+
+        Ok(merged)
+    }
+
+    /// Verify that two documents have the same schema version.
+    pub fn verify_version(
+        &self,
+        doc1: &Automerge,
+        doc2: &Automerge,
+    ) -> Result<Version> {
+        let version1 = self.extract_version(doc1)?;
+        let version2 = self.extract_version(doc2)?;
+
+        if version1 != version2 {
+            return Err(StateError::Internal(format!(
+                "Version mismatch: {} vs {}",
+                version1, version2
+            )));
+        }
+
+        Ok(version1)
+    }
+
+    /// Extract version from document.
+    fn extract_version(&self, doc: &Automerge) -> Result<Version> {
+        match doc.get(&ROOT, "__schema_version")? {
+            Some((automerge::Value::Object(obj_type), obj_id)) => {
+                if obj_type == automerge::ObjType::Map {
+                    match doc.get(obj_id, "version")? {
+                        Some((automerge::Value::Scalar(s), _)) => {
+                            if let automerge::ScalarValue::Str(version_str) = s.as_ref() {
+                                Version::parse(&version_str.to_string()).map_err(|e| {
+                                    StateError::Internal(format!("Failed to parse version: {}", e))
+                                })
+                            } else {
+                                Err(StateError::Internal("Version is not a string".to_string()))
+                            }
+                        }
+                        _ => Err(StateError::Internal("Version field not found".to_string())),
+                    }
+                } else {
+                    Err(StateError::Internal(
+                        "__schema_version is not a map".to_string(),
+                    ))
+                }
+            }
+            _ => Ok(Version::new(0, 0, 0)),
+        }
+    }
+}
+
+impl Default for MigrationConflictResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Add base64 encoding helper (simple implementation)
+mod base64 {
+    pub fn encode(bytes: &[u8]) -> String {
+        use std::fmt::Write;
+        let mut result = String::new();
+        for byte in bytes {
+            write!(&mut result, "{:02x}", byte).unwrap();
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DocumentId;
+
+    #[test]
+    fn test_schema_version_creation() {
+        let version = SchemaVersion::new(
+            "user.profile".to_string(),
+            Version::new(1, 2, 0),
+            [0u8; 32],
+        );
+
+        assert_eq!(version.gen_name, "user.profile");
+        assert_eq!(version.version, Version::new(1, 2, 0));
+        assert_eq!(version.version_string(), "1.2.0");
+    }
+
+    #[test]
+    fn test_migration_metadata() {
+        let metadata = MigrationMetadata::new(
+            "add_email_field".to_string(),
+            Version::new(1, 0, 0),
+            Version::new(2, 0, 0),
+        );
+
+        assert_eq!(metadata.name, "add_email_field");
+        assert_eq!(metadata.from_version, Version::new(1, 0, 0));
+        assert_eq!(metadata.to_version, Version::new(2, 0, 0));
+        assert_eq!(metadata.actor_id_bytes(), &[0u8; 32]);
+    }
+
+    #[test]
+    fn test_schema_metadata() {
+        let version = SchemaVersion::new(
+            "user.profile".to_string(),
+            Version::new(1, 0, 0),
+            [0u8; 32],
+        );
+        let mut metadata = SchemaMetadata::new(version);
+
+        assert_eq!(metadata.current.version, Version::new(1, 0, 0));
+        assert_eq!(metadata.migrations().len(), 0);
+    }
+
+    #[test]
+    fn test_forward_compatible_reader() {
+        let mut known_fields = HashSet::new();
+        known_fields.insert("name".to_string());
+        known_fields.insert("age".to_string());
+
+        let reader = ForwardCompatibleReader::new(known_fields);
+        assert_eq!(reader.known_fields.len(), 2);
+    }
+
+    #[test]
+    fn test_migration_conflict_resolver() {
+        let resolver = MigrationConflictResolver::new();
+
+        let doc1 = Automerge::new();
+        let doc2 = Automerge::new();
+
+        // Both documents at v0.0.0
+        let version1 = resolver.extract_version(&doc1).unwrap();
+        let version2 = resolver.extract_version(&doc2).unwrap();
+
+        assert_eq!(version1, Version::new(0, 0, 0));
+        assert_eq!(version2, Version::new(0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn test_evolution_engine_creation() {
+        let state_engine = Arc::new(StateEngine::new().await.unwrap());
+        let evolution_engine = EvolutionEngine::new(state_engine);
+
+        assert_eq!(evolution_engine.registry.read().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_register_schema() {
+        let state_engine = Arc::new(StateEngine::new().await.unwrap());
+        let evolution_engine = EvolutionEngine::new(state_engine);
+
+        let version = SchemaVersion::new(
+            "user.profile".to_string(),
+            Version::new(1, 0, 0),
+            [0u8; 32],
+        );
+        let metadata = SchemaMetadata::new(version);
+
+        evolution_engine.register_schema(metadata);
+
+        let retrieved = evolution_engine.get_schema("user.profile").unwrap();
+        assert_eq!(retrieved.current.version, Version::new(1, 0, 0));
+    }
+}

@@ -1,0 +1,13 @@
+✅ TASK t0.1 COMPLETE
+
+Technology Evaluation Matrix delivered.
+
+Decision: Automerge 3.0 (92/100 score)
+Deliverables: 28 files
+Documentation: 1,348 lines
+Code: ~30KB across 4 implementations
+
+Start here: docs/research/crdt-evaluation-matrix.md
+
+Team: researcher-crdt-frontier + coder-automerge
+Date: 2026-02-05

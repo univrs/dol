@@ -1,0 +1,30 @@
+{
+  "name": "storage-benchmark",
+  "version": "1.0.0",
+  "description": "Browser storage benchmarks for VUDO Runtime local-first mode",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test:write": "node --experimental-modules src/benchmarks/run-write-benchmark.js",
+    "test:read": "node --experimental-modules src/benchmarks/run-read-benchmark.js",
+    "test:automerge": "node --experimental-modules src/benchmarks/run-automerge-benchmark.js",
+    "test:multi-tab": "node --experimental-modules src/benchmarks/run-multi-tab-benchmark.js",
+    "test:persistence": "node --experimental-modules src/benchmarks/run-persistence-benchmark.js",
+    "test:quota": "node --experimental-modules src/benchmarks/run-quota-benchmark.js",
+    "test:all": "npm run test:write && npm run test:read && npm run test:automerge && npm run test:multi-tab && npm run test:persistence && npm run test:quota"
+  },
+  "dependencies": {
+    "@automerge/automerge": "^2.1.10",
+    "@automerge/automerge-wasm": "^0.9.0",
+    "sql.js": "^1.10.3",
+    "@sqlite.org/sqlite-wasm": "^3.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "vitest": "^1.2.1"
+  }
+}

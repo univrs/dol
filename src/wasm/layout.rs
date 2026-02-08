@@ -941,6 +941,8 @@ mod tests {
             type_: TypeExpr::Named(type_name.to_string()),
             default: None,
             constraint: None,
+            crdt_annotation: None,
+            personal: false,
             span: Span::default(),
         }))
     }
@@ -1127,6 +1129,8 @@ mod tests {
                     type_: TypeExpr::Named("&Node".to_string()),
                     default: None,
                     constraint: None,
+                    crdt_annotation: None,
+                    personal: false,
                     span: Span::default(),
                 })),
             ],

@@ -1,0 +1,109 @@
+// Example 13: Complete Chat Application
+// Full-featured chat with rooms, messages, and reactions
+
+gen ChatRoom {
+    @crdt(immutable)
+    has room_id: string
+
+    @crdt(lww)
+    has name: string
+
+    @crdt(rga)
+    has messages: Vec<ChatMessage>
+
+    @crdt(or_set)
+    has members: Set<string>
+
+    @crdt(or_set)
+    has moderators: Set<string>
+
+    @crdt(lww)
+    has created_at: Int
+
+    @crdt(lww)
+    has settings: RoomSettings
+
+    fun add_message(msg: ChatMessage) {
+        this.messages.push(msg)
+    }
+
+    fun add_member(user_id: string) {
+        this.members.insert(user_id)
+    }
+
+    fun promote_moderator(user_id: string) -> Result<Void, string> {
+        if !this.members.contains(user_id) {
+            return Err("User not in room")
+        }
+        this.moderators.insert(user_id)
+        return Ok(Void)
+    }
+}
+
+gen ChatMessage {
+    @crdt(immutable)
+    has message_id: string
+
+    @crdt(immutable)
+    has author_id: string
+
+    @crdt(peritext, formatting="full")
+    has content: string
+
+    @crdt(or_set)
+    has reactions: Set<Reaction>
+
+    @crdt(lww)
+    has timestamp: Int
+
+    @crdt(lww)
+    has edited: Bool = false
+
+    @crdt(lww)
+    has deleted: Bool = false
+
+    fun add_reaction(emoji: string, user_id: string) {
+        this.reactions.insert(Reaction {
+            emoji: emoji,
+            user_id: user_id
+        })
+    }
+
+    fun edit(new_content: string) {
+        this.content = new_content
+        this.edited = true
+    }
+
+    fun delete() {
+        this.content = "[deleted]"
+        this.deleted = true
+    }
+}
+
+gen Reaction {
+    has emoji: string
+    has user_id: string
+}
+
+gen RoomSettings {
+    has max_members: Int = 100
+    has allow_files: Bool = true
+    has allow_reactions: Bool = true
+    has message_retention_days: Int = 30
+}
+
+docs {
+    Complete chat application demonstrating:
+    - Room management with member/moderator roles
+    - Peritext for collaborative message editing
+    - Reactions with OR-Set for add-wins
+    - Message deletion and editing
+    - Configurable room settings
+
+    CRDT strategies:
+    - room_id, message_id, author_id: immutable (identity)
+    - name, settings, timestamps: lww (simple updates)
+    - messages: rga (ordered chronologically)
+    - members, moderators, reactions: or_set (add-wins)
+    - content: peritext (collaborative editing)
+}

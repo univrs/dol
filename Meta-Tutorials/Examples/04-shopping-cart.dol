@@ -1,0 +1,46 @@
+// Example 04: Shopping Cart
+// Demonstrates OR-Set for collection management
+
+gen ShoppingCart {
+    @crdt(immutable)
+    has cart_id: string
+
+    @crdt(immutable)
+    has user_id: string
+
+    @crdt(or_set)
+    has items: Set<CartItem>
+
+    @crdt(lww)
+    has total: Float64
+
+    fun add_item(item: CartItem) {
+        this.items.insert(item)
+        this.recalculate_total()
+    }
+
+    fun remove_item(item: CartItem) {
+        this.items.remove(item)
+        this.recalculate_total()
+    }
+
+    fun recalculate_total() {
+        let sum = 0.0
+        for item in this.items {
+            sum = sum + item.subtotal
+        }
+        this.total = sum
+    }
+}
+
+gen CartItem {
+    has product_id: string
+    has quantity: Int where quantity > 0
+    has unit_price: Float64
+    has subtotal: Float64
+}
+
+docs {
+    Shopping cart using OR-Set for add-wins semantics.
+    Items added concurrently on different devices both appear.
+}

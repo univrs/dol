@@ -14,11 +14,11 @@ spirit HttpService {
     has lib: "src/lib.dol"
     has bin: "src/main.dol"
 
-    constraint valid_port {
+    rule valid_port {
         this.default_port > 0 && this.default_port < 65536
     }
 
-    exegesis {
+    docs {
         HTTP service framework for building web APIs.
         Demonstrates Spirit dependencies and constraints.
     }

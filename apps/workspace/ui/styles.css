@@ -1,0 +1,899 @@
+/* ============================================================================
+   VUDO Workspace - UI Stylesheet
+   Local-First Collaborative Workspace Design System
+   ============================================================================ */
+
+:root {
+    /* Color Palette */
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --secondary: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --success: #10b981;
+
+    /* Neutral Colors */
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+
+    /* Status Colors */
+    --online: #10b981;
+    --offline: #6b7280;
+    --away: #f59e0b;
+    --busy: #ef4444;
+
+    /* Spacing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+
+    /* Typography */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+/* ============================================================================
+   Base Styles
+   ============================================================================ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--gray-900);
+    background: var(--gray-50);
+}
+
+/* ============================================================================
+   Header & Navigation
+   ============================================================================ */
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md) var(--space-xl);
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+    box-shadow: var(--shadow-sm);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xl);
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.logo-icon {
+    font-size: 1.5rem;
+}
+
+.main-nav {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.nav-link {
+    padding: var(--space-sm) var(--space-md);
+    text-decoration: none;
+    color: var(--gray-700);
+    border-radius: 0.375rem;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.nav-link:hover {
+    background: var(--gray-100);
+    color: var(--primary);
+}
+
+.nav-link.active {
+    background: var(--primary);
+    color: white;
+}
+
+.credit-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    background: var(--success);
+    color: white;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: var(--space-xs);
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+/* ============================================================================
+   Sync Status Indicator
+   ============================================================================ */
+
+.sync-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: 0.5rem;
+    background: var(--gray-100);
+}
+
+.sync-status.online {
+    background: #d1fae5;
+}
+
+.sync-status.offline {
+    background: var(--gray-200);
+}
+
+.status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gray-500);
+}
+
+.sync-status.online .status-dot {
+    background: var(--online);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    font-size: 0.875rem;
+    color: var(--gray-700);
+}
+
+/* ============================================================================
+   User Menu
+   ============================================================================ */
+
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    padding: var(--space-sm);
+    border-radius: 0.5rem;
+    transition: background 0.2s;
+}
+
+.user-menu:hover {
+    background: var(--gray-100);
+}
+
+.user-avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    border: 2px solid var(--primary);
+}
+
+.user-name {
+    font-weight: 500;
+    color: var(--gray-900);
+}
+
+/* ============================================================================
+   Layout
+   ============================================================================ */
+
+.app-container {
+    display: flex;
+    height: calc(100vh - 4rem);
+}
+
+.sidebar {
+    width: 16rem;
+    background: white;
+    border-right: 1px solid var(--gray-200);
+    padding: var(--space-lg);
+    overflow-y: auto;
+}
+
+.sidebar-section {
+    margin-bottom: var(--space-xl);
+}
+
+.sidebar-section h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-md);
+}
+
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-xl);
+}
+
+/* ============================================================================
+   Document Editor
+   ============================================================================ */
+
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 0.5rem 0.5rem 0 0;
+    border-bottom: none;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 1.5rem;
+    background: var(--gray-200);
+}
+
+.editor-container {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 0 0 0.5rem 0.5rem;
+    box-shadow: var(--shadow-md);
+}
+
+.editor-title {
+    padding: var(--space-xl) var(--space-xl) 0;
+}
+
+.title-input {
+    width: 100%;
+    border: none;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    outline: none;
+}
+
+.editor-content {
+    padding: var(--space-xl);
+    min-height: 30rem;
+    outline: none;
+}
+
+.editor-content h1 {
+    font-size: 2rem;
+    margin-bottom: var(--space-md);
+}
+
+.editor-content h2 {
+    font-size: 1.5rem;
+    margin: var(--space-lg) 0 var(--space-md);
+}
+
+.editor-content p {
+    margin-bottom: var(--space-md);
+}
+
+.editor-content ul {
+    margin-left: var(--space-xl);
+    margin-bottom: var(--space-md);
+}
+
+/* User Cursor Indicators (Peritext CRDT Feature) */
+.user-cursor {
+    position: relative;
+    border-left: 2px solid;
+    margin-left: 2px;
+    animation: blink 1s infinite;
+}
+
+.cursor-caret {
+    position: absolute;
+    top: -0.25rem;
+    left: -0.375rem;
+    width: 0.75rem;
+    height: 0.75rem;
+    background: inherit;
+    border-radius: 50%;
+}
+
+.cursor-label {
+    position: absolute;
+    top: -1.75rem;
+    left: 0;
+    background: inherit;
+    color: white;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+@keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+.collaborators-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-xl);
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+.collaborators-label {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+}
+
+.collaborator-avatars {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.collaborator-avatar {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================================
+   Kanban Task Board
+   ============================================================================ */
+
+.board-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.board-header h2 {
+    font-size: 1.5rem;
+    color: var(--gray-900);
+}
+
+.board-actions {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.kanban-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: var(--space-lg);
+}
+
+.kanban-column {
+    background: var(--gray-100);
+    border-radius: 0.5rem;
+    padding: var(--space-md);
+    min-height: 30rem;
+}
+
+.column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 2px solid var(--gray-300);
+}
+
+.column-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.task-count {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+}
+
+.wip-limit {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background: var(--warning);
+    color: white;
+    border-radius: 0.25rem;
+    font-weight: 600;
+}
+
+.column-tasks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.task-card {
+    background: white;
+    border-radius: 0.5rem;
+    padding: var(--space-md);
+    box-shadow: var(--shadow-sm);
+    cursor: move;
+    transition: all 0.2s;
+}
+
+.task-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.task-card.completed {
+    opacity: 0.7;
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+}
+
+.task-priority {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+}
+
+.task-priority.high {
+    background: #fee2e2;
+    color: var(--danger);
+}
+
+.task-priority.medium {
+    background: #fef3c7;
+    color: var(--warning);
+}
+
+.task-priority.low {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.task-id {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    font-family: var(--font-mono);
+}
+
+.task-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: var(--space-sm);
+}
+
+.task-description {
+    font-size: 0.875rem;
+    color: var(--gray-700);
+    margin-bottom: var(--space-md);
+}
+
+.task-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.task-assignee {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.875rem;
+}
+
+.task-assignee img {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+}
+
+.task-assignee.unassigned {
+    color: var(--gray-500);
+}
+
+.task-labels {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.label {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    background: var(--gray-200);
+    color: var(--gray-700);
+    border-radius: 0.25rem;
+}
+
+.task-completed {
+    font-size: 0.75rem;
+    color: var(--success);
+}
+
+/* ============================================================================
+   User Profile & Credit
+   ============================================================================ */
+
+.profile-container {
+    max-width: 60rem;
+    margin: 0 auto;
+}
+
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-xl);
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-md);
+    margin-bottom: var(--space-xl);
+}
+
+.profile-avatar {
+    width: 7.5rem;
+    height: 7.5rem;
+    border-radius: 50%;
+    border: 4px solid var(--primary);
+}
+
+.profile-info {
+    flex: 1;
+}
+
+.profile-info h2 {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-xs);
+}
+
+.profile-did {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+    font-family: var(--font-mono);
+    margin-bottom: var(--space-sm);
+}
+
+.profile-bio {
+    color: var(--gray-700);
+}
+
+.profile-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-lg);
+    margin-bottom: var(--space-xl);
+}
+
+.stat-card {
+    padding: var(--space-lg);
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-md);
+    text-align: center;
+}
+
+.stat-card h3 {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+    margin-bottom: var(--space-sm);
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+/* ============================================================================
+   Mutual Credit System
+   ============================================================================ */
+
+.credit-section {
+    background: white;
+    border-radius: 0.5rem;
+    padding: var(--space-xl);
+    box-shadow: var(--shadow-md);
+}
+
+.credit-section h3 {
+    font-size: 1.25rem;
+    margin-bottom: var(--space-lg);
+}
+
+.credit-section h4 {
+    font-size: 1rem;
+    margin: var(--space-xl) 0 var(--space-md);
+    color: var(--gray-700);
+}
+
+.credit-balance-card {
+    padding: var(--space-lg);
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-radius: 0.5rem;
+    color: white;
+    margin-bottom: var(--space-xl);
+}
+
+.balance-amount {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: var(--space-lg);
+}
+
+.balance-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.balance-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+}
+
+.balance-item .positive {
+    color: #6ee7b7;
+}
+
+.balance-item .negative {
+    color: #fca5a5;
+}
+
+.transaction-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.transaction-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--gray-50);
+    border-radius: 0.5rem;
+}
+
+.transaction-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.transaction-peer {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.transaction-desc {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+}
+
+.transaction-amount {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.transaction-amount.positive {
+    color: var(--success);
+}
+
+.transaction-amount.negative {
+    color: var(--danger);
+}
+
+.transaction-time {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+.trust-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.trust-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--gray-50);
+    border-radius: 0.5rem;
+}
+
+.trust-item img {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+}
+
+.trust-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.trust-name {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.trust-limit {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+}
+
+.trust-transactions {
+    font-size: 0.875rem;
+    color: var(--success);
+}
+
+/* ============================================================================
+   Buttons
+   ============================================================================ */
+
+.btn {
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--gray-300);
+    border-radius: 0.375rem;
+    background: white;
+    color: var(--gray-700);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-400);
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+    border-color: var(--primary-dark);
+}
+
+.btn-icon {
+    padding: var(--space-sm);
+    width: 2.5rem;
+}
+
+/* ============================================================================
+   Views & Utility Classes
+   ============================================================================ */
+
+.view {
+    display: none;
+}
+
+.view.active {
+    display: block;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ============================================================================
+   Toasts & Notifications
+   ============================================================================ */
+
+.toast {
+    position: fixed;
+    bottom: var(--space-xl);
+    right: var(--space-xl);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-lg);
+    animation: slideIn 0.3s;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast-icon {
+    font-size: 1.25rem;
+}
+
+.toast-message {
+    font-size: 0.875rem;
+    color: var(--gray-900);
+}
+
+.offline-banner {
+    position: fixed;
+    top: 4rem;
+    left: 0;
+    right: 0;
+    padding: var(--space-sm);
+    background: var(--warning);
+    color: white;
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================================
+   Responsive Design
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .sidebar {
+        display: none;
+    }
+
+    .kanban-board {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-header {
+        flex-direction: column;
+        text-align: center;
+    }
+}

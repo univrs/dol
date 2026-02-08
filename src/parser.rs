@@ -1247,6 +1247,32 @@ impl<'a> Parser<'a> {
             });
         }
 
+        // Handle annotations before field declarations: @crdt(strategy), @personal
+        // Multiple annotations can appear in any order
+        let mut crdt_annotation = None;
+        let mut personal = false;
+
+        while self.current.kind == TokenKind::At {
+            if self.peek().kind == TokenKind::Identifier {
+                match self.peek().lexeme.as_str() {
+                    "crdt" => {
+                        crdt_annotation = Some(self.parse_crdt_annotation()?);
+                    }
+                    "personal" => {
+                        self.advance(); // consume @
+                        self.advance(); // consume 'personal'
+                        personal = true;
+                    }
+                    _ => {
+                        // Unknown annotation, stop parsing annotations
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
         // Handle DOL 2.0 'has' field declarations: has name: Type [= default]
         if self.current.kind == TokenKind::Has {
             self.advance();
@@ -1262,11 +1288,20 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
+                // Parse optional constraint: where expr
+                let constraint = if self.current.kind == TokenKind::Where {
+                    self.advance();
+                    Some(self.parse_expr(0)?)
+                } else {
+                    None
+                };
                 return Ok(Statement::HasField(Box::new(HasField {
                     name,
                     type_,
                     default,
-                    constraint: None,
+                    constraint,
+                    crdt_annotation,
+                    personal,
                     span: start_span.merge(&self.previous.span),
                 })));
             } else {
@@ -1274,6 +1309,13 @@ impl<'a> Parser<'a> {
                 if self.current.kind == TokenKind::Equal {
                     self.advance();
                     self.parse_expr(0)?;
+                }
+                // If CRDT annotation was present but not used, warn
+                if crdt_annotation.is_some() {
+                    eprintln!(
+                        "warning: CRDT annotation on untyped field '{}' at line {}, column {}",
+                        name, start_span.line, start_span.column
+                    );
                 }
                 return Ok(Statement::Has {
                     subject: "self".to_string(),
@@ -1420,11 +1462,20 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
+                    // Parse optional constraint: where expr
+                    let constraint = if self.current.kind == TokenKind::Where {
+                        self.advance();
+                        Some(self.parse_expr(0)?)
+                    } else {
+                        None
+                    };
                     Ok(Statement::HasField(Box::new(HasField {
                         name: property,
                         type_,
                         default,
-                        constraint: None,
+                        constraint,
+                        crdt_annotation,
+                        personal,
                         span: start_span.merge(&self.previous.span),
                     })))
                 } else {
@@ -1507,6 +1558,8 @@ impl<'a> Parser<'a> {
                     type_,
                     default,
                     constraint: None,
+                    crdt_annotation: None,
+                    personal: false,
                     span: start_span.merge(&self.previous.span),
                 })))
             }
@@ -1795,6 +1848,81 @@ impl<'a> Parser<'a> {
             type_,
             default,
             constraint,
+            crdt_annotation: None,
+            personal: false,
+            span: start_span.merge(&self.previous.span),
+        })
+    }
+
+    /// Parses a CRDT annotation.
+    ///
+    /// Syntax: @crdt(strategy[, option1=value1, option2=value2, ...])
+    ///
+    /// # Returns
+    ///
+    /// The parsed `CrdtAnnotation` on success, or a `ParseError` on failure.
+    ///
+    /// # Example
+    ///
+    /// ```dol
+    /// @crdt(immutable)
+    /// @crdt(lww, tie_break="actor_id")
+    /// @crdt(pn_counter, min_value=0, max_value=100)
+    /// ```
+    pub fn parse_crdt_annotation(&mut self) -> Result<CrdtAnnotation, ParseError> {
+        let start_span = self.current.span;
+
+        // Expect @ symbol
+        self.expect(TokenKind::At)?;
+
+        // Expect "crdt" identifier
+        let crdt_kw = self.expect_identifier()?;
+        if crdt_kw != "crdt" {
+            return Err(ParseError::UnexpectedToken {
+                expected: "crdt".to_string(),
+                found: crdt_kw,
+                span: self.previous.span,
+            });
+        }
+
+        // Expect opening parenthesis
+        self.expect(TokenKind::LeftParen)?;
+
+        // Parse strategy
+        let strategy_str = self.expect_identifier()?;
+        let strategy = CrdtStrategy::parse_strategy(&strategy_str).ok_or_else(|| {
+            ParseError::InvalidCrdtStrategy {
+                strategy: strategy_str.clone(),
+                span: self.previous.span,
+            }
+        })?;
+
+        // Parse optional options
+        let mut options = Vec::new();
+        while self.current.kind == TokenKind::Comma {
+            self.advance(); // consume comma
+
+            let option_start = self.current.span;
+            let key = self.expect_identifier()?;
+
+            self.expect(TokenKind::Equal)?;
+
+            // Parse value expression
+            let value = self.parse_expr(0)?;
+
+            options.push(CrdtOption {
+                key,
+                value,
+                span: option_start.merge(&self.previous.span),
+            });
+        }
+
+        // Expect closing parenthesis
+        self.expect(TokenKind::RightParen)?;
+
+        Ok(CrdtAnnotation {
+            strategy,
+            options,
             span: start_span.merge(&self.previous.span),
         })
     }
@@ -2191,6 +2319,14 @@ impl<'a> Parser<'a> {
             if let Some((left_bp, _right_bp)) = infix_binding_power(&self.current.kind) {
                 if self.current.kind == TokenKind::Dot {
                     // Already handled above
+                    break;
+                }
+                // Special case: @ followed by annotation keywords should not be treated as an operator
+                if self.current.kind == TokenKind::At
+                    && self.peek().kind == TokenKind::Identifier
+                    && matches!(self.peek().lexeme.as_str(), "crdt" | "personal")
+                {
+                    // This is an annotation, not an Apply operator
                     break;
                 }
                 if left_bp < min_bp {

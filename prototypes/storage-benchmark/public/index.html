@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VUDO Runtime Storage Benchmark Suite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .browser-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.secondary:hover {
+            background: #545b62;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 4px;
+            max-height: 600px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .log-line {
+            margin-bottom: 5px;
+        }
+
+        .log-line.error {
+            color: #f48771;
+        }
+
+        .log-line.success {
+            color: #89d185;
+        }
+
+        .log-line.info {
+            color: #4ec9b0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        .results-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+
+        .metric-card h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .metric-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .adapter-selector {
+            margin-bottom: 20px;
+        }
+
+        .adapter-selector label {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 20px;
+            cursor: pointer;
+        }
+
+        .adapter-selector input {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VUDO Runtime Storage Benchmark Suite</h1>
+        <div class="subtitle">Comprehensive evaluation of browser storage options for local-first mode</div>
+
+        <div class="browser-info" id="browser-info">
+            Loading browser information...
+        </div>
+
+        <div class="adapter-selector">
+            <strong>Select Adapters to Test:</strong><br><br>
+            <label>
+                <input type="checkbox" id="adapter-indexeddb" value="indexeddb" checked>
+                IndexedDB
+            </label>
+            <label>
+                <input type="checkbox" id="adapter-opfs" value="opfs-sqlite">
+                OPFS + SQLite WASM
+            </label>
+            <label>
+                <input type="checkbox" id="adapter-crsqlite" value="cr-sqlite">
+                cr-sqlite (CRDT)
+            </label>
+        </div>
+
+        <div class="controls">
+            <button id="run-all">Run All Benchmarks</button>
+            <button id="run-write" class="secondary">Write Only</button>
+            <button id="run-read" class="secondary">Read Only</button>
+            <button id="run-automerge" class="secondary">Automerge Only</button>
+            <button id="export-json" class="secondary">Export JSON</button>
+            <button id="export-csv" class="secondary">Export CSV</button>
+            <button id="clear-log" class="secondary">Clear Log</button>
+        </div>
+
+        <div class="progress-bar" id="progress-container" style="display: none;">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+
+        <div class="results-summary" id="results-summary" style="display: none;">
+            <div class="metric-card">
+                <h3>Tests Run</h3>
+                <div class="value" id="metric-tests">0</div>
+            </div>
+            <div class="metric-card">
+                <h3>Avg Throughput</h3>
+                <div class="value" id="metric-throughput">0 ops/s</div>
+            </div>
+            <div class="metric-card">
+                <h3>Total Time</h3>
+                <div class="value" id="metric-time">0s</div>
+            </div>
+            <div class="metric-card">
+                <h3>Error Rate</h3>
+                <div class="value" id="metric-errors">0%</div>
+            </div>
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-line info">Ready to run benchmarks. Click "Run All Benchmarks" to start.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { runCompleteBenchmarkSuite, exportResults, globalMetrics, getBrowserInfo } from '../src/index.js';
+
+        // Display browser info
+        const browserInfo = getBrowserInfo();
+        document.getElementById('browser-info').innerHTML = `
+            <strong>Browser:</strong> ${browserInfo.name} ${browserInfo.version} |
+            <strong>Platform:</strong> ${browserInfo.platform} |
+            <strong>Date:</strong> ${new Date().toISOString()}
+        `;
+
+        // Log interceptor
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        function addLogLine(message, type = 'info') {
+            const log = document.getElementById('log');
+            const line = document.createElement('div');
+            line.className = `log-line ${type}`;
+            line.textContent = message;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        console.log = (...args) => {
+            originalLog(...args);
+            addLogLine(args.join(' '), 'info');
+        };
+
+        console.error = (...args) => {
+            originalError(...args);
+            addLogLine(args.join(' '), 'error');
+        };
+
+        // Get selected adapters
+        function getSelectedAdapters() {
+            const adapters = [];
+            if (document.getElementById('adapter-indexeddb').checked) adapters.push('indexeddb');
+            if (document.getElementById('adapter-opfs').checked) adapters.push('opfs-sqlite');
+            if (document.getElementById('adapter-crsqlite').checked) adapters.push('cr-sqlite');
+            return adapters;
+        }
+
+        // Run all benchmarks
+        document.getElementById('run-all').addEventListener('click', async () => {
+            const adapters = getSelectedAdapters();
+            if (adapters.length === 0) {
+                alert('Please select at least one adapter to test.');
+                return;
+            }
+
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('progress-container').style.display = 'block';
+            document.getElementById('results-summary').style.display = 'none';
+
+            try {
+                await runCompleteBenchmarkSuite({ adapters });
+                updateResultsSummary();
+            } catch (error) {
+                console.error('Benchmark error:', error);
+            }
+
+            document.getElementById('progress-container').style.display = 'none';
+        });
+
+        // Individual benchmark runs
+        document.getElementById('run-write').addEventListener('click', async () => {
+            const adapters = getSelectedAdapters();
+            await runCompleteBenchmarkSuite({ adapters, scenarios: ['write'] });
+            updateResultsSummary();
+        });
+
+        document.getElementById('run-read').addEventListener('click', async () => {
+            const adapters = getSelectedAdapters();
+            await runCompleteBenchmarkSuite({ adapters, scenarios: ['read'] });
+            updateResultsSummary();
+        });
+
+        document.getElementById('run-automerge').addEventListener('click', async () => {
+            const adapters = getSelectedAdapters();
+            await runCompleteBenchmarkSuite({ adapters, scenarios: ['automerge'] });
+            updateResultsSummary();
+        });
+
+        // Export functions
+        document.getElementById('export-json').addEventListener('click', async () => {
+            const data = globalMetrics.exportToJSON();
+            downloadFile(data, `benchmark-results-${Date.now()}.json`, 'application/json');
+        });
+
+        document.getElementById('export-csv').addEventListener('click', async () => {
+            const data = globalMetrics.exportToCSV();
+            downloadFile(data, `benchmark-results-${Date.now()}.csv`, 'text/csv');
+        });
+
+        // Clear log
+        document.getElementById('clear-log').addEventListener('click', () => {
+            document.getElementById('log').innerHTML = '<div class="log-line info">Log cleared.</div>';
+        });
+
+        // Helper: Download file
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            console.log(`Downloaded ${filename}`);
+        }
+
+        // Update results summary
+        function updateResultsSummary() {
+            const results = globalMetrics.getResults();
+            if (results.length === 0) return;
+
+            const totalTests = results.length;
+            const totalTime = results.reduce((sum, r) => sum + r.metrics.totalTime, 0) / 1000;
+            const avgThroughput = results.reduce((sum, r) => sum + r.metrics.throughput, 0) / results.length;
+            const totalErrors = results.reduce((sum, r) => sum + (r.errors?.length || 0), 0);
+            const errorRate = (totalErrors / results.reduce((sum, r) => sum + r.datasetSize, 0)) * 100;
+
+            document.getElementById('metric-tests').textContent = totalTests;
+            document.getElementById('metric-throughput').textContent = `${avgThroughput.toFixed(2)} ops/s`;
+            document.getElementById('metric-time').textContent = `${totalTime.toFixed(2)}s`;
+            document.getElementById('metric-errors').textContent = `${errorRate.toFixed(2)}%`;
+
+            document.getElementById('results-summary').style.display = 'grid';
+        }
+    </script>
+</body>
+</html>

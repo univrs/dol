@@ -276,7 +276,7 @@ pub gen CrossoverMethod {
     type: enum {
         SinglePoint,                // Cut at one point
         TwoPoint,                   // Cut at two points
-        Uniform { mix_ratio: f64 }, // Random per-gene mixing
+        Uniform { mix_ratio: f64 }, // Random per-gen mixing
         Blend { alpha: f64 },       // BLX-alpha blending
         SimulatedBinary { eta: f64 } // SBX crossover
     }
@@ -400,7 +400,7 @@ pub gen UniformCrossover {
     }
 
     docs {
-        Uniform crossover - each gene randomly chosen from either parent.
+        Uniform crossover - each gen randomly chosen from either parent.
     }
 }
 
@@ -1167,7 +1167,7 @@ docs {
 
     Crossover Methods:
     - Single/Two Point: Cut and swap segments
-    - Uniform: Random per-gene mixing
+    - Uniform: Random per-gen mixing
     - Blend (BLX-α): Extended range interpolation
     - Simulated Binary (SBX): Real-coded crossover
 

@@ -45,7 +45,7 @@ docs {
     - n: Principal quantum number (shell)
     - l: Angular momentum quantum number (subshell: s=0, p=1, d=2, f=3)
     - ml: Magnetic quantum number (-l to +l)
-    - orbital_type: String representation (1s, 2p, 3d, etc.)
+    - orbital_type: string representation (1s, 2p, 3d, etc.)
     - energy: Orbital energy (eV)
     - electrons: Number of electrons in orbital (0, 1, or 2)
 }

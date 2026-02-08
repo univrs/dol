@@ -1,0 +1,1489 @@
+# ============================================================================
+
+# 🌊 UNIVRS.IO LOCAL-FIRST IMPLEMENTATION
+
+# Claude-Flow@v3alpha Hive-Mind Swarm Orchestration Object
+
+# ============================================================================
+
+# Project:  Univrs.io Local-First P2P Architecture
+
+# Codename: MYCELIUM-SYNC
+
+# Version:  1.0.0
+
+# Author:   Univrs.io Core Team
+
+# Date:     2026-02-05
+
+# Stack:    DOL 2.0 → Rust → WASM + Automerge CRDTs + Iroh P2P
+
+# ============================================================================
+
+#
+
+# Usage:
+
+# npx claude-flow@v3alpha hive-mind spawn "MYCELIUM-SYNC" \
+
+# -config ./univrs-local-first-swarm.yaml \
+
+# -queen-type strategic \
+
+# -consensus byzantine \
+
+# -auto-scale
+
+#
+
+# ============================================================================
+
+meta:
+project: univrs-local-first
+codename: MYCELIUM-SYNC
+description: >
+Implement the Local-First software paradigm into Univrs.io P2P Clusters
+and VUDO Runtime Applications via the DOL → WASM compilation pipeline.
+Extends DOL 2.0 with native CRDT annotations, compiles ontology-driven
+conflict resolution into WASM modules, and integrates Iroh/Willow P2P
+networking for sovereign, offline-first application architecture.
+repository: https://github.com/univrs
+docs: https://book.univrs.io
+version: 1.0.0
+created: "2026-02-05T00:00:00Z"
+target_completion: "2027-08-01T00:00:00Z"
+
+# ============================================================================
+
+# 🐝 SWARM CONFIGURATION
+
+# ============================================================================
+
+swarm:
+name: mycelium-sync-hive
+topology: hierarchical    # Queen → Cluster Leads → Workers
+max_agents: 20
+auto_scale: true
+min_agents: 5
+max_agents_per_cluster: 8
+
+consensus:
+default: raft
+critical_tasks: byzantine   # BFT for credit system & crypto ops
+research_tasks: gossip      # Gossip for exploration/research
+byzantine_config:
+  min_nodes: 4              # 3f+1 where f=1 (tolerates 1 Byzantine node)
+  quorum: 3                 # 2f+1 required for agreement
+  timeout_ms: 5000          # BFT round timeout
+
+memory:
+backend: agentdb
+namespace: univrs/local-first
+retention: 90d
+shared_context: true
+reasoning_bank: true
+persistence: sqlite
+path: .swarm/mycelium-sync.db
+
+coordination:
+pattern: write-first        # All agents write context before acting
+handoff_protocol: structured
+checkpoint_interval: 30m
+progress_reporting: true
+
+# ============================================================================
+
+# 👑 AGENT ROSTER
+
+# ============================================================================
+
+agents:
+
+queen:
+id: queen-mycelium
+role: queen-coordinator
+type: strategic
+description: >
+Strategic coordinator for the entire MYCELIUM-SYNC implementation.
+Manages phase transitions, resolves cross-cluster dependencies,
+allocates resources via mutual credit principles, and ensures
+architectural coherence across all workstreams.
+capabilities:
+- phase_management
+- dependency_resolution
+- resource_allocation
+- architectural_review
+- risk_assessment
+memory_namespace: coordination/queen
+
+architects:
+- id: arch-dol-crdt
+role: architect
+specialization: DOL 2.0 Language Design + CRDT Theory
+description: >
+Designs the CRDT annotation extensions to DOL 2.0 syntax.
+Maps Gen/Trait/Constraint/System/Evolution constructs to
+CRDT semantics. Defines the formal type theory for
+ontology-driven conflict resolution.
+skills:
+- dol_language_design
+- crdt_theory
+- type_systems
+- formal_verification
+
+```
+- id: arch-p2p-network
+  role: architect
+  specialization: P2P Networking + Sync Protocols
+  description: >
+    Designs the P2P networking layer integrating Iroh and Willow
+    Protocol into VUDO Runtime. Architects peer discovery, NAT
+    traversal, relay fallback, and privacy-preserving sync via
+    PlanetServe integration.
+  skills:
+    - p2p_networking
+    - protocol_design
+    - iroh_internals
+    - willow_protocol
+    - planetserve_sida
+
+- id: arch-wasm-runtime
+  role: architect
+  specialization: WASM Compilation + Runtime Architecture
+  description: >
+    Architects the DOL → Rust → WASM compilation pipeline.
+    Designs WASM Component Model integration for modular Gene
+    composition. Defines storage layer (OPFS/SQLite/cr-sqlite)
+    and runtime lifecycle management.
+  skills:
+    - wasm_component_model
+    - rust_compilation
+    - browser_apis
+    - storage_engines
+    - tauri_framework
+```
+
+coders:
+- id: coder-dol-parser
+role: coder
+specialization: DOL Parser + CRDT Codegen
+description: >
+Implements dol-parse extensions for @crdt annotations,
+dol-check validation rules for CRDT consistency, and
+dol-codegen-rust backend producing Automerge-backed
+Rust structs from DOL Gen definitions.
+
+```
+- id: coder-automerge
+  role: coder
+  specialization: Automerge 3.0 Integration
+  description: >
+    Implements the Automerge 3.0 integration layer. Builds
+    the CRDT state management core, sync protocol adapters,
+    and WASM bindings (wasm-bindgen). Handles document
+    serialization, delta compression, and merge operations.
+
+- id: coder-iroh-p2p
+  role: coder
+  specialization: Iroh P2P + Willow Sync
+  description: >
+    Implements Iroh endpoint management, peer discovery,
+    hole-punching, relay configuration, and gossip overlays.
+    Integrates Willow Protocol for structured data sync
+    with capability-based permissions (Meadowcap).
+
+- id: coder-vudo-runtime
+  role: coder
+  specialization: VUDO Runtime + Storage Layer
+  description: >
+    Implements the VUDO Runtime local-first mode including
+    offline operation queue, background sync engine, reactive
+    state binding, and storage adapters (OPFS + SQLite WASM
+    for browser, native SQLite for desktop/mobile via Tauri).
+
+- id: coder-mutual-credit
+  role: coder
+  specialization: MutualCreditScheduler + Escrow System
+  description: >
+    Implements the escrow-based mutual credit system that
+    operates under eventual consistency. Builds device-level
+    credit allocation, local spend operations, periodic BFT
+    reconciliation, and overdraft detection/resolution.
+
+- id: coder-identity
+  role: coder
+  specialization: Decentralized Identity + Key Management
+  description: >
+    Implements Peer DIDs (did:peer) for pairwise node
+    relationships, UCANs for delegation chains, device-bound
+    keypairs linked to master identity, and key rotation
+    protocol for long-lived identities.
+```
+
+testers:
+- id: tester-crdt
+role: tester
+specialization: CRDT Correctness + Convergence Testing
+description: >
+Designs and executes property-based tests for CRDT
+convergence. Tests merge commutativity, associativity,
+and idempotency. Validates constraint enforcement during
+merge operations. Chaos testing for network partitions.
+
+```
+- id: tester-p2p
+  role: tester
+  specialization: P2P Network + Sync Integration Testing
+  description: >
+    Tests multi-node sync scenarios including offline/online
+    transitions, concurrent edits, Byzantine peer behavior,
+    NAT traversal edge cases, and relay fallback paths.
+
+- id: tester-e2e
+  role: tester
+  specialization: End-to-End + Performance Testing
+  description: >
+    Full system integration tests across browser (Playwright),
+    desktop (Tauri), and mobile targets. Performance benchmarks
+    for CRDT merge latency, sync throughput, storage footprint,
+    and WASM module size budgets.
+```
+
+researchers:
+- id: researcher-crdt-frontier
+role: researcher
+specialization: CRDT Research + eg-walker Tracking
+description: >
+Monitors cutting-edge CRDT research including Kleppmann's
+eg-walker (EuroSys 2025), Loro developments, and BFT-CRDT
+advances. Evaluates applicability to DOL type system.
+Tracks Automerge 4.0 roadmap.
+
+```
+- id: researcher-protocol
+  role: researcher
+  specialization: Protocol Evolution + Standards Tracking
+  description: >
+    Tracks WASM Component Model W3C standardization, Willow
+    Protocol specification evolution, Iroh 1.0 release,
+    UCAN/DID standards progress, and regulatory developments
+    (GDPR, data sovereignty) relevant to local-first.
+```
+
+security:
+- id: security-auditor
+role: security
+specialization: Cryptographic Security + Adversarial Analysis
+description: >
+Audits cryptographic implementations (identity, key management,
+BFT protocols). Designs adversarial test scenarios for Byzantine
+fault tolerance. Reviews mutual credit for double-spend vectors.
+Validates privacy-preserving sync (S-IDA, onion routing). Ensures
+GDPR compliance for cryptographic deletion. Penetration testing
+for P2P attack surfaces.
+skills:
+- cryptographic_audit
+- adversarial_testing
+- bft_analysis
+- privacy_engineering
+- penetration_testing
+
+# ============================================================================
+
+# 📋 PHASED IMPLEMENTATION
+
+# ============================================================================
+
+phases:
+
+# ==========================================================================
+
+# PHASE 0: FOUNDATION & RESEARCH  (Months 0-2)
+
+# ==========================================================================
+
+- id: phase-0
+  name: "Foundation & Research Sprint"
+  codename: SPORE
+  description: >
+  Establish development environment, evaluate key technology choices,
+  create proof-of-concept prototypes, and lock architectural decisions.
+  Named SPORE because this is where the mycelial network germinates.
+  duration: "2 months"
+  start: "2026-02-15"
+  end: "2026-04-15"
+  queen_strategy: tactical
+  consensus: gossip
+
+  tasks:
+  - id: t0.1
+    name: "Technology Evaluation Matrix"
+    description: >
+    Hands-on evaluation of Automerge 3.0, Loro, Yrs, and cr-sqlite.
+    Build identical todo-list CRDT app with each library. Benchmark
+    merge performance, WASM bundle size, memory usage, and API ergonomics.
+    Produce scored comparison matrix with recommendation.
+    assigned_to: [researcher-crdt-frontier, coder-automerge]
+    sparc_mode: dev
+    priority: critical
+    depends_on: []
+    deliverables:
+    - path: docs/research/crdt-evaluation-matrix.md
+      type: report
+    - path: prototypes/crdt-comparison/
+      type: code
+      acceptance_criteria:
+    - "Benchmarks run on 3+ platforms (Chrome, Firefox, Node)"
+    - "WASM bundle size measured for each library"
+    - "Merge latency measured at 1K, 10K, 100K operations"
+    - "Clear recommendation with rationale documented"
+  - id: t0.2
+    name: "Iroh P2P Proof-of-Concept"
+    description: >
+    Build minimal P2P application using Iroh for connectivity.
+    Two Rust nodes that discover each other, establish encrypted
+    connection, and exchange Automerge sync messages. Test NAT
+    traversal, relay fallback, and reconnection behavior.
+    Measure direct connection success rate across network types.
+    assigned_to: [coder-iroh-p2p, arch-p2p-network]
+    sparc_mode: dev
+    priority: critical
+    depends_on: []
+    deliverables:
+    - path: prototypes/iroh-sync-poc/
+      type: code
+    - path: docs/research/iroh-connectivity-report.md
+      type: report
+      acceptance_criteria:
+    - "Two nodes sync Automerge document over Iroh"
+    - "Works across home WiFi, cellular, and relay"
+    - "Connection establishment < 3 seconds (direct)"
+    - "Reconnection after network drop < 5 seconds"
+  - id: t0.3
+    name: "DOL CRDT Annotation RFC"
+    description: >
+    Draft formal RFC for extending DOL 2.0 syntax with CRDT
+    annotations. Define grammar extensions, semantic rules,
+    type compatibility matrix (which DOL types support which
+    CRDT strategies), and constraint interaction rules.
+    Include formal proofs for convergence guarantees.
+    assigned_to: [arch-dol-crdt, researcher-crdt-frontier]
+    sparc_mode: dev
+    priority: critical
+    depends_on: []
+    deliverables:
+    - path: rfcs/RFC-001-dol-crdt-annotations.md
+      type: specification
+    - path: rfcs/RFC-001-formal-proofs.md
+      type: specification
+      acceptance_criteria:
+    - "Complete grammar specification for @crdt annotations"
+    - "Type compatibility matrix: DOL type → allowed CRDT strategies"
+    - "Constraint interaction rules documented"
+    - "Formal convergence proof for constrained CRDTs"
+    - "Reviewed and approved by arch-wasm-runtime"
+  - id: t0.4
+    name: "WASM Storage Layer Evaluation"
+    description: >
+    Evaluate OPFS + SQLite WASM, cr-sqlite in WASM, and
+    IndexedDB for VUDO Runtime browser storage. Benchmark
+    read/write throughput, concurrent access patterns,
+    persistence reliability, and quota management.
+    Test multi-tab coordination via SharedWorker.
+    assigned_to: [coder-vudo-runtime, arch-wasm-runtime]
+    sparc_mode: dev
+    priority: high
+    depends_on: []
+    deliverables:
+    - path: prototypes/storage-benchmark/
+      type: code
+    - path: docs/research/storage-evaluation.md
+      type: report
+      acceptance_criteria:
+    - "Benchmarks for 1K, 10K, 100K record datasets"
+    - "Multi-tab write coordination tested"
+    - "Persistence across browser restart verified"
+    - "Storage quota behavior documented"
+  - id: t0.5
+    name: "Architectural Decision Records"
+    description: >
+    Produce ADRs for all Phase 0 technology decisions.
+    Document chosen CRDT library, P2P stack, storage engine,
+    identity system, and WASM compilation strategy with
+    rationale, trade-offs, and migration paths.
+    assigned_to: [queen-mycelium, arch-dol-crdt, arch-p2p-network, arch-wasm-runtime]
+    sparc_mode: dev
+    priority: critical
+    depends_on: [t0.1, t0.2, t0.3, t0.4]
+    deliverables:
+    - path: docs/adr/ADR-001-crdt-library.md
+    - path: docs/adr/ADR-002-p2p-stack.md
+    - path: docs/adr/ADR-003-storage-engine.md
+    - path: docs/adr/ADR-004-identity-system.md
+    - path: docs/adr/ADR-005-wasm-compilation.md
+      acceptance_criteria:
+    - "All ADRs follow standard template"
+    - "Trade-offs and alternatives documented"
+    - "Migration/escape paths defined for each decision"
+    - "Team consensus recorded"
+
+  phase_gate:
+  description: "All ADRs approved. Technology stack locked."
+  required_deliverables: [t0.5]
+  approval: queen-mycelium
+
+# ==========================================================================
+
+# PHASE 1: DOL 2.0 CRDT EXTENSIONS  (Months 2-5)
+
+# ==========================================================================
+
+- id: phase-1
+  name: "DOL 2.0 CRDT Language Extensions"
+  codename: HYPHA
+  description: >
+  Extend DOL 2.0 with native CRDT annotations and implement the
+  DOL → Rust → WASM compilation pipeline that produces Automerge-backed
+  Gen instances. This is the core innovation - making the ontology
+  itself the source of truth for conflict resolution.
+  duration: "3 months"
+  start: "2026-04-15"
+  end: "2026-07-15"
+  queen_strategy: tactical
+  consensus: raft
+
+  tasks:
+  - id: t1.1
+    name: "dol-parse: CRDT Annotation Parser"
+    description: >
+    Extend dol-parse to recognize @crdt(…) annotations on Gene
+    fields. Supported strategies: immutable, lww, or_set, pn_counter,
+    peritext, rga, mv_register. Parse validates annotation-type
+    compatibility (e.g., Int fields can use lww or pn_counter,
+    Set<T> fields can use or_set, String can use lww or peritext).
+    assigned_to: [coder-dol-parser]
+    sparc_mode: dev
+    priority: critical
+    depends_on: [t0.3]
+    deliverables:
+    - path: crates/dol-parse/src/crdt_annotations.rs
+      type: code
+    - path: crates/dol-parse/tests/crdt_parse_tests.rs
+      type: code
+      acceptance_criteria:
+    - "All 7 CRDT strategies parseable"
+    - "Type-strategy compatibility enforced at parse time"
+    - "Meaningful error messages for invalid annotations"
+    - "100% test coverage on annotation parsing"
+  - id: t1.2
+    name: "dol-check: CRDT Consistency Validator"
+    description: >
+    Extend dol-check to validate CRDT annotation consistency:
+    - Constraint compatibility (can constraint hold under CRDT merge?)
+    - Cross-gene reference consistency (FK-like relationships)
+    - Evolution compatibility (CRDT strategy changes across versions)
+    - Sync policy validation (system-level sync declarations)
+      Produces typed warnings for "soft" issues and errors for hard violations.
+      assigned_to: [coder-dol-parser, arch-dol-crdt]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t1.1]
+      deliverables:
+    - path: crates/dol-check/src/crdt_validation.rs
+      type: code
+    - path: crates/dol-check/src/constraint_crdt_compat.rs
+      type: code
+    - path: crates/dol-check/tests/
+      type: code
+      acceptance_criteria:
+    - "Detects constraint-CRDT incompatibilities"
+    - "Validates evolution CRDT strategy changes"
+    - "Produces actionable error messages"
+    - "Integration with existing dol-check pipeline"
+  - id: t1.3
+    name: "dol-codegen-rust: Automerge Backend"
+    description: >
+    Implement Rust code generation from DOL AST that produces:
+    - Rust structs with #[derive(Reconcile, Hydrate)] for autosurgeon
+    - Automerge document initialization from Gen defaults
+    - Type-safe accessor methods that read/write CRDT state
+    - Merge methods implementing DOL constraint enforcement
+    - Serialization/deserialization for sync protocol
+      Output compiles to both native Rust and wasm32-unknown-unknown.
+      assigned_to: [coder-dol-parser, coder-automerge]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t1.1, t1.2]
+      deliverables:
+    - path: crates/dol-codegen-rust/src/automerge_backend.rs
+      type: code
+    - path: crates/dol-codegen-rust/src/wasm_bindings.rs
+      type: code
+    - path: crates/dol-codegen-rust/templates/
+      type: code
+      acceptance_criteria:
+    - "Generated Rust code compiles without warnings"
+    - "WASM target produces < 200KB compressed module"
+    - "Round-trip: DOL → Rust → WASM → JS works"
+    - "Autosurgeon Reconcile/Hydrate derivations correct"
+    - "Constraint enforcement tested during merge"
+  - id: t1.4
+    name: "dol-codegen-rust: WIT Interface Generation"
+    description: >
+    Generate WASM Component Model WIT interfaces from DOL definitions:
+    - DOL Traits → WIT interfaces
+    - DOL Gens → WIT world definitions
+    - DOL Systems → WIT composed worlds
+      Enables modular composition of CRDT-backed Gene components.
+      assigned_to: [coder-dol-parser, arch-wasm-runtime]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t1.3]
+      deliverables:
+    - path: crates/dol-codegen-wit/
+      type: code
+    - path: docs/specs/dol-wit-mapping.md
+      type: specification
+      acceptance_criteria:
+    - "WIT interfaces generated for all DOL construct types"
+    - "Composable worlds work with wasmtime"
+    - "TypeScript type definitions auto-generated"
+  - id: t1.5
+    name: "dol-test: CRDT Property-Based Tests"
+    description: >
+    Extend dol-test with property-based testing framework for CRDTs:
+    - Convergence: N copies of same Gene, random operations, assert merge equality
+    - Commutativity: merge(A,B) == merge(B,A) for all operation sequences
+    - Constraint preservation: constraints hold after any valid merge sequence
+    - Partition tolerance: simulate network partitions, verify convergence after heal
+      Uses proptest/quickcheck for randomized test generation.
+      assigned_to: [tester-crdt]
+      sparc_mode: test
+      priority: critical
+      depends_on: [t1.3]
+      deliverables:
+    - path: crates/dol-test/src/crdt_properties.rs
+      type: code
+    - path: crates/dol-test/src/partition_simulator.rs
+      type: code
+      acceptance_criteria:
+    - "Convergence proven for all 7 CRDT strategies"
+    - "1M+ random test iterations pass"
+    - "Partition healing convergence verified"
+    - "Constraint violations detected and reported"
+  - id: t1.6
+    name: "dol-mcp: AI-Assisted CRDT Schema Design"
+    description: >
+    Extend dol-mcp (Model Context Protocol integration) so AI
+    assistants can query CRDT capabilities, suggest appropriate
+    strategies for field types, validate constraint-CRDT compatibility,
+    and generate Gen definitions with CRDT annotations from
+    natural language descriptions.
+    assigned_to: [coder-dol-parser]
+    sparc_mode: dev
+    priority: medium
+    depends_on: [t1.2]
+    deliverables:
+    - path: crates/dol-mcp/src/crdt_tools.rs
+      type: code
+      acceptance_criteria:
+    - "MCP tools for: suggest_crdt, validate_crdt, generate_gene"
+    - "AI can query CRDT type compatibility matrix"
+    - "Integration tested with Claude Code"
+
+  phase_gate:
+  description: >
+  Complete DOL → WASM pipeline producing Automerge-backed Gene
+  instances that pass all convergence property tests.
+  required_deliverables: [t1.3, t1.5]
+  demo: >
+  Live demo: Define a Gen in DOL with CRDT annotations →
+  compile to WASM → load in two browser tabs → concurrent
+  edits → verify convergence.
+  approval: queen-mycelium
+
+# ==========================================================================
+
+# PHASE 2: VUDO RUNTIME LOCAL-FIRST MODE  (Months 5-9)
+
+# ==========================================================================
+
+- id: phase-2
+  name: "VUDO Runtime Local-First Engine"
+  codename: MYCELIUM
+  description: >
+  Implement the VUDO Runtime local-first mode: offline operation,
+  background sync, reactive state binding, and storage persistence.
+  Applications work fully offline and sync via P2P when peers are
+  discovered. This is where the mycelial network begins to grow.
+  duration: "4 months"
+  start: "2026-07-15"
+  end: "2026-11-15"
+  queen_strategy: tactical
+  consensus: raft
+
+  tasks:
+  - id: t2.1
+    name: "VUDO Local State Engine"
+    description: >
+    Core local state management for VUDO Runtime:
+    - Automerge document store (in-memory + persisted)
+    - Reactive state subscriptions (change notifications)
+    - Operation queue for offline mutations
+    - Snapshot management (periodic compaction)
+    - Multi-document transactions (atomic local changes)
+      Platform-agnostic core in Rust, with platform bindings.
+      assigned_to: [coder-vudo-runtime, coder-automerge]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t1.3]
+      deliverables:
+    - path: crates/vudo-state/
+      type: code
+      acceptance_criteria:
+    - "< 1ms local read/write latency"
+    - "Reactive subscriptions fire within 1 frame (16ms)"
+    - "Operation queue survives process restart"
+    - "Snapshot compaction reduces storage by 50%+"
+  - id: t2.2
+    name: "VUDO Storage Adapters"
+    description: >
+    Platform-specific storage backends:
+    - Browser: OPFS + SQLite WASM (via wa-sqlite or official WASM build)
+    - Desktop: Native SQLite via Tauri plugin
+    - Mobile: Native SQLite via Tauri mobile or Capacitor
+    - Server: Native SQLite or filesystem
+      All adapters implement common StorageAdapter trait.
+      Multi-tab browser coordination via SharedWorker.
+      assigned_to: [coder-vudo-runtime]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t2.1]
+      deliverables:
+    - path: crates/vudo-storage/
+      type: code
+    - path: crates/vudo-storage-browser/
+      type: code
+    - path: crates/vudo-storage-native/
+      type: code
+      acceptance_criteria:
+    - "Browser: 10K writes/sec sustained"
+    - "Multi-tab coordination without data corruption"
+    - "Desktop: native SQLite perf (100K+ writes/sec)"
+    - "Storage adapter trait fully platform-agnostic"
+  - id: t2.3
+    name: "Iroh P2P Integration Layer"
+    description: >
+    Full Iroh integration for VUDO Runtime:
+    - Peer discovery (DHT + mDNS for local network)
+    - Connection management (direct + relay fallback)
+    - Automerge sync protocol over Iroh streams
+    - Gossip overlay for document presence announcements
+    - Bandwidth-aware sync (throttle on metered connections)
+    - Background sync in Web Workers (browser) / tokio tasks (native)
+      assigned_to: [coder-iroh-p2p, arch-p2p-network]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t2.1]
+      deliverables:
+    - path: crates/vudo-p2p/
+      type: code
+    - path: crates/vudo-p2p/src/iroh_adapter.rs
+      type: code
+    - path: crates/vudo-p2p/src/sync_protocol.rs
+      type: code
+      acceptance_criteria:
+    - "Peer discovery < 5 seconds on local network"
+    - "Sync latency < 100ms after connection established"
+    - "Handles 50+ concurrent peers"
+    - "Graceful degradation on slow/metered networks"
+    - "Background sync doesn't block UI thread"
+  - id: t2.3b
+    name: "Browser P2P Fallback (Contingency)"
+    description: >
+    Contingency task if Iroh WASM support is insufficient for browsers:
+    - WebRTC DataChannel direct P2P (via simple-peer or libp2p-webrtc)
+    - WebSocket relay fallback for restricted networks
+    - Abstract transport layer to swap Iroh/WebRTC seamlessly
+    - Same sync protocol over different transports
+      Only activate if t2.3 browser testing reveals blockers.
+      assigned_to: [coder-iroh-p2p]
+      sparc_mode: dev
+      priority: low  # Contingency - only if needed
+      depends_on: [t2.3]
+      contingency_for: t2.3
+      trigger_condition: "Iroh WASM fails browser connectivity tests"
+      deliverables:
+    - path: crates/vudo-p2p/src/webrtc_fallback.rs
+      type: code
+      acceptance_criteria:
+    - "WebRTC fallback achieves same sync semantics as Iroh"
+    - "Transport abstraction allows runtime switching"
+    - "Works in Chrome, Firefox, Safari"
+  - id: t2.4
+    name: "Willow Protocol Integration"
+    description: >
+    Integrate Willow Protocol for structured data sync:
+    - Namespace mapping: DOL System → Willow Namespace
+    - Path mapping: Gen hierarchy → Willow 3D paths
+    - Meadowcap capabilities for fine-grained permissions
+    - True deletion support (GDPR compliance path)
+    - Resource-aware sync (memory/bandwidth constraints)
+      Uses iroh-willow when available, fallback to custom impl.
+      assigned_to: [coder-iroh-p2p, arch-p2p-network]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t2.1]  # Can run parallel with t2.3 - uses P2P abstraction layer
+      parallel_with: [t2.3]
+      notes: >
+        Design P2P abstraction layer first (in t2.1) so Iroh and Willow
+        integrations can proceed independently. Willow can use mock/local
+        transport during development, integrate with Iroh transport later.
+      deliverables:
+    - path: crates/vudo-p2p/src/willow_adapter.rs
+      type: code
+    - path: crates/vudo-p2p/src/meadowcap_permissions.rs
+      type: code
+      acceptance_criteria:
+    - "DOL namespace → Willow namespace mapping works"
+    - "Fine-grained read/write permissions enforced"
+    - "True deletion propagates across peers"
+    - "Resource constraints respected during sync"
+  - id: t2.5
+    name: "Schema Evolution in Local-First Context"
+    description: >
+    Handle DOL Evolutions across distributed peers:
+    - Version embedding in CRDT documents
+    - Deterministic migration functions (fixed actor ID + timestamp)
+    - Lazy migration on read (migrate when document accessed)
+    - Forward-compatible deserializers (old peers read new schema)
+    - Migration conflict detection and resolution
+      assigned_to: [coder-dol-parser, coder-automerge, arch-dol-crdt]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t2.1, t1.3]
+      deliverables:
+    - path: crates/vudo-state/src/schema_evolution.rs
+      type: code
+    - path: crates/dol-codegen-rust/src/migration_codegen.rs
+      type: code
+      acceptance_criteria:
+    - "Peers on v1 and v2 schema sync without error"
+    - "Deterministic migration produces identical CRDT ops"
+    - "Lazy migration transparent to application code"
+    - "Forward-compat: v1 peer reads v2 document (unknown fields ignored)"
+  - id: t2.6
+    name: "Offline-First Integration Tests"
+    description: >
+    Comprehensive integration test suite:
+    - Airplane mode simulation (full offline → online → sync)
+    - Network partition → heal → convergence
+    - Concurrent edits on 5+ nodes → merge correctness
+    - Large document sync (10MB+ Automerge documents)
+    - Mixed schema version peers syncing
+    - Browser tab crash recovery
+      Uses Playwright for browser tests, custom harness for Rust.
+      assigned_to: [tester-p2p, tester-e2e]
+      sparc_mode: test
+      priority: critical
+      depends_on: [t2.1, t2.2, t2.3]
+      deliverables:
+    - path: tests/integration/local-first/
+      type: code
+    - path: tests/e2e/browser-sync/
+      type: code
+      acceptance_criteria:
+    - "100% convergence after partition heal (verified by hash)"
+    - "No data loss across 1000 random offline/online cycles"
+    - "Browser crash recovery restores last persisted state"
+    - "10MB document syncs in < 30 seconds on broadband"
+
+  phase_gate:
+  description: >
+  VUDO Runtime applications operate fully offline, sync via P2P
+  when peers available, and converge correctly after all partition
+  scenarios pass integration tests.
+  required_deliverables: [t2.1, t2.3, t2.6]
+  demo: >
+  Live demo: VUDO app running on laptop + phone + browser.
+  Edit on laptop offline → edit on phone offline → bring both
+  online → watch sync → verify merged state on browser.
+  approval: queen-mycelium
+
+# ==========================================================================
+
+# PHASE 3: IDENTITY, CREDIT & PRIVACY  (Months 9-13)
+
+# ==========================================================================
+
+- id: phase-3
+  name: "Identity, Mutual Credit & PlanetServe Privacy"
+  codename: FRUITING-BODY
+  description: >
+  Implement decentralized identity (Peer DIDs + UCANs), the
+  escrow-based mutual credit system operating under eventual
+  consistency, and PlanetServe integration for privacy-preserving
+  sync. The fruiting body is the visible output of the mycelial
+  network - this phase makes the system usable by real communities.
+  duration: "4 months"
+  start: "2026-11-15"
+  end: "2027-03-15"
+  queen_strategy: strategic
+  consensus: byzantine
+
+  tasks:
+  - id: t3.1
+    name: "Decentralized Identity System"
+    description: >
+    Implement identity layer for VUDO Runtime:
+    - Peer DIDs (did:peer) for pairwise node authentication
+    - UCANs for capability delegation chains
+    - Device-bound Ed25519 keypairs
+    - Master identity → device key linking
+    - Key rotation protocol with revocation lists
+    - DID resolution for P2P peer verification
+      assigned_to: [coder-identity, arch-p2p-network]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t2.3]
+      deliverables:
+    - path: crates/vudo-identity/
+      type: code
+      acceptance_criteria:
+    - "Peer DID creation < 50ms"
+    - "UCAN delegation chain verification < 10ms"
+    - "Key rotation doesn't break existing sync relationships"
+    - "Revocation propagates within 1 sync cycle"
+  - id: t3.2
+    name: "Escrow-Based Mutual Credit System"
+    description: >
+    Implement MutualCreditScheduler for local-first operation:
+    - Per-device escrow allocation from global balance
+    - Local spend operations (immediate, no coordination)
+    - Periodic escrow refresh via BFT committee confirmation
+    - Overdraft detection via CRDT merge comparison
+    - Reputation tier-based credit limits
+    - Conflict resolution: concurrent overdrafts → flag for review
+
+    Architecture:
+    confirmed_balance: BFT-confirmed (strong consistency)
+    local_escrow: Pre-allocated per device (local operations)
+    pending_credits: Eventually consistent (CRDT merge)
+    assigned_to: [coder-mutual-credit, arch-dol-crdt, security-auditor]
+    sparc_mode: dev
+    priority: critical
+    depends_on: [t2.1, t3.1]
+    deliverables:
+    - path: crates/vudo-credit/
+      type: code
+    - path: crates/vudo-credit/src/escrow.rs
+      type: code
+    - path: crates/vudo-credit/src/bft_reconciliation.rs
+      type: code
+    - path: docs/security/credit-security-audit.md
+      type: documentation
+      acceptance_criteria:
+    - "Local spend < 1ms (no network required)"
+    - "Double-spend prevented by escrow limits"
+    - "BFT reconciliation with 3f+1 nodes verified"
+    - "Overdraft detection within 1 reconciliation cycle"
+    - "Reputation tiers correctly gate credit limits"
+    - "Security audit completed for double-spend vectors"
+  - id: t3.3
+    name: "PlanetServe Privacy-Preserving Sync"
+    description: >
+    Integrate PlanetServe's privacy infrastructure with local-first sync:
+    - S-IDA fragmentation of CRDT sync messages
+    - Onion-routed sync (hide peer relationships)
+    - Sync metadata obfuscation (padding, timing noise)
+    - BFT verification committees for critical operations
+    - Configurable privacy levels (fast-open vs privacy-max)
+      assigned_to: [coder-iroh-p2p, arch-p2p-network]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t2.3, t3.1]
+      deliverables:
+    - path: crates/vudo-p2p/src/planetserve_adapter.rs
+      type: code
+    - path: crates/vudo-p2p/src/sida_sync.rs
+      type: code
+      acceptance_criteria:
+    - "Sync messages fragmented via S-IDA (k-of-n threshold)"
+    - "No peer can observe full sync payload"
+    - "Onion routing adds < 500ms latency overhead"
+    - "Privacy-max mode: sync frequency obfuscated"
+  - id: t3.4
+    name: "GDPR Compliance: Cryptographic Deletion"
+    description: >
+    Implement right-to-erasure for CRDT data:
+    - Per-user encryption keys for personal data fields
+    - Key deletion → effective data erasure across all peers
+    - DOL @personal annotation for GDPR-sensitive fields
+    - Pseudonymized actor IDs in CRDT metadata
+    - Willow true-deletion for non-personal data
+    - Audit trail for deletion requests
+      assigned_to: [coder-identity, coder-automerge, security-auditor]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t3.1, t2.4]
+      deliverables:
+    - path: crates/vudo-privacy/
+      type: code
+    - path: docs/compliance/gdpr-local-first.md
+      type: documentation
+    - path: docs/compliance/privacy-audit.md
+      type: documentation
+      acceptance_criteria:
+    - "Personal data encrypted with user-specific key"
+    - "Key deletion renders data unrecoverable on all peers"
+    - "@personal annotation flows through DOL pipeline"
+    - "CRDT metadata uses pseudonymized actor IDs"
+    - "Privacy implementation audit completed"
+  - id: t3.5
+    name: "Byzantine Fault Tolerance Testing"
+    description: >
+    Adversarial testing of the full system:
+    - Malicious peers sending corrupted CRDT operations
+    - Sybil attack simulation (many fake identities)
+    - Replay attacks on mutual credit operations
+    - Timing attacks on privacy-preserving sync
+    - Eclipse attacks on P2P discovery
+    - Resource exhaustion via oversized CRDT documents
+      assigned_to: [tester-crdt, tester-p2p, security-auditor]
+      sparc_mode: test
+      priority: critical
+      depends_on: [t3.2, t3.3]
+      deliverables:
+    - path: tests/adversarial/
+      type: code
+    - path: docs/security/bft-test-report.md
+      type: report
+    - path: docs/security/threat-model.md
+      type: documentation
+      acceptance_criteria:
+    - "Corrupted CRDT ops rejected by all honest peers"
+    - "Sybil attacks don't inflate credit balances"
+    - "Replay attacks on credit operations prevented"
+    - "Eclipse attack mitigated by multi-source discovery"
+    - "Formal threat model documented and reviewed"
+
+  phase_gate:
+  description: >
+  Full identity, credit, and privacy stack operational.
+  Byzantine fault tolerance verified through adversarial testing.
+  required_deliverables: [t3.1, t3.2, t3.5]
+  demo: >
+  Live demo: Multi-user VUDO app with mutual credit. Users
+  transact offline, come online, balances reconcile correctly.
+  Privacy mode: sync through PlanetServe onion network.
+  Adversarial: inject malicious peer, show it's neutralized.
+  approval: queen-mycelium
+
+# ==========================================================================
+
+# PHASE 4: PRODUCTION HARDENING  (Months 13-16)
+
+# ==========================================================================
+
+- id: phase-4
+  name: "Production Hardening & Reference Application"
+  codename: NETWORK
+  description: >
+  Harden the full stack for production deployment. Build a
+  reference application demonstrating all capabilities. Performance
+  optimization, documentation, and developer experience polish.
+  The mycelial network is now interconnected and resilient.
+  duration: "3 months"
+  start: "2027-03-15"
+  end: "2027-06-15"
+  queen_strategy: strategic
+  consensus: raft
+
+  tasks:
+  - id: t4.1
+    name: "Performance Optimization Sprint"
+    description: >
+    Systematic performance optimization:
+    - WASM module size budget: < 100KB gzipped per Gen module
+    - CRDT merge latency: < 10ms for 10K operation merges
+    - Sync throughput: > 1000 ops/sec sustained
+    - Memory usage: < 50MB for 100K-record dataset
+    - Startup time: < 500ms cold start in browser
+      Profile, benchmark, optimize, repeat.
+      assigned_to: [coder-automerge, coder-vudo-runtime, tester-e2e]
+      sparc_mode: refactor
+      priority: critical
+      depends_on: [t3.2]
+      deliverables:
+    - path: benchmarks/
+      type: code
+    - path: docs/performance/optimization-report.md
+      type: report
+      acceptance_criteria:
+    - "All budget targets met on Chrome, Firefox, Safari"
+    - "No performance regressions in CI pipeline"
+    - "Benchmark suite runs in < 5 minutes"
+  - id: t4.2
+    name: "Reference Application: Local-First Collaborative Workspace"
+    description: >
+    Build reference VUDO application demonstrating full stack:
+    - Rich text collaborative editor (Peritext CRDT)
+    - Shared task board with drag-and-drop (Movable List CRDT)
+    - User profiles with mutual credit balances
+    - P2P sync with online/offline indicators
+    - Permission management via UCANs
+    - Schema evolution (live upgrade without downtime)
+      Ships as PWA (browser), Tauri app (desktop), and mobile.
+      assigned_to: [coder-vudo-runtime, coder-automerge, coder-iroh-p2p]
+      sparc_mode: dev
+      priority: critical
+      depends_on: [t3.2, t3.3]
+      deliverables:
+    - path: apps/workspace/
+      type: application
+      acceptance_criteria:
+    - "Works fully offline on all platforms"
+    - "Real-time collaboration with < 100ms visible latency"
+    - "Mutual credit transactions work offline + reconcile"
+    - "Lighthouse score > 90 for PWA"
+  - id: t4.3
+    name: "Developer Documentation & DOL Guide"
+    description: >
+    Comprehensive documentation for the local-first stack:
+    - DOL CRDT Annotation Guide (with examples for every strategy)
+    - VUDO Runtime Local-First Developer Guide
+    - P2P Networking Configuration Guide
+    - Mutual Credit Integration Guide
+    - Migration Guide: adding local-first to existing VUDO apps
+    - API reference (auto-generated from Rust docs + WIT)
+      Published to book.univrs.io.
+      assigned_to: [researcher-crdt-frontier, researcher-protocol]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t4.2]
+      deliverables:
+    - path: docs/book/local-first/
+      type: documentation
+      acceptance_criteria:
+    - "Getting started guide: DOL → running app in < 30 minutes"
+    - "All CRDT strategies documented with examples"
+    - "Troubleshooting section for common sync issues"
+    - "Published and indexed on book.univrs.io"
+  - id: t4.4
+    name: "Exegesis Preservation in Local-First Context"
+    description: >
+    Ensure DOL's mandatory exegesis (human-readable documentation)
+    is preserved and synced alongside code in local-first mode:
+    - Exegesis stored as CRDT-backed rich text (Peritext)
+    - Collaborative editing of documentation
+    - Version-linked: exegesis versions tied to Gene versions
+    - Offline authoring with merge on sync
+      assigned_to: [coder-dol-parser, coder-automerge]
+      sparc_mode: dev
+      priority: medium
+      depends_on: [t2.1, t1.3]
+      deliverables:
+    - path: crates/dol-exegesis/
+      type: code
+      acceptance_criteria:
+    - "Exegesis fields use Peritext CRDT by default"
+    - "Concurrent exegesis edits merge correctly"
+    - "Exegesis version linked to Gene evolution version"
+  - id: t4.5
+    name: "CI/CD Pipeline for Local-First WASM Artifacts"
+    description: >
+    Production CI/CD pipeline:
+    - DOL → WASM compilation in CI (dol-compile → wasm-opt)
+    - WASM module size tracking (fail if budget exceeded)
+    - CRDT convergence tests in CI (property-based, 100K iterations)
+    - Cross-browser E2E tests (Playwright: Chrome, Firefox, Safari)
+    - Tauri desktop build pipeline (Linux, macOS, Windows)
+    - WASM module registry (publish compiled DOL modules)
+      assigned_to: [tester-e2e]
+      sparc_mode: dev
+      priority: high
+      depends_on: [t4.1]
+      deliverables:
+    - path: .github/workflows/local-first-ci.yml
+      type: code
+    - path: scripts/wasm-size-budget.sh
+      type: code
+      acceptance_criteria:
+    - "Full CI pipeline < 15 minutes"
+    - "WASM size budget enforced per module"
+    - "Cross-browser tests pass on every PR"
+    - "CRDT property tests run on every commit"
+
+  phase_gate:
+  description: >
+  Production-ready local-first stack with reference application,
+  comprehensive documentation, and CI/CD pipeline.
+  required_deliverables: [t4.1, t4.2, t4.3, t4.5]
+  demo: >
+  Public demo: Reference workspace app. 10+ concurrent users
+  editing collaboratively. Some go offline, edit, come back.
+  New user joins via P2P. Mutual credit transactions flow.
+  All on sovereign infrastructure - no cloud dependency.
+  approval: queen-mycelium
+
+# ==========================================================================
+
+# PHASE 5: ECOSYSTEM & FRONTIER  (Months 16-18+)
+
+# ==========================================================================
+
+- id: phase-5
+  name: "Ecosystem Growth & Research Frontier"
+  codename: SPORULATION
+  description: >
+  Open the platform for ecosystem growth. Publish DOL CRDT schema
+  format as open standard. Integrate frontier research (eg-walker,
+  local-first AI). Build community tooling. The mycelial network
+  releases spores - propagating to new environments.
+  duration: "2+ months (ongoing)"
+  start: "2027-06-15"
+  end: "2027-08-15"
+  queen_strategy: visionary
+  consensus: gossip
+
+  tasks:
+  - id: t5.1
+    name: "DOL CRDT Schema Open Standard"
+    description: >
+    Publish DOL's CRDT annotation format as an open specification
+    for interoperability. Other CRDT libraries and sync engines
+    should be able to consume DOL schema definitions to understand
+    merge semantics. Submit to relevant standards bodies.
+    assigned_to: [arch-dol-crdt, researcher-protocol]
+    sparc_mode: dev
+    priority: medium
+    depends_on: [t4.3]
+    deliverables:
+    - path: specs/dol-crdt-schema-v1.0.md
+      type: specification
+  - id: t5.2
+    name: "Local-First AI Integration"
+    description: >
+    Run small language models within VUDO Runtime for on-device
+    intelligence:
+    - WASM-compatible inference (via ONNX or custom runtime)
+    - Local embeddings for semantic search across CRDT documents
+    - AI-assisted conflict resolution (suggest merge for complex conflicts)
+    - Privacy-preserving: model runs locally, no data leaves device
+    - PlanetServe integration for larger model inference via P2P
+      assigned_to: [researcher-crdt-frontier, coder-vudo-runtime]
+      sparc_mode: dev
+      priority: medium
+      depends_on: [t4.2]
+      deliverables:
+    - path: crates/vudo-ai/
+      type: code
+  - id: t5.3
+    name: "eg-walker Integration Evaluation"
+    description: >
+    Evaluate Kleppmann's eg-walker algorithm (EuroSys 2025 Best
+    Artifact) for DOL text types. eg-walker combines CRDT and OT
+    strengths with minimal overhead for non-concurrent edits.
+    Could replace Automerge's CRDT for text fields if performance
+    and correctness benefits are significant.
+    assigned_to: [researcher-crdt-frontier, coder-automerge]
+    sparc_mode: dev
+    priority: medium
+    depends_on: [t4.2]
+    deliverables:
+    - path: docs/research/eg-walker-evaluation.md
+      type: report
+    - path: prototypes/eg-walker-dol/
+      type: code
+  - id: t5.4
+    name: "Community DOL Gen Registry"
+    description: >
+    Build a P2P registry for sharing DOL Gen definitions with
+    CRDT annotations. Developers publish reusable Gen modules
+    (compiled WASM) that others can compose into their Systems.
+    Registry itself is a local-first VUDO application - eating
+    our own dogfood.
+    assigned_to: [coder-vudo-runtime, coder-iroh-p2p]
+    sparc_mode: dev
+    priority: medium
+    depends_on: [t4.2, t4.5]
+    deliverables:
+    - path: apps/gen-registry/
+      type: application
+
+  phase_gate:
+  description: >
+  Ecosystem operational. Open standard published. Community
+  contributing Gen modules. Research frontier integrated.
+  approval: queen-mycelium
+
+# ============================================================================
+
+# 📊 METRICS & OBSERVABILITY
+
+# ============================================================================
+
+metrics:
+tracking:
+- name: wasm_module_size
+target: "< 100KB gzipped per Gen module"
+measurement: "wasm-opt -print-size"
+
+```
+- name: crdt_merge_latency
+  target: "< 10ms for 10K operations"
+  measurement: "criterion benchmark suite"
+
+- name: sync_throughput
+  target: "> 1000 ops/sec sustained"
+  measurement: "custom p2p benchmark harness"
+
+- name: offline_convergence
+  target: "100% convergence after partition heal"
+  measurement: "property-based test suite (1M iterations)"
+
+- name: p2p_connection_time
+  target: "< 3 seconds (direct), < 5 seconds (relay)"
+  measurement: "iroh connection benchmark"
+
+- name: local_write_latency
+  target: "< 1ms per operation"
+  measurement: "criterion benchmark suite"
+
+- name: browser_cold_start
+  target: "< 500ms to interactive"
+  measurement: "Playwright performance trace"
+
+- name: credit_reconciliation_time
+  target: "< 5 seconds for BFT confirmation"
+  measurement: "multi-node test harness"
+
+- name: tombstone_accumulation_rate
+  target: "< 10% overhead after 100K deletes"
+  measurement: "CRDT document size analysis"
+
+- name: storage_quota_headroom
+  target: "> 50% quota remaining under normal use"
+  measurement: "navigator.storage.estimate() tracking"
+
+- name: partition_detection_time
+  target: "< 10 seconds to detect network split"
+  measurement: "gossip protocol heartbeat monitoring"
+
+- name: key_rotation_propagation
+  target: "< 1 sync cycle for revocation propagation"
+  measurement: "identity test harness"
+```
+
+reporting:
+interval: weekly
+format: dashboard
+storage: .swarm/metrics/
+
+# ============================================================================
+# ⚠️ RISKS & MITIGATIONS
+# ============================================================================
+
+risks:
+  - id: risk-iroh-1.0-delay
+    description: "Iroh 1.0 release delayed beyond late 2025"
+    impact: high
+    probability: medium
+    mitigation: >
+      Fallback to libp2p-webrtc for browser P2P. Iroh 0.x API
+      is relatively stable. Abstract P2P layer to swap implementations.
+    owner: arch-p2p-network
+
+  - id: risk-willow-rust-incomplete
+    description: "Willow Rust implementation (iroh-willow) not production-ready"
+    impact: medium
+    probability: medium
+    mitigation: >
+      Use Automerge sync protocol as primary, Willow as optional
+      enhancement. Implement core Willow features (3D paths, permissions)
+      in custom layer if needed.
+    owner: coder-iroh-p2p
+
+  - id: risk-wasm-component-browser
+    description: "WASM Component Model browser support delayed (W3C Phase 2/3)"
+    impact: medium
+    probability: high
+    mitigation: >
+      Use jco for component-to-core WASM transpilation. Target
+      Component Model for native/server, core WASM for browsers
+      until standardization complete.
+    owner: arch-wasm-runtime
+
+  - id: risk-automerge-breaking
+    description: "Automerge 4.0 introduces breaking changes"
+    impact: high
+    probability: low
+    mitigation: >
+      Pin to Automerge 3.x initially. Abstract CRDT layer behind
+      DOL codegen - migration isolated to codegen backend, not
+      application code.
+    owner: coder-automerge
+
+  - id: risk-mobile-perf
+    description: "WASM performance insufficient on low-end mobile devices"
+    impact: medium
+    probability: medium
+    mitigation: >
+      Implement native Rust core via UniFFI for iOS/Android.
+      WASM for web/PWA, native for app store builds. Performance
+      budget includes mobile benchmarks.
+    owner: coder-vudo-runtime
+
+  - id: risk-crdt-memory
+    description: "CRDT memory usage exceeds browser limits for large documents"
+    impact: high
+    probability: medium
+    mitigation: >
+      Implement document sharding (split large docs into linked
+      sub-documents). Aggressive tombstone GC. Lazy loading of
+      historical operations.
+    owner: coder-automerge
+
+# ============================================================================
+
+# 🔗 DEPENDENCY GRAPH (simplified)
+
+# ============================================================================
+
+#
+
+# PHASE 0 (SPORE)           PHASE 1 (HYPHA)              PHASE 2 (MYCELIUM)
+
+# ┌─────────┐               ┌──────────┐                 ┌──────────┐
+
+# │ t0.1    │──────────────►│ t1.1     │────────────────►│ t2.1     │
+
+# │ t0.2    │               │ t1.2     │                 │ t2.2     │
+
+# │ t0.3    │──────────────►│ t1.3     │────────────────►│ t2.3     │
+
+# │ t0.4    │               │ t1.4     │                 │ t2.4     │
+
+# │ t0.5    │◄──(gate)──── │ t1.5     │                 │ t2.5     │
+
+# └─────────┘               │ t1.6     │                 │ t2.6     │
+
+# └──────────┘                 └──────────┘
+
+# │
+
+# PHASE 3 (FRUITING-BODY)           │
+
+# ┌──────────┐                      │
+
+# │ t3.1     │◄─────────────────────┘
+
+# │ t3.2     │
+
+# │ t3.3     │
+
+# │ t3.4     │       PHASE 4 (NETWORK)
+
+# │ t3.5     │       ┌──────────┐
+
+# └──────────┘──────►│ t4.1-4.5 │
+
+# └──────────┘
+
+# │
+
+# ▼
+
+# PHASE 5 (SPORULATION)
+
+# ┌──────────┐
+
+# │ t5.1-5.4 │
+
+# └──────────┘
+
+#
+
+# ============================================================================
+
+# ============================================================================
+
+# 🚀 QUICK START
+
+# ============================================================================
+
+#
+
+# Initialize the swarm:
+
+#
+
+# npx claude-flow@v3alpha hive-mind init \
+
+# -topology hierarchical \
+
+# -agents 12 \
+
+# -config ./univrs-local-first-swarm.yaml
+
+#
+
+# Spawn Phase 0:
+
+#
+
+# npx claude-flow@v3alpha hive-mind spawn "MYCELIUM-SYNC Phase 0: SPORE" \
+
+# -queen-type tactical \
+
+# -consensus gossip \
+
+# -phase phase-0 \
+
+# -parallel
+
+#
+
+# Check status:
+
+#
+
+# npx claude-flow@v3alpha hive-mind status
+
+#
+
+# Run specific task:
+
+#
+
+# npx claude-flow@v3alpha orchestrate \
+
+# -task t0.1 \
+
+# -agents researcher-crdt-frontier,coder-automerge \
+
+# -sparc dev
+
+#
+
+# Full autonomous execution:
+
+#
+
+# npx claude-flow@v3alpha hive-mind spawn "MYCELIUM-SYNC" \
+
+# -config ./univrs-local-first-swarm.yaml \
+
+# -queen-type strategic \
+
+# -consensus byzantine \
+
+# -auto-scale \
+
+# -parallel \
+
+# -monitor
+
+#
+
+# ============================================================================

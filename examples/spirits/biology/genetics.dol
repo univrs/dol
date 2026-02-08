@@ -264,7 +264,7 @@ docs {
     Gene - functional unit of heredity.
 
     Properties:
-    - dna_sequence: The gene's DNA sequence
+    - dna_sequence: The gen's DNA sequence
     - start: Start position on chromosome
     - end: End position on chromosome
     - strand: Sense (+) or antisense (-) strand
@@ -287,7 +287,7 @@ pub gen Gene {
 }
 
 docs {
-    Create a new gene.
+    Create a new gen.
 }
 
 pub fun new_gene(name: string, sequence: string, start: u64, function: string) -> Gene {
@@ -364,12 +364,12 @@ pub fun human_chr1() -> Chromosome {
 }
 
 docs {
-    Add a gene to a chromosome.
+    Add a gen to a chromosome.
 }
 
-pub fun add_gene_to_chromosome(chromosome: Chromosome, gene: Gene) -> Chromosome {
+pub fun add_gene_to_chromosome(chromosome: Chromosome, gen: Gene) -> Chromosome {
     let mut genes = chromosome.genes
-    genes.push(gene)
+    genes.push(gen)
 
     return Chromosome {
         number: chromosome.number,
@@ -919,17 +919,17 @@ pub fun transcribe(dna: DNA) -> RNA {
 }
 
 docs {
-    Transcribe a gene to mRNA (includes splicing simulation).
+    Transcribe a gen to mRNA (includes splicing simulation).
 }
 
-pub fun transcribe_gene(gene: Gene) -> RNA {
+pub fun transcribe_gene(gen: Gene) -> RNA {
     // In a full implementation, this would:
     // 1. Transcribe from template strand
     // 2. Add 5' cap
     // 3. Splice out introns
     // 4. Add poly-A tail
 
-    let dna = new_dna(gene.dna_sequence)
+    let dna = new_dna(gen.dna_sequence)
     return transcribe(dna)
 }
 
@@ -1277,12 +1277,12 @@ evo epigenetics @ 0.9.1 > 0.9.0 {
     adds gen HistoneModification { histone: string, modification: string, position: u32 }
     adds fun methylate_dna(dna: DNA, sites: Vec<u64>) -> DNA
     adds fun demethylate_dna(dna: DNA, sites: Vec<u64>) -> DNA
-    adds fun is_gene_silenced(gene: Gene, methylation: MethylationPattern) -> bool
-    because "epigenetics essential for gene regulation understanding"
+    adds fun is_gene_silenced(gen: Gene, methylation: MethylationPattern) -> bool
+    because "epigenetics essential for gen regulation understanding"
 }
 
 docs {
-    Evolution adding CRISPR/gene editing support.
+    Evolution adding CRISPR/gen editing support.
 }
 
 evo crispr @ 0.9.2 > 0.9.1 {
@@ -1291,7 +1291,7 @@ evo crispr @ 0.9.2 > 0.9.1 {
     adds fun design_guide_rna(target_sequence: string) -> GuideRNA
     adds fun predict_off_targets(guide: GuideRNA, genome: DNA) -> Vec<u64>
     adds fun crispr_edit(dna: DNA, cas9: CrisprCas9, insert: string) -> DNA
-    because "gene editing revolutionizing molecular biology"
+    because "gen editing revolutionizing molecular biology"
 }
 
 docs {

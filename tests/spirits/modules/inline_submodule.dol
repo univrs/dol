@@ -1,19 +1,19 @@
 // Test: Inline submodule declaration
-// Expected: Should parse gene with inline mod block
+// Expected: Should parse gen with inline mod block
 
-pub gene Container {
+pub gen Container {
     has id: UInt64
     has state: state.ContainerState
 }
 
 // Inline submodule
 mod state {
-    pub gene ContainerState {
-        has value: String
+    pub gen ContainerState {
+        has value: string
     }
 }
 
-exegesis {
+docs {
     Test case for inline submodule declaration.
     Submodules allow organizing tightly-coupled code within a single file.
 }

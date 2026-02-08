@@ -1,0 +1,17 @@
+[package]
+name = "vudo-storage-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[example]]
+name = "basic_usage"
+path = "basic_usage.rs"
+
+[dependencies]
+vudo-storage = { path = "../../crates/vudo-storage" }
+vudo-storage-native = { path = "../../crates/vudo-storage-native" }
+vudo-storage-browser = { path = "../../crates/vudo-storage-browser" }
+tokio = { version = "1", features = ["full"] }
+bytes = "1.5"
+tempfile = "3.9"

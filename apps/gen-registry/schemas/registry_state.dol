@@ -1,0 +1,131 @@
+// Registry State Schema
+// Global registry state managed with CRDTs
+
+gen registry.RegistryState {
+    @crdt(immutable)
+    has registry_id: string  // Registry identifier
+
+    @crdt(or_set)
+    has modules: Set<string>  // Set of module IDs
+
+    @crdt(pn_counter)
+    has total_downloads: i64
+
+    @crdt(pn_counter)
+    has total_modules: i64
+
+    @crdt(lww)
+    has last_sync: Timestamp
+
+    @crdt(rga)
+    has peers: Vec<PeerInfo>  // Connected peers
+
+    docs {
+        RegistryState maintains global registry metadata including
+        module index, download statistics, and peer list. Uses CRDTs
+        for offline-first operation and P2P synchronization.
+    }
+}
+
+gen registry.PeerInfo {
+    @crdt(immutable)
+    has peer_id: string  // Iroh NodeId
+
+    @crdt(lww)
+    has last_seen: Timestamp
+
+    @crdt(pn_counter)
+    has modules_shared: i64
+
+    @crdt(lww)
+    has endpoint: string  // Network endpoint
+
+    @crdt(lww)
+    has relay: bool  // Is relay server
+
+    docs {
+        PeerInfo tracks connected peers in the P2P network.
+        Used for peer discovery and gossip protocol.
+    }
+}
+
+// Willow Protocol namespace mapping
+gen registry.Namespace {
+    @crdt(immutable)
+    has namespace_id: string  // Hashed from registry_id
+
+    @crdt(immutable)
+    has owner_did: string
+
+    @crdt(lww)
+    has created_at: Timestamp
+
+    @crdt(or_set)
+    has authorized_publishers: Set<string>  // DIDs with publish capability
+
+    docs {
+        Namespace represents a Willow Protocol namespace for the registry.
+        Maps to DOL System → Willow Namespace as per vudo-p2p architecture.
+
+        Structure:
+        - Namespace: registry.gen.community
+        - Subspace: module_id (e.g., "io.univrs.user")
+        - Path: version/metadata.json, version/module.wasm
+    }
+}
+
+// Meadowcap capability for publishing
+gen registry.PublishCapability {
+    @crdt(immutable)
+    has capability_id: string
+
+    @crdt(immutable)
+    has namespace_id: string
+
+    @crdt(immutable)
+    has delegate_did: string  // Who can publish
+
+    @crdt(lww)
+    has granted_at: Timestamp
+
+    @crdt(lww)
+    has expires_at: Timestamp
+
+    @crdt(or_set)
+    has allowed_modules: Set<string>  // Restricted module IDs (empty = all)
+
+    @crdt(lww)
+    has revoked: bool
+
+    docs {
+        PublishCapability grants permission to publish modules using
+        Meadowcap capability system. Supports delegation and expiration
+        for security. Revocation is CRDT-safe via tombstone pattern.
+    }
+}
+
+// Sync protocol state
+gen registry.SyncState {
+    @crdt(immutable)
+    has peer_id: string
+
+    @crdt(lww)
+    has last_sync: Timestamp
+
+    @crdt(pn_counter)
+    has bytes_sent: i64
+
+    @crdt(pn_counter)
+    has bytes_received: i64
+
+    @crdt(pn_counter)
+    has modules_synced: i64
+
+    @crdt(lww)
+    has sync_status: string  // "idle" | "syncing" | "error"
+
+    docs {
+        SyncState tracks synchronization progress with peers.
+        Used for bandwidth monitoring and sync scheduling.
+    }
+}

@@ -9,8 +9,8 @@ docs {
     A minimal DOL v0.8.0 example demonstrating the new syntax.
 
     This file showcases:
-    - The new `gen` keyword (replaces `gene`)
-    - The new `docs` keyword (replaces `exegesis`)
+    - The new `gen` keyword (replaces `gen`)
+    - The new `docs` keyword (replaces `docs`)
     - New primitive type names: i32, i64, f64, bool, string
     - Basic field declarations with `has`
 

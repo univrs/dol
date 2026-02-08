@@ -275,11 +275,11 @@ docs {
         - Deterministic complexity (L-systems, fractals)
         - Controlled randomness (noise, stochastic rules)
         - Emergent behavior (cellular automata)
-        - Optimization and evolution (genetic algorithms)
+        - Optimization and evo (genetic algorithms)
 
     All modules are designed to work together:
         - Use noise to add variation to L-system parameters
-        - Use cellular automata as fitness landscapes for evolution
+        - Use cellular automata as fitness landscapes for evo
         - Use evolutionary algorithms to discover interesting L-systems
         - Combine noise and cellular automata for terrain generation
 }

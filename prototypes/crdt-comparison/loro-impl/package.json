@@ -1,0 +1,19 @@
+{
+  "name": "@crdt-comparison/loro-impl",
+  "version": "1.0.0",
+  "description": "Loro CRDT TodoList implementation for evaluation",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test",
+    "benchmark": "node dist/benchmark.js"
+  },
+  "dependencies": {
+    "loro-crdt": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}

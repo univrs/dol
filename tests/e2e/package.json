@@ -1,0 +1,21 @@
+{
+  "name": "vudo-e2e-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end tests for VUDO Runtime browser sync",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:crash": "playwright test crash_recovery",
+    "test:multi-tab": "playwright test multi_tab_sync",
+    "test:offline": "playwright test offline_online",
+    "test:ui": "playwright test --ui",
+    "install:browsers": "playwright install"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}

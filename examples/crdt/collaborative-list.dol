@@ -1,0 +1,14 @@
+gen CollaborativeList {
+  @crdt(immutable)
+  has list_id: string
+
+  @crdt(rga)
+  has items: Vec<string>
+}
+
+docs {
+  A collaborative list using RGA (Replicated Growable Array).
+
+  The list_id is immutable for identity.
+  Items use RGA for causal ordering of insertions and deletions.
+}

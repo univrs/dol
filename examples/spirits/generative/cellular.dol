@@ -877,7 +877,7 @@ docs {
     - **Still lifes**: Block, beehive, loaf (don't change)
     - **Oscillators**: Blinker, beacon, pulsar (periodic)
     - **Spaceships**: Glider, LWSS (move across grid)
-    - **Methuselae**: R-pentomino, acorn (long evolution)
+    - **Methuselae**: R-pentomino, acorn (long evo)
     - **Guns**: Gosper gun (produce gliders)
 
     Wolfram Rules:

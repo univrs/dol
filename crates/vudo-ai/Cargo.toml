@@ -1,0 +1,99 @@
+[package]
+name = "vudo-ai"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Local-first AI integration for VUDO Runtime with WASM-compatible ONNX inference, embeddings, and conflict resolution"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Local dependencies
+vudo-state = { path = "../vudo-state" }
+vudo-planetserve = { path = "../vudo-planetserve" }
+
+# CRDT support
+automerge = "0.6"
+
+# ONNX Runtime for WASM
+# Note: Using tract for WASM compatibility as onnxruntime-web has limited Rust support
+tract-onnx = { version = "0.21", default-features = false }
+tract-core = { version = "0.21", default-features = false }
+ndarray = { version = "0.15", default-features = false }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Data structures
+parking_lot = "0.12"
+dashmap = "6.0"
+lru = "0.12"
+
+# Math and ML utilities
+num-traits = "0.2"
+
+# Hashing and similarity
+blake3 = "1.5"
+
+# Concurrency
+async-trait = "0.1"
+
+# WASM compatibility
+cfg-if = "1.0"
+
+# Linear algebra
+nalgebra = { version = "0.33", default-features = false, features = ["std"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# WASM-specific dependencies
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
+getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tokio-test = "0.4"
+tracing-subscriber = "0.3"
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+tempfile = "3.9"
+proptest = "1.4"
+
+[[bench]]
+name = "embedding_benchmark"
+harness = false
+
+[[bench]]
+name = "inference_benchmark"
+harness = false
+
+[[bench]]
+name = "conflict_resolution_benchmark"
+harness = false
+
+[lib]
+name = "vudo_ai"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[profile.release-wasm]
+inherits = "release"
+opt-level = 'z'
+panic = 'abort'

@@ -139,6 +139,17 @@ pub enum ParseError {
     /// A lexer error occurred during parsing.
     #[error("lexer error: {0}")]
     LexerError(#[from] LexError),
+
+    /// An invalid CRDT strategy was specified.
+    ///
+    /// CRDT strategies must be one of: immutable, lww, or_set, pn_counter, peritext, rga, mv_register
+    #[error("invalid CRDT strategy '{strategy}' at line {}, column {} (expected one of: immutable, lww, or_set, pn_counter, peritext, rga, mv_register)", span.line, span.column)]
+    InvalidCrdtStrategy {
+        /// The invalid strategy name
+        strategy: String,
+        /// Location of the invalid strategy
+        span: Span,
+    },
 }
 
 impl ParseError {
@@ -148,6 +159,7 @@ impl ParseError {
             ParseError::UnexpectedToken { span, .. } => *span,
             ParseError::MissingExegesis { span } => *span,
             ParseError::InvalidStatement { span, .. } => *span,
+            ParseError::InvalidCrdtStrategy { span, .. } => *span,
             ParseError::InvalidDeclaration { span, .. } => *span,
             ParseError::UnexpectedEof { span, .. } => *span,
             ParseError::LexerError(lex_err) => match lex_err {
@@ -220,6 +232,58 @@ pub enum ValidationError {
         expected: Option<String>,
         /// Actual type (if applicable)
         actual: Option<String>,
+        /// Location of the error
+        span: Span,
+    },
+
+    /// A CRDT strategy is incompatible with the field type.
+    ///
+    /// This occurs when a CRDT annotation specifies a merge strategy
+    /// that cannot be applied to the field's type (e.g., OR-Set on a String).
+    #[error("incompatible CRDT strategy for field '{field}' at line {}, column {}: {strategy} cannot be used with type {type_}", span.line, span.column)]
+    IncompatibleCrdtStrategy {
+        /// The field name
+        field: String,
+        /// The field type
+        type_: String,
+        /// The attempted strategy
+        strategy: String,
+        /// Suggested valid strategies
+        suggestion: String,
+        /// Location of the error
+        span: Span,
+    },
+
+    /// A constraint conflicts with CRDT semantics.
+    ///
+    /// This occurs when a constraint requires strong consistency guarantees
+    /// that cannot be provided by the CRDT merge strategy.
+    #[error("constraint '{constraint}' requires strong consistency at line {}, column {}", span.line, span.column)]
+    ConstraintCrdtConflict {
+        /// The constraint name
+        constraint: String,
+        /// The affected field
+        field: String,
+        /// Explanation of the conflict
+        message: String,
+        /// Location of the error
+        span: Span,
+    },
+
+    /// An evolution attempts an invalid CRDT strategy change.
+    ///
+    /// This occurs when an evolution tries to change a CRDT strategy
+    /// in a way that violates semantic compatibility (e.g., Immutable → LWW).
+    #[error("invalid CRDT strategy evolution for field '{field}' at line {}, column {}: cannot change {old_strategy} to {new_strategy}", span.line, span.column)]
+    InvalidCrdtEvolution {
+        /// The field name
+        field: String,
+        /// The old strategy
+        old_strategy: String,
+        /// The new strategy
+        new_strategy: String,
+        /// Reason for invalidity
+        reason: String,
         /// Location of the error
         span: Span,
     },
@@ -298,6 +362,38 @@ pub enum ValidationWarning {
         /// Suggested alternative
         alternative: String,
     },
+
+    /// A constraint may be eventually consistent in a CRDT context.
+    ///
+    /// This warning indicates that a constraint may temporarily violate
+    /// during network partitions but will converge once the partition heals.
+    EventuallyConsistent {
+        /// The constraint name
+        constraint: String,
+        /// The affected field
+        field: String,
+        /// Explanation of the eventual consistency
+        message: String,
+        /// Location of the constraint
+        span: Span,
+    },
+
+    /// A constraint requires coordination mechanisms.
+    ///
+    /// This warning indicates that a constraint requires escrow,
+    /// BFT consensus, or other coordination to maintain in a distributed system.
+    RequiresCoordination {
+        /// The constraint name
+        constraint: String,
+        /// The affected field
+        field: String,
+        /// Explanation of why coordination is needed
+        message: String,
+        /// Suggested coordination pattern
+        suggestion: String,
+        /// Location of the constraint
+        span: Span,
+    },
 }
 
 impl std::fmt::Display for ValidationWarning {
@@ -325,6 +421,31 @@ impl std::fmt::Display for ValidationWarning {
                     f,
                     "deprecated feature '{}'; use '{}' instead",
                     feature, alternative
+                )
+            }
+            ValidationWarning::EventuallyConsistent {
+                constraint,
+                field,
+                message,
+                span,
+            } => {
+                write!(
+                    f,
+                    "constraint '{}' on field '{}' may be eventually consistent at line {}, column {}: {}",
+                    constraint, field, span.line, span.column, message
+                )
+            }
+            ValidationWarning::RequiresCoordination {
+                constraint,
+                field,
+                message,
+                suggestion,
+                span,
+            } => {
+                write!(
+                    f,
+                    "constraint '{}' on field '{}' requires coordination at line {}, column {}: {} (suggestion: {})",
+                    constraint, field, span.line, span.column, message, suggestion
                 )
             }
         }

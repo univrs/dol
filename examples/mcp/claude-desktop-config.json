@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "dol-mcp": {
+      "command": "dol-mcp",
+      "args": ["serve"],
+      "env": {},
+      "description": "Metal DOL MCP Server - AI-assisted CRDT schema design"
+    }
+  }
+}

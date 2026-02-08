@@ -1,16 +1,16 @@
-// Test: Basic module with gene and function
+// Test: Basic module with gen and function
 // Expected: Should parse as module with two declarations
 
-pub gene Container {
+pub gen Container {
     has id: UInt64
-    has name: String
+    has name: string
 }
 
-pub fun create(name: String) -> Container {
+pub fun create(name: string) -> Container {
     return Container { id: 0, name: name }
 }
 
-exegesis {
-    Basic module test case demonstrating a gene and function
+docs {
+    Basic module test case demonstrating a gen and function
     in a single module file.
 }

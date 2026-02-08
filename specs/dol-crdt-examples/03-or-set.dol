@@ -1,0 +1,169 @@
+// DOL CRDT Example: Observed-Remove Set Strategy
+// Specification: §5.3 - Observed-Remove Set
+
+gen document.collaborative {
+  @crdt(immutable)
+  id: Uuid
+
+  @crdt(lww)
+  title: string
+
+  @crdt(or_set)
+  tags: Set<string>
+
+  @crdt(or_set)
+  collaborators: Set<Identity>
+
+  @crdt(or_set)
+  attachments: Set<AttachmentRef>
+}
+
+docs {
+  Demonstrates Observed-Remove Set (OR-Set) CRDT strategy for collections.
+
+  **Strategy: or_set**
+
+  Semantics: Add-wins semantics. Each element tagged with unique ID.
+             Remove only deletes observed tags.
+  Merge Rule: Union of all adds, minus observed removes
+  Data Loss: None (all additions preserved)
+
+  **Use Cases:**
+  - Tags and labels
+  - Collaborator lists
+  - Membership sets
+  - Attachments
+  - Any unordered collection with add-wins semantics
+
+  **Data Structure:**
+
+  ```rust
+  struct ORSet<T> {
+    elements: Map<T, Set<UniqueTag>>  // Element → set of unique tags
+    tombstones: Set<UniqueTag>        // Removed tags
+  }
+  ```
+
+  **Operations:**
+
+  ```
+  add(element: T) -> UniqueTag:
+    tag = generate_unique_tag()  // UUID or (ActorId, Counter)
+    elements[element].add(tag)
+    return tag
+
+  remove(element: T):
+    if element in elements:
+      tombstones.add_all(elements[element])
+
+  contains(element: T) -> bool:
+    if element not in elements:
+      return false
+    return exists tag in elements[element] where tag not in tombstones
+  ```
+
+  **Add-Wins Example:**
+
+  Initial state:
+  ```
+  tags: {}
+  ```
+
+  Concurrent operations:
+  - Replica A: add("urgent")  → tag1
+  - Replica B: add("urgent")  → tag2
+
+  Merge result:
+  ```
+  elements: {"urgent": {tag1, tag2}}
+  contains("urgent") = true
+  ```
+
+  **Add-Wins During Concurrent Remove:**
+
+  Initial state:
+  ```
+  tags: {"urgent": {tag1}}
+  ```
+
+  Concurrent operations:
+  - Replica A: remove("urgent")  → tombstones.add(tag1)
+  - Replica B: add("urgent")     → elements["urgent"].add(tag2)
+
+  Merge result:
+  ```
+  elements: {"urgent": {tag1, tag2}}
+  tombstones: {tag1}
+  contains("urgent") = true  // tag2 not in tombstones, add wins!
+  ```
+
+  **Observed-Remove:**
+
+  Initial state:
+  ```
+  tags: {"urgent": {tag1}, "important": {tag2}}
+  ```
+
+  Replica A operations:
+  1. Observe state: sees tag1, tag2
+  2. Remove "urgent" → tombstones.add(tag1)
+  3. Sync to Replica B
+
+  Replica B (before sync):
+  - add("urgent") → elements["urgent"].add(tag3)
+
+  After merge:
+  ```
+  elements: {"urgent": {tag1, tag3}, "important": {tag2}}
+  tombstones: {tag1}
+  contains("urgent") = true  // tag3 was not observed during remove
+  ```
+
+  Only observed tags are removed!
+
+  **Properties:**
+  - ✓ Add-wins: concurrent add + remove → element present
+  - ✓ No data loss: all additions preserved
+  - ✓ Commutative: merge(A, B) = merge(B, A)
+  - ✓ Idempotent: merge(A, A) = A
+  - ⚠️ Space overhead: O(n × m) where n=elements, m=operations per element
+
+  **Constraint Enforcement:**
+
+  Category A (CRDT-safe):
+  - "set has element" - Preserved by add-wins semantics
+
+  Category B (Eventually-Consistent):
+  - "all collaborators are valid users" - Eventually consistent
+
+  **Type Compatibility:**
+  - ✓ Set<T> where T is hashable and comparable
+  - Element type T can be: string, i32, Uuid, custom types
+
+  **Garbage Collection:**
+
+  Problem: Tombstones accumulate over time
+  Solution: Remove tombstones after all replicas observe deletion
+
+  ```
+  if all_replicas_have_seen(deletion_timestamp):
+    tombstones.remove(tag)  // Safe to garbage collect
+  ```
+
+  **Comparison with Other Strategies:**
+
+  OR-Set vs LWW:
+  - OR-Set: No data loss, add-wins
+  - LWW: Data loss possible, last-write-wins
+
+  OR-Set vs RGA:
+  - OR-Set: Unordered collection
+  - RGA: Ordered sequence
+
+  **Implementation Notes:**
+  1. Use UUID or (ActorId, Counter) for unique tags
+  2. Store elements map and tombstones set
+  3. Merge: union all elements and tombstones
+  4. Query: filter out tombstoned tags
+  5. GC: periodic tombstone cleanup (requires coordination)
+}

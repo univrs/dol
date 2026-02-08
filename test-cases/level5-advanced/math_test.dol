@@ -15,7 +15,7 @@ module math_test @ 0.1.0
 const PI: f64 = 3.141592653589793
 const E: f64 = 2.718281828459045
 
-exegesis {
+docs {
     Test module for math library functionality.
     Tests both constants and derived functions.
 }
@@ -80,8 +80,8 @@ fun efficiency(useful_output: f64, total_input: f64) -> f64 {
     return (useful_output / total_input) * 100.0
 }
 
-// Integration test gene using math functions
-gene EnergySystem {
+// Integration test gen using math functions
+gen EnergySystem {
     has input_energy: f64
     has output_energy: f64
 
@@ -98,7 +98,7 @@ gene EnergySystem {
     }
 }
 
-exegesis {
-    EnergySystem gene demonstrates using math functions
+docs {
+    EnergySystem gen demonstrates using math functions
     for thermodynamic calculations in the Univrs ecosystem.
 }

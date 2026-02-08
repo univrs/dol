@@ -15,7 +15,7 @@ trait Comparable {
     Comparable is ordered
 }
 
-exegesis {
+docs {
     The Comparable trait defines types that can be compared
     and have a natural ordering.
 }
@@ -28,7 +28,7 @@ trait Numeric {
     Numeric can divide
 }
 
-exegesis {
+docs {
     The Numeric trait defines types that support basic
     arithmetic operations.
 }
@@ -39,7 +39,7 @@ trait Stringable {
     Stringable can get_length
 }
 
-exegesis {
+docs {
     The Stringable trait defines types that can be converted
     to string representation.
 }
@@ -51,13 +51,13 @@ trait Number {
     Number is deterministic
 }
 
-exegesis {
+docs {
     The Number trait combines numeric and comparison
     capabilities for complete number types.
 }
 
 // Test 5: Gene implementing traits (conceptual - actual syntax may vary)
-gene IntWrapper {
+gen IntWrapper {
     has value: i64
 
     // Methods that would satisfy Comparable
@@ -89,7 +89,7 @@ trait Container {
     Container requires capacity > 0
 }
 
-exegesis {
+docs {
     The Container trait defines types that can hold items.
     Containers must have positive capacity.
 }
