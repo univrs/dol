@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```rust
-//! use metadol::mcp::recommendations::{CrdtRecommender, UsagePattern, ConsistencyLevel};
+//! use metadol::mcp::recommendations::{CrdtRecommender, UsagePattern, ConsistencyLevel, Confidence};
 //!
 //! let recommender = CrdtRecommender::new();
 //! let recommendation = recommender.recommend(
@@ -25,7 +25,7 @@
 //!     ConsistencyLevel::Eventual
 //! );
 //!
-//! assert_eq!(recommendation.strategy, "peritext");
+//! assert_eq!(recommendation.recommended_strategy, "peritext");
 //! assert_eq!(recommendation.confidence, Confidence::High);
 //! ```
 

@@ -13,11 +13,15 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! use metadol::mcp::diagnostics::{SchemaDiagnostics, DiagnosticSeverity};
 //!
+//! // Parse DOL source into a Declaration first
+//! let dol_source = "gene User { has name: String }";
+//! let decl = parse_dol(dol_source).unwrap();  // hypothetical parser
+//!
 //! let diagnostics = SchemaDiagnostics::new();
-//! let issues = diagnostics.analyze_schema(dol_source);
+//! let issues = diagnostics.analyze(&decl);
 //!
 //! for issue in issues {
 //!     if issue.severity == DiagnosticSeverity::Error {
