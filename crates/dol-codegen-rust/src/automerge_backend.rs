@@ -208,6 +208,7 @@ mod tests {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         };
 
@@ -237,6 +238,7 @@ mod tests {
                         options: vec![],
                         span: Span::default(),
                     }),
+                    personal: false,
                     span: Span::default(),
                 })),
                 Statement::HasField(Box::new(HasField {
@@ -249,6 +251,7 @@ mod tests {
                         options: vec![],
                         span: Span::default(),
                     }),
+                    personal: false,
                     span: Span::default(),
                 })),
             ],

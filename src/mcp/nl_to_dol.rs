@@ -395,17 +395,17 @@ impl NlToDolConverter {
 
         // Check for collaborative fields without proper CRDT
         for field in fields {
-            if field.field_type == "String" && field.crdt_strategy == "lww" {
-                if requirement
+            if field.field_type == "String"
+                && field.crdt_strategy == "lww"
+                && requirement
                     .description
                     .to_lowercase()
                     .contains("collaborative")
-                {
-                    suggestions.push(format!(
+            {
+                suggestions.push(format!(
                         "Field '{}' uses LWW but collaborative editing detected. Consider 'peritext' strategy.",
                         field.name
                     ));
-                }
             }
         }
 

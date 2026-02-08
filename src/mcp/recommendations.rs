@@ -529,15 +529,9 @@ pub struct TradeOffs {
 }
 
 /// CRDT type compatibility matrix (from RFC-001 Table 4.1).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct CompatibilityMatrix {
     // This encapsulates the RFC-001 compatibility rules
-}
-
-impl Default for CompatibilityMatrix {
-    fn default() -> Self {
-        Self {}
-    }
 }
 
 impl CompatibilityMatrix {

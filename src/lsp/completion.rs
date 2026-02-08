@@ -404,10 +404,11 @@ impl CompletionProvider {
         }
 
         // Check if inside body
-        if before_cursor.contains("gen ") || before_cursor.contains("trait ") {
-            if before_cursor.contains('{') && !before_cursor.ends_with("}") {
-                return CompletionContext::InsideBody;
-            }
+        if (before_cursor.contains("gen ") || before_cursor.contains("trait "))
+            && before_cursor.contains('{')
+            && !before_cursor.ends_with("}")
+        {
+            return CompletionContext::InsideBody;
         }
 
         // Top level

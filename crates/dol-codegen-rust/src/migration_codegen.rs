@@ -408,6 +408,7 @@ mod tests {
                 ))),
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             }))],
             deprecations: vec![],

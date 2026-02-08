@@ -241,12 +241,13 @@ impl SuggestionEngine {
                     let current_strategy = format!("{:?}", annotation.strategy).to_lowercase();
 
                     // Check for common anti-patterns
-                    if type_str == "String" && current_strategy == "lww" {
-                        if property.contains("content")
+                    if type_str == "String"
+                        && current_strategy == "lww"
+                        && (property.contains("content")
                             || property.contains("text")
-                            || property.contains("description")
-                        {
-                            suggestions.push(Suggestion {
+                            || property.contains("description"))
+                    {
+                        suggestions.push(Suggestion {
                                 suggestion_type: SuggestionType::ChangeStrategy,
                                 priority: SuggestionPriority::Medium,
                                 title: format!("Consider peritext for '{}' field", property),
@@ -255,7 +256,6 @@ impl SuggestionEngine {
                                 code_example: format!("  {} has {}: String @crdt(peritext)", entity, property),
                                 impact: "Enables real-time collaborative editing without conflicts".to_string(),
                             });
-                        }
                     }
 
                     if (type_str.starts_with("Set<") || type_str.starts_with("Vec<"))
@@ -360,22 +360,21 @@ impl SuggestionEngine {
             }
         }
 
-        if context.security_priority {
-            if !field_names
+        if context.security_priority
+            && !field_names
                 .iter()
                 .any(|f| f.contains("owner") || f.contains("creator"))
-            {
-                suggestions.push(Suggestion {
-                    suggestion_type: SuggestionType::AddField,
-                    priority: SuggestionPriority::High,
-                    title: "Add owner/creator field for security".to_string(),
-                    description: "Track entity ownership for access control".to_string(),
-                    rationale: "Owner tracking is essential for authorization and access control"
-                        .to_string(),
-                    code_example: format!("  {} has owner_id: String @crdt(immutable)", entity),
-                    impact: "Enables ownership-based access control".to_string(),
-                });
-            }
+        {
+            suggestions.push(Suggestion {
+                suggestion_type: SuggestionType::AddField,
+                priority: SuggestionPriority::High,
+                title: "Add owner/creator field for security".to_string(),
+                description: "Track entity ownership for access control".to_string(),
+                rationale: "Owner tracking is essential for authorization and access control"
+                    .to_string(),
+                code_example: format!("  {} has owner_id: String @crdt(immutable)", entity),
+                impact: "Enables ownership-based access control".to_string(),
+            });
         }
     }
 

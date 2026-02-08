@@ -181,9 +181,9 @@ impl SchemaDiagnostics {
                                  Entire collection will be replaced on conflict.",
                                 field.name, type_str
                             ),
-                            suggestion: format!(
+                            suggestion:
                                 "Use @crdt(or_set) for Set or @crdt(rga) for Vec/List instead"
-                            ),
+                                    .to_string(),
                             field: Some(field.name.clone()),
                         });
                     }
@@ -268,20 +268,21 @@ impl SchemaDiagnostics {
                     if let Some(constraint) = &field.constraint {
                         // Check if constraint limits size
                         let constraint_str = format!("{:?}", constraint);
-                        if !constraint_str.contains("size") && !constraint_str.contains("count") {
-                            if self.strict {
-                                issues.push(DiagnosticIssue {
-                                    severity: DiagnosticSeverity::Info,
-                                    category: DiagnosticCategory::Performance,
-                                    message: format!(
-                                        "OR-Set field '{}' has no size limit. \
+                        if !constraint_str.contains("size")
+                            && !constraint_str.contains("count")
+                            && self.strict
+                        {
+                            issues.push(DiagnosticIssue {
+                                severity: DiagnosticSeverity::Info,
+                                category: DiagnosticCategory::Performance,
+                                message: format!(
+                                    "OR-Set field '{}' has no size limit. \
                                          Unbounded sets can grow indefinitely.",
-                                        field.name
-                                    ),
-                                    suggestion: "Add constraint: where size <= 1000".to_string(),
-                                    field: Some(field.name.clone()),
-                                });
-                            }
+                                    field.name
+                                ),
+                                suggestion: "Add constraint: where size <= 1000".to_string(),
+                                field: Some(field.name.clone()),
+                            });
                         }
                     } else if self.strict {
                         issues.push(DiagnosticIssue {
@@ -410,19 +411,19 @@ impl SchemaDiagnostics {
 
                 // Check for immutable with mutable constraints
                 if let Some(crdt) = &field.crdt_annotation {
-                    if matches!(crdt.strategy, CrdtStrategy::Immutable) {
-                        if constraint_str.contains("update") || constraint_str.contains("modify") {
-                            issues.push(DiagnosticIssue {
-                                severity: DiagnosticSeverity::Error,
-                                category: DiagnosticCategory::Correctness,
-                                message: format!(
-                                    "Field '{}' is immutable but has mutable constraint",
-                                    field.name
-                                ),
-                                suggestion: "Remove constraint or change CRDT strategy".to_string(),
-                                field: Some(field.name.clone()),
-                            });
-                        }
+                    if matches!(crdt.strategy, CrdtStrategy::Immutable)
+                        && (constraint_str.contains("update") || constraint_str.contains("modify"))
+                    {
+                        issues.push(DiagnosticIssue {
+                            severity: DiagnosticSeverity::Error,
+                            category: DiagnosticCategory::Correctness,
+                            message: format!(
+                                "Field '{}' is immutable but has mutable constraint",
+                                field.name
+                            ),
+                            suggestion: "Remove constraint or change CRDT strategy".to_string(),
+                            field: Some(field.name.clone()),
+                        });
                     }
                 }
             }

@@ -4005,6 +4005,8 @@ mod tests {
                     type_: TypeExpr::Named("Int64".to_string()),
                     default: None,
                     constraint: None,
+                    crdt_annotation: None,
+                    personal: false,
                     span: Span::default(),
                 })),
                 Statement::HasField(Box::new(HasField {
@@ -4012,6 +4014,8 @@ mod tests {
                     type_: TypeExpr::Named("Int64".to_string()),
                     default: None,
                     constraint: None,
+                    crdt_annotation: None,
+                    personal: false,
                     span: Span::default(),
                 })),
             ],

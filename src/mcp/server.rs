@@ -529,7 +529,7 @@ exegesis {
         let constraints = args
             .get_optional_string("constraints")
             .map(|c| c.split(',').map(|s| s.trim().to_string()).collect())
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
 
         let requirement = NlRequirement {
             description,
