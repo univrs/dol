@@ -6,7 +6,7 @@
 //! - Round-trip transformations preserve semantics
 
 use metadol::ast::{
-    BinaryOp, Declaration, Expr, Gen, HasField, Literal, Span, Statement, TypeExpr, Visibility,
+    Declaration, Expr, Gen, HasField, Literal, Span, Statement, TypeExpr, Visibility,
 };
 use metadol::codegen::*;
 use proptest::prelude::*;

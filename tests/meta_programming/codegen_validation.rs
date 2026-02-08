@@ -8,11 +8,8 @@
 //! - Produces idiomatic output
 
 use metadol::ast::Visibility as AstVisibility;
-use metadol::ast::{
-    self, BinaryOp, Declaration, Expr, Gen, HasField, Literal, Span, Statement, TypeExpr,
-};
+use metadol::ast::{Declaration, Gen, HasField, Span, Statement, TypeExpr};
 use metadol::codegen::*;
-use metadol::parse_file;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
