@@ -2,7 +2,7 @@
 name = "dol"
 version = "0.8.1"
 edition = "2021"
-rust-version = "1.81"
+rust-version = "1.84"
 authors = ["Univrs <ardeshir.org@gmail.com>"]
 description = "DOL (Design Ontology Language) - A declarative specification language for ontology-first development"
 documentation = "https://docs.rs/dol"
