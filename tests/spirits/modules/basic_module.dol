@@ -2,7 +2,7 @@
 // Expected: Should parse as module with two declarations
 
 pub gen Container {
-    has id: UInt64
+    has id: u64
     has name: string
 }
 

@@ -1,7 +1,7 @@
 module constrained @ 0.1.0
 
 gen Credits {
-    has amount: UInt64
+    has amount: u64
 
     rule non_negative {
         this.amount >= 0

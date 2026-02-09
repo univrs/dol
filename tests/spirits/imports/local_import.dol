@@ -8,7 +8,7 @@ use internal.helpers
 pub gen ServiceHandler {
     has container: container.Container
 
-    pub fun handle() -> Void {
+    pub fun handle() -> () {
         // Uses local imports
     }
 }

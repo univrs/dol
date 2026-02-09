@@ -18,7 +18,7 @@ gen CollaborativeDoc {
     has comments: Vec<Comment>
 
     @crdt(lww)
-    has last_modified: Int
+    has last_modified: i64
 
     fun add_collaborator(user_id: string) {
         this.collaborators.insert(user_id)
@@ -32,7 +32,7 @@ gen CollaborativeDoc {
 gen Comment {
     has author: string
     has content: string
-    has timestamp: Int
+    has timestamp: i64
 }
 
 docs {

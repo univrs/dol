@@ -3,9 +3,9 @@
 // Expected module path: spirits.modules.nested_path
 
 pub gen NestedType {
-    has value: Int64
+    has value: i64
 
-    pub fun new(v: Int64) -> NestedType {
+    pub fun new(v: i64) -> NestedType {
         return NestedType { value: v }
     }
 }

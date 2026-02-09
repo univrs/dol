@@ -5,14 +5,14 @@ gen PrivateHelper {
     has internal_state: string
 }
 
-fun internal_function() -> Int64 {
+fun internal_function() -> i64 {
     return 100
 }
 
 pub gen PublicApi {
-    has exposed_field: Int64
+    has exposed_field: i64
 
-    pub fun use_private() -> Int64 {
+    pub fun use_private() -> i64 {
         return internal_function()
     }
 }

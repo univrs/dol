@@ -2,16 +2,16 @@
 // Expected: pub(spirit) items accessible within same Spirit only
 
 pub gen Container {
-    has id: UInt64
+    has id: u64
     has name: string
 }
 
 // Available within this Spirit only
-pub(spirit) fun generate_id() -> UInt64 {
+pub(spirit) fun generate_id() -> u64 {
     return 42
 }
 
-pub(spirit) fun log_transition(id: UInt64, state: string) -> Void {
+pub(spirit) fun log_transition(id: u64, state: string) -> () {
     // internal logging
 }
 

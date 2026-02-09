@@ -40,7 +40,7 @@ pub gen Bounded<T: Comparable> {
 }
 
 // Generic with default
-pub gen WithDefault<T = Int64> {
+pub gen WithDefault<T = i64> {
     has value: T
 }
 

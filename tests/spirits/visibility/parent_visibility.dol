@@ -2,7 +2,7 @@
 // Expected: pub(parent) items accessible from direct parent module
 
 pub gen ParentType {
-    has value: Int64
+    has value: i64
 }
 
 mod child {
@@ -11,7 +11,7 @@ mod child {
         has data: string
     }
 
-    pub(parent) fun helper_function() -> Int64 {
+    pub(parent) fun helper_function() -> i64 {
         return 42
     }
 }

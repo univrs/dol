@@ -12,7 +12,7 @@ gen User {
     has email: string
 
     @crdt(lww)
-    has created_at: Int
+    has created_at: i64
 
     fun greet() -> string {
         return "Hello, " + this.name + "!"

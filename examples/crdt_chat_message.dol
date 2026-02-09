@@ -26,7 +26,7 @@ gen message.chat {
 
   // PN-Counter for view tracking
   @crdt(pn_counter, min_value=0)
-  has view_count: Int
+  has view_count: i64
 }
 
 docs {

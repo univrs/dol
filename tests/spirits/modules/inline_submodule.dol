@@ -2,7 +2,7 @@
 // Expected: Should parse gen with inline mod block
 
 pub gen Container {
-    has id: UInt64
+    has id: u64
     has state: state.ContainerState
 }
 

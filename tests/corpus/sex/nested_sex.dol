@@ -1,18 +1,18 @@
 module tests.nested_sex @ 1.0.0
 
 // Global mutable state
-sex var COUNTER: Int64 = 0
+sex var COUNTER: i64 = 0
 sex var LOG: Vec<string> = []
-sex var CACHE: Map<string, Int64> = Map.new()
+sex var CACHE: Map<string, i64> = Map.new()
 
 // Simple sex function
-sex fun increment() -> Int64 {
+sex fun increment() -> i64 {
     COUNTER += 1
     return COUNTER
 }
 
 // Sex function with sex block
-sex fun logged_increment(label: string) -> Int64 {
+sex fun logged_increment(label: string) -> i64 {
     sex {
         LOG.push(label + ": incrementing")
     }
@@ -28,7 +28,7 @@ sex fun logged_increment(label: string) -> Int64 {
 }
 
 // Pure function with sex block
-fun compute_with_logging(x: Int64) -> Int64 {
+fun compute_with_logging(x: i64) -> i64 {
     result = x * 2 + 1
 
     sex {
@@ -39,7 +39,7 @@ fun compute_with_logging(x: Int64) -> Int64 {
 }
 
 // Nested sex blocks (should work but warn)
-sex fun deeply_nested() -> Int64 {
+sex fun deeply_nested() -> i64 {
     sex {
         COUNTER += 1
         sex {
@@ -50,7 +50,7 @@ sex fun deeply_nested() -> Int64 {
 }
 
 // Sex with control flow
-sex fun conditional_effects(cond: bool) -> Int64 {
+sex fun conditional_effects(cond: bool) -> i64 {
     if cond {
         sex {
             COUNTER += 10
@@ -64,7 +64,7 @@ sex fun conditional_effects(cond: bool) -> Int64 {
 }
 
 // Sex with loops
-sex fun loop_effects(n: Int64) -> Int64 {
+sex fun loop_effects(n: i64) -> i64 {
     for i in 0..n {
         sex {
             COUNTER += 1
@@ -75,9 +75,9 @@ sex fun loop_effects(n: Int64) -> Int64 {
 }
 
 // Extern declarations
-sex extern "C" fun printf(fmt: Ptr<Int8>, ...) -> i32
-sex extern "C" fun malloc(size: UInt64) -> Ptr<Void>
-sex extern "C" fun free(ptr: Ptr<Void>)
+sex extern "C" fun printf(fmt: Ptr<i8>, ...) -> i32
+sex extern "C" fun malloc(size: u64) -> Ptr<()>
+sex extern "C" fun free(ptr: Ptr<()>)
 
 docs {
     Tests for various sex block patterns and nesting.

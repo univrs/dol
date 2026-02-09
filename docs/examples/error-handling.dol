@@ -21,39 +21,39 @@ sex fun vudo_recv() -> string
 
 // Host function: Check for pending messages
 // Returns: count of pending messages
-sex fun vudo_pending() -> Int
+sex fun vudo_pending() -> i32
 
 // Define standard error codes as constants
 gen ErrorCodes {
     // Success
-    has SUCCESS: Int = 0
+    has SUCCESS: i32 = 0
 
     // Generic errors
-    has ERROR_UNKNOWN: Int = 1
-    has ERROR_INVALID_INPUT: Int = 2
-    has ERROR_NOT_FOUND: Int = 3
+    has ERROR_UNKNOWN: i32 = 1
+    has ERROR_INVALID_INPUT: i32 = 2
+    has ERROR_NOT_FOUND: i32 = 3
 
     // I/O errors
-    has ERROR_IO_BUFFER_FULL: Int = 100
-    has ERROR_IO_ENCODING: Int = 101
-    has ERROR_IO_FAILED: Int = 102
+    has ERROR_IO_BUFFER_FULL: i32 = 100
+    has ERROR_IO_ENCODING: i32 = 101
+    has ERROR_IO_FAILED: i32 = 102
 
     // Messaging errors
-    has ERROR_MSG_RECIPIENT_NOT_FOUND: Int = 200
-    has ERROR_MSG_QUEUE_FULL: Int = 201
-    has ERROR_MSG_INVALID: Int = 202
+    has ERROR_MSG_RECIPIENT_NOT_FOUND: i32 = 200
+    has ERROR_MSG_QUEUE_FULL: i32 = 201
+    has ERROR_MSG_INVALID: i32 = 202
 
     // Operation errors
-    has ERROR_OP_TIMEOUT: Int = 300
-    has ERROR_OP_CANCELLED: Int = 301
-    has ERROR_OP_STATE: Int = 302
+    has ERROR_OP_TIMEOUT: i32 = 300
+    has ERROR_OP_CANCELLED: i32 = 301
+    has ERROR_OP_STATE: i32 = 302
 }
 
 // A spirit that demonstrates safe I/O with error checking
 gen SafeIOSpirit {
     has name: string
-    has total_errors: Int
-    has successful_prints: Int
+    has total_errors: i32
+    has successful_prints: i32
 
     fun new(spirit_name: string) {
         this.name = spirit_name
@@ -119,8 +119,8 @@ gen SafeIOSpirit {
 // A spirit that demonstrates safe messaging with error checking
 gen SafeMessagingSpirit {
     has spirit_id: i32
-    has messages_sent: Int
-    has messages_failed: Int
+    has messages_sent: i32
+    has messages_failed: i32
     has last_error_code: i32
 
     fun new(id: i32) {
@@ -174,7 +174,7 @@ gen SafeMessagingSpirit {
     }
 
     // Send with retry logic
-    fun send_with_retry(recipient_id: i32, content: string, max_retries: Int) {
+    fun send_with_retry(recipient_id: i32, content: string, max_retries: i32) {
         let retry_count = 0
 
         while retry_count < max_retries {
@@ -222,8 +222,8 @@ gen SafeMessagingSpirit {
 // A spirit that safely receives and handles messages
 gen SafeReceiverSpirit {
     has receiver_id: i32
-    has messages_received: Int
-    has processing_errors: Int
+    has messages_received: i32
+    has processing_errors: i32
 
     fun new(id: i32) {
         this.receiver_id = id

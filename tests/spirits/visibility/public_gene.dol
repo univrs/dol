@@ -2,7 +2,7 @@
 // Expected: pub gen should be accessible everywhere
 
 pub gen PublicContainer {
-    has id: UInt64
+    has id: u64
     has name: string
 
     pub fun new(name: string) -> PublicContainer {

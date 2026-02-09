@@ -49,7 +49,7 @@ gen StandardEffect {
 gen EffectMonitor {
     has name: string
     has subscription_id: i32
-    has effects_received: Int
+    has effects_received: i32
 
     fun new(monitor_name: string) {
         this.name = monitor_name
@@ -102,7 +102,7 @@ gen EffectMonitor {
         }
     }
 
-    fun get_effect_count() -> Int {
+    fun get_effect_count() -> i32 {
         return this.effects_received
     }
 }
@@ -111,7 +111,7 @@ gen EffectMonitor {
 gen EffectEmitter {
     has emitter_id: i32
     has state: string
-    has effects_emitted: Int
+    has effects_emitted: i32
 
     fun new(id: i32) {
         this.emitter_id = id
@@ -177,7 +177,7 @@ gen EffectEmitter {
         return this.state
     }
 
-    fun get_emitted_count() -> Int {
+    fun get_emitted_count() -> i32 {
         return this.effects_emitted
     }
 }
