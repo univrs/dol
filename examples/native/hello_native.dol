@@ -1,0 +1,8 @@
+// Hello Native - First DOL program compiled to machine code
+// Compile: dol-native build hello_native.dol -o hello.o
+// Emit IR: dol-native emit-ir hello_native.dol
+
+fun main() {
+    println("Hello from native DOL!")
+    println("Compiled to machine code via LLVM.")
+}

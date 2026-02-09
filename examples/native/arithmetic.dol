@@ -1,0 +1,78 @@
+// Arithmetic - Integer and boolean operations
+// Demonstrates: functions, parameters, return types, binary ops
+
+fun add(a: i64, b: i64) -> i64 {
+    return a + b
+}
+
+fun subtract(a: i64, b: i64) -> i64 {
+    return a - b
+}
+
+fun multiply(a: i64, b: i64) -> i64 {
+    return a * b
+}
+
+fun divide(a: i64, b: i64) -> i64 {
+    return a / b
+}
+
+fun modulo(a: i64, b: i64) -> i64 {
+    return a % b
+}
+
+fun negate(x: i64) -> i64 {
+    return -x
+}
+
+fun is_positive(x: i64) -> bool {
+    return x > 0
+}
+
+fun is_even(x: i64) -> bool {
+    return x % 2 == 0
+}
+
+fun abs(x: i64) -> i64 {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+fun max(a: i64, b: i64) -> i64 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fun min(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fun clamp(x: i64, lo: i64, hi: i64) -> i64 {
+    if x < lo {
+        return lo
+    }
+    if x > hi {
+        return hi
+    }
+    return x
+}
+
+fun main() {
+    let sum = add(10, 20)
+    let diff = subtract(50, 17)
+    let prod = multiply(6, 7)
+    let quot = divide(100, 3)
+    let rem = modulo(100, 3)
+    println("10 + 20 = " + sum.to_string())
+    println("50 - 17 = " + diff.to_string())
+    println("6 * 7 = " + prod.to_string())
+    println("100 / 3 = " + quot.to_string())
+    println("100 % 3 = " + rem.to_string())
+}

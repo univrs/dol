@@ -1,0 +1,41 @@
+// Variables - val and var bindings
+// Demonstrates: immutable (val) and mutable (var) bindings, assignment
+
+fun swap_demo() {
+    val a = 10
+    val b = 20
+    // a and b are immutable — values captured at declaration
+
+    val sum = a + b
+    val product = a * b
+    println("a=" + a.to_string() + " b=" + b.to_string())
+    println("sum=" + sum.to_string() + " product=" + product.to_string())
+}
+
+fun counter_demo() {
+    val start = 0
+    val step = 5
+
+    // Build up values through function calls
+    val v1 = start + step
+    val v2 = v1 + step
+    val v3 = v2 + step
+    println("Counting by " + step.to_string() + ": " + v1.to_string() + ", " + v2.to_string() + ", " + v3.to_string())
+}
+
+fun temperature_convert(celsius: i64) -> i64 {
+    // F = C * 9/5 + 32 (integer approximation)
+    val f = celsius * 9 / 5 + 32
+    return f
+}
+
+fun main() {
+    swap_demo()
+    counter_demo()
+    val boiling = temperature_convert(100)
+    val freezing = temperature_convert(0)
+    val body = temperature_convert(37)
+    println("100C = " + boiling.to_string() + "F")
+    println("0C = " + freezing.to_string() + "F")
+    println("37C = " + body.to_string() + "F")
+}

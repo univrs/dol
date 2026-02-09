@@ -1,0 +1,30 @@
+// String Operations - String constants and I/O
+// Demonstrates: string literals, print/println
+//
+// NOTE: String concatenation with '+' requires stdlib support
+// (not yet in the native backend). For now, use separate print calls.
+
+fun greet(name: string) {
+    print("Hello, ")
+    print(name)
+    println("!")
+}
+
+fun log_info(msg: string) {
+    print("[INFO] ")
+    println(msg)
+}
+
+fun log_debug(msg: string) {
+    print("[DEBUG] ")
+    println(msg)
+}
+
+fun main() {
+    println("=== DOL Native Strings ===")
+    greet("World")
+    greet("DOL")
+    log_info("Application started")
+    log_debug("Processing request")
+    log_info("Application finished")
+}

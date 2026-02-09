@@ -1,0 +1,35 @@
+// Gene Structs - Genes compile to LLVM struct types
+// Demonstrates: gen declarations, has fields, struct layout
+
+gen Point {
+    has x: f64
+    has y: f64
+}
+
+gen Color {
+    has red: i64
+    has green: i64
+    has blue: i64
+    has alpha: i64
+}
+
+gen Particle {
+    has position_x: f64
+    has position_y: f64
+    has velocity_x: f64
+    has velocity_y: f64
+    has mass: f64
+    has alive: bool
+}
+
+gen container.exists {
+    container has identity
+    container has status
+    container has boundaries
+}
+
+docs {
+    Genes are the fundamental building blocks of DOL.
+    When compiled to native code, each gene becomes an LLVM struct type.
+    Fields declared with 'has' become struct members.
+}

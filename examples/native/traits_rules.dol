@@ -1,0 +1,42 @@
+// Traits and Rules - Ontological composition
+// Demonstrates: trait declarations, rule constraints, system composition
+
+gen container.exists {
+    container has identity
+    container has status
+    container has boundaries
+    container has resources
+}
+
+gen container.lifecycle {
+    container has created_at
+    container has started_at
+    container has health
+}
+
+trait container.managed {
+    uses container.exists
+    uses container.lifecycle
+    container has supervisor
+    container has restart_policy
+}
+
+rule container.valid {
+    container has identity
+    container has status
+}
+
+system container.runtime @ 0.1.0 {
+    requires container.exists >= 0.0.1
+    requires container.lifecycle >= 0.0.1
+}
+
+docs {
+    Traits compose genes into higher-level abstractions.
+    Rules declare invariants that must hold at compile time.
+    Systems version and package compositions.
+
+    In native compilation, traits and rules are compile-time
+    constructs that don't generate runtime code — they guide
+    type checking and validation.
+}

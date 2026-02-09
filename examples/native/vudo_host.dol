@@ -1,0 +1,30 @@
+// VUDO Host Functions - Native ABI for Spirit runtime
+// Demonstrates: VUDO ABI host function calls, message passing
+
+// The native compiler automatically declares all 22 VUDO host functions:
+//   I/O:       vudo_print, vudo_println, vudo_log, vudo_error
+//   Memory:    vudo_alloc, vudo_free, vudo_realloc
+//   Time:      vudo_now, vudo_sleep, vudo_monotonic_now
+//   Messaging: vudo_send, vudo_recv, vudo_pending, vudo_broadcast, vudo_free_message
+//   Random:    vudo_random, vudo_random_bytes
+//   Effects:   vudo_emit_effect, vudo_subscribe
+//   Debug:     vudo_breakpoint, vudo_assert, vudo_panic
+
+gen EchoSpirit {
+    has messages_handled: i64
+
+    fun tick() {
+        if pending() > 0 {
+            let msg = recv()
+            let sender_id = sender()
+            println(msg)
+            send(sender_id, msg)
+            this.messages_handled = this.messages_handled + 1
+        }
+    }
+}
+
+fun main() {
+    println("VUDO host functions are available in native builds.")
+    println("22 host functions declared via C ABI.")
+}
