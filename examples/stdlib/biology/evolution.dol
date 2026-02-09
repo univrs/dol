@@ -2,7 +2,7 @@
 // Evolution - Speciation and Lineage Tracking
 // ═══════════════════════════════════════════════════════════════
 
-module biology.evolution @ 1.0.0
+module biology.evo @ 1.0.0
 
 use biology.types.{ GeoTime, Generation }
 
@@ -79,7 +79,7 @@ pub gen Genome {
   }
 }
 
-/// Species lineage for tracking evolution
+/// Species lineage for tracking evo
 pub gen Lineage {
   has ancestor_id: Option<u64>
   has divergence_time: GeoTime
@@ -112,7 +112,7 @@ pub trait Evolvable {
   }
 
   docs {
-    Evolvable trait for entities subject to evolution.
+    Evolvable trait for entities subject to evo.
     Combines mutation, recombination, and selection.
   }
 }

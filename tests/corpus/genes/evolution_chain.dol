@@ -1,12 +1,12 @@
 module tests.evolution_chain @ 1.0.0
 
 // Base type
-pub gene EntityV1 {
+pub gen EntityV1 {
     has id: UInt32
-    has name: String
+    has name: string
 }
 
-// First evolution - add fields
+// First evo - add fields
 evolves EntityV1 > EntityV2 @ 2.0.0 {
     added created_at: Int64 = 0
     added updated_at: Int64 = 0
@@ -20,10 +20,10 @@ evolves EntityV1 > EntityV2 @ 2.0.0 {
     }
 }
 
-// Second evolution - change types
+// Second evo - change types
 evolves EntityV2 > EntityV3 @ 3.0.0 {
     changed id: UInt32 -> UInt64
-    added metadata: Map<String, String>
+    added metadata: Map<string, string>
     removed updated_at
 
     migrate from EntityV2 {
@@ -36,10 +36,10 @@ evolves EntityV2 > EntityV3 @ 3.0.0 {
     }
 }
 
-// Third evolution - rename fields
+// Third evo - rename fields
 evolves EntityV3 > EntityV4 @ 4.0.0 {
     renamed name -> display_name
-    added tags: List<String> = []
+    added tags: Vec<string> = []
 
     migrate from EntityV3 {
         return EntityV4 {
@@ -52,14 +52,14 @@ evolves EntityV3 > EntityV4 @ 4.0.0 {
     }
 }
 
-// Geological time evolution (biology-style)
-pub gene Prokaryote {
+// Geological time evo (biology-style)
+pub gen Prokaryote {
     has dna_length: UInt64
-    has cell_wall: Bool = true
+    has cell_wall: bool = true
 }
 
 evolves Prokaryote > Eukaryote @ 2.0Gya {
-    added nucleus: Bool = true
+    added nucleus: bool = true
     added mitochondria: UInt64 = 1
     added cell_size: Float64 = 10.0
 
@@ -72,14 +72,14 @@ evolves Prokaryote > Eukaryote @ 2.0Gya {
         }
     }
 
-    exegesis {
+    docs {
         Endosymbiotic origin of eukaryotes, ~2 billion years ago.
     }
 }
 
 evolves Eukaryote > Multicellular @ 600Mya {
     added cell_count: UInt64 = 2
-    added differentiation: Bool = false
+    added differentiation: bool = false
 
     migrate from Eukaryote {
         return Multicellular {
@@ -90,6 +90,6 @@ evolves Eukaryote > Multicellular @ 600Mya {
     }
 }
 
-exegesis {
-    Tests for evolution chains with various change types.
+docs {
+    Tests for evo chains with various change types.
 }

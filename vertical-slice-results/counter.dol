@@ -1,8 +1,8 @@
 // Counter.dol - Minimal vertical slice test
 // This file tests the complete DOL -> WASM -> Runtime pipeline
 
-/// Counter gene with increment and add methods
-gene Counter {
+/// Counter gen with increment and add methods
+gen Counter {
     has value: Int64
 
     fun increment() -> Int64 {

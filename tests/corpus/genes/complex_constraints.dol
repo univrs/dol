@@ -1,33 +1,33 @@
 module tests.complex_constraints @ 1.0.0
 
-pub gene OrderedList {
-    has items: List<Int64>
+pub gen OrderedList {
+    has items: Vec<Int64>
 
-    // Simple constraint
-    constraint non_empty {
+    // Simple rule
+    rule non_empty {
         this.items.length() > 0
     }
 
-    // Forall constraint
-    constraint sorted {
+    // Forall rule
+    rule sorted {
         forall i: UInt64.
             i < this.items.length() - 1 implies
                 this.items[i] <= this.items[i + 1]
     }
 
-    // Exists constraint
-    constraint has_positive {
+    // Exists rule
+    rule has_positive {
         exists x: Int64. x in this.items && x > 0
     }
 
     // Nested quantifiers
-    constraint unique {
+    rule unique {
         forall i: UInt64. forall j: UInt64.
             i != j implies this.items[i] != this.items[j]
     }
 
     // Complex implication chain
-    constraint bounded {
+    rule bounded {
         this.items.length() > 0 implies (
             forall x: Int64. x in this.items implies (
                 x >= this.min() && x <= this.max()
@@ -56,6 +56,6 @@ pub trait Ordered {
     }
 }
 
-exegesis {
+docs {
     Tests for complex constraints with quantifiers and implications.
 }

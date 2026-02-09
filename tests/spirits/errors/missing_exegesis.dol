@@ -1,9 +1,9 @@
-// Test: Missing exegesis block
-// Expected: Should fail - exegesis is mandatory
+// Test: Missing docs block
+// Expected: Should fail - docs is mandatory
 
-pub gene MissingExegesis {
+pub gen MissingExegesis {
     has id: UInt64
-    has name: String
+    has name: string
 }
 
-// ERROR: No exegesis block!
+// ERROR: No docs block!

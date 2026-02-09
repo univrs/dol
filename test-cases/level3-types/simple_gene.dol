@@ -1,6 +1,6 @@
 module types @ 0.1.0
 
-gene Point {
+gen Point {
     has x: Float64
     has y: Float64
 }

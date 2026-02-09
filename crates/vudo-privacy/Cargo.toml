@@ -1,0 +1,65 @@
+[package]
+name = "vudo-privacy"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "GDPR-compliant cryptographic deletion for VUDO Runtime with per-user encryption keys"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Identity system (for key management)
+vudo-identity = { path = "../vudo-identity" }
+vudo-state = { path = "../vudo-state" }
+
+# Cryptography
+chacha20poly1305 = "0.10"
+x25519-dalek = { version = "2.0", features = ["serde", "static_secrets"] }
+ed25519-dalek = { version = "2.1", features = ["serde", "rand_core"] }
+zeroize = { version = "1.7", features = ["derive"] }
+blake3 = "1.5"
+rand = "0.8"
+hex = "0.4"
+
+# CRDT backend
+automerge = "0.6"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID for request IDs
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Concurrency primitives
+parking_lot = "0.12"
+dashmap = "6.0"
+
+# Logging
+tracing = "0.1"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tokio-test = "0.4"
+tracing-subscriber = "0.3"
+tempfile = "3.9"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "crypto_benchmarks"
+harness = false
+
+[lib]
+name = "vudo_privacy"
+path = "src/lib.rs"

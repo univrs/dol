@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/{{ module_name }}.schema.json",
+  "title": "{{ module_name }}",
+  "description": "Generated from DOL",
+  "type": "object",
+  "properties": {
+    {{#each declarations}}
+    "{{ name }}": {
+      "type": "object",
+      {{#if docs}}
+      "description": "{{ docs }}",
+      {{/if}}
+      "properties": {
+        {{#each fields}}
+        "{{ var_name }}": {
+          "type": "{{ type_ }}"{{#if crdt_strategy}},
+          "x-crdt": "{{ crdt_strategy }}"{{/if}}
+        }{{#unless @last}},{{/unless}}
+        {{/each}}
+      }
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  }
+}

@@ -1,0 +1,37 @@
+[package]
+name = "dol-test"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Property-based testing framework for DOL CRDT convergence guarantees"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core dependencies
+thiserror = "1.0"
+
+# Property-based testing
+proptest = "1.4"
+
+# Serialization for test data
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# CRDT implementations for testing
+automerge = "0.5"
+autosurgeon = "0.8"
+
+# DOL dependencies
+dol = { path = "../..", package = "dol" }
+dol-codegen-rust = { path = "../dol-codegen-rust" }
+
+# Utilities
+rand = "0.8"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3.9"
+
+[features]
+default = []

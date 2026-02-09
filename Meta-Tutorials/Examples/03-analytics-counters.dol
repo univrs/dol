@@ -1,0 +1,40 @@
+// Example 03: Analytics Counters
+// Demonstrates PN-Counter CRDT for distributed counting
+
+gen PageAnalytics {
+    @crdt(immutable)
+    has page_id: string
+
+    @crdt(pn_counter, min_value=0)
+    has view_count: Int
+
+    @crdt(pn_counter)
+    has like_count: Int
+
+    @crdt(pn_counter)
+    has share_count: Int
+
+    @crdt(or_set)
+    has visitors: Set<string>
+
+    fun increment_views() {
+        this.view_count = this.view_count + 1
+    }
+
+    fun add_like() {
+        this.like_count = this.like_count + 1
+    }
+
+    fun remove_like() {
+        this.like_count = this.like_count - 1
+    }
+
+    fun track_visitor(visitor_id: string) {
+        this.visitors.insert(visitor_id)
+    }
+}
+
+docs {
+    Page analytics using PN-Counter for distributed
+    increment/decrement operations without coordination.
+}

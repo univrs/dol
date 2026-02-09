@@ -1,0 +1,23 @@
+[package]
+name = "vudo-storage"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Platform-agnostic storage trait for VUDO Runtime persistence"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+bytes = "1.5"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-test = "0.4"
+
+[lib]
+name = "vudo_storage"
+path = "src/lib.rs"

@@ -7,7 +7,7 @@ module biology.mycelium @ 1.0.0
 use biology.types.{ Vec3, Gradient, Nutrient, Energy }
 use biology.hyphal.{ Hyphal, HyphalTip, HyphalSegment }
 use biology.transport.{ Transport, TransportNode, Flow }
-use biology.evolution.{ Evolvable, Fungus }
+use biology.evo.{ Evolvable, Fungus }
 
 /// Node in mycelium network
 pub gen MyceliumNode {

@@ -1,0 +1,7 @@
+# Benchmark Results
+
+Results from benchmark runs will be saved here.
+
+Format: `{browser}-{timestamp}.{json|csv}`
+
+Example: `Chrome-2026-02-05T12-30-45.json`

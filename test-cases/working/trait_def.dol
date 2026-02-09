@@ -4,7 +4,7 @@ trait math.calculator {
     calculator is deterministic
 }
 
-exegesis {
+docs {
     The math.calculator trait defines capabilities for
     performing arithmetic operations. Calculators can
     add and multiply, and their operations are deterministic.

@@ -9,7 +9,7 @@ pub use types.*
 pub use hyphal.*
 pub use transport.*
 pub use ecosystem.*
-pub use evolution.*
+pub use evo.*
 pub use mycelium.*
 
 docs {
@@ -41,7 +41,7 @@ docs {
   - Interaction: Predator-prey
   - Ecosystem system: Full simulation
 
-  ## Evolution (biology.evolution)
+  ## Evolution (biology.evo)
   - Trait: Heritable characteristic
   - Genome: Collection of traits
   - Evolvable trait: Evolution mechanics

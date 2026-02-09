@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+.DS_Store
+.env
+.env.local
+*.tsbuildinfo
+
+# Keep results structure but ignore actual result files
+results/*
+!results/.gitkeep

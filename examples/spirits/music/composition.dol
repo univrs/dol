@@ -469,7 +469,7 @@ pub gen Song {
         // Generate form notation (e.g., "AABA" or "ABABCB")
         let mut labels = std::collections::HashMap::new()
         let mut current_label = 'A'
-        let mut form = String::new()
+        let mut form = string::new()
 
         for section in this.sections {
             if !labels.contains_key(&section.name) {

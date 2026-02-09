@@ -1,0 +1,43 @@
+[package]
+name = "dol-codegen-rust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Automerge-backed Rust code generation for DOL"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core dependencies
+thiserror = "1.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+
+# Template engine
+handlebars = "5.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# DOL dependencies
+dol = { path = "../..", package = "dol" }
+
+# Version handling
+semver = "1.0"
+
+# Async trait support
+async-trait = "0.1"
+
+# WASM support (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3.9"
+insta = "1.34"
+
+[features]
+default = []
+wasm = ["wasm-bindgen"]

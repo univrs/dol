@@ -1,0 +1,21 @@
+{
+  "name": "@crdt-comparison/cr-sqlite-impl",
+  "version": "1.0.0",
+  "description": "cr-sqlite TodoList implementation for evaluation",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test",
+    "benchmark": "node dist/benchmark.js"
+  },
+  "dependencies": {
+    "@vlcn.io/crsqlite-wasm": "^0.16.0",
+    "better-sqlite3": "^9.2.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}

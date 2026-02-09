@@ -1,9 +1,9 @@
-// Test: Empty exegesis block
-// Expected: Should warn - exegesis should not be empty
+// Test: Empty docs block
+// Expected: Should warn - docs should not be empty
 
-pub gene EmptyExegesis {
+pub gen EmptyExegesis {
     has id: UInt64
 }
 
-exegesis {
+docs {
 }

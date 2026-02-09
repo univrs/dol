@@ -1,0 +1,37 @@
+[package]
+name = "dol-codegen"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+authors = ["Univrs <ardeshir.org@gmail.com>"]
+description = "Template-based code generation framework for DOL"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core dependencies
+thiserror = "1.0"
+
+# Template engine
+handlebars = "5.1"
+tera = "1.19"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# DOL dependencies
+dol = { path = "../..", package = "dol" }
+
+# Code generation utilities
+heck = "0.5"  # Case conversion (snake_case, PascalCase, etc.)
+convert_case = "0.6"  # Additional case conversions
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3.9"
+insta = "1.34"
+
+[features]
+default = ["handlebars-templates", "tera-templates"]
+handlebars-templates = []
+tera-templates = []

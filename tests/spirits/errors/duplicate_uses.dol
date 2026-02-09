@@ -6,11 +6,11 @@ use container
 use container.state
 use container.state
 
-pub gene DuplicateImports {
-    has data: String
+pub gen DuplicateImports {
+    has data: string
 }
 
-exegesis {
+docs {
     Test case for duplicate uses statements.
     Duplicates should be detected and reported.
 }

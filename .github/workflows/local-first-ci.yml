@@ -1,0 +1,450 @@
+name: Local-First CI
+
+on:
+  push:
+    branches: [main, develop, feature/local-first]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  PROPTEST_CASES: 100000
+  PROPTEST_MAX_SHRINK_ITERS: 10000
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run all tests
+        run: cargo test --features "cli,serde" --workspace
+
+      - name: Run doc tests
+        run: cargo test --doc --all-features
+
+  crdt-property-tests:
+    name: CRDT Property Tests (100K iterations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true  # Non-blocking: infrastructure flakiness
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run property-based tests with 100K iterations
+        run: |
+          cd crates/dol-test
+          PROPTEST_CASES=100000 PROPTEST_MAX_SHRINK_ITERS=10000 cargo test --release -- --nocapture
+        env:
+          RUST_LOG: info
+
+      - name: Upload property test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: property-test-results
+          path: |
+            crates/dol-test/proptest-regressions/
+            crates/dol-test/target/
+
+  wasm-build:
+    name: WASM Build & Size Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install wasm-opt
+        run: |
+          wget https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz
+          tar xzf binaryen-version_116-x86_64-linux.tar.gz
+          echo "$PWD/binaryen-version_116/bin" >> $GITHUB_PATH
+
+      - name: Build WASM modules
+        run: |
+          cargo build --target wasm32-unknown-unknown --release --lib
+          cargo build --target wasm32-unknown-unknown --release --features wasm-compile || true
+
+      - name: Check WASM size budgets
+        run: |
+          chmod +x ./scripts/wasm-size-budget.sh
+
+          # Check all WASM modules
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            if [ -f "$wasm" ] && [[ "$wasm" != *".opt.wasm" ]]; then
+              echo "Checking $wasm..."
+              ./scripts/wasm-size-budget.sh "$wasm" || exit 1
+            fi
+          done
+
+      - name: Generate WASM size report
+        if: always()
+        run: |
+          echo "## WASM Module Sizes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | Unoptimized | Optimized | Gzipped | Budget | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------------|-----------|---------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            if [ -f "$wasm" ] && [[ "$wasm" != *".opt"* ]]; then
+              name=$(basename "$wasm")
+              orig_kb=$(($(stat -c%s "$wasm") / 1024))
+
+              if [ -f "${wasm}.opt" ]; then
+                opt_kb=$(($(stat -c%s "${wasm}.opt") / 1024))
+              else
+                opt_kb="N/A"
+              fi
+
+              if [ -f "${wasm}.opt.gz" ]; then
+                gz_kb=$(($(stat -c%s "${wasm}.opt.gz") / 1024))
+                if [ "$gz_kb" -lt 100 ]; then
+                  status="✅ PASS"
+                else
+                  status="❌ FAIL"
+                fi
+              else
+                gz_kb="N/A"
+                status="⚠️ SKIP"
+              fi
+
+              echo "| $name | ${orig_kb}KB | ${opt_kb}KB | ${gz_kb}KB | <100KB | $status |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-modules
+          path: |
+            target/wasm32-unknown-unknown/release/*.wasm
+            target/wasm32-unknown-unknown/release/*.wasm.opt
+            target/wasm32-unknown-unknown/release/*.wasm.opt.gz
+
+  cross-browser-tests:
+    name: E2E Tests (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true  # Non-blocking: browser flakiness
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests/e2e/package.json
+
+      - name: Install dependencies
+        run: |
+          cd tests/e2e
+          npm install
+
+      - name: Install Playwright browser
+        run: |
+          cd tests/e2e
+          npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run E2E tests
+        run: |
+          cd tests/e2e
+          npx playwright test --project=${{ matrix.browser }} --reporter=html,json
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ matrix.browser }}
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+            tests/e2e/test-results.json
+          retention-days: 7
+
+  performance-benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true  # Non-blocking: runner performance varies
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run performance regression tests
+        run: |
+          if [ -d "benchmarks" ]; then
+            cd benchmarks
+            cargo test --release regression_tests -- --nocapture
+          else
+            echo "⚠️ Benchmarks directory not found, skipping performance regression tests"
+          fi
+
+      - name: Check performance budgets
+        run: |
+          if [ -d "benchmarks" ]; then
+            cd benchmarks
+            if ! cargo test --release test_all_budgets -- --nocapture 2>&1 | grep -q "All Performance Budgets Met"; then
+              echo "❌ Performance budget violation detected"
+              exit 1
+            fi
+            echo "✅ All performance budgets met"
+          else
+            echo "⚠️ Benchmarks directory not found, skipping performance budget check"
+          fi
+
+      - name: Run criterion benchmarks
+        run: |
+          if [ -d "benchmarks" ]; then
+            cd benchmarks
+            cargo bench --bench wasm_size -- --noplot || true
+            cargo bench --bench memory_usage -- --noplot || true
+            cargo bench --bench startup_time -- --noplot || true
+          else
+            echo "⚠️ Benchmarks directory not found, skipping criterion benchmarks"
+          fi
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmarks/target/criterion/
+            benchmarks/target/*.txt
+
+  tauri-build-linux:
+    name: Tauri Build (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install workspace dependencies
+        run: |
+          cd apps/workspace
+          npm install || echo "No package.json found, skipping npm install"
+
+      - name: Build Tauri app (if configured)
+        run: |
+          cd apps/workspace
+          if [ -f "package.json" ] && grep -q "tauri" package.json; then
+            npm run tauri build || echo "Tauri build not configured"
+          else
+            echo "Tauri not configured for this workspace"
+          fi
+
+      - name: Upload Linux artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-app
+          path: |
+            apps/workspace/src-tauri/target/release/bundle/appimage/*.AppImage
+            apps/workspace/src-tauri/target/release/bundle/deb/*.deb
+
+  tauri-build-macos:
+    name: Tauri Build (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install workspace dependencies
+        run: |
+          cd apps/workspace
+          npm install || echo "No package.json found, skipping npm install"
+
+      - name: Build Tauri app (if configured)
+        run: |
+          cd apps/workspace
+          if [ -f "package.json" ] && grep -q "tauri" package.json; then
+            npm run tauri build || echo "Tauri build not configured"
+          else
+            echo "Tauri not configured for this workspace"
+          fi
+
+      - name: Upload macOS artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: |
+            apps/workspace/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/workspace/src-tauri/target/release/bundle/macos/*.app
+
+  tauri-build-windows:
+    name: Tauri Build (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install workspace dependencies
+        run: |
+          cd apps/workspace
+          npm install
+        shell: bash
+        continue-on-error: true
+
+      - name: Build Tauri app (if configured)
+        run: |
+          cd apps/workspace
+          if (Test-Path "package.json") {
+            $content = Get-Content "package.json" -Raw
+            if ($content -match "tauri") {
+              npm run tauri build
+            } else {
+              Write-Host "Tauri not configured for this workspace"
+            }
+          } else {
+            Write-Host "No package.json found"
+          }
+        shell: pwsh
+        continue-on-error: true
+
+      - name: Upload Windows artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: |
+            apps/workspace/src-tauri/target/release/bundle/msi/*.msi
+            apps/workspace/src-tauri/target/release/bundle/nsis/*.exe
+
+  integration:
+    name: Integration Summary
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - crdt-property-tests
+      - wasm-build
+      - cross-browser-tests
+      - performance-benchmarks
+    if: always()
+    steps:
+      - name: Generate CI summary
+        run: |
+          echo "# Local-First CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CRDT Property Tests (100K) | ${{ needs.crdt-property-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WASM Build & Size Check | ${{ needs.wasm-build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cross-Browser E2E Tests | ${{ needs.cross-browser-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance Benchmarks | ${{ needs.performance-benchmarks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if core jobs passed (flaky jobs are non-blocking)
+          if [ "${{ needs.test.result }}" == "success" ] && \
+             [ "${{ needs.wasm-build.result }}" == "success" ]; then
+            echo "## ✅ Core CI checks passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ Property tests, E2E, and benchmarks are informational (non-blocking)." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          else
+            echo "## ❌ Core CI checks failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the failed jobs above and fix any issues." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
