@@ -2,7 +2,7 @@
 // Expected: Should fail - docs is mandatory
 
 pub gen MissingExegesis {
-    has id: UInt64
+    has id: u64
     has name: string
 }
 

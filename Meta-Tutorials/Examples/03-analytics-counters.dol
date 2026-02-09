@@ -6,13 +6,13 @@ gen PageAnalytics {
     has page_id: string
 
     @crdt(pn_counter, min_value=0)
-    has view_count: Int
+    has view_count: i64
 
     @crdt(pn_counter)
-    has like_count: Int
+    has like_count: i64
 
     @crdt(pn_counter)
-    has share_count: Int
+    has share_count: i64
 
     @crdt(or_set)
     has visitors: Set<string>

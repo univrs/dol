@@ -1,7 +1,7 @@
 module tests.complex_constraints @ 1.0.0
 
 pub gen OrderedList {
-    has items: Vec<Int64>
+    has items: Vec<i64>
 
     // Simple rule
     rule non_empty {
@@ -10,26 +10,26 @@ pub gen OrderedList {
 
     // Forall rule
     rule sorted {
-        forall i: UInt64.
+        forall i: u64.
             i < this.items.length() - 1 implies
                 this.items[i] <= this.items[i + 1]
     }
 
     // Exists rule
     rule has_positive {
-        exists x: Int64. x in this.items && x > 0
+        exists x: i64. x in this.items && x > 0
     }
 
     // Nested quantifiers
     rule unique {
-        forall i: UInt64. forall j: UInt64.
+        forall i: u64. forall j: u64.
             i != j implies this.items[i] != this.items[j]
     }
 
     // Complex implication chain
     rule bounded {
         this.items.length() > 0 implies (
-            forall x: Int64. x in this.items implies (
+            forall x: i64. x in this.items implies (
                 x >= this.min() && x <= this.max()
             )
         )
@@ -37,7 +37,7 @@ pub gen OrderedList {
 }
 
 pub trait Ordered {
-    is compare(other: Self) -> Int64
+    is compare(other: Self) -> i64
 
     law reflexive {
         forall x: Self. x.compare(x) == 0

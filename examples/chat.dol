@@ -3,7 +3,7 @@
 
 gen ChatRoom {
     has name: string
-    has message_count: Int
+    has message_count: i64
 
     fun tick() {
         if pending() > 0 {

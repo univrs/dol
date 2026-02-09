@@ -2,7 +2,7 @@
 // send/recv effects inferred automatically
 
 gen EchoSpirit {
-    has messages_handled: Int
+    has messages_handled: i64
 
     fun tick() {
         if pending() > 0 {

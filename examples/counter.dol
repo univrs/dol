@@ -2,9 +2,9 @@
 // Mutation effects inferred automatically
 
 gen Counter {
-    has value: Int
+    has value: i64
 
-    fun get() -> Int {
+    fun get() -> i64 {
         return this.value
     }
 
@@ -13,7 +13,7 @@ gen Counter {
         println("Counter: " + this.value.to_string())
     }
 
-    fun add(n: Int) -> Int {
+    fun add(n: i64) -> i64 {
         this.value = this.value + n
         return this.value
     }

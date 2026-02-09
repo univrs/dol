@@ -17,7 +17,7 @@ sex fun vudo_sender() -> i32
 
 // Host function: Check if there are pending messages
 // Returns: number of messages in the queue (0 if empty)
-sex fun vudo_pending() -> Int
+sex fun vudo_pending() -> i32
 
 // Host function: Print a string to standard output
 // Returns: ResultCode
@@ -44,8 +44,8 @@ gen Message {
 // A spirit that acts as a message broker/relay
 gen MessageBroker {
     has name: string
-    has messages_processed: Int
-    has total_bytes_relayed: Int
+    has messages_processed: i32
+    has total_bytes_relayed: i32
 
     fun new(broker_name: string) {
         this.name = broker_name
@@ -110,7 +110,7 @@ gen MessageBroker {
 // A spirit that sends messages to other spirits
 gen MessageSender {
     has sender_id: i32
-    has messages_sent: Int
+    has messages_sent: i32
 
     fun new(id: i32) {
         this.sender_id = id
@@ -138,7 +138,7 @@ gen MessageSender {
         }
     }
 
-    fun get_sent_count() -> Int {
+    fun get_sent_count() -> i32 {
         return this.messages_sent
     }
 }
@@ -146,7 +146,7 @@ gen MessageSender {
 // A spirit that receives and processes messages
 gen MessageReceiver {
     has receiver_id: i32
-    has messages_received: Int
+    has messages_received: i32
     has last_message: string
 
     fun new(id: i32) {
@@ -179,7 +179,7 @@ gen MessageReceiver {
     }
 
     // Get statistics
-    fun get_receive_count() -> Int {
+    fun get_receive_count() -> i32 {
         return this.messages_received
     }
 }

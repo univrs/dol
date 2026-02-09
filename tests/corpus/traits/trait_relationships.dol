@@ -3,7 +3,7 @@ module tests.trait_relationships @ 1.0.0
 /// A simple gen for testing
 pub gen SimpleValue {
     has value: string
-    has count: Int64 = 0
+    has count: i64 = 0
 
     fun get_value() -> string {
         return this.value

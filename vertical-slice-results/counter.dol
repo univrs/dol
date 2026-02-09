@@ -3,22 +3,22 @@
 
 /// Counter gen with increment and add methods
 gen Counter {
-    has value: Int64
+    has value: i64
 
-    fun increment() -> Int64 {
+    fun increment() -> i64 {
         return value + 1
     }
 
-    fun get_value() -> Int64 {
+    fun get_value() -> i64 {
         return value
     }
 
-    fun add(n: Int64) -> Int64 {
+    fun add(n: i64) -> i64 {
         return value + n
     }
 }
 
 /// Standalone function for simpler test
-fun add_numbers(a: Int64, b: Int64) -> Int64 {
+fun add_numbers(a: i64, b: i64) -> i64 {
     return a + b
 }

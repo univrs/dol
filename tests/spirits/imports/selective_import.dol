@@ -4,7 +4,7 @@
 use arithmetic.{ add, subtract, multiply, divide }
 use container.state.{ ContainerState, is_active }
 
-pub fun math_demo() -> Int64 {
+pub fun math_demo() -> i64 {
     return add(1, 2)
 }
 

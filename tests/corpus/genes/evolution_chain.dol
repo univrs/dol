@@ -2,14 +2,14 @@ module tests.evolution_chain @ 1.0.0
 
 // Base type
 pub gen EntityV1 {
-    has id: UInt32
+    has id: u32
     has name: string
 }
 
 // First evo - add fields
-evolves EntityV1 > EntityV2 @ 2.0.0 {
-    added created_at: Int64 = 0
-    added updated_at: Int64 = 0
+evo EntityV1 > EntityV2 @ 2.0.0 {
+    added created_at: i64 = 0
+    added updated_at: i64 = 0
 
     migrate from EntityV1 {
         return EntityV2 {
@@ -21,14 +21,14 @@ evolves EntityV1 > EntityV2 @ 2.0.0 {
 }
 
 // Second evo - change types
-evolves EntityV2 > EntityV3 @ 3.0.0 {
-    changed id: UInt32 -> UInt64
+evo EntityV2 > EntityV3 @ 3.0.0 {
+    changed id: u32 -> u64
     added metadata: Map<string, string>
     removed updated_at
 
     migrate from EntityV2 {
         return EntityV3 {
-            id: old.id as UInt64,
+            id: old.id as u64,
             name: old.name,
             created_at: old.created_at,
             metadata: Map.new()
@@ -37,7 +37,7 @@ evolves EntityV2 > EntityV3 @ 3.0.0 {
 }
 
 // Third evo - rename fields
-evolves EntityV3 > EntityV4 @ 4.0.0 {
+evo EntityV3 > EntityV4 @ 4.0.0 {
     renamed name -> display_name
     added tags: Vec<string> = []
 
@@ -54,14 +54,14 @@ evolves EntityV3 > EntityV4 @ 4.0.0 {
 
 // Geological time evo (biology-style)
 pub gen Prokaryote {
-    has dna_length: UInt64
+    has dna_length: u64
     has cell_wall: bool = true
 }
 
-evolves Prokaryote > Eukaryote @ 2.0Gya {
+evo Prokaryote > Eukaryote @ 2.0Gya {
     added nucleus: bool = true
-    added mitochondria: UInt64 = 1
-    added cell_size: Float64 = 10.0
+    added mitochondria: u64 = 1
+    added cell_size: f64 = 10.0
 
     migrate from Prokaryote {
         return Eukaryote {
@@ -77,8 +77,8 @@ evolves Prokaryote > Eukaryote @ 2.0Gya {
     }
 }
 
-evolves Eukaryote > Multicellular @ 600Mya {
-    added cell_count: UInt64 = 2
+evo Eukaryote > Multicellular @ 600Mya {
+    added cell_count: u64 = 2
     added differentiation: bool = false
 
     migrate from Eukaryote {

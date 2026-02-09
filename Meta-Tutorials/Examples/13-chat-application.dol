@@ -18,7 +18,7 @@ gen ChatRoom {
     has moderators: Set<string>
 
     @crdt(lww)
-    has created_at: Int
+    has created_at: i64
 
     @crdt(lww)
     has settings: RoomSettings
@@ -31,12 +31,12 @@ gen ChatRoom {
         this.members.insert(user_id)
     }
 
-    fun promote_moderator(user_id: string) -> Result<Void, string> {
+    fun promote_moderator(user_id: string) -> Result<(), string> {
         if !this.members.contains(user_id) {
             return Err("User not in room")
         }
         this.moderators.insert(user_id)
-        return Ok(Void)
+        return Ok(())
     }
 }
 
@@ -54,13 +54,13 @@ gen ChatMessage {
     has reactions: Set<Reaction>
 
     @crdt(lww)
-    has timestamp: Int
+    has timestamp: i64
 
     @crdt(lww)
-    has edited: Bool = false
+    has edited: bool = false
 
     @crdt(lww)
-    has deleted: Bool = false
+    has deleted: bool = false
 
     fun add_reaction(emoji: string, user_id: string) {
         this.reactions.insert(Reaction {
@@ -86,10 +86,10 @@ gen Reaction {
 }
 
 gen RoomSettings {
-    has max_members: Int = 100
-    has allow_files: Bool = true
-    has allow_reactions: Bool = true
-    has message_retention_days: Int = 30
+    has max_members: i32 = 100
+    has allow_files: bool = true
+    has allow_reactions: bool = true
+    has message_retention_days: i32 = 30
 }
 
 docs {

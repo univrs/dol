@@ -12,7 +12,7 @@ gen ShoppingCart {
     has items: Set<CartItem>
 
     @crdt(lww)
-    has total: Float64
+    has total: f64
 
     fun add_item(item: CartItem) {
         this.items.insert(item)
@@ -35,9 +35,9 @@ gen ShoppingCart {
 
 gen CartItem {
     has product_id: string
-    has quantity: Int where quantity > 0
-    has unit_price: Float64
-    has subtotal: Float64
+    has quantity: i32 where quantity > 0
+    has unit_price: f64
+    has subtotal: f64
 }
 
 docs {

@@ -15,26 +15,26 @@ gen TaskList {
         this.tasks.push(task)
     }
 
-    fun insert_task(index: Int, task: Task) {
+    fun insert_task(index: i32, task: Task) {
         this.tasks.insert(index, task)
     }
 
-    fun remove_task(index: Int) {
+    fun remove_task(index: i32) {
         this.tasks.remove(index)
     }
 
-    fun move_task(from: Int, to: Int) {
-        let task = this.tasks.remove(from)
-        this.tasks.insert(to, task)
+    fun move_task(from_index: i32, to_index: i32) {
+        let task = this.tasks.remove(from_index)
+        this.tasks.insert(to_index, task)
     }
 }
 
 gen Task {
     has id: string
     has title: string
-    has completed: Bool
+    has completed: bool
     has priority: Priority
-    has due_date: Option<Int>
+    has due_date: Option<i64>
 }
 
 gen Priority {

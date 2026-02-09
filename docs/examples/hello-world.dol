@@ -12,7 +12,7 @@ sex fun vudo_strlen(ptr: i32) -> i32
 // A simple spirit that demonstrates basic I/O
 gen HelloWorld {
     has name: string
-    has greeting_count: Int
+    has greeting_count: i32
 
     // Initialize the spirit with a name
     fun new(person_name: string) {
@@ -49,7 +49,7 @@ gen HelloWorld {
     }
 
     // Get the current greeting count
-    fun get_greeting_count() -> Int {
+    fun get_greeting_count() -> i32 {
         return this.greeting_count
     }
 }

@@ -12,10 +12,10 @@ gen Product {
     has description: string
 
     @crdt(lww)
-    has price: Float64 where price >= 0.0
+    has price: f64 where price >= 0.0
 
     @crdt(pn_counter, min_value=0)
-    has stock_quantity: Int
+    has stock_quantity: i64
 
     @crdt(or_set)
     has tags: Set<string>
@@ -27,32 +27,32 @@ gen Product {
     has category_id: string
 
     @crdt(lww)
-    has active: Bool = true
+    has active: bool = true
 
     @crdt(pn_counter)
-    has view_count: Int
+    has view_count: i64
 
-    fun update_price(new_price: Float64) -> Result<Void, string> {
+    fun update_price(new_price: f64) -> Result<(), string> {
         if new_price < 0.0 {
             return Err("Price cannot be negative")
         }
         this.price = new_price
-        return Ok(Void)
+        return Ok(())
     }
 
-    fun add_stock(quantity: Int) {
+    fun add_stock(quantity: i64) {
         this.stock_quantity = this.stock_quantity + quantity
     }
 
-    fun remove_stock(quantity: Int) -> Result<Void, string> {
+    fun remove_stock(quantity: i64) -> Result<(), string> {
         if this.stock_quantity < quantity {
             return Err("Insufficient stock")
         }
         this.stock_quantity = this.stock_quantity - quantity
-        return Ok(Void)
+        return Ok(())
     }
 
-    fun is_available() -> Bool {
+    fun is_available() -> bool {
         return this.active && this.stock_quantity > 0
     }
 }
@@ -71,22 +71,22 @@ gen Order {
     has status: OrderStatus
 
     @crdt(lww)
-    has subtotal: Float64
+    has subtotal: f64
 
     @crdt(lww)
-    has tax: Float64
+    has tax: f64
 
     @crdt(lww)
-    has shipping: Float64
+    has shipping: f64
 
     @crdt(lww)
-    has total: Float64
+    has total: f64
 
     @crdt(immutable)
-    has created_at: Int
+    has created_at: i64
 
     @crdt(lww)
-    has updated_at: Int
+    has updated_at: i64
 
     @crdt(lww)
     has shipping_address: Address
@@ -106,22 +106,22 @@ gen Order {
         this.total = sum + this.tax + this.shipping
     }
 
-    fun cancel() -> Result<Void, string> {
+    fun cancel() -> Result<(), string> {
         if this.status == OrderStatus::Shipped ||
            this.status == OrderStatus::Delivered {
             return Err("Cannot cancel shipped/delivered order")
         }
         this.status = OrderStatus::Cancelled
-        return Ok(Void)
+        return Ok(())
     }
 }
 
 gen OrderItem {
     has product_id: string
     has product_name: string
-    has quantity: Int where quantity > 0
-    has unit_price: Float64
-    has subtotal: Float64
+    has quantity: i32 where quantity > 0
+    has unit_price: f64
+    has subtotal: f64
 }
 
 gen OrderStatus {
@@ -154,7 +154,7 @@ gen Category {
     has parent_id: Option<string>
 
     @crdt(pn_counter)
-    has product_count: Int
+    has product_count: i64
 }
 
 docs {
