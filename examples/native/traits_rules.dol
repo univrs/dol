@@ -40,3 +40,12 @@ docs {
     constructs that don't generate runtime code — they guide
     type checking and validation.
 }
+
+fun main() {
+    println("Ontological composition compiled successfully:")
+    println("  gen container.exists: { identity, status, boundaries, resources }")
+    println("  gen container.lifecycle: { created_at, started_at, health }")
+    println("  trait container.managed: compose exists + lifecycle")
+    println("  rule container.valid: requires identity + status")
+    println("  system container.runtime @ 0.1.0")
+}

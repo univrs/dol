@@ -30,10 +30,9 @@ impl<'a, 'ctx> StructCodegen<'a, 'ctx> {
     /// (Prototype for testing the pipeline)
     pub fn generate_point_struct(&self) -> Result<StructType<'ctx>> {
         let i64_type = self.type_mapper.i64_type();
-        let struct_type = self.type_mapper.create_struct(
-            "Point",
-            &[i64_type.into(), i64_type.into()],
-        );
+        let struct_type = self
+            .type_mapper
+            .create_struct("Point", &[i64_type.into(), i64_type.into()]);
         Ok(struct_type)
     }
 
@@ -41,7 +40,7 @@ impl<'a, 'ctx> StructCodegen<'a, 'ctx> {
     pub fn generate_spirit_identity(&self) -> Result<StructType<'ctx>> {
         let string_type = self.type_mapper.string_type();
         let i64_type = self.type_mapper.i64_type();
-        
+
         // SpiritIdentity { name, did, public_key, created_at, description, avatar_ref }
         let struct_type = self.context.opaque_struct_type("SpiritIdentity");
         struct_type.set_body(
@@ -55,7 +54,7 @@ impl<'a, 'ctx> StructCodegen<'a, 'ctx> {
             ],
             false,
         );
-        
+
         Ok(struct_type)
     }
 

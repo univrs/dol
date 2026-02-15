@@ -71,7 +71,9 @@ impl<'ctx> TypeMapper<'ctx> {
     pub fn string_type(&self) -> StructType<'ctx> {
         self.context.struct_type(
             &[
-                self.context.ptr_type(inkwell::AddressSpace::default()).into(),
+                self.context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .into(),
                 self.context.i64_type().into(),
             ],
             false,
@@ -79,7 +81,11 @@ impl<'ctx> TypeMapper<'ctx> {
     }
 
     /// Create a struct type for a DOL gen
-    pub fn create_struct(&self, name: &str, field_types: &[BasicTypeEnum<'ctx>]) -> StructType<'ctx> {
+    pub fn create_struct(
+        &self,
+        name: &str,
+        field_types: &[BasicTypeEnum<'ctx>],
+    ) -> StructType<'ctx> {
         let struct_type = self.context.opaque_struct_type(name);
         struct_type.set_body(field_types, false);
         struct_type

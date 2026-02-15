@@ -8,21 +8,27 @@
 //!
 //! All functions use the C calling convention and match the WASM ABI exactly.
 //! This ensures Spirit code is portable between WASM and native targets.
+//!
+//! # Safety
+//!
+//! All exported FFI functions accept raw pointers from LLVM-generated native code.
+//! Callers (the DOL compiler) are responsible for passing valid pointers and lengths.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use std::ffi::c_void;
 
+mod effects;
 mod io;
 mod memory;
-mod time;
 mod messaging;
-mod effects;
+mod time;
 
 // Re-export all host functions
+pub use effects::*;
 pub use io::*;
 pub use memory::*;
-pub use time::*;
 pub use messaging::*;
-pub use effects::*;
+pub use time::*;
 
 /// Initialize the VUDO runtime
 /// Must be called before any Spirit code runs
@@ -148,13 +154,62 @@ pub extern "C" fn vudo_random_bytes(buf: *mut u8, len: usize) {
 // === Effects Functions ===
 
 #[no_mangle]
-pub extern "C" fn vudo_emit_effect(effect_type: i32, payload_ptr: *const u8, payload_len: usize) -> i32 {
+pub extern "C" fn vudo_emit_effect(
+    effect_type: i32,
+    payload_ptr: *const u8,
+    payload_len: usize,
+) -> i32 {
     effects::emit_effect_impl(effect_type, payload_ptr, payload_len)
 }
 
 #[no_mangle]
 pub extern "C" fn vudo_subscribe(effect_type: i32) -> i32 {
     effects::subscribe_impl(effect_type)
+}
+
+// === String Functions ===
+
+/// Concatenate two strings, returning pointer and length via out-params.
+/// Caller must free the returned pointer with `vudo_free`.
+#[no_mangle]
+pub extern "C" fn vudo_string_concat(
+    ptr1: *const u8,
+    len1: usize,
+    ptr2: *const u8,
+    len2: usize,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+) {
+    let total = len1 + len2;
+    let buf = vudo_alloc(total) as *mut u8;
+    if !buf.is_null() {
+        unsafe {
+            if !ptr1.is_null() && len1 > 0 {
+                std::ptr::copy_nonoverlapping(ptr1, buf, len1);
+            }
+            if !ptr2.is_null() && len2 > 0 {
+                std::ptr::copy_nonoverlapping(ptr2, buf.add(len1), len2);
+            }
+            *out_ptr = buf;
+            *out_len = total;
+        }
+    }
+}
+
+/// Convert an i64 to its string representation.
+/// Caller must free the returned pointer with `vudo_free`.
+#[no_mangle]
+pub extern "C" fn vudo_i64_to_string(value: i64, out_ptr: *mut *mut u8, out_len: *mut usize) {
+    let s = value.to_string();
+    let len = s.len();
+    let buf = vudo_alloc(len) as *mut u8;
+    if !buf.is_null() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(s.as_ptr(), buf, len);
+            *out_ptr = buf;
+            *out_len = len;
+        }
+    }
 }
 
 // === Debug Functions ===

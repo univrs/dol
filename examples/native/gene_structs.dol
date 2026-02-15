@@ -33,3 +33,11 @@ docs {
     When compiled to native code, each gene becomes an LLVM struct type.
     Fields declared with 'has' become struct members.
 }
+
+fun main() {
+    println("Gene struct types compiled successfully:")
+    println("  Point: { x: f64, y: f64 }")
+    println("  Color: { red: i64, green: i64, blue: i64, alpha: i64 }")
+    println("  Particle: { pos_x, pos_y, vel_x, vel_y, mass: f64, alive: bool }")
+    println("  container.exists: { identity, status, boundaries }")
+}

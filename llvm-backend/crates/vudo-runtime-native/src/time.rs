@@ -1,7 +1,7 @@
 //! Time host functions implementation
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH, Instant};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
 

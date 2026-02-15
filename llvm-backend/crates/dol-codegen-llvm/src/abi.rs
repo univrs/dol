@@ -53,6 +53,10 @@ impl<'a, 'ctx> AbiGenerator<'a, 'ctx> {
         self.declare_vudo_emit_effect();
         self.declare_vudo_subscribe();
 
+        // String
+        self.declare_vudo_string_concat();
+        self.declare_vudo_i64_to_string();
+
         // Debug
         self.declare_vudo_breakpoint();
         self.declare_vudo_assert();
@@ -83,7 +87,8 @@ impl<'a, 'ctx> AbiGenerator<'a, 'ctx> {
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let i64_type = self.context.i64_type();
-        let fn_type = void_type.fn_type(&[i32_type.into(), ptr_type.into(), i64_type.into()], false);
+        let fn_type =
+            void_type.fn_type(&[i32_type.into(), ptr_type.into(), i64_type.into()], false);
         self.module.add_function("vudo_log", fn_type, None)
     }
 
@@ -92,7 +97,8 @@ impl<'a, 'ctx> AbiGenerator<'a, 'ctx> {
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let i64_type = self.context.i64_type();
-        let fn_type = void_type.fn_type(&[i32_type.into(), ptr_type.into(), i64_type.into()], false);
+        let fn_type =
+            void_type.fn_type(&[i32_type.into(), ptr_type.into(), i64_type.into()], false);
         self.module.add_function("vudo_error", fn_type, None)
     }
 
@@ -137,7 +143,8 @@ impl<'a, 'ctx> AbiGenerator<'a, 'ctx> {
     fn declare_vudo_monotonic_now(&self) -> FunctionValue<'ctx> {
         let i64_type = self.context.i64_type();
         let fn_type = i64_type.fn_type(&[], false);
-        self.module.add_function("vudo_monotonic_now", fn_type, None)
+        self.module
+            .add_function("vudo_monotonic_now", fn_type, None)
     }
 
     // === Messaging Functions ===
@@ -210,6 +217,39 @@ impl<'a, 'ctx> AbiGenerator<'a, 'ctx> {
         self.module.add_function("vudo_subscribe", fn_type, None)
     }
 
+    // === String Functions ===
+
+    fn declare_vudo_string_concat(&self) -> FunctionValue<'ctx> {
+        // void vudo_string_concat(ptr, len, ptr, len, *out_ptr, *out_len)
+        let void_type = self.context.void_type();
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let i64_type = self.context.i64_type();
+        let fn_type = void_type.fn_type(
+            &[
+                ptr_type.into(),
+                i64_type.into(), // str1
+                ptr_type.into(),
+                i64_type.into(), // str2
+                ptr_type.into(),
+                ptr_type.into(), // out_ptr, out_len
+            ],
+            false,
+        );
+        self.module
+            .add_function("vudo_string_concat", fn_type, None)
+    }
+
+    fn declare_vudo_i64_to_string(&self) -> FunctionValue<'ctx> {
+        // void vudo_i64_to_string(i64 value, *out_ptr, *out_len)
+        let void_type = self.context.void_type();
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let i64_type = self.context.i64_type();
+        let fn_type =
+            void_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false);
+        self.module
+            .add_function("vudo_i64_to_string", fn_type, None)
+    }
+
     // === Debug Functions ===
 
     fn declare_vudo_breakpoint(&self) -> FunctionValue<'ctx> {
@@ -223,7 +263,8 @@ impl<'a, 'ctx> AbiGenerator<'a, 'ctx> {
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let i64_type = self.context.i64_type();
-        let fn_type = void_type.fn_type(&[i32_type.into(), ptr_type.into(), i64_type.into()], false);
+        let fn_type =
+            void_type.fn_type(&[i32_type.into(), ptr_type.into(), i64_type.into()], false);
         self.module.add_function("vudo_assert", fn_type, None)
     }
 

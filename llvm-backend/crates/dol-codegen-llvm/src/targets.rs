@@ -2,6 +2,9 @@
 //!
 //! Defines supported compilation targets and their configurations.
 
+use std::fmt;
+use std::str::FromStr;
+
 /// Supported compilation targets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
@@ -57,9 +60,7 @@ impl Target {
             Target::Aarch64Linux | Target::Aarch64Darwin => {
                 "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
             }
-            Target::Riscv64Linux => {
-                "e-m:e-p:64:64-i64:64-i128:128-n64-S128"
-            }
+            Target::Riscv64Linux => "e-m:e-p:64:64-i64:64-i128:128-n64-S128",
             Target::X86_64Linux => {
                 "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
             }
@@ -93,28 +94,6 @@ impl Target {
         }
     }
 
-    /// Parse a target from a string
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "aarch64-unknown-linux-gnu" | "aarch64-linux" | "arm64-linux" => {
-                Some(Target::Aarch64Linux)
-            }
-            "aarch64-apple-darwin" | "aarch64-darwin" | "arm64-darwin" | "arm64-macos" => {
-                Some(Target::Aarch64Darwin)
-            }
-            "riscv64gc-unknown-linux-gnu" | "riscv64-linux" | "riscv64" => {
-                Some(Target::Riscv64Linux)
-            }
-            "x86_64-unknown-linux-gnu" | "x86_64-linux" | "x64-linux" => {
-                Some(Target::X86_64Linux)
-            }
-            "x86_64-pc-windows-msvc" | "x86_64-windows" | "x64-windows" => {
-                Some(Target::X86_64Windows)
-            }
-            _ => None,
-        }
-    }
-
     /// List all supported targets
     pub fn all() -> &'static [Target] {
         &[
@@ -138,17 +117,44 @@ impl Target {
     }
 }
 
+impl fmt::Display for Target {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.triple())
+    }
+}
+
+impl FromStr for Target {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "aarch64-unknown-linux-gnu" | "aarch64-linux" | "arm64-linux" => {
+                Ok(Target::Aarch64Linux)
+            }
+            "aarch64-apple-darwin" | "aarch64-darwin" | "arm64-darwin" | "arm64-macos" => {
+                Ok(Target::Aarch64Darwin)
+            }
+            "riscv64gc-unknown-linux-gnu" | "riscv64-linux" | "riscv64" => Ok(Target::Riscv64Linux),
+            "x86_64-unknown-linux-gnu" | "x86_64-linux" | "x64-linux" => Ok(Target::X86_64Linux),
+            "x86_64-pc-windows-msvc" | "x86_64-windows" | "x64-windows" => {
+                Ok(Target::X86_64Windows)
+            }
+            _ => Err(format!("unsupported target: {}", s)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_target_parsing() {
-        assert_eq!(Target::from_str("aarch64-linux"), Some(Target::Aarch64Linux));
-        assert_eq!(Target::from_str("arm64-macos"), Some(Target::Aarch64Darwin));
-        assert_eq!(Target::from_str("riscv64"), Some(Target::Riscv64Linux));
-        assert_eq!(Target::from_str("x64-linux"), Some(Target::X86_64Linux));
-        assert_eq!(Target::from_str("unknown"), None);
+        assert_eq!("aarch64-linux".parse::<Target>(), Ok(Target::Aarch64Linux));
+        assert_eq!("arm64-macos".parse::<Target>(), Ok(Target::Aarch64Darwin));
+        assert_eq!("riscv64".parse::<Target>(), Ok(Target::Riscv64Linux));
+        assert_eq!("x64-linux".parse::<Target>(), Ok(Target::X86_64Linux));
+        assert!("unknown".parse::<Target>().is_err());
     }
 
     #[test]

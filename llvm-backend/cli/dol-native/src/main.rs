@@ -5,8 +5,8 @@ use clap::{Parser, Subcommand};
 use inkwell::context::Context as LlvmContext;
 
 use dol_codegen_llvm::hir_lowering::HirLowering;
-use dol_codegen_llvm::LlvmCodegen;
 use dol_codegen_llvm::targets::Target;
+use dol_codegen_llvm::LlvmCodegen;
 
 #[derive(Parser)]
 #[command(name = "dol-native")]
@@ -47,7 +47,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Build { input, output, target } => cmd_build(&input, output, &target),
+        Commands::Build {
+            input,
+            output,
+            target,
+        } => cmd_build(&input, output, &target),
         Commands::EmitIr { input } => cmd_emit_ir(&input),
         Commands::Targets => cmd_targets(),
     }
@@ -55,15 +59,14 @@ fn main() -> Result<()> {
 
 /// Compile a DOL file to a native object file.
 fn cmd_build(input: &PathBuf, output: Option<PathBuf>, target_str: &str) -> Result<()> {
-    let target = Target::from_str(target_str)
-        .ok_or_else(|| anyhow::anyhow!("unsupported target: {}", target_str))?;
+    let target: Target = target_str.parse().map_err(|e: String| anyhow::anyhow!(e))?;
 
     let source = std::fs::read_to_string(input)
         .with_context(|| format!("failed to read {}", input.display()))?;
 
     // Parse and lower to HIR
-    let (hir, ctx) = metadol::lower::lower_file(&source)
-        .map_err(|e| anyhow::anyhow!("parse error: {}", e))?;
+    let (hir, ctx) =
+        metadol::lower::lower_file(&source).map_err(|e| anyhow::anyhow!("parse error: {}", e))?;
 
     // Create LLVM codegen
     let llvm_context = LlvmContext::create();
@@ -73,12 +76,9 @@ fn cmd_build(input: &PathBuf, output: Option<PathBuf>, target_str: &str) -> Resu
 
     // Lower HIR to LLVM IR
     {
-        let mut lowering = HirLowering::new(
-            codegen.context(),
-            codegen.module(),
-            &ctx.symbols,
-        );
-        lowering.lower_module(&hir)
+        let mut lowering = HirLowering::new(codegen.context(), codegen.module(), &ctx.symbols);
+        lowering
+            .lower_module(&hir)
             .map_err(|e| anyhow::anyhow!("{}", e))?;
     }
 
@@ -89,10 +89,16 @@ fn cmd_build(input: &PathBuf, output: Option<PathBuf>, target_str: &str) -> Resu
     });
 
     // Emit object file
-    codegen.emit_object(&out_path)
+    codegen
+        .emit_object(&out_path)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    eprintln!("compiled {} -> {} ({})", input.display(), out_path.display(), target.display_name());
+    eprintln!(
+        "compiled {} -> {} ({})",
+        input.display(),
+        out_path.display(),
+        target.display_name()
+    );
     Ok(())
 }
 
@@ -102,8 +108,8 @@ fn cmd_emit_ir(input: &PathBuf) -> Result<()> {
         .with_context(|| format!("failed to read {}", input.display()))?;
 
     // Parse and lower to HIR
-    let (hir, ctx) = metadol::lower::lower_file(&source)
-        .map_err(|e| anyhow::anyhow!("parse error: {}", e))?;
+    let (hir, ctx) =
+        metadol::lower::lower_file(&source).map_err(|e| anyhow::anyhow!("parse error: {}", e))?;
 
     // Create LLVM codegen (use host target)
     let llvm_context = LlvmContext::create();
@@ -113,12 +119,9 @@ fn cmd_emit_ir(input: &PathBuf) -> Result<()> {
 
     // Lower HIR to LLVM IR
     {
-        let mut lowering = HirLowering::new(
-            codegen.context(),
-            codegen.module(),
-            &ctx.symbols,
-        );
-        lowering.lower_module(&hir)
+        let mut lowering = HirLowering::new(codegen.context(), codegen.module(), &ctx.symbols);
+        lowering
+            .lower_module(&hir)
             .map_err(|e| anyhow::anyhow!("{}", e))?;
     }
 
