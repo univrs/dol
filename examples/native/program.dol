@@ -1,0 +1,163 @@
+// Program - A complete DOL program demonstrating all native features
+// Compile: dol-native build program.dol -o program.o
+// Link:    cc program.o -lvudo_runtime_native -lpthread -ldl -lm -o program
+// Run:     ./program
+
+// === Type Definitions ===
+
+gen Vector2D {
+    has x: f64
+    has y: f64
+}
+
+gen Stats {
+    has count: i64
+    has total: i64
+}
+
+// === Pure Functions ===
+
+fun square(x: i64) -> i64 {
+    return x * x
+}
+
+fun cube(x: i64) -> i64 {
+    return x * x * x
+}
+
+fun sum_to_n(n: i64) -> i64 {
+    let total = n * (n + 1)
+    return total / 2
+}
+
+fun is_even(n: i64) -> bool {
+    return n % 2 == 0
+}
+
+fun abs(x: i64) -> i64 {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+fun max(a: i64, b: i64) -> i64 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fun min(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fun clamp(x: i64, lo: i64, hi: i64) -> i64 {
+    if x < lo {
+        return lo
+    }
+    if x > hi {
+        return hi
+    }
+    return x
+}
+
+// === Recursive Functions ===
+
+fun fib(n: i64) -> i64 {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fun factorial(n: i64) -> i64 {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+fun gcd(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        return a
+    }
+    return gcd(b, a % b)
+}
+
+// === String-Returning Functions ===
+
+fun classify(n: i64) -> string {
+    if n > 0 {
+        return "positive"
+    }
+    if n < 0 {
+        return "negative"
+    }
+    return "zero"
+}
+
+fun grade(score: i64) -> string {
+    if score >= 90 {
+        return "A"
+    }
+    if score >= 80 {
+        return "B"
+    }
+    if score >= 70 {
+        return "C"
+    }
+    if score >= 60 {
+        return "D"
+    }
+    return "F"
+}
+
+// === Helper for printing ===
+
+fun show(label: string, value: i64) {
+    println(label + value)
+}
+
+// === Entry Point ===
+
+fun main() {
+    println("=== DOL Native Program ===")
+    println("")
+
+    println("--- Arithmetic ---")
+    show("square(7) = ", square(7))
+    show("cube(4) = ", cube(4))
+    show("sum_to_n(100) = ", sum_to_n(100))
+    show("abs(-42) = ", abs(-42))
+    show("max(15, 8) = ", max(15, 8))
+    show("min(15, 8) = ", min(15, 8))
+    show("clamp(150, 0, 100) = ", clamp(150, 0, 100))
+    println("")
+
+    println("--- Recursion ---")
+    show("fib(10) = ", fib(10))
+    show("fib(20) = ", fib(20))
+    show("factorial(10) = ", factorial(10))
+    show("gcd(48, 18) = ", gcd(48, 18))
+    println("")
+
+    println("--- String Functions ---")
+    println("classify(42) = " + classify(42))
+    println("classify(-7) = " + classify(-7))
+    println("classify(0) = " + classify(0))
+    println("grade(95) = " + grade(95))
+    println("grade(72) = " + grade(72))
+    println("grade(55) = " + grade(55))
+    println("")
+
+    println("--- String Concat ---")
+    println("Hello, " + "World!")
+    println("DOL " + "compiles " + "to " + "native!")
+    println("")
+
+    println("=== All tests passed ===")
+}

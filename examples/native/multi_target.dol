@@ -1,0 +1,28 @@
+// Multi-Target - Same DOL code, multiple architectures
+// Compile for different targets:
+//   dol-native build multi_target.dol --target x86_64-unknown-linux-gnu
+//   dol-native build multi_target.dol --target aarch64-unknown-linux-gnu
+//   dol-native build multi_target.dol --target aarch64-apple-darwin
+//   dol-native build multi_target.dol --target riscv64gc-unknown-linux-gnu
+//   dol-native build multi_target.dol --target x86_64-pc-windows-msvc
+
+fun platform_greeting() -> string {
+    return "DOL runs on ARM64, RISC-V, and x86-64."
+}
+
+fun add_checked(a: i64, b: i64, limit: i64) -> i64 {
+    let result = a + b
+    if result > limit {
+        return limit
+    }
+    if result < -limit {
+        return -limit
+    }
+    return result
+}
+
+fun main() {
+    println(platform_greeting())
+    let x = add_checked(100, 200, 255)
+    println("add_checked(100, 200, 255) = " + x.to_string())
+}

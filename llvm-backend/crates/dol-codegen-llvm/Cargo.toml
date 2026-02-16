@@ -1,0 +1,17 @@
+[package]
+name = "dol-codegen-llvm"
+description = "LLVM code generation backend for DOL (Design Ontology Language)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+inkwell.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+metadol.workspace = true
+
+[dev-dependencies]

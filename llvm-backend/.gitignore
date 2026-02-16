@@ -1,0 +1,12 @@
+/target/
+Cargo.lock
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# LLVM build stubs (generated locally)
+libPolly.a
+libPollyISL.a
+libzstd.so
+*.o

@@ -1,0 +1,41 @@
+// Fibonacci - Recursive function calls
+// Demonstrates: recursion, function calls, conditional returns
+
+fun fib(n: i64) -> i64 {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fun factorial(n: i64) -> i64 {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+fun gcd(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        return a
+    }
+    return gcd(b, a % b)
+}
+
+fun power(base: i64, exp: i64) -> i64 {
+    if exp == 0 {
+        return 1
+    }
+    return base * power(base, exp - 1)
+}
+
+fun print_i64(label: string, value: i64) {
+    println(label + value)
+}
+
+fun main() {
+    print_i64("fib(10) = ", fib(10))
+    print_i64("factorial(7) = ", factorial(7))
+    print_i64("gcd(48, 18) = ", gcd(48, 18))
+    print_i64("power(2, 10) = ", power(2, 10))
+}

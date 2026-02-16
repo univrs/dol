@@ -1,0 +1,19 @@
+[package]
+name = "dol-native"
+description = "Native compiler for DOL (Design Ontology Language) via LLVM"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "dol-native"
+path = "src/main.rs"
+
+[dependencies]
+dol-codegen-llvm = { path = "../../crates/dol-codegen-llvm" }
+metadol.workspace = true
+inkwell.workspace = true
+clap.workspace = true
+anyhow.workspace = true

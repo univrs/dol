@@ -1,0 +1,66 @@
+// Control Flow - Branching and conditionals
+// Demonstrates: if/else, nested conditions, boolean logic
+
+fun fizzbuzz(n: i64) -> string {
+    if n % 15 == 0 {
+        return "FizzBuzz"
+    }
+    if n % 3 == 0 {
+        return "Fizz"
+    }
+    if n % 5 == 0 {
+        return "Buzz"
+    }
+    return n.to_string()
+}
+
+fun sign(x: i64) -> string {
+    if x > 0 {
+        return "positive"
+    }
+    if x < 0 {
+        return "negative"
+    }
+    return "zero"
+}
+
+fun grade(score: i64) -> string {
+    if score >= 90 {
+        return "A"
+    }
+    if score >= 80 {
+        return "B"
+    }
+    if score >= 70 {
+        return "C"
+    }
+    if score >= 60 {
+        return "D"
+    }
+    return "F"
+}
+
+fun collatz_steps(n: i64) -> i64 {
+    let steps = 0
+    let current = n
+    if current <= 1 {
+        return 0
+    }
+    // Single step for now (loops need stdlib support)
+    if current % 2 == 0 {
+        return 1
+    }
+    return 1
+}
+
+fun main() {
+    println("FizzBuzz(15) = " + fizzbuzz(15))
+    println("FizzBuzz(7) = " + fizzbuzz(7))
+    println("FizzBuzz(9) = " + fizzbuzz(9))
+    println("sign(-5) = " + sign(-5))
+    println("sign(0) = " + sign(0))
+    println("sign(42) = " + sign(42))
+    println("grade(95) = " + grade(95))
+    println("grade(72) = " + grade(72))
+    println("grade(55) = " + grade(55))
+}

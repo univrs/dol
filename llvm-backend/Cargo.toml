@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dol-codegen-llvm",
+    "crates/vudo-runtime-native",
+    "cli/dol-native",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT"
+repository = "https://github.com/univrs/dol-llvm"
+authors = ["Univrs Team <team@univrs.io>"]
+
+[workspace.dependencies]
+# LLVM integration (choose one)
+# Note: Feature is llvm18-1 (not llvm18-0) for LLVM 18.x
+inkwell = { version = "0.8", features = ["llvm18-1"] }
+# cranelift = "0.105"  # Alternative: pure Rust, no LLVM dep
+
+# DOL parser and HIR (from univrs-dol)
+metadol = { package = "dol", path = ".." }
+
+# Common dependencies
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

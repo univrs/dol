@@ -1,0 +1,81 @@
+// Arithmetic - Integer and boolean operations
+// Demonstrates: functions, parameters, return types, binary ops
+
+fun add(a: i64, b: i64) -> i64 {
+    return a + b
+}
+
+fun subtract(a: i64, b: i64) -> i64 {
+    return a - b
+}
+
+fun multiply(a: i64, b: i64) -> i64 {
+    return a * b
+}
+
+fun divide(a: i64, b: i64) -> i64 {
+    return a / b
+}
+
+fun modulo(a: i64, b: i64) -> i64 {
+    return a % b
+}
+
+fun negate(x: i64) -> i64 {
+    return -x
+}
+
+fun is_positive(x: i64) -> bool {
+    return x > 0
+}
+
+fun is_even(x: i64) -> bool {
+    return x % 2 == 0
+}
+
+fun abs(x: i64) -> i64 {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+fun max(a: i64, b: i64) -> i64 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fun min(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fun clamp(x: i64, lo: i64, hi: i64) -> i64 {
+    if x < lo {
+        return lo
+    }
+    if x > hi {
+        return hi
+    }
+    return x
+}
+
+fun print_i64(label: string, value: i64) {
+    println(label + value)
+}
+
+fun main() {
+    print_i64("10 + 20 = ", add(10, 20))
+    print_i64("50 - 17 = ", subtract(50, 17))
+    print_i64("6 * 7 = ", multiply(6, 7))
+    print_i64("100 / 3 = ", divide(100, 3))
+    print_i64("100 % 3 = ", modulo(100, 3))
+    print_i64("abs(-42) = ", abs(-42))
+    print_i64("max(10, 20) = ", max(10, 20))
+    print_i64("min(10, 20) = ", min(10, 20))
+    print_i64("clamp(150, 0, 100) = ", clamp(150, 0, 100))
+}

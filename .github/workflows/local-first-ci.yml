@@ -35,7 +35,7 @@ jobs:
         run: cargo test --features "cli,serde" --workspace
 
       - name: Run doc tests
-        run: cargo test --doc --all-features
+        run: cargo test --doc --features "cli,serde,wasm,vudo"
 
   crdt-property-tests:
     name: CRDT Property Tests (100K iterations)
