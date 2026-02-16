@@ -51,10 +51,6 @@ harness = false
 name = "startup_time"
 harness = false
 
-[[bench]]
-name = "regression_tests"
-harness = false
-
 [profile.bench]
 opt-level = 3
 lto = true
