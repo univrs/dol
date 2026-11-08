@@ -6,63 +6,65 @@ Side-by-side feature matrix for every DOL compilation backend.
 
 | | Native (LLVM) | WASM | Rust Codegen |
 |---|---|---|---|
-| **Location** | `llvm-backend/` | `crates/dol-codegen-wasm/` | `crates/dol-codegen-rust/` |
+| **Location** | `llvm-backend/` | `src/wasm/` | `crates/dol-codegen-rust/` |
 | **Output** | Machine code (ELF/Mach-O/COFF) | `.wasm` module | Rust source with Automerge |
 | **Runtime** | VUDO native runtime | VUDO WASM host | Automerge CRDT |
-| **Status** | Beta | Phase 2 (imports only) | Production |
-| **Tests** | 15 | 32 | 10 |
+| **Status** | Beta | Beta (function bodies; Spirit pipeline wired) | Production |
+| **Tests** | 15 | 161 | 10 |
 
 ## Language Features
 
 | Feature | Native | WASM | Rust |
 |---------|--------|------|------|
-| Functions (params, return types) | ✅ | - | ✅ |
-| Recursive functions | ✅ | - | ✅ |
-| Integer arithmetic (`+` `-` `*` `/` `%`) | ✅ | - | ✅ |
-| Float arithmetic | ✅ | - | ✅ |
-| Comparison operators (`==` `!=` `<` `>` `<=` `>=`) | ✅ | - | ✅ |
-| Boolean logic (`and` `or` `not`) | ✅ | - | ✅ |
-| Unary operators (`-` `not`) | ✅ | - | ✅ |
-| If/else conditionals | ✅ | - | ✅ |
-| While/for loops | ❌ | - | ✅ |
-| Match expressions | ❌ | - | ✅ |
-| Local variables (`let`) | ✅ | - | ✅ |
-| Mutable variables (`var`) | ❌ | - | ✅ |
-| Compound assignment (`+=` `-=`) | ❌ | - | ✅ |
-| String literals | ✅ | - | ✅ |
-| String concatenation | ✅ | - | ✅ |
-| String + integer concat | ✅ | - | ✅ |
-| `println()` / `print()` | ✅ | - | ✅ |
-| Gen (struct) declarations | ✅ | - | ✅ |
-| Enum declarations | ✅ | - | ✅ |
-| Trait/rule/system declarations | ✅ compile-time | - | ✅ |
-| Field access (`point.x`) | ❌ | - | ✅ |
-| Method calls (`obj.method()`) | ❌ | - | ✅ |
-| Closures / lambdas | ❌ | - | ✅ |
-| Path syntax (`module::item`) | ❌ | - | ✅ |
-| Reference types (`&T`) | ❌ | - | ✅ |
-| Multiple functions per file | ✅ | - | ✅ |
-| `main()` entry point | ✅ | - | N/A |
+| Functions (params, return types) | ✅ | ✅ | ✅ |
+| Recursive functions | ✅ | ✅ | ✅ |
+| Integer arithmetic (`+` `-` `*` `/` `%`) | ✅ | ✅ | ✅ |
+| Float arithmetic | ✅ | ⚠️ annotated locals only | ✅ |
+| Comparison operators (`==` `!=` `<` `>` `<=` `>=`) | ✅ | ✅ | ✅ |
+| Boolean logic (`and` `or` `not`) | ✅ | ✅ | ✅ |
+| Unary operators (`-` `not`) | ✅ | ⚠️ no float `-` | ✅ |
+| If/else conditionals | ✅ | ✅ | ✅ |
+| While/for loops | ❌ | ✅ `for` over ranges | ✅ |
+| Match expressions | ❌ | ⚠️ int literals + `_` | ✅ |
+| Local variables (`let`) | ✅ | ⚠️ not inside blocks | ✅ |
+| Mutable variables (`var`) | ❌ | ✅ | ✅ |
+| Compound assignment (`+=` `-=`) | ❌ | ❌ | ✅ |
+| String literals | ✅ | ✅ | ✅ |
+| String concatenation | ✅ | ❌ miscompiles | ✅ |
+| String + integer concat | ✅ | ❌ | ✅ |
+| `println()` / `print()` | ✅ | ⚠️ via `sex fun` import | ✅ |
+| Gen (struct) declarations | ✅ | ✅ linear memory | ✅ |
+| Enum declarations | ✅ | ✅ | ✅ |
+| Trait/rule/system declarations | ✅ compile-time | ignored | ✅ |
+| Field access (`point.x`) | ❌ | ✅ | ✅ |
+| Method calls (`obj.method()`) | ❌ | ❌ | ✅ |
+| Closures / lambdas | ❌ | ❌ | ✅ |
+| Path syntax (`module::item`) | ❌ | ❌ | ✅ |
+| Reference types (`&T`) | ❌ | ❌ | ✅ |
+| Multiple functions per file | ✅ | ✅ | ✅ |
+| `main()` entry point | ✅ | N/A (exports) | N/A |
 
-**Legend:** ✅ working | ❌ not yet implemented | `-` backend not at this phase yet | N/A not applicable
+**Legend:** ✅ working | ⚠️ partial | ❌ not yet implemented | `-` backend not at this phase yet | N/A not applicable
+
+WASM partial/❌ entries are reproduced by `known_bugs` tests in `tests/wasm_execution.rs` (run with `-- --ignored`).
 
 ## Type System
 
 | Type | Native | WASM | Rust |
 |------|--------|------|------|
-| `i8` `i16` `i32` `i64` `i128` | ✅ | - | ✅ |
-| `u8` `u16` `u32` `u64` `u128` | ✅ | - | ✅ |
-| `f32` `f64` | ✅ | - | ✅ |
-| `bool` | ✅ | - | ✅ |
-| `string` | ✅ fat `{ptr, i64}` | - | ✅ `String` |
-| `()` (void) | ✅ | - | ✅ |
-| Custom structs (gen) | ✅ LLVM struct | - | ✅ Rust struct |
-| Enums | ✅ tagged `{i32, i64}` | - | ✅ Rust enum |
-| `Option<T>` | ❌ | - | ✅ |
-| `Vec<T>` / `List<T>` | ❌ needs stdlib | - | ✅ |
-| `Map<K,V>` / `Set<T>` | ❌ needs stdlib | - | ✅ |
-| Generics / type params | ❌ | - | ✅ |
-| Tuples | ❌ | - | ✅ |
+| `i8` `i16` `i32` `i64` `i128` | ✅ | ⚠️ `i32`/`i64` only, as i64 | ✅ |
+| `u8` `u16` `u32` `u64` `u128` | ✅ | ❌ | ✅ |
+| `f32` `f64` | ✅ | ⚠️ both as f64 | ✅ |
+| `bool` | ✅ | ✅ i32 | ✅ |
+| `string` | ✅ fat `{ptr, i64}` | ✅ ptr to len-prefixed | ✅ `String` |
+| `()` (void) | ✅ | ✅ | ✅ |
+| Custom structs (gen) | ✅ LLVM struct | ✅ linear memory | ✅ Rust struct |
+| Enums | ✅ tagged `{i32, i64}` | ✅ i32 tag | ✅ Rust enum |
+| `Option<T>` | ❌ | ❌ pointer only | ✅ |
+| `Vec<T>` / `List<T>` | ❌ needs stdlib | ❌ pointer only | ✅ |
+| `Map<K,V>` / `Set<T>` | ❌ needs stdlib | ❌ pointer only | ✅ |
+| Generics / type params | ❌ | ❌ | ✅ |
+| Tuples | ❌ | ❌ | ✅ |
 
 ## Runtime / Host Functions
 
@@ -78,6 +80,10 @@ The VUDO ABI defines 24 host functions shared across Native and WASM backends.
 | **Effects** | `emit_effect` `subscribe` | ✅ | ✅ declared |
 | **Random** | `random` `random_bytes` | ✅ | ✅ declared |
 | **Debug** | `breakpoint` `assert` `panic` | ✅ | ✅ declared |
+
+WASM: signatures are declared in `dol-abi` (module `vudo`). The `src/wasm/` compiler emits
+imports only for bodiless `sex fun` declarations, under module `loa`, which the VUDO VM linker
+does not provide yet.
 
 The Rust codegen backend does not use VUDO host functions. It generates Automerge-backed structs with CRDT merge semantics.
 
@@ -111,8 +117,12 @@ The Rust backend supports 7 CRDT annotation strategies for local-first collabora
 |-------|-------|--------|
 | Phase 1 | ABI types, host function signatures | ✅ Complete |
 | Phase 2 | Import emitter, import tracker, test infra | ✅ Complete |
-| Phase 3 | Memory layout, function bodies, type conversion | Planned |
-| Phase 4 | Optimization, dead code elimination | Planned |
+| Phase 3 | Memory layout, function bodies, type conversion (`src/wasm/`) | ✅ Function bodies, gen layouts, bump allocator; ⚠️ type fidelity (8 known bugs) |
+| Phase 3b | Spirit pipeline: `compile_source` → `WasmCompiler` | ✅ Complete |
+| Phase 4 | Host ABI unification (`loa` → `vudo`), typed codegen, optimization | Next (tree shaking available, opt-in) |
+
+Phases 1–2 live in `dol-abi` and `crates/dol-codegen-wasm/` (walrus, imports only). Phase 3 is the
+`wasm-encoder` compiler in `src/wasm/`, which emits directly from the AST.
 
 ## Compilation Pipeline
 
@@ -132,7 +142,7 @@ The Rust backend supports 7 CRDT annotation strategies for local-first collabora
    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
    │  Native (LLVM)  │    │      WASM       │    │   Rust Codegen  │
    │                 │    │                 │    │                 │
-   │ HIR → LLVM IR   │    │ HIR → Walrus    │    │ HIR → Rust src  │
+   │ HIR → LLVM IR   │    │ AST → wasm-enc. │    │ HIR → Rust src  │
    │ → machine code  │    │ → .wasm binary  │    │ → Automerge     │
    └────────┬────────┘    └────────┬────────┘    └────────┬────────┘
             │                      │                      │
@@ -148,7 +158,7 @@ The Rust backend supports 7 CRDT annotation strategies for local-first collabora
 | Backend | Unit Tests | Integration Tests | Working Examples |
 |---------|-----------|-------------------|-----------------|
 | Native (LLVM) | 15 | 5 (in hir_lowering) | 12 `.dol` files |
-| WASM | 15 | 17 | Phase 3 |
+| WASM | 52 | 109 (+8 ignored known-bug repros) | 5 Spirit pipeline tests |
 | Rust Codegen | 10 | 10 | 3 |
 | **DOL Core** | **89** | **2,074** (parser, lexer, HIR) | **155+** |
 
@@ -161,8 +171,10 @@ The Rust backend supports 7 CRDT annotation strategies for local-first collabora
 - Parser extensions: `var`, `+=`, `::`, `&T`
 
 ### WASM
-- Phase 3: memory layout, function body generation, type conversion
-- Full end-to-end `.dol` → `.wasm` compilation
+- Unify host import module: compiler emits `loa`, `dol-abi` and the VUDO VM linker use `vudo`
+- Typed codegen: use the typechecker instead of `infer_expression_type` (defaults to i64), scoped locals
+- Fix heap base (hardcoded 1024; overlaps string data > 1 KB)
+- Make stubbed collection/Option methods hard errors until runtime support exists
 - Browser integration testing
 
 ### Rust Codegen
