@@ -52,18 +52,31 @@
 //!
 //! ## Supported Features
 //!
-//! - Function declarations with typed parameters and return values
-//! - Integer (i64) and float (f64) literals
-//! - Binary operations (add, sub, mul, div, mod, comparisons, logical)
-//! - Function calls and return statements
-//! - Variable references (function parameters)
+//! - Functions with typed parameters and return values, recursion
+//! - Integer (i64), float (f64), bool, and string literals
+//! - Binary and unary operations, comparisons, logical operators
+//! - Local variables (`let`, `var`), assignment, `sex var` globals
+//! - Control flow: `if`/`else`, `match` (integer literals and `_`),
+//!   `while`, `for` over ranges, `loop`, `break`, `continue`
+//! - Genes as structs in linear memory: constructors (`new_Gene`), field
+//!   access, methods, inheritance; enums as i32 discriminants
+//! - Host imports from bodiless `sex fun` declarations (module `loa`)
+//!
+//! [`crate::compile_source`] (the Spirit pipeline) compiles through
+//! [`WasmCompiler::compile_file`].
 //!
 //! ## Limitations
 //!
-//! - No complex types (structs, enums, tuples)
-//! - No local variables (let bindings)
-//! - No control flow (if, loops, match)
-//! - No closures or higher-order functions
+//! - Expression types are inferred heuristically and default to i64, so
+//!   untyped float locals, float negation, and float-valued `if`
+//!   expressions produce invalid WASM
+//! - Locals use one flat map per function (no block scoping or shadowing)
+//! - No closures, tuples, generics, or method calls on local variables
+//! - Collection and `Option` methods are stubs
+//! - The heap base is fixed at 1024 and can overlap string data > 1 KB
+//!
+//! Each limitation above is reproduced by an ignored test in
+//! `tests/wasm_execution.rs` (`known_bugs`) or by a compile error.
 //!
 //! ## Feature Flags
 //!
