@@ -239,9 +239,9 @@ pub fn compile_file(path: &Path) -> Result<CompiledSpirit, CompilerError> {
 /// # Compilation Phases
 ///
 /// 1. **Lexing & Parsing**: Transform source text into AST
-/// 2. **HIR Lowering**: Desugar AST into canonical HIR
-/// 3. **MLIR Lowering**: Generate MLIR operations from HIR
-/// 4. **WASM Emission**: Emit WebAssembly bytecode from MLIR
+/// 2. **HIR Lowering**: Desugar AST into canonical HIR (diagnostics only)
+/// 3. **WASM Emission**: Emit WebAssembly bytecode from the AST via
+///    [`WasmCompiler`](crate::wasm::WasmCompiler)
 ///
 /// # Example
 ///
@@ -273,7 +273,7 @@ pub fn compile_source(source: &str, filename: &str) -> Result<CompiledSpirit, Co
     // Phase 2: Lower AST to HIR (High-level Intermediate Representation)
     // ========================================================================
     let mut lowering_ctx = lower::LoweringContext::new();
-    let hir_module = lower::lower_module(&mut lowering_ctx, &ast_file);
+    let _hir_module = lower::lower_module(&mut lowering_ctx, &ast_file);
 
     // Collect lowering diagnostics as warnings
     for diag in lowering_ctx.diagnostics() {
@@ -298,36 +298,13 @@ pub fn compile_source(source: &str, filename: &str) -> Result<CompiledSpirit, Co
     }
 
     // ========================================================================
-    // Phase 3: Lower HIR to MLIR
+    // Phase 3: Emit WASM
     // ========================================================================
-    // NOTE: This is where we would transform HIR into MLIR operations.
-    // The full HIR → MLIR lowering is complex and involves:
-    // - Type inference and checking
-    // - Control flow graph construction
-    // - SSA form conversion
-    // - Optimization passes
-    //
-    // For now, we return a placeholder indicating this needs implementation.
-    //
-    // When implemented, this would look like:
-    // let mlir_module = lower_hir_to_mlir(&hir_module)?;
-
-    // ========================================================================
-    // Phase 4: Emit WASM from MLIR
-    // ========================================================================
-    // NOTE: This is where we would generate WASM bytecode from MLIR.
-    // The MLIR → WASM lowering involves:
-    // - MLIR dialect lowering (DOL → std → LLVM or direct to WASM)
-    // - Instruction selection
-    // - Register allocation
-    // - Binary emission
-    //
-    // When implemented, this would look like:
-    // let wasm_bytes = emit_wasm_from_mlir(&mlir_module)?;
-
-    // For now, return a minimal valid WASM module as a placeholder
-    // This allows testing the API while the full pipeline is implemented
-    let wasm_bytes = generate_placeholder_wasm(&hir_module)?;
+    // HIR lowering above is used for diagnostics only. Code generation runs
+    // the direct AST -> WASM compiler (`crate::wasm::WasmCompiler`).
+    let wasm_bytes = crate::wasm::WasmCompiler::new()
+        .compile_file(&ast_file)
+        .map_err(|e| CompilerError::WasmError(e.message))?;
 
     Ok(CompiledSpirit {
         wasm: wasm_bytes,
@@ -405,51 +382,6 @@ pub fn compile_spirit_project(project_dir: &Path) -> Result<CompiledSpirit, Comp
     //
     // For now, just compile the main.dol entry point
     compile_file(&main_dol)
-}
-
-/// Generate a placeholder WASM module.
-///
-/// This generates a minimal valid WASM module that can be used for testing
-/// while the full compilation pipeline is being implemented.
-///
-/// The generated module contains:
-/// - WASM magic number and version
-/// - Empty type, function, and code sections
-///
-/// # Arguments
-///
-/// * `_hir_module` - HIR module (currently unused, will be used when implemented)
-///
-/// # Returns
-///
-/// A valid WASM bytecode module
-#[cfg(feature = "wasm-compile")]
-fn generate_placeholder_wasm(
-    _hir_module: &crate::hir::HirModule,
-) -> Result<Vec<u8>, CompilerError> {
-    // Generate a minimal valid WASM module
-    // Format: https://webassembly.github.io/spec/core/binary/modules.html
-    //
-    // WASM binary format:
-    // - Magic number: 0x00 0x61 0x73 0x6D ("\0asm")
-    // - Version: 0x01 0x00 0x00 0x00 (version 1)
-    // - Sections: (empty for minimal module)
-
-    let mut wasm = Vec::new();
-
-    // WASM magic number
-    wasm.extend_from_slice(&[0x00, 0x61, 0x73, 0x6D]);
-
-    // WASM version 1
-    wasm.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
-
-    // TODO: Add actual sections based on HIR:
-    // - Type section (function signatures)
-    // - Function section (function indices)
-    // - Export section (exported functions)
-    // - Code section (function bodies)
-
-    Ok(wasm)
 }
 
 // Stub implementation for when wasm feature is not enabled

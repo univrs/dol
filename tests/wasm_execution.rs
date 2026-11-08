@@ -2982,3 +2982,294 @@ fn test_multiple_gene_constructors() {
         .expect("new_Point3D should be exported");
     assert!(result.first().and_then(|v| v.i32()).is_some());
 }
+
+// ============================================
+// Spirit Pipeline: compile_source -> real WASM
+// ============================================
+//
+// `metadol::compile_source` is the Spirit compilation entry point. These tests
+// pin that it produces executable WASM from the real compiler, never the
+// empty 8-byte placeholder module (magic + version, no sections).
+
+mod spirit_pipeline {
+    use metadol::wasm::WasmRuntime;
+    use metadol::{compile_source, CompilerError};
+
+    /// Length of the old placeholder: `\0asm` + version, no sections.
+    const PLACEHOLDER_LEN: usize = 8;
+
+    #[test]
+    fn compile_source_produces_executable_function() {
+        let source = r#"
+module math @ 1.0.0
+
+fun add(a: Int64, b: Int64) -> Int64 {
+    return a + b
+}
+"#;
+        let compiled = compile_source(source, "math.dol").expect("compile_source failed");
+
+        let runtime = WasmRuntime::new().expect("runtime");
+        let mut module = runtime.load(&compiled.wasm).expect("module must validate");
+        let result = module
+            .call("add", &[2i64.into(), 3i64.into()])
+            .expect("`add` must be exported");
+        assert_eq!(result[0].i64(), Some(5));
+    }
+
+    #[test]
+    fn compile_source_never_returns_placeholder_for_functions() {
+        // Negative oracle: a module with a function must not compile to an
+        // empty module.
+        let source = r#"
+module ident @ 1.0.0
+
+fun id(x: Int64) -> Int64 {
+    return x
+}
+"#;
+        let compiled = compile_source(source, "ident.dol").expect("compile_source failed");
+        assert!(
+            compiled.wasm.len() > PLACEHOLDER_LEN,
+            "compile_source returned the {}-byte placeholder module",
+            compiled.wasm.len()
+        );
+    }
+
+    #[test]
+    fn compile_source_compiles_control_flow() {
+        let source = r#"
+module loops @ 1.0.0
+
+fun sum_to(n: Int64) -> Int64 {
+    let total: Int64 = 0
+    for i in 0..n {
+        total = total + i
+    }
+    return total
+}
+"#;
+        let compiled = compile_source(source, "loops.dol").expect("compile_source failed");
+        let runtime = WasmRuntime::new().expect("runtime");
+        let mut module = runtime.load(&compiled.wasm).expect("module must validate");
+        let result = module.call("sum_to", &[10i64.into()]).expect("call");
+        assert_eq!(result[0].i64(), Some(45));
+    }
+
+    #[test]
+    fn compile_source_compiles_gene_constructor_and_method() {
+        let source = r#"
+module counters @ 1.0.0
+
+gen Counter {
+    has count: i64
+
+    fun doubled() -> i64 {
+        return count * 2
+    }
+}
+"#;
+        let compiled = compile_source(source, "counters.dol").expect("compile_source failed");
+        let runtime = WasmRuntime::new().expect("runtime");
+        let mut module = runtime.load(&compiled.wasm).expect("module must validate");
+        let ptr = module
+            .call("new_Counter", &[21i64.into()])
+            .expect("constructor must be exported");
+        let result = module
+            .call("Counter.doubled", &[ptr[0].clone()])
+            .expect("method must be exported");
+        assert_eq!(result[0].i64(), Some(42));
+    }
+
+    #[test]
+    fn compile_source_reports_unsupported_code_as_error() {
+        // Negative oracle: unsupported constructs must surface as a WASM
+        // error, not silently produce an empty module.
+        let source = r#"
+module lambdas @ 1.0.0
+
+fun make() -> Int64 {
+    let f = |x: Int64| x + 1
+    return 0
+}
+"#;
+        match compile_source(source, "lambdas.dol") {
+            Err(CompilerError::WasmError(_)) => {}
+            other => panic!("expected CompilerError::WasmError, got {:?}", other),
+        }
+    }
+}
+
+// ============================================
+// Known WASM codegen bugs (reproductions)
+// ============================================
+//
+// Each test below reproduces a confirmed defect in `src/wasm/compiler.rs`.
+// They are `#[ignore]`d so CI stays green while the bugs are open. Run them
+// with:
+//
+//     cargo test --features wasm --test wasm_execution known_bugs -- --ignored
+//
+// When fixing a bug, remove its `#[ignore]` so it becomes a regression test.
+
+mod known_bugs {
+    use metadol::parse_dol_file;
+    use metadol::wasm::{WasmCompiler, WasmModule, WasmRuntime};
+
+    fn compile_and_load(source: &str) -> WasmModule {
+        let file = parse_dol_file(source).expect("parse");
+        let wasm = WasmCompiler::new()
+            .compile_file(&file)
+            .unwrap_or_else(|e| panic!("compile failed: {}", e.message));
+        WasmRuntime::new()
+            .expect("runtime")
+            .load(&wasm)
+            .unwrap_or_else(|e| panic!("emitted WASM is invalid: {}", e.message))
+    }
+
+    #[test]
+    #[ignore = "known bug: collect_locals skips `let` inside block expressions"]
+    fn let_inside_if_block() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun f(x: i64) -> i64 {
+    let r: i64 = 0
+    if x > 0 {
+        let t: i64 = x * 2
+        r = t
+    }
+    return r
+}
+"#,
+        );
+        assert_eq!(m.call("f", &[4i64.into()]).unwrap()[0].i64(), Some(8));
+    }
+
+    #[test]
+    #[ignore = "known bug: unary negation always emits i64 instructions"]
+    fn negate_float() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun f(x: f64) -> f64 {
+    return -x
+}
+"#,
+        );
+        assert_eq!(m.call("f", &[1.5f64.into()]).unwrap()[0].f64(), Some(-1.5));
+    }
+
+    #[test]
+    #[ignore = "known bug: untyped `let` defaults to i64 regardless of initializer"]
+    fn untyped_float_let() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun f(x: f64) -> f64 {
+    let y = x * 2.0
+    return y
+}
+"#,
+        );
+        assert_eq!(m.call("f", &[1.5f64.into()]).unwrap()[0].f64(), Some(3.0));
+    }
+
+    #[test]
+    #[ignore = "known bug: if-expression block type inferred as i64 for float branches"]
+    fn if_expression_yielding_float() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun f(c: bool, x: f64) -> f64 {
+    if c { x } else { 0.0 }
+}
+"#,
+        );
+        assert_eq!(
+            m.call("f", &[1i32.into(), 2.5f64.into()]).unwrap()[0].f64(),
+            Some(2.5)
+        );
+    }
+
+    #[test]
+    #[ignore = "known bug: no `unreachable` after body when value-returning fn ends in loop"]
+    fn value_function_ending_in_loop() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun f(n: i64) -> i64 {
+    let i: i64 = 0
+    loop {
+        i = i + 1
+        if i >= n { return i }
+    }
+}
+"#,
+        );
+        assert_eq!(m.call("f", &[3i64.into()]).unwrap()[0].i64(), Some(3));
+    }
+
+    #[test]
+    #[ignore = "known bug: result of non-void call used as a statement is never dropped"]
+    fn non_void_call_as_statement() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun helper(x: i64) -> i64 { return x + 1 }
+fun g(x: i64) {
+    helper(x)
+}
+"#,
+        );
+        assert!(m.call("g", &[1i64.into()]).is_ok());
+    }
+
+    #[test]
+    #[ignore = "known bug: locals use one flat map per function, so shadowing reuses a slot"]
+    fn shadowed_local_with_different_type() {
+        let mut m = compile_and_load(
+            r#"
+module p @ 0.1.0
+fun f(x: i64) -> f64 {
+    let a: i64 = x
+    while a > 0 {
+        let a: f64 = 1.5
+    }
+    return 2.0
+}
+"#,
+        );
+        assert_eq!(m.call("f", &[0i64.into()]).unwrap()[0].f64(), Some(2.0));
+    }
+
+    #[test]
+    #[ignore = "known bug: HEAP_BASE hardcoded to 1024, so allocations overwrite string data > 1 KB"]
+    fn heap_does_not_overlap_string_data() {
+        let big = "B".repeat(1500);
+        let source = format!(
+            r#"
+module p @ 0.1.0
+gen Point {{ has x: i64  has y: i64 }}
+fun make() -> i64 {{
+    let s: string = "{big}"
+    let p = Point {{ x: 7, y: 9 }}
+    return p.x
+}}
+"#
+        );
+        let mut m = compile_and_load(&source);
+        assert_eq!(m.call("make", &[]).unwrap()[0].i64(), Some(7));
+
+        // String data starts after the 4-byte length prefix at offset 0.
+        let instance = *m.instance();
+        let memory = instance
+            .get_memory(&mut *m.store_mut(), "memory")
+            .expect("memory export");
+        let data = memory.data(&*m.store_mut());
+        assert!(
+            data[4..4 + 1500].iter().all(|&b| b == b'B'),
+            "allocation overwrote static string data"
+        );
+    }
+}
