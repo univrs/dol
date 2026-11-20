@@ -722,7 +722,7 @@ at your option.
 
 ## Acknowledgments
 
-DOL is part of the [Univrs](https://github.com/univrs) ecosystem, building the foundation for VUDO OS — 
+DOL is part of the [Univrs](https://github.com/univrs) ecosystem, building the foundation for DOLOS, the DOL Operating System of the VUDO platform — 
 a distributed, AI-native operating system where systems describe their ontological nature before their functionality.
 
 ## Disclaimer
