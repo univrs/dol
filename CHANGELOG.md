@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-20
+
+Spirit Hosting Plan H0 ("toolchain truth"): DOL-compiled Spirits now link and run in the VUDO VM.
+
+### Changed
+- **Host ABI unified with the VUDO VM** (univrs/dol#34). Bodiless `sex fun host_*` declarations import from module `vudo` with the VM linker's exact signatures (`src/wasm/host_abi.rs`). Previously they imported from `loa` and could not link.
+- A `sex fun` the VM does not provide (unknown name, wrong arity, float where the host expects an integer) is now a compile error.
+- `compile_source` and the Spirit pipeline emit real WASM instead of a placeholder module (univrs/dol#31).
+
+### Added
+- String literals, `string` parameters and typed string locals passed to `host_*` functions lower to `(ptr, len)`. Modules that import pointer-taking host functions export `memory`.
+- `dol-abi`: `vm_host_functions()` (the 15 VM host functions).
+- `dol-build` CLI (DOL → WASM), wasm-bindgen annotations, `dol-abi` crate, LLVM native backend (`dol-native`, beta), meta-programming system, CRDT/Automerge codegen.
+
+### Deprecated
+- `dol-abi::standard_host_functions()` (the 22 `vudo_*` names). Use `vm_host_functions()`.
+
+### Fixed
+- Clippy lints that kept the CI `Check` job red.
+- MCP doc tests; `.dol` examples updated to v0.8 lowercase type syntax.
+
+### Notes
+- Minimum supported Rust version is 1.84.
+
+
 ## [0.8.0] - 2025-01-17 - "Clarity"
 
 ### Language Changes
