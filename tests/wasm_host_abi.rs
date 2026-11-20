@@ -187,3 +187,233 @@ fn dol_spirit_calling_host_log_links_and_runs() {
     assert_eq!(emit.call(&mut store, 4).unwrap(), -1);
     assert_eq!(*calls.lock().unwrap(), vec![(2, 0, 0), (4, 0, 0)]);
 }
+
+// ---------------------------------------------------------------------------
+// String lowering: DOL `string` arguments become the ABI's (ptr, len) pairs.
+// ---------------------------------------------------------------------------
+
+use wasmtime::Caller;
+
+/// Read `len` bytes at `ptr` from the guest's exported memory.
+fn read_guest(caller: &mut Caller<'_, ()>, ptr: i32, len: i32) -> Vec<u8> {
+    let mem = caller
+        .get_export("memory")
+        .and_then(|e| e.into_memory())
+        .expect("guest must export memory");
+    let data = mem.data(&caller);
+    data[ptr as usize..(ptr + len) as usize].to_vec()
+}
+
+fn exports_memory(engine: &Engine, wasm: &[u8]) -> bool {
+    Module::new(engine, wasm)
+        .unwrap()
+        .exports()
+        .any(|e| e.name() == "memory" && matches!(e.ty(), ExternType::Memory(_)))
+}
+
+const HELLO_SOURCE: &str = r#"
+sex fun host_log(level: i64, msg: string) -> i64
+
+sex fun hello() -> i64 {
+    return host_log(2, "hello from DOL")
+}
+
+sex fun say(msg: string) -> i64 {
+    return host_log(1, msg)
+}
+
+sex fun via_param() -> i64 {
+    return say("via a string parameter")
+}
+"#;
+
+/// One observed `host_log` call: (level, text, ptr, len).
+type LogCall = (i32, String, i32, i32);
+
+/// Instantiate `wasm` with a `vudo.host_log` stub that records (level, text).
+fn run_with_log_stub(wasm: &[u8], entry: &str) -> (i64, Vec<LogCall>) {
+    let engine = Engine::default();
+    let module = Module::new(&engine, wasm).unwrap();
+    let seen: Arc<Mutex<Vec<LogCall>>> = Arc::default();
+    let log = seen.clone();
+    let mut linker: Linker<()> = Linker::new(&engine);
+    linker
+        .func_wrap(
+            "vudo",
+            "host_log",
+            move |mut caller: Caller<'_, ()>, level: i32, ptr: i32, len: i32| -> i32 {
+                let bytes = read_guest(&mut caller, ptr, len);
+                let text = String::from_utf8(bytes).expect("utf-8");
+                log.lock().unwrap().push((level, text, ptr, len));
+                0
+            },
+        )
+        .unwrap();
+    let mut store = Store::new(&engine, ());
+    let instance = linker.instantiate(&mut store, &module).unwrap();
+    let f = instance
+        .get_typed_func::<(), i64>(&mut store, entry)
+        .unwrap();
+    let ret = f.call(&mut store, ()).unwrap();
+    let calls = seen.lock().unwrap().clone();
+    (ret, calls)
+}
+
+#[test]
+fn string_arg_keeps_linker_signature_and_exports_memory() {
+    let engine = Engine::default();
+    let wasm = compile(HELLO_SOURCE).expect("compile");
+    assert_eq!(
+        func_imports(&engine, &wasm),
+        vec![(
+            "vudo".to_string(),
+            "host_log".to_string(),
+            names(&[ValType::I32, ValType::I32, ValType::I32]),
+            names(&[ValType::I32])
+        )]
+    );
+    assert!(exports_memory(&engine, &wasm), "module must export memory");
+}
+
+#[test]
+fn string_literal_lowers_to_data_segment_ptr_and_len() {
+    let wasm = compile(HELLO_SOURCE).expect("compile");
+    let engine = Engine::default();
+    let module = Module::new(&engine, &wasm).unwrap();
+    type Seen = (i32, i32, Vec<u8>); // (ptr, len, length-prefix bytes)
+    let seen: Arc<Mutex<Vec<Seen>>> = Arc::default();
+    let log = seen.clone();
+    let mut linker: Linker<()> = Linker::new(&engine);
+    linker
+        .func_wrap(
+            "vudo",
+            "host_log",
+            move |mut caller: Caller<'_, ()>, _level: i32, ptr: i32, len: i32| -> i32 {
+                // The 4 bytes before ptr are the pool's little-endian length prefix.
+                let prefix = read_guest(&mut caller, ptr - 4, 4);
+                log.lock().unwrap().push((ptr, len, prefix));
+                0
+            },
+        )
+        .unwrap();
+    let mut store = Store::new(&engine, ());
+    let instance = linker.instantiate(&mut store, &module).unwrap();
+    instance
+        .get_typed_func::<(), i64>(&mut store, "hello")
+        .unwrap()
+        .call(&mut store, ())
+        .unwrap();
+    let (ptr, len, prefix) = seen.lock().unwrap()[0].clone();
+    assert_eq!(len, "hello from DOL".len() as i32);
+    assert!(ptr >= 4, "ptr points past the length prefix");
+    assert_eq!(prefix, (len as u32).to_le_bytes().to_vec());
+}
+
+#[test]
+fn host_log_stub_sees_the_dol_string() {
+    let wasm = compile(HELLO_SOURCE).expect("compile");
+    let (ret, calls) = run_with_log_stub(&wasm, "hello");
+    assert_eq!(ret, 0);
+    assert_eq!(calls.len(), 1);
+    assert_eq!((calls[0].0, calls[0].1.as_str()), (2, "hello from DOL"));
+}
+
+#[test]
+fn string_parameter_lowers_to_ptr_and_len() {
+    let wasm = compile(HELLO_SOURCE).expect("compile");
+    let (_, calls) = run_with_log_stub(&wasm, "via_param");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        (calls[0].0, calls[0].1.as_str()),
+        (1, "via a string parameter")
+    );
+}
+
+#[test]
+fn storage_key_value_and_broadcast_strings_lower() {
+    let source = r#"
+sex fun host_storage_write(key: string, value: string) -> i64
+sex fun host_network_broadcast(msg: string) -> i64
+
+sex fun run() -> i64 {
+    host_storage_write("counter", "41")
+    return host_network_broadcast("tick")
+}
+"#;
+    let wasm = compile(source).expect("compile");
+    let engine = Engine::default();
+    let module = Module::new(&engine, &wasm).unwrap();
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let (w, b) = (seen.clone(), seen.clone());
+    let mut linker: Linker<()> = Linker::new(&engine);
+    linker
+        .func_wrap(
+            "vudo",
+            "host_storage_write",
+            move |mut c: Caller<'_, ()>, kp: i32, kl: i32, vp: i32, vl: i32| -> i32 {
+                let k = String::from_utf8(read_guest(&mut c, kp, kl)).unwrap();
+                let v = String::from_utf8(read_guest(&mut c, vp, vl)).unwrap();
+                w.lock().unwrap().push(format!("write {k}={v}"));
+                0
+            },
+        )
+        .unwrap();
+    linker
+        .func_wrap(
+            "vudo",
+            "host_network_broadcast",
+            move |mut c: Caller<'_, ()>, p: i32, l: i32| -> i64 {
+                let m = String::from_utf8(read_guest(&mut c, p, l)).unwrap();
+                b.lock().unwrap().push(format!("broadcast {m}"));
+                7
+            },
+        )
+        .unwrap();
+    let mut store = Store::new(&engine, ());
+    let instance = linker.instantiate(&mut store, &module).unwrap();
+    let ret = instance
+        .get_typed_func::<(), i64>(&mut store, "run")
+        .unwrap()
+        .call(&mut store, ())
+        .unwrap();
+    assert_eq!(ret, 7);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["write counter=41".to_string(), "broadcast tick".to_string()]
+    );
+}
+
+#[test]
+fn pointer_taking_import_exports_memory_without_strings() {
+    let engine = Engine::default();
+    let wasm = compile("sex fun host_credit_balance(account: i64) -> i64\n").expect("compile");
+    assert!(exports_memory(&engine, &wasm));
+}
+
+#[test]
+fn pointer_free_import_needs_no_memory() {
+    let engine = Engine::default();
+    let wasm = compile("sex fun host_time_now() -> i64\n").expect("compile");
+    assert!(!exports_memory(&engine, &wasm));
+}
+
+/// Negative oracle: a string where the ABI expects a plain integer never compiles.
+#[test]
+fn string_declared_for_integer_host_param_is_a_compile_error() {
+    let err = compile("sex fun host_network_listen(port: string) -> i64\n").unwrap_err();
+    assert!(err.contains("host_network_listen"), "{err}");
+}
+
+/// Negative oracle: a string literal passed to an integer-declared host param.
+#[test]
+fn string_literal_for_integer_host_param_is_a_compile_error() {
+    let source = r#"
+sex fun host_log(level: i64, ptr: i64, len: i64) -> i64
+
+sex fun bad() -> i64 {
+    return host_log("oops", 0, 0)
+}
+"#;
+    let err = compile(source).unwrap_err();
+    assert!(err.contains("host_log"), "{err}");
+}

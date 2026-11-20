@@ -97,12 +97,27 @@ struct WasmImport {
     params: Vec<wasm_encoder::ValType>,
     /// Return type, as defined by the host ABI (None for void)
     result: Option<wasm_encoder::ValType>,
-    /// Parameter types as declared in DOL (converted to `params` at call sites)
-    dol_params: Vec<wasm_encoder::ValType>,
+    /// How each DOL-declared parameter maps onto the host ABI params
+    args: Vec<HostArg>,
     /// Return type as declared in DOL (`result` is converted to it, or dropped)
     dol_result: Option<wasm_encoder::ValType>,
+    /// Whether the host accesses guest memory (module must export `memory`)
+    takes_pointer: bool,
     /// Type index in the type section (set during compilation)
     type_idx: u32,
+}
+
+/// Mapping of one DOL host-function parameter onto the host ABI.
+#[cfg(feature = "wasm-compile")]
+#[derive(Debug, Clone, Copy)]
+enum HostArg {
+    /// One integer param: DOL type `dol`, converted to ABI type `abi`.
+    Int {
+        dol: wasm_encoder::ValType,
+        abi: wasm_encoder::ValType,
+    },
+    /// A DOL `string`, lowered to the ABI's `(ptr, len)` i32 pair.
+    Str,
 }
 
 /// Context for tracking loop control flow depths.
@@ -300,6 +315,11 @@ impl LocalsTable {
             // Track parameter type for type inference
             let val_type = Self::type_expr_to_val_type(&param.type_ann);
             table.var_types.insert(param.name.clone(), val_type);
+            if WasmCompiler::is_string_type(&param.type_ann) {
+                table
+                    .dol_types
+                    .insert(param.name.clone(), "String".to_string());
+            }
         }
 
         // Track gene field names for implicit field access
@@ -1141,8 +1161,11 @@ impl WasmCompiler {
             self.collect_strings_from_declaration(decl, &mut string_pool);
         }
 
-        // Check if we need memory allocation (when gene layouts are registered or strings are used)
-        let needs_memory = !self.gene_layouts.is_empty() || !string_pool.is_empty();
+        // Check if we need memory allocation (when gene layouts are registered or strings are
+        // used), or if a host import reads/writes guest memory through a pointer.
+        let needs_memory = !self.gene_layouts.is_empty()
+            || !string_pool.is_empty()
+            || imports.iter().any(|i| i.takes_pointer);
 
         // Calculate heap start after string data (aligned to 8 bytes)
         let _heap_start = if !string_pool.is_empty() {
@@ -1632,12 +1655,6 @@ impl WasmCompiler {
             if let Declaration::Function(func) = decl {
                 // A sex fun without body is an import
                 if func.purity == Purity::Sex && func.body.is_empty() {
-                    let params: Vec<wasm_encoder::ValType> = func
-                        .params
-                        .iter()
-                        .map(|p| self.dol_type_to_wasm(&p.type_ann))
-                        .collect::<Result<Vec<_>, _>>()?;
-
                     let result = match func.return_type {
                         Some(ref ret_type) if !Self::is_void_type(ret_type) => {
                             Some(self.dol_type_to_wasm(ret_type)?)
@@ -1654,23 +1671,50 @@ impl WasmCompiler {
                             host_abi::names()
                         ))
                     })?;
-                    if params.len() != host.params.len() {
+                    // Map DOL params onto ABI params: a `string` consumes a
+                    // `(ptr, len)` pair, anything else exactly one integer slot.
+                    let mut args = Vec::with_capacity(func.params.len());
+                    let mut abi_idx = 0usize;
+                    for param in &func.params {
+                        if Self::is_string_type(&param.type_ann) {
+                            if !host.str_pairs.contains(&abi_idx) {
+                                return Err(WasmError::new(format!(
+                                    "Host function `{}` parameter `{}` is a string, but VUDO VM \
+                                     ABI parameter {} is a plain integer, not a (ptr, len) pair",
+                                    func.name, param.name, abi_idx
+                                )));
+                            }
+                            args.push(HostArg::Str);
+                            abi_idx += 2;
+                        } else {
+                            let dol = self.dol_type_to_wasm(&param.type_ann)?;
+                            let abi = host.params.get(abi_idx).copied().ok_or_else(|| {
+                                WasmError::new(format!(
+                                    "Host function `{}` takes {} ABI parameter(s) in the VUDO \
+                                     VM, but is declared with more",
+                                    func.name,
+                                    host.params.len()
+                                ))
+                            })?;
+                            if !host_abi::is_compatible(dol, abi) {
+                                return Err(WasmError::new(format!(
+                                    "Host function `{}` parameter {} is {:?} in the VUDO VM ABI, \
+                                     incompatible with declared {:?}",
+                                    func.name, abi_idx, abi, dol
+                                )));
+                            }
+                            args.push(HostArg::Int { dol, abi });
+                            abi_idx += 1;
+                        }
+                    }
+                    if abi_idx != host.params.len() {
                         return Err(WasmError::new(format!(
                             "Host function `{}` takes {} parameter(s) in the VUDO VM ABI, \
-                             but is declared with {}",
+                             but the declaration covers {}",
                             func.name,
                             host.params.len(),
-                            params.len()
+                            abi_idx
                         )));
-                    }
-                    for (i, (dol, abi)) in params.iter().zip(host.params).enumerate() {
-                        if !host_abi::is_compatible(*dol, *abi) {
-                            return Err(WasmError::new(format!(
-                                "Host function `{}` parameter {} is {:?} in the VUDO VM ABI, \
-                                 incompatible with declared {:?}",
-                                func.name, i, abi, dol
-                            )));
-                        }
                     }
                     if let Some(dol) = result {
                         if !host_abi::is_compatible(dol, host.result) {
@@ -1687,8 +1731,9 @@ impl WasmCompiler {
                         name: func.name.clone(),
                         params: host.params.to_vec(),
                         result: Some(host.result),
-                        dol_params: params,
+                        args,
                         dol_result: result,
+                        takes_pointer: host.takes_pointer(),
                         type_idx: 0, // Will be set later
                     });
                 }
@@ -1702,6 +1747,91 @@ impl WasmCompiler {
     fn is_import(func: &crate::ast::FunctionDecl) -> bool {
         use crate::ast::Purity;
         func.purity == Purity::Sex && func.body.is_empty()
+    }
+
+    /// Whether a DOL type is a string (`string` / `str`, any case).
+    fn is_string_type(type_expr: &crate::ast::TypeExpr) -> bool {
+        matches!(type_expr, crate::ast::TypeExpr::Named(n)
+            if matches!(n.to_lowercase().as_str(), "string" | "str"))
+    }
+
+    /// Emit the arguments of a call to a host import, lowered to its ABI.
+    ///
+    /// Integer arguments are width-converted. A `string` argument becomes
+    /// `(ptr, len)`: for a literal, the data-segment address past the 4-byte
+    /// length prefix and the byte length; for a string variable, the same
+    /// computed from its length-prefixed pointer at run time.
+    fn emit_host_args(
+        &self,
+        function: &mut wasm_encoder::Function,
+        import: &WasmImport,
+        args: &[crate::ast::Expr],
+        locals: &LocalsTable,
+        loop_ctx: LoopContext,
+        string_pool: &StringPool,
+    ) -> Result<(), WasmError> {
+        use crate::ast::{Expr, Literal};
+        use wasm_encoder::Instruction;
+
+        if args.len() != import.args.len() {
+            return Err(WasmError::new(format!(
+                "Host function `{}` called with {} argument(s), declared with {}",
+                import.name,
+                args.len(),
+                import.args.len()
+            )));
+        }
+        for (i, (arg, mapping)) in args.iter().zip(&import.args).enumerate() {
+            match (mapping, arg) {
+                (HostArg::Int { .. }, Expr::Literal(Literal::String(_))) => {
+                    return Err(WasmError::new(format!(
+                        "Host function `{}` argument {} expects an integer, got a string \
+                         (declare the parameter as `string` where the ABI takes (ptr, len))",
+                        import.name, i
+                    )));
+                }
+                (HostArg::Int { dol, abi }, _) => {
+                    self.emit_expression(function, arg, locals, loop_ctx, string_pool)?;
+                    Self::emit_int_conversion(function, *dol, *abi);
+                }
+                (HostArg::Str, Expr::Literal(Literal::String(s))) => {
+                    let (offset, len) = string_pool.strings.get(s).copied().ok_or_else(|| {
+                        WasmError::new(format!(
+                            "Internal error: string literal '{}' not found in string pool",
+                            s
+                        ))
+                    })?;
+                    function.instruction(&Instruction::I32Const((offset + 4) as i32));
+                    function.instruction(&Instruction::I32Const(len as i32));
+                }
+                (HostArg::Str, Expr::Identifier(name))
+                    if locals.lookup_dol_type(name) == Some("String") =>
+                {
+                    let idx = locals
+                        .lookup(name)
+                        .ok_or_else(|| WasmError::new(format!("Unknown identifier: {}", name)))?;
+                    // ptr = s + 4 (skip the length prefix)
+                    function.instruction(&Instruction::LocalGet(idx));
+                    function.instruction(&Instruction::I32Const(4));
+                    function.instruction(&Instruction::I32Add);
+                    // len = load32(s)
+                    function.instruction(&Instruction::LocalGet(idx));
+                    function.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                        offset: 0,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                }
+                (HostArg::Str, _) => {
+                    return Err(WasmError::new(format!(
+                        "Host function `{}` argument {} must be a string literal or a \
+                         `string` variable",
+                        import.name, i
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Whether a declared return type means "no value" (`Void` / `()`).
@@ -1980,6 +2110,9 @@ impl WasmCompiler {
                         }
                     };
                     locals.declare(name, val_type);
+                    if type_ann.as_ref().is_some_and(Self::is_string_type) {
+                        locals.set_dol_type(name, "String");
+                    }
 
                     // Track DOL type for struct literals to enable member access
                     if let crate::ast::Expr::StructLiteral { type_name, .. } = value {
@@ -2801,15 +2934,19 @@ impl WasmCompiler {
                     // Direct function call: func(args)
                     Expr::Identifier(func_name) => {
                         let host = self.host_imports.get(func_name);
-                        // Emit arguments (converted to host ABI types for imports)
-                        for (i, arg) in args.iter().enumerate() {
-                            self.emit_expression(function, arg, locals, loop_ctx, string_pool)?;
-                            if let Some(import) = host {
-                                if let (Some(dol), Some(abi)) =
-                                    (import.dol_params.get(i), import.params.get(i))
-                                {
-                                    Self::emit_int_conversion(function, *dol, *abi);
-                                }
+                        if let Some(import) = host {
+                            // Host import: lower each argument to the ABI params
+                            self.emit_host_args(
+                                function,
+                                import,
+                                args,
+                                locals,
+                                loop_ctx,
+                                string_pool,
+                            )?;
+                        } else {
+                            for arg in args {
+                                self.emit_expression(function, arg, locals, loop_ctx, string_pool)?;
                             }
                         }
                         // Look up function index
