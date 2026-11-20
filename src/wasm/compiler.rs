@@ -563,8 +563,7 @@ impl StringPool {
 
         // Align to 4 bytes for next entry
         let padding = (4 - (self.current_offset % 4)) % 4;
-        self.data
-            .extend(std::iter::repeat(0).take(padding as usize));
+        self.data.extend(std::iter::repeat_n(0, padding as usize));
         self.current_offset += padding;
 
         self.strings.insert(s.to_string(), (offset, len));
@@ -1243,7 +1242,6 @@ impl WasmCompiler {
                 let results = vec![ValType::I32]; // Return pointer
                 types.function(params.clone(), results.clone());
                 constructor_infos.push((gene_name.clone(), params, results));
-                next_type_idx += 1;
             }
         }
 
@@ -4075,10 +4073,8 @@ impl WasmCompiler {
                         }
                     }
                 }
-                Declaration::Function(func) => {
-                    if check_function(func) {
-                        return true;
-                    }
+                Declaration::Function(func) if check_function(func) => {
+                    return true;
                 }
                 _ => {}
             }
