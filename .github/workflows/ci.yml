@@ -328,7 +328,15 @@ jobs:
 
       - name: Run WASM tests
 
-        run: cargo test --features wasm --test wasm_execution
+        run: cargo test --features wasm --test wasm_execution --test wasm_host_abi
+
+
+
+      - name: Run dol-abi tests (VM host ABI)
+
+        working-directory: dol-abi
+
+        run: cargo test
 
 
 
