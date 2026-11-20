@@ -39,6 +39,8 @@ use crate::ast::Declaration;
 #[cfg(feature = "wasm-compile")]
 use crate::wasm::alloc::BumpAllocator;
 #[cfg(feature = "wasm-compile")]
+use crate::wasm::host_abi;
+#[cfg(feature = "wasm-compile")]
 use crate::wasm::layout::{EnumRegistry, GeneLayout, GeneLayoutRegistry};
 #[cfg(feature = "wasm-compile")]
 use crate::wasm::WasmError;
@@ -76,6 +78,9 @@ pub struct WasmCompiler {
     gene_layouts: GeneLayoutRegistry,
     /// Registry of enum definitions for variant compilation
     enum_registry: EnumRegistry,
+    /// Host imports of the file being compiled, keyed by name, used to convert
+    /// DOL-typed arguments/results to the host ABI types at call sites.
+    host_imports: HashMap<String, WasmImport>,
 }
 
 /// Represents a WASM import declaration.
@@ -84,14 +89,18 @@ pub struct WasmCompiler {
 #[cfg(feature = "wasm-compile")]
 #[derive(Debug, Clone)]
 struct WasmImport {
-    /// Module name for the import (e.g., "loa")
+    /// Module name for the import (always [`host_abi::HOST_MODULE`])
     module: String,
     /// Function name for the import
     name: String,
-    /// Parameter types
+    /// Parameter types, as defined by the host ABI
     params: Vec<wasm_encoder::ValType>,
-    /// Return type (None for void)
+    /// Return type, as defined by the host ABI (None for void)
     result: Option<wasm_encoder::ValType>,
+    /// Parameter types as declared in DOL (converted to `params` at call sites)
+    dol_params: Vec<wasm_encoder::ValType>,
+    /// Return type as declared in DOL (`result` is converted to it, or dropped)
+    dol_result: Option<wasm_encoder::ValType>,
     /// Type index in the type section (set during compilation)
     type_idx: u32,
 }
@@ -580,6 +589,7 @@ impl WasmCompiler {
             tree_shaking: false,
             gene_layouts: GeneLayoutRegistry::new(),
             enum_registry: EnumRegistry::new(),
+            host_imports: HashMap::new(),
         }
     }
 
@@ -1105,6 +1115,10 @@ impl WasmCompiler {
 
         // Extract imports (sex fun without body)
         let mut imports = self.extract_imports(&declarations)?;
+        self.host_imports = imports
+            .iter()
+            .map(|i| (i.name.clone(), i.clone()))
+            .collect();
 
         // Extract all local functions (with body) from all declarations
         let mut functions: Vec<ExtractedFunction> = Vec::new();
@@ -1213,7 +1227,7 @@ impl WasmCompiler {
         wasm_module.section(&types);
 
         // ============= IMPORT SECTION =============
-        // Import functions come from the "loa" module (host Loa functions)
+        // Import functions come from the VUDO VM host ABI (module "vudo", `host_*`)
         if !imports.is_empty() {
             let mut import_section = ImportSection::new();
             for import in &imports {
@@ -1599,8 +1613,16 @@ impl WasmCompiler {
 
     /// Extract imports from DOL declarations.
     ///
-    /// A sex fun without body is treated as a WASM import.
-    /// All imports use the "loa" module name (the Loa host function registry).
+    /// A sex fun without body is treated as a WASM import from the VUDO VM.
+    ///
+    /// The import module, name and WASM signature come from the canonical host
+    /// ABI ([`host_abi`], decision D2 of the Spirit Hosting Plan), not from the
+    /// DOL types: DOL integers are i64, while most host parameters are i32, so
+    /// arguments and results are converted at each call site.
+    ///
+    /// A bodiless `sex fun` whose name is not a VM host function, or whose
+    /// arity or value kinds cannot match it, is a compile error: such a module
+    /// could never link in the VUDO VM.
     fn extract_imports(&self, declarations: &[Declaration]) -> Result<Vec<WasmImport>, WasmError> {
         use crate::ast::{Declaration, Purity};
 
@@ -1616,17 +1638,57 @@ impl WasmCompiler {
                         .map(|p| self.dol_type_to_wasm(&p.type_ann))
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    let result = if let Some(ref ret_type) = func.return_type {
-                        Some(self.dol_type_to_wasm(ret_type)?)
-                    } else {
-                        None
+                    let result = match func.return_type {
+                        Some(ref ret_type) if !Self::is_void_type(ret_type) => {
+                            Some(self.dol_type_to_wasm(ret_type)?)
+                        }
+                        _ => None,
                     };
 
+                    let host = host_abi::lookup(&func.name).ok_or_else(|| {
+                        WasmError::new(format!(
+                            "Unknown host function `{}`: a bodiless `sex fun` imports from the \
+                             VUDO VM (module `{}`), which provides: {}",
+                            func.name,
+                            host_abi::HOST_MODULE,
+                            host_abi::names()
+                        ))
+                    })?;
+                    if params.len() != host.params.len() {
+                        return Err(WasmError::new(format!(
+                            "Host function `{}` takes {} parameter(s) in the VUDO VM ABI, \
+                             but is declared with {}",
+                            func.name,
+                            host.params.len(),
+                            params.len()
+                        )));
+                    }
+                    for (i, (dol, abi)) in params.iter().zip(host.params).enumerate() {
+                        if !host_abi::is_compatible(*dol, *abi) {
+                            return Err(WasmError::new(format!(
+                                "Host function `{}` parameter {} is {:?} in the VUDO VM ABI, \
+                                 incompatible with declared {:?}",
+                                func.name, i, abi, dol
+                            )));
+                        }
+                    }
+                    if let Some(dol) = result {
+                        if !host_abi::is_compatible(dol, host.result) {
+                            return Err(WasmError::new(format!(
+                                "Host function `{}` returns {:?} in the VUDO VM ABI, \
+                                 incompatible with declared {:?}",
+                                func.name, host.result, dol
+                            )));
+                        }
+                    }
+
                     imports.push(WasmImport {
-                        module: "loa".to_string(),
+                        module: host_abi::HOST_MODULE.to_string(),
                         name: func.name.clone(),
-                        params,
-                        result,
+                        params: host.params.to_vec(),
+                        result: Some(host.result),
+                        dol_params: params,
+                        dol_result: result,
                         type_idx: 0, // Will be set later
                     });
                 }
@@ -1640,6 +1702,30 @@ impl WasmCompiler {
     fn is_import(func: &crate::ast::FunctionDecl) -> bool {
         use crate::ast::Purity;
         func.purity == Purity::Sex && func.body.is_empty()
+    }
+
+    /// Whether a declared return type means "no value" (`Void` / `()`).
+    fn is_void_type(type_expr: &crate::ast::TypeExpr) -> bool {
+        matches!(type_expr, crate::ast::TypeExpr::Named(n)
+            if matches!(n.to_lowercase().as_str(), "void" | "unit" | "()"))
+    }
+
+    /// Emit an integer width conversion from `from` to `to` (no-op otherwise).
+    fn emit_int_conversion(
+        function: &mut wasm_encoder::Function,
+        from: wasm_encoder::ValType,
+        to: wasm_encoder::ValType,
+    ) {
+        use wasm_encoder::{Instruction, ValType};
+        match (from, to) {
+            (ValType::I64, ValType::I32) => {
+                function.instruction(&Instruction::I32WrapI64);
+            }
+            (ValType::I32, ValType::I64) => {
+                function.instruction(&Instruction::I64ExtendI32S);
+            }
+            _ => {}
+        }
     }
 
     /// Extract sex var declarations from a list of declarations.
@@ -2714,15 +2800,35 @@ impl WasmCompiler {
                 match callee.as_ref() {
                     // Direct function call: func(args)
                     Expr::Identifier(func_name) => {
-                        // Emit arguments
-                        for arg in args {
+                        let host = self.host_imports.get(func_name);
+                        // Emit arguments (converted to host ABI types for imports)
+                        for (i, arg) in args.iter().enumerate() {
                             self.emit_expression(function, arg, locals, loop_ctx, string_pool)?;
+                            if let Some(import) = host {
+                                if let (Some(dol), Some(abi)) =
+                                    (import.dol_params.get(i), import.params.get(i))
+                                {
+                                    Self::emit_int_conversion(function, *dol, *abi);
+                                }
+                            }
                         }
                         // Look up function index
                         let func_idx = locals.lookup_function(func_name).ok_or_else(|| {
                             WasmError::new(format!("Unknown function: {}", func_name))
                         })?;
                         function.instruction(&Instruction::Call(func_idx));
+                        // Convert the host result back to the DOL-declared type
+                        if let Some(import) = host {
+                            match (import.result, import.dol_result) {
+                                (Some(abi), Some(dol)) => {
+                                    Self::emit_int_conversion(function, abi, dol)
+                                }
+                                (Some(_), None) => {
+                                    function.instruction(&Instruction::Drop);
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                     // Method call: object.method(args)
                     Expr::Member { object, field } => {

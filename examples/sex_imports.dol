@@ -1,8 +1,8 @@
 // sex_imports.dol - Test WASM imports from sex fun without body
 
-// Host imports (no body = WASM import from "loa" module)
-sex fun vudo_print(ptr: i32, len: i32)
-sex fun vudo_alloc(size: i32) -> i32
+// Host imports (no body = WASM import from the VUDO VM: module "vudo", `host_*` names)
+sex fun host_log(level: i32, ptr: i32, len: i32) -> i32
+sex fun host_time_now() -> i64
 
 // Pure function - has body, gets exported
 fun add(a: i64, b: i64) -> i64 {

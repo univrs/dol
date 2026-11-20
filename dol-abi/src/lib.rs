@@ -14,7 +14,8 @@ pub mod wasm_types;
 
 pub use error::{Error, Result};
 pub use types::*;
+#[allow(deprecated)]
+pub use wasm_types::standard_host_functions;
 pub use wasm_types::{
-    HostFunction, HostFunctionCategory, HostFunctionSignature, WasmType,
-    standard_host_functions,
+    vm_host_functions, HostFunction, HostFunctionCategory, HostFunctionSignature, WasmType,
 };

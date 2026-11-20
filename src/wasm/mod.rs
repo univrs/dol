@@ -60,7 +60,7 @@
 //!   `while`, `for` over ranges, `loop`, `break`, `continue`
 //! - Genes as structs in linear memory: constructors (`new_Gene`), field
 //!   access, methods, inheritance; enums as i32 discriminants
-//! - Host imports from bodiless `sex fun` declarations (module `loa`)
+//! - Host imports from bodiless `sex fun` declarations (module `vudo`, `host_*`; see [`host_abi`])
 //!
 //! [`crate::compile_source`] (the Spirit pipeline) compiles through
 //! [`WasmCompiler::compile_file`].
@@ -94,6 +94,8 @@ use std::fmt;
 
 pub mod alloc;
 pub mod compiler;
+#[cfg(feature = "wasm-compile")]
+pub mod host_abi;
 pub mod imports;
 pub mod layout;
 pub mod runtime;

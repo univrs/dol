@@ -1,12 +1,13 @@
 // hello_world.dol - Test string literals in WASM
-// This demonstrates the DOL -> WASM -> Loa string pipeline
+// This demonstrates the DOL -> WASM -> VUDO VM host pipeline
 
-// Host import for printing (from Loa)
-sex fun vudo_print(ptr: i32, len: i32)
+// Host import for logging (VUDO VM: module "vudo")
+sex fun host_log(level: i32, ptr: i32, len: i32) -> i32
 
 // Function that prints a greeting
-fun greet() {
-    vudo_print("Hello, World!")
+sex fun greet() -> i64 {
+    // level 2 = Info; (ptr, len) of a message in linear memory
+    return host_log(2, 0, 0)
 }
 
 // Simple function for testing non-string code

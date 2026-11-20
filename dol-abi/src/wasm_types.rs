@@ -111,6 +111,12 @@ pub enum HostFunctionCategory {
     Effects,
     /// Debug functions (breakpoint, assert, panic)
     Debug,
+    /// Key-value storage (host_storage_*)
+    Storage,
+    /// Network (host_network_*)
+    Network,
+    /// Credits (host_credit_*)
+    Credit,
 }
 
 impl HostFunction {
@@ -127,13 +133,59 @@ impl HostFunction {
         }
     }
 
-    /// Get the function's fully qualified import name
+    /// Get the function's fully qualified import name.
+    ///
+    /// VUDO VM host functions (see [`vm_host_functions`]) are already named
+    /// `host_*` and are returned unchanged. Legacy names from
+    /// [`standard_host_functions`] get the old `vudo_` prefix.
     pub fn import_name(&self) -> String {
-        format!("vudo_{}", self.name)
+        if self.name.starts_with("host_") {
+            self.name.clone()
+        } else {
+            format!("vudo_{}", self.name)
+        }
     }
 }
 
-/// Standard host functions defined by the DOL ABI
+/// The canonical host ABI: the functions the VUDO VM linker actually provides
+/// (`univrs/vudo` `vudo_vm/src/linker.rs`), all in import module
+/// [`crate::IMPORT_MODULE`] (`"vudo"`), in linker registration order.
+///
+/// This is decision D2 of the Spirit Hosting Plan: the VM linker's ABI is
+/// canonical, and the DOL compiler and this crate match it.
+pub fn vm_host_functions() -> Vec<HostFunction> {
+    use HostFunctionCategory::*;
+    use WasmType::*;
+    let f = |name: &str, params: Vec<WasmType>, ret: WasmType, cat| {
+        HostFunction::new(name, HostFunctionSignature::with_return(params, ret), cat)
+    };
+    vec![
+        f("host_time_now", vec![], I64, Time),
+        f("host_random_bytes", vec![I32, I32], I32, Random),
+        f("host_log", vec![I32, I32, I32], I32, IO),
+        f("host_storage_read", vec![I32, I32, I32, I32], I32, Storage),
+        f("host_storage_write", vec![I32, I32, I32, I32], I32, Storage),
+        f("host_storage_delete", vec![I32, I32], I32, Storage),
+        f("host_network_connect", vec![I32, I32], I64, Network),
+        f("host_network_listen", vec![I32], I64, Network),
+        f("host_network_broadcast", vec![I32, I32], I64, Network),
+        f("host_credit_balance", vec![I32], I64, Credit),
+        f("host_credit_transfer", vec![I32, I32, I64], I32, Credit),
+        f("host_credit_reserve", vec![I32, I64], I64, Credit),
+        f("host_credit_release", vec![I64], I32, Credit),
+        f("host_credit_consume", vec![I64], I32, Credit),
+        f("host_credit_available", vec![I32], I64, Credit),
+    ]
+}
+
+/// Legacy `vudo_*` host functions (22).
+///
+/// **Not implemented by the VUDO VM.** A module importing any of these will
+/// fail to link in the VM. Kept only for the native LLVM runtime and existing
+/// codegen until they migrate; new code must use [`vm_host_functions`].
+#[deprecated(
+    note = "not provided by the VUDO VM; use vm_host_functions() (module `vudo`, `host_*` names)"
+)]
 pub fn standard_host_functions() -> Vec<HostFunction> {
     use HostFunctionCategory::*;
     use WasmType::*;
@@ -276,6 +328,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_standard_host_functions() {
         let funcs = standard_host_functions();
         assert_eq!(funcs.len(), 22);
