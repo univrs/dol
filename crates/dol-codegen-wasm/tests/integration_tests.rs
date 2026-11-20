@@ -1,5 +1,10 @@
 //! Integration tests for dol-codegen-wasm
 
+// This crate emits the legacy `vudo_*` host imports (dol_abi::standard_host_functions),
+// which the VUDO VM does not provide. Migrating it to dol_abi::vm_host_functions
+// (module `vudo`, `host_*`) is tracked by Spirit Hosting Plan H0.
+#![allow(deprecated)]
+
 use dol_codegen_wasm::{ImportEmitter, ImportTracker, UsedImports};
 use dol_abi::{standard_host_functions, HostFunctionCategory, IMPORT_MODULE};
 use walrus::Module;

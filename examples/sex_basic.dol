@@ -1,9 +1,9 @@
 // sex_basic.dol - Basic SEX system examples
 // This file tests the complete SEX syntax
 
-// Host imports (no body = WASM import)
-sex fun vudo_print(ptr: i32, len: i32)
-sex fun vudo_alloc(size: i32) -> i32
+// Host imports (no body = WASM import from the VUDO VM: module "vudo", `host_*` names)
+sex fun host_log(level: i32, ptr: i32, len: i32) -> i32
+sex fun host_time_now() -> i64
 
 // Pure function - no effects allowed
 fun add(a: i64, b: i64) -> i64 {
@@ -12,7 +12,7 @@ fun add(a: i64, b: i64) -> i64 {
 
 // Sex function with body - effects allowed
 sex fun log_and_add(a: i64, b: i64) -> i64 {
-    // vudo_print("Adding...", 10)  // Would call the import
+    // host_log(2, ptr, len)  // Would call the import
     return a + b
 }
 
@@ -20,7 +20,7 @@ sex fun log_and_add(a: i64, b: i64) -> i64 {
 fun compute_with_debug(x: i64) -> i64 {
     let result = x * 2
     sex {
-        // vudo_print("Debug: result computed", 22)
+        // host_log(1, ptr, len)
         let debug_val = result
     }
     return result
