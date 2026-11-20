@@ -126,7 +126,7 @@ impl JsonSchemaCodegen {
 }}"#,
             title,
             // Remove leading '{' and trailing '}' from inner to merge
-            &inner[1..inner.len() - 1].trim()
+            inner[1..inner.len() - 1].trim()
         )
     }
 

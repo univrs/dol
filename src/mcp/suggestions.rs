@@ -161,7 +161,7 @@ impl SuggestionEngine {
         self.suggest_use_case_fields(gen, &context, &mut suggestions);
 
         // Sort by priority
-        suggestions.sort_by(|a, b| b.priority.cmp(&a.priority));
+        suggestions.sort_by_key(|s| std::cmp::Reverse(s.priority));
 
         // Calculate health score
         let health_score = self.calculate_health_score(gen, &suggestions);
@@ -339,23 +339,17 @@ impl SuggestionEngine {
                         });
                     }
                 }
-                "document_editing" => {
-                    if !field_names.iter().any(|f| f.contains("version")) {
-                        suggestions.push(Suggestion {
-                            suggestion_type: SuggestionType::AddField,
-                            priority: SuggestionPriority::Medium,
-                            title: "Add version tracking".to_string(),
-                            description: "Document editing benefits from version tracking"
-                                .to_string(),
-                            rationale: "Version numbers help with document history and rollback"
-                                .to_string(),
-                            code_example: format!(
-                                "  {} has version: i32 @crdt(pn_counter)",
-                                entity
-                            ),
-                            impact: "Enables version history and change tracking".to_string(),
-                        });
-                    }
+                "document_editing" if !field_names.iter().any(|f| f.contains("version")) => {
+                    suggestions.push(Suggestion {
+                        suggestion_type: SuggestionType::AddField,
+                        priority: SuggestionPriority::Medium,
+                        title: "Add version tracking".to_string(),
+                        description: "Document editing benefits from version tracking".to_string(),
+                        rationale: "Version numbers help with document history and rollback"
+                            .to_string(),
+                        code_example: format!("  {} has version: i32 @crdt(pn_counter)", entity),
+                        impact: "Enables version history and change tracking".to_string(),
+                    });
                 }
                 _ => {}
             }
