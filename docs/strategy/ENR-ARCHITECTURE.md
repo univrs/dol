@@ -1,5 +1,7 @@
 # Entropy-Nexus-Revival (ENR) Architecture
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 **Version**: 0.1.0  
 **Status**: Design Specification  
 **Created**: December 2024  

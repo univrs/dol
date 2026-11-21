@@ -1,5 +1,9 @@
 # DOL 2.0 Phase 3: Code Generation & Semantic Analysis
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
+> "DOL 2.0" was the name of the expression-capable language generation. It is not a version, and there is no separate DOL 2.0 specification. The language is versioned by the `dol` crate.
+
 ## Background
 
 **Completed:**

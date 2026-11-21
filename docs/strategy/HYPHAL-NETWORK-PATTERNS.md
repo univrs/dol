@@ -1,5 +1,7 @@
 # Hyphal Network Patterns for Distributed Systems
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 This document explores how fungal hyphal growth patterns from biology can be applied to design resilient, adaptive distributed networks. These patterns form the foundation of the DOL network stdlib.
 
 ## Table of Contents

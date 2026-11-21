@@ -1,3 +1,5 @@
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 The term "Hyphal Network" refers to the mycelium—the vegetative part of a fungus—which consists of a vast, intricate web of fine, tubular filaments called hyphae. While popular culture often mythologizes this as the "Wood Wide Web," the scientific reality is a complex system of hydraulic engineering, chemical trading, and electrical signaling.   
 
 Here is an explanation of the Hyphal Network from a strict biological perspective, tracing its discovery, current mechanics, and the significant controversies reshaping our understanding today.

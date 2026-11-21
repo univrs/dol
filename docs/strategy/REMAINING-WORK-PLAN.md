@@ -1,5 +1,7 @@
 # DOL → WASM Compiler: Remaining Work Plan
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 **Generated**: 2026-01-02
 **Based on**: Cross-repo assessment of DOL, ENR, Identity, and VUDO
 
@@ -10,7 +12,7 @@
 | DOL → WASM Compiler | Partial | ~35% for full ENR |
 | ENR Specs (entropy_core.dol) | **DONE** | ✅ First target compiled |
 | Ed25519 Identity | Native only | 0% WASM |
-| VUDO Runtime | Production-ready | 95% (missing fuel metering) |
+| VUDO Runtime | Working (as reported 2026-01-02) | 95% (missing fuel metering) |
 
 ---
 

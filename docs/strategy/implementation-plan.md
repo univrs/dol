@@ -1,5 +1,7 @@
 # DOL WASM Backend Implementation Plan
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 **Version**: 1.0
 **Date**: 2025-12-31
 **Author**: WASM Backend Architect Agent

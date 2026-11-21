@@ -1,5 +1,7 @@
 # DOL to WASM Investigation Summary
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 **Date:** 2025-12-31
 **Author:** WASM Backend Architect Agent
 **Status:** Requirements Extracted

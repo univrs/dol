@@ -1,11 +1,13 @@
 # Publishing DOL to crates.io
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 This document outlines the process, requirements, and considerations for publishing the DOL crate to crates.io.
 
 ## Overview
 
 [crates.io](https://crates.io) is Rust's official package registry. Publishing there allows anyone to:
-- Install with `cargo install dol`
+- Install with `cargo install dol --features cli` (the binaries require the `cli` feature)
 - Add as dependency with `cargo add dol`
 - Access documentation on [docs.rs](https://docs.rs)
 

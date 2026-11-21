@@ -1,5 +1,7 @@
 # @vudo/runtime Plan Comparison
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Side-by-Side Analysis
 
 | Aspect | My Spec | Your Plan | Verdict |

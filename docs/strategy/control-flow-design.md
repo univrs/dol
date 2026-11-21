@@ -1,5 +1,7 @@
 # Control Flow Design for DOL WASM Compiler
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 This document describes the design for implementing control flow constructs in the DOL-to-WASM compiler. The current compiler at `src/wasm/compiler.rs` handles basic expressions and function calls but lacks support for control flow.
 
 ## Table of Contents

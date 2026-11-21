@@ -1,5 +1,7 @@
 # DOL MLIR Dialect Specification
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Overview
 
 The DOL MLIR (Multi-Level Intermediate Representation) dialect provides a bridge between DOL's high-level ontological specifications and executable code. It leverages the [MLIR infrastructure](https://mlir.llvm.org) to enable progressive lowering from semantic declarations to platform-specific targets including WebAssembly, LLVM IR, and specialized hardware backends.

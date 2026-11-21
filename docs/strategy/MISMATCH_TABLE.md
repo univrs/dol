@@ -1,5 +1,7 @@
 # DOL vs Rust AST Mismatch Table
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 > **Status:** AUDIT IN PROGRESS
 > **Last Updated:** December 26, 2025
 > **Purpose:** Track every difference between DOL source expectations and Rust AST implementation

@@ -1,5 +1,7 @@
 # Phase 4: DOL → WASM Compiler Pipeline - Status Report
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 **Date**: 2026-01-02
 **Status**: Assessment Complete - Implementation Roadmap Ready
 
@@ -83,7 +85,7 @@ test_compile_counter_to_file
 
 ## VUDO Runtime Integration
 
-### Status: Production-Ready VM
+### Status: VM working (as reported 2026-01-02)
 
 The VUDO VM at `~/repos/univrs-vudo/vudo/vudo_vm/` is mature:
 

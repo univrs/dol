@@ -1,5 +1,7 @@
 # Strategic Analysis: DOL/VUDO Next Steps
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 > **Decision Point:** December 31, 2025  
 > **Context:** Year 1 ~70%, Year 2 ~15%, @vudo/runtime Phase 1 complete
 

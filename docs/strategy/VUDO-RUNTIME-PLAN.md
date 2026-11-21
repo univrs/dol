@@ -1,5 +1,7 @@
 # @vudo/runtime - TypeScript/JavaScript WASM Host Package
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Overview
 
 `@vudo/runtime` is a TypeScript/JavaScript package that hosts DOL-compiled WASM modules (Spirits) and provides type-safe bindings for interacting with them.
