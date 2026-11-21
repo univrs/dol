@@ -598,7 +598,7 @@ See `prototypes/eg-walker-dol/examples/` for full implementation examples.
    - Repository: https://github.com/automerge/automerge
 
 5. DOL CRDT Guide
-   - Location: `docs/book/local-first/crdt-guide/`
+   - Location: `docs/book/local-first/crdt-guide/` (removed; it described tooling that does not exist. See `docs/ADRs/ADR-001-CRDT-SELECTION.md` and `examples/crdt/`)
 
 ---
 
