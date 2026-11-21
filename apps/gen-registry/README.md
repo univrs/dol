@@ -3,7 +3,12 @@
 **A P2P registry for sharing DOL Gen definitions with CRDT annotations**
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-79%20passing-brightgreen)](#testing)
+
+> [!WARNING]
+> **Status: prototype, does not build.** As of dol v0.8.2 `cargo check` fails on this crate's
+> manifest (the `search_performance` and `sync_performance` benches it declares do not exist), so
+> none of its tests run. It is not part of the published `dol` crate and is not built in CI.
+> P2P sync is simulated. Treat the rest of this README as design intent.
 
 ---
 
