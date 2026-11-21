@@ -11,6 +11,11 @@ entries; see `git log` between the tags for their changes. Dates below are git t
 
 ## [Unreleased]
 
+### Changed
+- Packaging: the published crate now contains only `src/`, `Cargo.toml`, `README.md`, `CHANGELOG.md` and the licence files. dol 0.8.2 shipped 734 files, including internal notes, prototypes and sibling apps.
+- The internal `wasm-stress-test` binary now requires `--features cli,wasm`, so `cargo install dol` without `--features cli` no longer installs it.
+- README rewritten for v0.8.2.
+
 ## [0.8.2] - 2026-11-20
 
 Spirit Hosting Plan H0 ("toolchain truth"): DOL-compiled Spirits now link and run in the VUDO VM.
