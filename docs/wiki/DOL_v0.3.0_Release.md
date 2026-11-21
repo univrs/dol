@@ -1,7 +1,22 @@
 # DOL v0.3.0 Release - HIR and Language Cleanup
 
-> **Release Date**: December 2025
-> **Status**: Released
+> **Release Date**: December 2025 (CHANGELOG: 2025-12-27)
+> **Status**: Released. **Historical document.**
+
+> **Read this first (2026-11 correction).** This page is the v0.3.0 announcement. Much of the syntax it
+> announced was never implemented as described, and the current language is the **v0.8 "Clarity"** syntax
+> (`gen`/`rule`/`evo`/`docs`, lowercase types) shipped in dol 0.8.x. As of dol 0.8.2:
+> - `let` is **not** deprecated and emits no warning; `let`, `val` and `var` all parse. `let mut` does not parse.
+> - `each`/`all` quantified statements, `module`, and `derives from` still parse **without** errors.
+> - `extends` works only in a declaration header (`gen B extends A { … }`), not as a statement (`container extends image`).
+> - `forall x: T. expr` and `forall x in xs { … }` parse as expressions. `forall items satisfy condition` does not.
+> - `type X { … }` is still accepted as an alias for `gen`; since 0.8.0 the preferred keyword is `gen`.
+> - `test "…" { given … when … then … }` blocks are not top-level declarations.
+> - There is no `dol` binary: `dol migrate` and `dol compile` do not exist. The migration tool is `dol-migrate 0.2-to-0.3`, and all binaries need `--features cli`.
+> - The library crate is imported as `metadol`, not `dol`.
+>
+> Code blocks that do not parse with dol 0.8.2 are fenced as `text` below. For current syntax, see the tutorials and the
+> [Examples Gallery](./DOL_Examples_Gallery.md).
 
 [![GitHub Release](https://img.shields.io/github/v/release/univrs/dol)](https://github.com/univrs/dol/releases/tag/v0.3.0)
 [![Crates.io](https://img.shields.io/crates/v/dol)](https://crates.io/crates/dol/0.3.0)
@@ -33,7 +48,7 @@ DOL v0.3.0 introduces the **HIR (High-level Intermediate Representation)**, a ma
 
 The new binding syntax provides clear symmetry between immutable values and mutable variables:
 
-```dol
+```text
 // Immutable value (cannot be changed)
 val name = "DOL"
 val count = 42
@@ -72,7 +87,7 @@ pub gene Container {
 
 The verbose `derives from` is replaced with the standard `extends`:
 
-```dol
+```text
 // Before
 container derives from image
 
@@ -89,7 +104,7 @@ pub type WebServer extends Server {
 
 Three keywords are unified into one:
 
-```dol
+```text
 // Before (three ways to say the same thing)
 each item in items { validate(item) }
 all items satisfy condition
@@ -134,14 +149,14 @@ DOL Source → Parser → AST → Lowering → HIR → Codegen → Rust
 
 ### Automatic Migration
 
-Use the new `dol-migrate` command:
+Use the `dol-migrate` binary:
 
 ```bash
 # Migrate a directory
-dol migrate --from 0.2 --to 0.3 src/
+cargo run --features cli --bin dol-migrate -- 0.2-to-0.3 src/
 
 # Preview changes first
-dol migrate --from 0.2 --to 0.3 --dry-run src/
+cargo run --features cli --bin dol-migrate -- 0.2-to-0.3 --dry-run src/
 ```
 
 ### Migration Rules
@@ -157,7 +172,7 @@ dol migrate --from 0.2 --to 0.3 --dry-run src/
 
 ### Deprecation Warnings
 
-In v0.3.0, deprecated syntax still works but produces warnings:
+The original announcement promised warnings like the one below. **dol 0.8.2 emits no `let` deprecation warning.** The warnings that do exist are the v0.8.0 keyword/type deprecations (e.g. `'gene' keyword is deprecated in v0.8.0, use 'gen' instead`).
 
 ```
 warning: `let` is deprecated, use `val` instead
@@ -176,7 +191,7 @@ warning: `let` is deprecated, use `val` instead
 ### New Compilation Functions
 
 ```rust
-use dol::codegen::{
+use metadol::codegen::{
     compile_to_rust_via_hir,
     compile_with_diagnostics,
 };
@@ -191,8 +206,8 @@ let (rust_code, warnings) = compile_with_diagnostics(dol_source)?;
 ### Low-Level HIR Access
 
 ```rust
-use dol::lower::lower_file;
-use dol::codegen::HirRustCodegen;
+use metadol::lower::lower_file;
+use metadol::codegen::HirRustCodegen;
 
 // Parse and lower to HIR
 let (hir, ctx) = lower_file(source)?;
@@ -211,7 +226,7 @@ let code = codegen.generate(&hir);
 
 ### Before (v0.2.x)
 
-```dol
+```text
 module greeting.service @ 0.2.0
 
 gene greeting.entity {
@@ -238,7 +253,7 @@ test "greeting works" {
 
 ### After (v0.3.0)
 
-```dol
+```text
 mod greeting.service @ 0.3.0
 
 type greeting.entity {
@@ -270,11 +285,11 @@ test "greeting works" {
 ### Installation
 
 ```bash
-# Install from crates.io
-cargo install dol
+# Install the CLI binaries from crates.io (they all require the `cli` feature)
+cargo install dol --features cli
 
-# Or add as a dependency
-cargo add dol@0.3.0
+# Or add as a library dependency (imported as `metadol`)
+cargo add dol
 ```
 
 **Direct links:**
@@ -285,11 +300,11 @@ cargo add dol@0.3.0
 
 1. **Migrate existing code**:
    ```bash
-   dol migrate --from 0.2 --to 0.3 src/
+   cargo run --features cli --bin dol-migrate -- 0.2-to-0.3 src/
    ```
 
 2. **Write new code with v0.3.0 syntax**:
-   ```dol
+   ```text
    mod myapp @ 0.1.0
 
    pub type User {
@@ -305,7 +320,7 @@ cargo add dol@0.3.0
 
 3. **Compile to Rust**:
    ```bash
-   dol compile src/myapp.dol --output src/generated/
+   cargo run --features cli --bin dol-codegen -- --target rust src/myapp.dol -o src/generated/myapp.rs
    ```
 
 ---
@@ -318,24 +333,24 @@ cargo add dol@0.3.0
 - [API Documentation](https://docs.rs/dol) - Rust API docs
 
 ### Documentation
-- [HIR Tutorials](./HIR_Tutorials.md) - Detailed HIR documentation
-- [DOL Self-Hosting](./DOL_Self_Hosting.md) - DOL-in-DOL compiler
+- [HIR Tutorials](../tutorials/HIR_Tutorials.md) - Detailed HIR documentation
+- [DOL Self-Hosting](./DOL_Self_Hosting.md) - Status of the DOL-in-DOL effort (not self-hosting)
 - [Examples Gallery](./DOL_Examples_Gallery.md) - Comprehensive examples
-- [Language Decisions](../dol/hir/DOL-v0.3.0-LANGUAGE-DECISIONS.md) - Design rationale
 
 ---
 
 ## Backward Compatibility
 
-| Feature | v0.3.0 | v0.4.0 | v1.0.0 |
-|---------|--------|--------|--------|
-| `let`/`mut` | Warning | Warning | Error |
-| `gene` | Works | Soft warn | Warning |
-| `each`/`all` | Warning | Error | Removed |
-| `module` | Warning | Error | Removed |
-| `derives from` | Warning | Error | Removed |
+The schedule originally announced here (`let`, `each`/`all`, `module` and `derives from` becoming errors in v0.4.0) **did not happen**. As of dol 0.8.2:
 
-The `gene` keyword will continue to work indefinitely for Metal DOL ontological specifications.
+| Feature | Status in 0.8.2 |
+|---------|-----------------|
+| `let` | Accepted, no warning |
+| `let mut` | Does not parse |
+| `each`/`all` statements | Accepted, no warning |
+| `module` | Accepted, no warning |
+| `derives from` | Accepted, no warning |
+| `gene`, `exegesis`, `constraint`, `evolves`, PascalCase types | Accepted with a "deprecated in v0.8.0" warning; planned to become errors in v0.9 (unreleased) |
 
 ---
 

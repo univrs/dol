@@ -1,45 +1,67 @@
 # DOL Examples Gallery
 
-> **Real-World Examples of Ontology-First Development**
+> **Examples of ontology-first development in DOL v0.8 syntax**
 
-All examples in this gallery are verified from the DOL compiler test suite.
+Every `dol` code block on this page was checked against **dol 0.8.2** as a whole-file parse (`metadol::parse_file_all`). Snippets that are statements or expressions are wrapped in a `fun` so that they parse as files.
+
+"Parses" means the parser accepts the code. It does not mean every backend can compile it. The WASM backend in particular supports only a subset of the language (no lambdas, tuples, lists or `sex {}` blocks; see [DOL-STATUS-2026-11](../DOL-STATUS-2026-11.md) §5.5), and 0.8.2 does not enforce types (§5.2).
+
+Some examples are adapted from files in `examples/` and `tests/`. Several of those source files still use the deprecated pre-0.8 keywords (`gene`, `exegesis`, `constraint`, `evolves`) and PascalCase types; this page uses the current forms.
 
 ---
 
 ## Quick Examples
 
-### Hello World Gene
-**Source**: `examples/genes/hello.world.dol`
+### Hello World Gen
+**Adapted from**: `examples/genes/hello.world.dol`
 
 ```dol
-gene hello.world {
+gen hello.world {
   message has content
   message has sender
   message has timestamp
 }
 
-exegesis {
-  The hello.world gene is the simplest possible DOL example. It defines
+docs {
+  The hello.world gen is the simplest possible DOL example. It defines
   a message entity with three essential properties: content (what the
   message says), sender (who sent it), and timestamp (when it was sent).
 }
 ```
 
-### Counter State Gene
-**Source**: `examples/genes/counter.dol`
+### Counter State Gen
+**Adapted from**: `examples/genes/counter.dol`
 
 ```dol
-gene counter.state {
+gen counter.state {
   counter has value
   counter has minimum
   counter has maximum
   counter derives from initialization
 }
 
-exegesis {
-  The counter.state gene models a bounded counter. A counter has a current
+docs {
+  The counter.state gen models a bounded counter. A counter has a current
   value, and bounds (minimum and maximum). The counter derives from an
   initialization value when created.
+}
+```
+
+### Typed Fields
+
+```dol
+gen Point {
+    has x: f64
+    has y: f64
+}
+
+gen User {
+    has id: u64
+    has name: string
+    has email: string
+    has tags: Vec<string>
+    has manager: Option<u64>
+    has status: enum { Active, Suspended }
 }
 ```
 
@@ -48,168 +70,143 @@ exegesis {
 ## Functions
 
 ### Simple Function
-**Source**: `tests/codegen/golden/input/function.dol`
 
 ```dol
-fun add(a: Int64, b: Int64) -> Int64 {
+fun add(a: i64, b: i64) -> i64 {
     return a + b
 }
 ```
 
-### Gene with Methods
-**Source**: `tests/corpus/traits/trait_relationships.dol`
+### Gen with Methods
 
 ```dol
 module tests.trait_relationships @ 1.0.0
 
-pub gene SimpleValue {
-    has value: String
-    has count: Int64 = 0
+gen SimpleValue {
+    has value: string
+    has count: i64 = 0
 
-    fun get_value() -> String {
+    fun get_value() -> string {
         return this.value
     }
 }
 
-pub gene StringWrapper {
-    has value: String
+gen StringWrapper {
+    has value: string
 
-    fun to_string() -> String {
+    fun to_string() -> string {
         return this.value
     }
 }
 ```
 
+`pub` is accepted before `gen`, but 0.8.2 drops it from the AST, so it is omitted here.
+
 ### Pipe Operators
-**Source**: `tests/codegen/golden/input/pipe_operators.dol`
 
 ```dol
-fun process(x: Int64) -> Int64 {
+fun process(x: i64) -> i64 {
     return x |> double |> increment
 }
 ```
 
 ---
 
-## Generic Types
-**Source**: `tests/corpus/genes/nested_generics.dol`
+## Generic Types in Fields
+
+Generic *type arguments* in field types parse:
 
 ```dol
-module tests.nested_generics @ 1.0.0
-
-// Simple generic
-pub gene Container<T> {
-    has item: T
-}
-
-// Nested generic
-pub gene Nested<T> {
-    has items: List<T>
-    has mapping: Map<String, T>
-    has optional: Option<T>
-    has result: Result<T, String>
-}
-
-// Deeply nested
-pub gene DeepNest<T> {
-    has deep: Map<String, List<Option<T>>>
-    has matrix: List<List<T>>
-    has complex: Result<Map<String, List<T>>, String>
-}
-
-// Multiple type params
-pub gene Multi<K, V> {
-    has key: K
-    has value: V
-    has pairs: List<Tuple<K, V>>
-}
-
-// Bounded generics
-pub gene Bounded<T: Comparable> {
-    has items: List<T>
-
-    fun max() -> Option<T> {
-        if this.items.is_empty() {
-            return None
-        }
-        return Some(this.items.reduce(|a, b| if a > b { a } else { b }))
-    }
-}
-
-// Generic with default
-pub gene WithDefault<T = Int64> {
-    has value: T
-}
-
-exegesis {
-    Tests for nested and complex generic type parameters.
+gen Nested {
+    has items: Vec<i64>
+    has mapping: Map<string, i64>
+    has optional: Option<i64>
+    has result: Result<i64, string>
+    has deep: Map<string, Vec<Option<i64>>>
+    has matrix: Vec<Vec<f64>>
 }
 ```
+
+**Not supported in 0.8.2:**
+- *Type parameters* on a declaration (`gen Container<T> { … }`) are parsed and then silently discarded.
+- Generic functions (`fun id<T>(x: T) -> T`) do not parse.
 
 ---
 
 ## Control Flow
 
 ### If Expressions
-**Source**: `tests/dol2_tests.rs`
 
 ```dol
-if x { result }
-```
-
-```dol
-if condition { positive } else { negative }
-```
-
-```dol
-if x { a } else if y { b } else if z { c } else { d }
+fun sign(x: i64) -> i64 {
+    if x > 0 {
+        return 1
+    } else if x < 0 {
+        return -1
+    } else {
+        return 0
+    }
+}
 ```
 
 ### For Loops
-**Source**: `tests/parser_tests.rs`
 
 ```dol
-for outer in outers {
-    for inner in inners {
-        break;
+fun nested(outers: Vec<i64>, inners: Vec<i64>) {
+    for outer in outers {
+        for inner in inners {
+            break
+        }
     }
 }
 ```
 
 ### For Loop with Range
-**Source**: `tests/corpus/sex/nested_sex.dol`
 
 ```dol
-for i in 0..n {
-    sex {
-        COUNTER += 1
-        LOG.push("iteration " + i.to_string())
+sex var COUNTER: i64 = 0
+
+sex fun count_to(n: i64) {
+    for i in 0..n {
+        COUNTER = COUNTER + 1
     }
 }
 ```
 
+Compound assignment (`+=`, `-=`) does not parse in 0.8.2; write `x = x + 1`.
+
+### While and Loop
+
+```dol
+fun countdown(n: i64) -> i64 {
+    var i: i64 = n
+    while i > 0 {
+        i = i - 1
+    }
+    loop {
+        break
+    }
+    return i
+}
+```
+
 ### Pattern Matching
-**Source**: `tests/dol2_tests.rs`
 
 ```dol
-match value {
-    Some(x) => x,
-    None => default,
-    _ => fallback
+fun unwrap_or(value: Option<i64>, fallback: i64) -> i64 {
+    match value {
+        Some(x) if x > 0 => x,
+        Some(x) => 0 - x,
+        None => fallback,
+        _ => fallback
+    }
 }
-```
 
-```dol
-match x {
-    value if condition => positive,
-    _ => zero
-}
-```
-
-```dol
-match pair {
-    (Some(x), Some(y)) => result,
-    _ => default
+fun both(pair: (Option<i64>, Option<i64>)) -> i64 {
+    match pair {
+        (Some(x), Some(y)) => x + y,
+        _ => 0
+    }
 }
 ```
 
@@ -217,188 +214,157 @@ match pair {
 
 ## Traits
 
-### Metal DOL Trait
-**Source**: `examples/traits/greetable.dol`
+### Declarative Trait
+**Adapted from**: `examples/traits/greetable.dol`
 
 ```dol
 trait entity.greetable {
   uses entity.identity
-  greetable can greet
-  greetable can receive.greeting
-  greeting is polite
+  greetable is polite
+  greeting is acknowledged
+  each greeting emits event
 }
 
-exegesis {
+docs {
   The entity.greetable trait defines behavior for entities that can
   participate in greetings.
 }
 ```
 
-### DOL 2.0 Trait with Laws
-**Source**: `tests/corpus/genes/complex_constraints.dol`
+### Trait with Laws
+
+`law name(params) { expression }` parses inside a trait body:
 
 ```dol
-pub trait Ordered {
-    is compare(other: Self) -> Int64
-
-    law reflexive {
-        forall x: Self. x.compare(x) == 0
+trait Ordered {
+    law reflexive(x: i64) {
+        x == x
     }
 
-    law antisymmetric {
-        forall x: Self. forall y: Self.
-            x.compare(y) <= 0 && y.compare(x) <= 0 implies
-                x.compare(y) == 0
+    law total(x: i64, y: i64) {
+        x <= y || y <= x
     }
+}
 
-    law transitive {
-        forall x: Self. forall y: Self. forall z: Self.
-            x.compare(y) <= 0 && y.compare(z) <= 0 implies
-                x.compare(z) <= 0
-    }
+docs {
+    A total order expressed as laws over its comparison.
 }
 ```
 
+The `implies` keyword is lexed, but it is rejected as an operator in 0.8.2.
+
 ---
 
-## Constraints
+## Rules
 
-### Metal DOL Constraint
-**Source**: `examples/constraints/counter_bounds.dol`
+### Declarative Rule
+**Adapted from**: `examples/constraints/counter_bounds.dol`
 
 ```dol
-constraint counter.bounds_valid {
+rule counter.bounds_valid {
   value never overflows
   value never underflows
   bounds never inverted
 }
 
-exegesis {
-  The counter.bounds_valid constraint ensures the counter state is
+docs {
+  The counter.bounds_valid rule ensures the counter state is
   always valid.
 }
 ```
 
-### DOL 2.0 Constraints with Quantifiers
-**Source**: `tests/corpus/genes/complex_constraints.dol`
+### Field Constraints with `where`
 
 ```dol
-pub gene OrderedList {
-    has items: List<Int64>
-
-    // Simple constraint
-    constraint non_empty {
-        this.items.length() > 0
-    }
-
-    // Forall constraint
-    constraint sorted {
-        forall i: UInt64.
-            i < this.items.length() - 1 implies
-                this.items[i] <= this.items[i + 1]
-    }
-
-    // Exists constraint
-    constraint has_positive {
-        exists x: Int64. x in this.items && x > 0
-    }
+gen BoundedValue {
+    has value: i64 where value >= 0
+    has name: string where name != ""
 }
 ```
+
+A `rule name { … }` nested *inside* a `gen` is accepted, but its body is discarded in 0.8.2. Use top-level `rule` declarations or `where` clauses instead.
 
 ---
 
 ## SEX (Side Effect System)
-**Source**: `tests/corpus/sex/nested_sex.dol`
 
 ### Global Mutable State
 
 ```dol
-// Global mutable state
-sex var COUNTER: Int64 = 0
-sex var LOG: List<String> = []
-sex var CACHE: Map<String, Int64> = Map.new()
+sex var COUNTER: i64 = 0
+sex var LOG: Vec<string> = []
 ```
 
 ### SEX Functions
 
 ```dol
-// Simple sex function
-sex fun increment() -> Int64 {
-    COUNTER += 1
+sex var COUNTER: i64 = 0
+
+sex fun increment() -> i64 {
+    COUNTER = COUNTER + 1
     return COUNTER
 }
 
-// Sex function with sex block
-sex fun logged_increment(label: String) -> Int64 {
+sex fun logged_increment(label: string) -> i64 {
     sex {
-        LOG.push(label + ": incrementing")
+        println(label + ": incrementing")
     }
 
-    result = COUNTER + 1
+    let result = COUNTER + 1
     COUNTER = result
-
-    sex {
-        LOG.push(label + ": now " + result.to_string())
-    }
-
     return result
 }
 
-// Pure function with sex block
-fun compute_with_logging(x: Int64) -> Int64 {
-    result = x * 2 + 1
+fun compute_with_logging(x: i64) -> i64 {
+    let result = x * 2 + 1
 
     sex {
-        LOG.push("computed: " + result.to_string())
+        println("computed")
     }
 
     return result
 }
 ```
 
-### Conditional Effects
+### Host Imports (VUDO VM)
+
+A bodiless `sex fun` is a host import. With the WASM backend, `host_*` names import from module `vudo` (dol 0.8.2):
 
 ```dol
-sex fun conditional_effects(cond: Bool) -> Int64 {
-    if cond {
-        sex {
-            COUNTER += 10
-        }
-    } else {
-        sex {
-            COUNTER -= 10
-        }
-    }
-    return COUNTER
+sex fun host_log(level: i64, msg: string) -> i64
+
+sex fun hello() -> i64 {
+    return host_log(2, "hello from DOL")
 }
 ```
+
+A `string` argument to a `host_*` function is lowered to a `(ptr, len)` pair (taken from `tests/wasm_host_abi.rs`). Signatures are checked against `src/wasm/host_abi.rs`. Effect *propagation*, i.e. a pure function calling `sex` code, is not checked in 0.8.2.
 
 ---
 
 ## Systems
-**Source**: `examples/systems/greeting.service.dol`
+**Adapted from**: `examples/systems/greeting.service.dol`
 
 ```dol
-system greeting.service @0.1.0 {
+system greeting.service @ 0.1.0 {
   requires entity.greetable >= 0.0.1
   requires greeting.protocol >= 0.0.1
 
-  uses hello.world
   service has greeting.templates
   service has response.timeout
 }
 
-exegesis {
-  The greeting.service system composes genes, traits, and constraints
+docs {
+  The greeting.service system composes gens, traits, and rules
   into a complete, versioned component.
 }
 ```
 
 ### Bounded Counter System
-**Source**: `examples/systems/bounded.counter.dol`
+**Adapted from**: `examples/systems/bounded.counter.dol`
 
 ```dol
-system bounded.counter @0.1.0 {
+system bounded.counter @ 0.1.0 {
   requires counter.state >= 0.0.1
   requires counter.countable >= 0.0.1
   requires counter.bounds_valid >= 0.0.1
@@ -407,8 +373,8 @@ system bounded.counter @0.1.0 {
   counter has overflow.policy
 }
 
-exegesis {
-  The bounded.counter system composes genes, traits, and constraints
+docs {
+  The bounded.counter system composes gens, traits, and rules
   into a complete, versioned component.
 }
 ```
@@ -416,170 +382,102 @@ exegesis {
 ---
 
 ## Evolution and Versioning
-**Source**: `tests/corpus/genes/evolution_chain.dol`
+
+An evolution is written `evo Name @ new-version > parent-version`:
 
 ```dol
-module tests.evolution_chain @ 1.0.0
-
-// Base type
-pub gene EntityV1 {
-    has id: UInt32
-    has name: String
+gen Entity {
+    has id: u32
+    has name: string
 }
 
-// First evolution - add fields
-evolves EntityV1 > EntityV2 @ 2.0.0 {
-    added created_at: Int64 = 0
-    added updated_at: Int64 = 0
+docs {
+    Base entity.
+}
 
-    migrate from EntityV1 {
-        return EntityV2 {
-            ...old,
-            created_at: 0,
-            updated_at: 0
-        }
+evo Entity @ 2.0.0 > 1.0.0 {
+    adds created_at: i64 = 0
+    adds Entity is timestamped
+    deprecates Entity is anonymous
+    removes nickname
+    because "auditing requires creation timestamps"
+
+    migrate {
+        let created_at = 0
     }
 }
 
-// Second evolution - change types
-evolves EntityV2 > EntityV3 @ 3.0.0 {
-    changed id: UInt32 -> UInt64
-    added metadata: Map<String, String>
-    removed updated_at
-
-    migrate from EntityV2 {
-        return EntityV3 {
-            id: old.id as UInt64,
-            name: old.name,
-            created_at: old.created_at,
-            metadata: Map.new()
-        }
-    }
-}
-
-// Third evolution - rename fields
-evolves EntityV3 > EntityV4 @ 4.0.0 {
-    renamed name -> display_name
-    added tags: List<String> = []
-
-    migrate from EntityV3 {
-        return EntityV4 {
-            id: old.id,
-            display_name: old.name,
-            created_at: old.created_at,
-            metadata: old.metadata,
-            tags: []
-        }
-    }
+docs {
+    Adds a creation timestamp to Entity.
 }
 ```
+
+**Not supported in 0.8.2:** `evolves A > B` without `@ version`, and the `added`/`changed`/`renamed`/`removed` keywords (the real keywords are `adds`, `deprecates`, `removes`, `because`, `migrate`). `migrate from X { … }` and `...old` spread syntax are also not supported.
 
 ---
 
 ## Lambda Expressions
-**Source**: `tests/dol2_tests.rs`
-
-### Basic Lambdas
 
 ```dol
-map(|x| x, list)
-```
-
-```dol
-|x: Int32, y: Int32, z: Int32| -> Int32 { x }
-```
-
-### Curried Lambda
-
-```dol
-|x| |y| x
-```
-
-### Lambda in Pipeline
-
-```dol
-data |> (|x| x) |> result
-```
-
-### Lambda with Reduce
-**Source**: `tests/corpus/genes/nested_generics.dol`
-
-```dol
-this.items.reduce(|a, b| if a > b { a } else { b })
+fun lambdas(list: Vec<i64>) -> i64 {
+    let ids = map(|x| x, list)
+    let first = |x: i32, y: i32, z: i32| -> i32 { x }
+    let curried = |x: i64| |y: i64| x + y
+    let biggest = list.reduce(|a, b| if a > b { a } else { b })
+    return 0
+}
 ```
 
 ---
 
 ## Pipes and Function Composition
-**Source**: `tests/dol2_tests.rs`
-
-### Forward Pipe
 
 ```dol
-data |> validate |> transform |> store
+fun pipelines(data: string) -> string {
+    let stored = data |> validate |> transform |> store
+    let clean = trim >> lowercase >> validate >> normalize
+    let mixed = data |> (trim >> validate) |> process
+    let with_lambda = data |> (|x: string| x) |> result
+    return stored
+}
 ```
-
-### Function Composition
-
-```dol
-trim >> lowercase >> validate >> normalize
-```
-
-### Mixed Pipe and Composition
-
-```dol
-data |> (trim >> validate) |> process
-```
-
----
-
-## Example Index by Concept
-
-| Concept | Example Count | Sources |
-|---------|---------------|---------|
-| Gene Declaration | 8 | examples/genes/, tests/corpus/ |
-| Functions | 10 | tests/codegen/, tests/corpus/ |
-| Control Flow | 8 | tests/dol2_tests.rs, tests/parser_tests.rs |
-| Types & Generics | 6 | tests/corpus/genes/nested_generics.dol |
-| Pattern Matching | 5 | tests/dol2_tests.rs |
-| Traits | 5 | examples/traits/, tests/corpus/ |
-| Constraints | 4 | examples/constraints/, tests/corpus/ |
-| Systems | 2 | examples/systems/ |
-| Evolution | 3 | tests/corpus/genes/evolution_chain.dol |
-| Lambdas | 5 | tests/dol2_tests.rs |
-| SEX (Side Effects) | 6 | tests/corpus/sex/nested_sex.dol |
 
 ---
 
 ## Running the Examples
 
+All binaries need the `cli` feature:
+
 ```bash
-# Parse and validate
-dol check examples/
+# Parse and validate (prints the AST)
+cargo run --features cli --bin dol-parse -- examples/genes/hello.world.dol
 
-# Generate Rust code
-dol compile examples/container.dol --output generated/
+# CI-style check, requiring docs blocks
+cargo run --features cli --bin dol-check -- examples/ --require-exegesis
 
-# Run tests
-dol test examples/
+# Generate Rust / TypeScript / JSON Schema
+cargo run --features cli --bin dol-codegen -- --target rust examples/genes/counter.dol
 ```
+
+**Caveat:** `dol-parse` and `dol-check` currently parse only the **first** declaration in each file and ignore the rest (status audit §5.1). `dol-codegen` uses a whole-file parse.
+
+There is no `dol` binary, so `dol check`, `dol compile` and `dol test` do not exist.
 
 ---
 
 ## More Examples
 
-Find more examples in the repository:
-
-- `examples/genes/` - Gene definitions
-- `examples/traits/` - Trait definitions
-- `examples/constraints/` - Constraint examples
-- `examples/systems/` - System definitions
-- `tests/corpus/` - Comprehensive test corpus
-- `dol/` - Self-hosted compiler (DOL in DOL!)
+- `examples/genes/`: gen definitions
+- `examples/traits/`: trait definitions
+- `examples/constraints/`: rule examples
+- `examples/systems/`: system definitions
+- `examples/v0.8/`: v0.8 syntax examples (`quickstart.dol` parses as a whole file; the other three do not yet)
+- `tests/corpus/`: test corpus
+- `dol/`: bootstrap sources for a DOL-in-DOL compiler. They parse, but the compiler is **not** self-hosting; see [DOL_Self_Hosting](./DOL_Self_Hosting.md).
 
 **Official Resources:**
-- [GitHub](https://github.com/univrs/dol/releases/tag/v0.3.0)
-- [Crates.io](https://crates.io/crates/dol/0.3.0)
+- [GitHub](https://github.com/univrs/dol)
+- [Crates.io](https://crates.io/crates/dol)
 
 ---
 
