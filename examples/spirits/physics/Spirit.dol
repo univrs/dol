@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// DOL v0.9.0 Physics Spirit Package
+// Physics Spirit Package (written for the planned DOL v0.9 syntax, unreleased; does not fully parse with dol 0.8.2)
 // Comprehensive physics modeling for scientific computing
 // ═══════════════════════════════════════════════════════════════════════════════
 
 spirit physics @ 0.9.0
 
 docs {
-    Physics modeling Spirit for DOL v0.9.0.
+    Physics modeling Spirit, written for the planned (unreleased) DOL v0.9 syntax.
 
     This Spirit provides a comprehensive library for physics simulations including:
     - Particle physics (electrons, protons, photons, quantum properties)

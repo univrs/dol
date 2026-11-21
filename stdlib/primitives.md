@@ -1,5 +1,7 @@
 # Primitives: Continuants, Occurrents, and Relations
 
+> **Design spec — not implemented.** There is no DOL standard library in dol 0.8.2: no stdlib `.dol` or `.rs` sources exist in `src/` or `stdlib/`, and the compiler loads none. This directory contains only Markdown specs. Code samples here may use syntax the 0.8.2 parser does not accept (see `docs/DOL-STATUS-2026-11.md` §5.4 and §7).
+
 > "The fundamental concept in social science is Power, in the same sense in 
 > which Energy is the fundamental concept in physics."
 > — Bertrand Russell

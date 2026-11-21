@@ -1,6 +1,13 @@
 # DOL CRDT Examples
 
-This directory contains comprehensive examples demonstrating all 7 CRDT strategies supported by DOL 2.0 CRDT annotations (RFC-001).
+This directory contains examples of all 7 CRDT strategies that can be written as DOL `@crdt(...)` field annotations (RFC-001).
+
+> **Status (dol 0.8.2, verified 2026-11-21):**
+> - **Implemented:** the parser accepts `@crdt(strategy[, key=value…])` before a `has` field, for the strategies `immutable`, `lww`, `or_set`, `pn_counter`, `peritext`, `rga` and `mv_register`. It produces a `CrdtAnnotation` in the AST. All 4 `.dol` files here parse as whole files.
+> - **Partial:** the CRDT → Automerge Rust generator lives in `crates/dol-codegen-rust`. It is not wired into any CLI, it is not built in CI, and its generated code is not compiled by its tests (see `docs/DOL-STATUS-2026-11.md` §4). There is no `dol-codegen-rust` binary.
+> - **Not implemented:** the WASM pipeline, the property-based convergence testing and the performance targets described below are design goals, not results.
+>
+> "DOL 2.0" in older documents is the historical name of the expression-capable language generation. It is not a version number. The crate is versioned as `dol` 0.8.x.
 
 ## Files
 
@@ -176,7 +183,7 @@ Handling:
 
 ---
 
-## Compilation Pipeline
+## Compilation Pipeline (design — not implemented end to end)
 
 ```
 DOL Source                      Typed AST
@@ -206,9 +213,9 @@ dol-codegen-rust              Generated Rust Code
 
 ---
 
-## Testing
+## Testing (planned)
 
-All CRDT strategies verified via property-based testing:
+The planned verification approach is property-based testing. It has not been implemented for these examples:
 
 1. **Convergence**: N replicas with random operations → same state
 2. **Commutativity**: merge(A, B) = merge(B, A)
@@ -221,7 +228,7 @@ Target: 1,000,000+ random operation sequences for each strategy.
 
 ---
 
-## Performance Targets
+## Performance Targets (not measured)
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
@@ -235,7 +242,7 @@ Target: 1,000,000+ random operation sequences for each strategy.
 
 ## References
 
-- **RFC-001**: DOL 2.0 CRDT Annotations
+- **RFC-001**: DOL CRDT Annotations
   - `/rfcs/RFC-001-dol-crdt-annotations.md`
 
 - **RFC-001 Formal Proofs**: Convergence guarantees and theorems
@@ -257,9 +264,9 @@ Target: 1,000,000+ random operation sequences for each strategy.
 ## Next Steps
 
 1. **Phase 1** (Months 2-5): Implement parser, validator, and code generator
-   - `dol-parse`: Recognize @crdt annotations
+   - Parser: recognize @crdt annotations (**done**)
    - `dol-check`: Validate type compatibility and constraints
-   - `dol-codegen-rust`: Generate Automerge-backed Rust code
+   - `crates/dol-codegen-rust`: Generate Automerge-backed Rust code (partial; not wired into a CLI)
 
 2. **Phase 2** (Months 5-9): Integrate with VUDO Runtime
    - Local-first state engine

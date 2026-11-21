@@ -2,6 +2,8 @@
 
 Compile DOL programs to native machine code. No virtual machine, no interpreter — your DOL code runs directly on hardware.
 
+> **Status (dol 0.8.2, per `docs/DOL-STATUS-2026-11.md` §3.2):** the native backend (`llvm-backend/`, `dol-native`) is **beta** and is **not built or tested in CI**. It needs the manual LLVM 18 setup described below. At the audit, its 15/15 tests passed, and all 12 examples in this directory built, linked and ran. These examples do **not** compile with the WASM backend (`println` is unknown there).
+
 ## What You Need
 
 | Tool | Version | What it does |
