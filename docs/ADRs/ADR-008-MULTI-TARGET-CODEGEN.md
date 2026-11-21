@@ -2,11 +2,25 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted. Partially implemented: Rust, TypeScript and JSON Schema generators plus a direct WASM backend exist; there is no Python target, no `dol build` command, and no shared-HIR pipeline (see Implementation Status) |
 | **Date** | 2025-11-10 |
 | **Deciders** | VUDO Core Team |
 | **Supersedes** | N/A |
 | **Superseded by** | N/A |
+
+## Implementation Status (dol 0.8.2, verified 2026-11)
+
+| Item in this ADR | Reality |
+|------------------|---------|
+| Rust / TypeScript / JSON Schema codegen | **Implemented** in `src/codegen/` and exposed as `dol-codegen --target rust\|typescript\|jsonschema` (needs `--features cli`). Quality varies: TypeScript and JSON Schema generate for 22/23 files; only 14/41 Rust outputs compile standalone (status audit §3.2). |
+| WASM target | **Implemented separately** as a direct AST → WASM backend (`src/wasm`). It covers a language subset (status audit §5.5). `dol-build` takes a different route, Spirit → Rust → `cargo build` to wasm32, and currently fails on all 9 example Spirits. |
+| Python target | **Not implemented.** No Python generator exists. |
+| Shared HIR → all targets | **Not implemented.** HIR exists, but the WASM path does not use it (`src/compiler/spirit.rs` keeps it for diagnostics only). |
+| `dol build --target …`, `--all-targets`, `--watch` | **Do not exist.** There is no `dol` binary. Use `dol-codegen` and `dol-build`. |
+| `spirit { targets { … } }` manifest block | **Not implemented** (see ADR-004). |
+| Cross-target semantic-equivalence tests | **Not implemented.** |
+
+Command and configuration examples below show the original design.
 
 ## Context
 
@@ -233,7 +247,7 @@ export function isContainer(value: unknown): value is Container {
 }
 ```
 
-### Python
+### Python (proposed — not implemented)
 
 ```bash
 dol build --target python src/lib.dol -o output/
@@ -366,7 +380,7 @@ pub struct PythonCodegen { /* ... */ }
 pub struct JsonSchemaCodegen { /* ... */ }
 ```
 
-### CLI Interface
+### CLI Interface (proposed — not implemented; the shipped CLI is `dol-codegen --target <rust|typescript|jsonschema> <files>`)
 
 ```bash
 # Build single target
@@ -382,9 +396,9 @@ dol build --all-targets src/
 dol build --target typescript --watch src/
 ```
 
-### Spirit.dol Configuration
+### Spirit.dol Configuration (proposed — not implemented)
 
-```dol
+```text
 spirit MySpirit {
     targets {
         wasm: {
@@ -414,7 +428,7 @@ spirit MySpirit {
 
 ## Test Strategy
 
-### Cross-Target Validation
+### Cross-Target Validation (proposed — not implemented)
 
 ```rust
 #[test]
@@ -448,5 +462,6 @@ fn test_semantic_equivalence() {
 |------|--------|
 | 2025-11-10 | Initial multi-target design |
 | 2025-12-01 | Added Python target |
-| 2026-01-15 | Updated to v0.8.1 examples |
+| 2026-01-15 | Updated to v0.8 examples |
 | 2026-02-01 | Added JSON Schema target |
+| 2026-11-21 | Added implementation status; Python target, `dol build` CLI and shared-HIR pipeline marked as not implemented |

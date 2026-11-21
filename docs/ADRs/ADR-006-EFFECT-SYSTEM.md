@@ -2,11 +2,23 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted. Syntax implemented; effect enforcement **not** wired in (see Implementation Status) |
 | **Date** | 2025-12-10 |
 | **Deciders** | VUDO Core Team |
 | **Supersedes** | N/A |
 | **Superseded by** | N/A |
+
+## Implementation Status (dol 0.8.2, verified 2026-11)
+
+| Feature | Status |
+|---------|--------|
+| `sex fun`, bodiless `sex fun` (host import), `sex var`, `sex { }` blocks, `sex extern ["abi"] fun` | **Parses** (`src/parser.rs`) |
+| Bodiless `sex fun host_*` → WASM imports from module `vudo` | **Implemented** (0.8.2, `src/wasm/host_abi.rs`) |
+| `sex { }` blocks in the WASM backend | **Not supported** by the WASM backend |
+| Effect propagation errors (pure code calling `sex` code, E001–E004) | **Not enforced.** A standalone `SexLinter` exists in `src/sex/lint.rs` (exercised by `tests/sex_tests.rs`), but the parser, validator, `dol-check` and the compilers do not run it. |
+| Compiler-inferred effects | **Not implemented** in the compile pipeline |
+| Effect rows on signatures (`fun f() with IO`) | **Not implemented** — does not parse |
+| `+=` compound assignment, generic functions `fun f<T>()` (used in early drafts of this ADR) | **Not implemented** — do not parse |
 
 ## Context
 
@@ -95,6 +107,8 @@ sex fun log_and_add(a: i64, b: i64) -> i64 {
 
 ### Effect Propagation
 
+The rules below are the design. They are **not enforced** by dol 0.8.2 (see Implementation Status); the parser and validator accept the first function below without error today.
+
 ```dol
 // ❌ ERROR: Cannot call sex function from pure context
 fun calculate() -> i64 {
@@ -131,7 +145,7 @@ fun compute_with_logging(x: i64) -> i64 {
 sex var COUNTER: i64 = 0
 
 sex fun increment() -> i64 {
-    COUNTER += 1
+    COUNTER = COUNTER + 1
     return COUNTER
 }
 ```
@@ -143,7 +157,11 @@ sex fun increment() -> i64 {
 
 sex extern "C" fun malloc(size: u64) -> Ptr<u8>
 sex extern "C" fun free(ptr: Ptr<u8>)
+```
 
+Proposed — not implemented (generic functions do not parse in dol 0.8.2):
+
+```text
 sex fun allocate<T>() -> Ptr<T> {
     val size = size_of<T>()
     return malloc(size).cast<T>()
@@ -173,7 +191,7 @@ sex fun allocate<T>() -> Ptr<T> {
 
 ## Implementation Notes
 
-### Compiler Error Messages
+### Compiler Error Messages (design target — not emitted by the CLIs in 0.8.2)
 
 ```
 error[E001]: sex in pure context
@@ -188,7 +206,7 @@ help: mark this function as `sex fun` or wrap in `sex { }`
    | +++
 ```
 
-### Effect Inference Algorithm
+### Effect Inference Algorithm (proposed — not implemented)
 
 ```
 1. Mark built-in I/O functions as sex
@@ -217,7 +235,6 @@ help: mark this function as `sex fun` or wrap in `sex { }`
 
 ## References
 
-- [DOL 2.0 Runtime Architecture](../docs/DOLRAC.md)
 - [Effect Systems Survey](https://arxiv.org/abs/1907.01257)
 - [Koka Language Effects](https://koka-lang.github.io/koka/doc/index.html)
 - [Unison Abilities](https://www.unison-lang.org/learn/abilities/)
@@ -229,3 +246,4 @@ help: mark this function as `sex fun` or wrap in `sex { }`
 | 2025-12-10 | Initial SEX system design |
 | 2026-01-15 | Added compiler inference |
 | 2026-02-01 | Removed user-visible annotations (auto-inferred) |
+| 2026-11-21 | Added implementation status; marked propagation/inference as not enforced; removed broken DOLRAC link; replaced unparseable `+=` and generic-function examples |

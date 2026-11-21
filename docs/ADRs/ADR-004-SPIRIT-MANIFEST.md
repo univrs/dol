@@ -2,11 +2,38 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted in principle. The manifest format that was implemented differs from the one specified here (see Implementation Status) |
 | **Date** | 2025-12-01 |
 | **Deciders** | VUDO Core Team |
 | **Supersedes** | N/A |
 | **Superseded by** | N/A |
+
+## Implementation Status (dol 0.8.2, verified 2026-11)
+
+The manifest syntax that shipped is **not** the block form shown in this ADR. `src/manifest.rs` (`parse_spirit_manifest`, used by `dol-build`) implements a separate manifest parser for this form:
+
+```text
+spirit physics @ 0.9.0          // package name and package version
+
+docs { ... }
+
+use @univrs/std @ ^1.0          // dependencies
+
+config {
+    entry: "lib.dol"
+    target: wasm32
+}
+
+pub mod lib                     // exported modules
+mod internal
+```
+
+See `examples/spirits/*/Spirit.dol` for real manifests. In this ADR:
+- the `spirit Name { name: ... version: ... }` block form, `requires { }`, `dev_requires { }`, `targets { }` and the `SpiritManifest` schema-as-`gen` are **proposed, not implemented**;
+- the commands `dol init`, `dol add`, `dol check` and `dol build` **do not exist** (there is no `dol` binary);
+- the `dol_manifest` crate **does not exist**.
+
+A top-level `spirit` declaration is also not accepted by the main DOL parser (`parse_file_all`). `dol-build` (Spirit → Rust → wasm32) currently fails on all 9 example Spirits (status audit §5.6).
 
 ## Context
 
@@ -55,18 +82,18 @@ While TOML is familiar (Cargo.toml), it:
 
 ## Spirit.dol Specification
 
-### Minimal Manifest
+### Minimal Manifest (proposed — not implemented)
 
-```dol
+```text
 spirit MySpirit {
     name: "my-spirit"
     version: "1.0.0"
 }
 ```
 
-### Complete Manifest
+### Complete Manifest (proposed — not implemented)
 
-```dol
+```text
 spirit MySpirit {
     // ═══════════════════════════════════════════════════════════════
     // METADATA
@@ -150,9 +177,9 @@ spirit MySpirit {
 
 ### Schema Definition
 
-The manifest itself is defined as a `gen`:
+Proposed — not implemented. The manifest itself would be defined as a `gen`:
 
-```dol
+```text
 gen SpiritManifest {
     has name: string
     has version: string
@@ -208,7 +235,7 @@ gen SpiritManifest {
 
 ## Implementation Notes
 
-### CLI Commands
+### CLI Commands (proposed — not implemented; no `dol` binary exists)
 
 ```bash
 # Initialize new Spirit
@@ -227,7 +254,7 @@ dol build
 # Reads: Spirit.dol for configuration
 ```
 
-### Programmatic Access
+### Programmatic Access (proposed — the implemented API is `metadol::manifest::parse_spirit_manifest`)
 
 ```rust
 use dol_manifest::SpiritManifest;
@@ -243,8 +270,7 @@ for (dep, version) in manifest.requires.unwrap_or_default() {
 ## References
 
 - [Cargo.toml Reference](https://doc.rust-lang.org/cargo/reference/manifest.html) (inspiration)
-- [DOL Package Registry](../apps/gen-registry/)
-- [Spirit Packaging Guide](../docs/SPIRIT-PACKAGING.md)
+- [DOL Package Registry](../../apps/gen-registry/) (does not currently build; status audit §5.9)
 
 ## Changelog
 
@@ -252,4 +278,5 @@ for (dep, version) in manifest.requires.unwrap_or_default() {
 |------|--------|
 | 2025-12-01 | Initial Spirit.dol format accepted |
 | 2025-12-15 | Added features system |
-| 2026-01-20 | Updated examples to v0.8.1 syntax |
+| 2026-01-20 | Updated examples to v0.8 syntax |
+| 2026-11-21 | Added implementation status: shipped manifest format differs; block form, CLI commands and `dol_manifest` crate marked as not implemented; removed broken link |
