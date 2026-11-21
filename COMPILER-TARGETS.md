@@ -1,16 +1,23 @@
 # DOL Compiler Targets
 
-Side-by-side feature matrix for every DOL compilation backend.
+Side-by-side feature matrix for the DOL compilation backends, as of crate v0.8.2.
+
+None of these backends is production-ready. For a verified overview see
+[docs/DOL-STATUS-2026-11.md](docs/DOL-STATUS-2026-11.md).
+
+This matrix does not cover the code generator in the published crate (`src/codegen/`, used by
+`dol-codegen --target rust|typescript|jsonschema`). That generator works on declarations, but its
+Rust output compiles standalone for only 14 of 41 example files, and its TypeScript and JSON Schema
+output omits typed `has x: T` fields.
 
 ## Backends at a Glance
 
-| | Native (LLVM) | WASM | Rust Codegen |
+| | Native (LLVM) | WASM | Rust (Automerge) |
 |---|---|---|---|
 | **Location** | `llvm-backend/` | `src/wasm/` | `crates/dol-codegen-rust/` |
 | **Output** | Machine code (ELF/Mach-O/COFF) | `.wasm` module | Rust source with Automerge |
-| **Runtime** | VUDO native runtime | VUDO WASM host | Automerge CRDT |
-| **Status** | Beta | Beta (function bodies; Spirit pipeline wired) | Production |
-| **Tests** | 15 | 161 | 10 |
+| **Runtime** | VUDO native runtime | VUDO VM (module `vudo`) | Automerge CRDT |
+| **Status** | Beta. Separate workspace, not published, not in CI; needs a manual LLVM 18 setup | Beta. In the published crate (`wasm-compile` feature); covers a subset of the language | Experimental. Separate unpublished crate, not built in CI, not wired into any CLI; its generated code is never compiled by its tests |
 
 ## Language Features
 
@@ -28,23 +35,30 @@ Side-by-side feature matrix for every DOL compilation backend.
 | Match expressions | ❌ | ⚠️ int literals + `_` | ✅ |
 | Local variables (`let`) | ✅ | ⚠️ not inside blocks | ✅ |
 | Mutable variables (`var`) | ❌ | ✅ | ✅ |
-| Compound assignment (`+=` `-=`) | ❌ | ❌ | ✅ |
+| Compound assignment (`+=` `-=`) | ❌ | ❌ | ❌ not parseable |
 | String literals | ✅ | ✅ | ✅ |
 | String concatenation | ✅ | ❌ miscompiles | ✅ |
 | String + integer concat | ✅ | ❌ | ✅ |
 | `println()` / `print()` | ✅ | ⚠️ via `sex fun` import | ✅ |
-| Gen (struct) declarations | ✅ | ✅ linear memory | ✅ |
+| Gen (struct) declarations | ✅ | ⚠️ linear memory; `u64` and `string` fields rejected | ✅ |
 | Enum declarations | ✅ | ✅ | ✅ |
 | Trait/rule/system declarations | ✅ compile-time | ignored | ✅ |
 | Field access (`point.x`) | ❌ | ✅ | ✅ |
 | Method calls (`obj.method()`) | ❌ | ❌ | ✅ |
 | Closures / lambdas | ❌ | ❌ | ✅ |
 | Path syntax (`module::item`) | ❌ | ❌ | ✅ |
-| Reference types (`&T`) | ❌ | ❌ | ✅ |
+| Reference types (`&T`) | ❌ | ❌ | ❌ not parseable |
 | Multiple functions per file | ✅ | ✅ | ✅ |
 | `main()` entry point | ✅ | N/A (exports) | N/A |
 
 **Legend:** ✅ working | ⚠️ partial | ❌ not yet implemented | `-` backend not at this phase yet | N/A not applicable
+
+**Rust (Automerge) column:** ✅ means the generator emits code for the construct. That code is not
+compiled by any test, so it is unverified.
+
+**Parser limits apply to every backend:** the v0.8.2 parser rejects `+=`/`-=`, `&T` and generic
+functions, and discards generic parameters on `gen`/`trait`. No backend can receive these
+constructs from DOL source, whatever the rows below say.
 
 WASM partial/❌ entries are reproduced by `known_bugs` tests in `tests/wasm_execution.rs` (run with `-- --ignored`).
 
@@ -63,33 +77,53 @@ WASM partial/❌ entries are reproduced by `known_bugs` tests in `tests/wasm_exe
 | `Option<T>` | ❌ | ❌ pointer only | ✅ |
 | `Vec<T>` / `List<T>` | ❌ needs stdlib | ❌ pointer only | ✅ |
 | `Map<K,V>` / `Set<T>` | ❌ needs stdlib | ❌ pointer only | ✅ |
-| Generics / type params | ❌ | ❌ | ✅ |
+| Generics / type params | ❌ | ❌ | ❌ discarded by the parser |
 | Tuples | ❌ | ❌ | ✅ |
 
 ## Runtime / Host Functions
 
-The VUDO ABI defines 24 host functions shared across Native and WASM backends.
+### WASM (v0.8.2)
 
-| Category | Functions | Native | WASM |
-|----------|-----------|--------|------|
-| **I/O** | `print` `println` `log` `error` | ✅ | ✅ declared |
-| **Memory** | `alloc` `free` `realloc` | ✅ | ✅ declared |
-| **Time** | `now` `sleep` `monotonic_now` | ✅ | ✅ declared |
-| **Strings** | `string_concat` `i64_to_string` | ✅ | ✅ declared |
-| **Messaging** | `send` `recv` `pending` `broadcast` `free_message` | ✅ | ✅ declared |
-| **Effects** | `emit_effect` `subscribe` | ✅ | ✅ declared |
-| **Random** | `random` `random_bytes` | ✅ | ✅ declared |
-| **Debug** | `breakpoint` `assert` `panic` | ✅ | ✅ declared |
+Since v0.8.2 the WASM compiler targets the VUDO VM host ABI (`src/wasm/host_abi.rs`). A bodiless
+`sex fun host_*` declaration compiles to an import from module `vudo` with the VM linker's exact
+signature. There are 15 such functions:
 
-WASM: signatures are declared in `dol-abi` (module `vudo`). The `src/wasm/` compiler emits
-imports only for bodiless `sex fun` declarations, under module `loa`, which the VUDO VM linker
-does not provide yet.
+| Category | Functions |
+|----------|-----------|
+| **Time / random** | `host_time_now` `host_random_bytes` |
+| **Logging** | `host_log` |
+| **Storage** | `host_storage_read` `host_storage_write` `host_storage_delete` |
+| **Network** | `host_network_connect` `host_network_listen` `host_network_broadcast` |
+| **Credit** | `host_credit_balance` `host_credit_transfer` `host_credit_reserve` `host_credit_release` `host_credit_consume` `host_credit_available` |
+
+`dol-abi::vm_host_functions()` lists the same 15 functions. Declaring a `host_*` function the VM does
+not provide, or with the wrong arity or parameter types, is a compile error.
+
+### Native
+
+The native runtime (`llvm-backend/crates/vudo-runtime-native`) implements an older set of `vudo_*`
+functions:
+
+| Category | Functions |
+|----------|-----------|
+| **I/O** | `print` `println` `log` `error` |
+| **Memory** | `alloc` `free` `realloc` |
+| **Time** | `now` `sleep` `monotonic_now` |
+| **Strings** | `string_concat` `i64_to_string` |
+| **Messaging** | `send` `recv` `pending` `broadcast` `free_message` |
+| **Effects** | `emit_effect` `subscribe` |
+| **Random** | `random` `random_bytes` |
+| **Debug** | `breakpoint` `assert` `panic` |
+
+The WASM compiler does not use these names. `dol-abi::standard_host_functions()` (the 22 `vudo_*`
+names) is deprecated in favour of `vm_host_functions()`.
 
 The Rust codegen backend does not use VUDO host functions. It generates Automerge-backed structs with CRDT merge semantics.
 
-## Rust Codegen: CRDT Strategies
+## Rust (Automerge) Codegen: CRDT Strategies
 
-The Rust backend supports 7 CRDT annotation strategies for local-first collaborative apps:
+The parser and validator in the published crate accept 7 `@crdt(...)` strategies. The experimental
+Automerge generator in `crates/dol-codegen-rust` maps them as follows:
 
 | Annotation | Automerge Type | Use Case |
 |------------|----------------|----------|
@@ -105,11 +139,11 @@ The Rust backend supports 7 CRDT annotation strategies for local-first collabora
 
 | Target Triple | Platform | Status |
 |---------------|----------|--------|
-| `x86_64-unknown-linux-gnu` | x86-64 Linux | ✅ Default |
-| `aarch64-unknown-linux-gnu` | ARM64 Linux | ✅ Cross-compile |
-| `aarch64-apple-darwin` | Apple Silicon Mac | ✅ Cross-compile |
-| `riscv64gc-unknown-linux-gnu` | RISC-V 64-bit | ✅ Cross-compile |
-| `x86_64-pc-windows-msvc` | x86-64 Windows | ✅ Cross-compile |
+| `x86_64-unknown-linux-gnu` | x86-64 Linux | ✅ Default; the 12 `examples/native` programs build and run |
+| `aarch64-unknown-linux-gnu` | ARM64 Linux | Accepted by `targets.rs`; not tested |
+| `aarch64-apple-darwin` | Apple Silicon Mac | Accepted by `targets.rs`; not tested |
+| `riscv64gc-unknown-linux-gnu` | RISC-V 64-bit | Accepted by `targets.rs`; not tested |
+| `x86_64-pc-windows-msvc` | x86-64 Windows | Accepted by `targets.rs`; not tested |
 
 ## WASM: Implementation Phases
 
@@ -119,7 +153,8 @@ The Rust backend supports 7 CRDT annotation strategies for local-first collabora
 | Phase 2 | Import emitter, import tracker, test infra | ✅ Complete |
 | Phase 3 | Memory layout, function bodies, type conversion (`src/wasm/`) | ✅ Function bodies, gen layouts, bump allocator; ⚠️ type fidelity (8 known bugs) |
 | Phase 3b | Spirit pipeline: `compile_source` → `WasmCompiler` | ✅ Complete |
-| Phase 4 | Host ABI unification (`loa` → `vudo`), typed codegen, optimization | Next (tree shaking available, opt-in) |
+| Phase 4a | Host ABI unification (`loa` → `vudo`) | ✅ Done in v0.8.2 |
+| Phase 4b | Typed codegen, optimization | Next (tree shaking available, opt-in) |
 
 Phases 1–2 live in `dol-abi` and `crates/dol-codegen-wasm/` (walrus, imports only). Phase 3 is the
 `wasm-encoder` compiler in `src/wasm/`, which emits directly from the AST.
@@ -153,14 +188,12 @@ Phases 1–2 live in `dol-abi` and `crates/dol-codegen-wasm/` (walrus, imports o
    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Test Counts
+## Tests
 
-| Backend | Unit Tests | Integration Tests | Working Examples |
-|---------|-----------|-------------------|-----------------|
-| Native (LLVM) | 15 | 5 (in hir_lowering) | 12 `.dol` files |
-| WASM | 52 | 109 (+8 ignored known-bug repros) | 5 Spirit pipeline tests |
-| Rust Codegen | 10 | 10 | 3 |
-| **DOL Core** | **89** | **2,074** (parser, lexer, HIR) | **155+** |
+- Native (LLVM): 15 tests in `llvm-backend/`, run manually (not in CI).
+- WASM: `tests/wasm_execution.rs`, `tests/wasm_host_abi.rs` and unit tests in `src/wasm/`, run in CI.
+- Rust (Automerge): tests in `crates/dol-codegen-rust/` check generated text with string matching; not in CI.
+- For whole-crate test counts see the README.
 
 ## What's Next
 
@@ -171,13 +204,14 @@ Phases 1–2 live in `dol-abi` and `crates/dol-codegen-wasm/` (walrus, imports o
 - Parser extensions: `var`, `+=`, `::`, `&T`
 
 ### WASM
-- Unify host import module: compiler emits `loa`, `dol-abi` and the VUDO VM linker use `vudo`
+- Strings and `u64` fields in gen layouts (currently rejected), lambdas, tuples, lists, `sex { }` blocks
 - Typed codegen: use the typechecker instead of `infer_expression_type` (defaults to i64), scoped locals
 - Fix heap base (hardcoded 1024; overlaps string data > 1 KB)
 - Make stubbed collection/Option methods hard errors until runtime support exists
 - Browser integration testing
 
-### Rust Codegen
+### Rust (Automerge) Codegen
+- Wire into a CLI and compile the generated code in tests
 - Schema evolution via `evolution` declarations
 - TypeScript definition generation for WASM bindings
 - Incremental codegen for changed declarations
