@@ -5,6 +5,10 @@ All notable changes to DOL (Design Ontology Language) will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Releases 0.2.3, 0.3.1, 0.4.0, 0.4.1, 0.6.0, 0.7.0, 0.7.1 and 0.7.2 were tagged without changelog
+entries; see `git log` between the tags for their changes. Dates below are git tag dates
+(0.8.x: crates.io publish dates).
+
 ## [Unreleased]
 
 ## [0.8.2] - 2026-11-20
@@ -20,6 +24,12 @@ Spirit Hosting Plan H0 ("toolchain truth"): DOL-compiled Spirits now link and ru
 - String literals, `string` parameters and typed string locals passed to `host_*` functions lower to `(ptr, len)`. Modules that import pointer-taking host functions export `memory`.
 - `dol-abi`: `vm_host_functions()` (the 15 VM host functions).
 - `dol-build` CLI (DOL → WASM), wasm-bindgen annotations, `dol-abi` crate, LLVM native backend (`dol-native`, beta), meta-programming system, CRDT/Automerge codegen.
+  - Note: `dol-abi/`, the LLVM backend (`llvm-backend/`) and the Automerge codegen (`crates/dol-codegen-rust`) are separate crates in this repository. They are not part of the published `dol` crate. Only `dol-abi` is built in CI. The Automerge codegen is not wired into any CLI.
+
+### Known issues
+- `dol-parse` and `dol-check` only parse the first declaration in each file.
+- The `vudo` binary (`--features vudo`) does not compile.
+- Without `--features cli`, `cargo install dol` installs only the internal `wasm-stress-test` binary.
 
 ### Deprecated
 - `dol-abi::standard_host_functions()` (the 22 `vudo_*` names). Use `vm_host_functions()`.
@@ -32,7 +42,28 @@ Spirit Hosting Plan H0 ("toolchain truth"): DOL-compiled Spirits now link and ru
 - Minimum supported Rust version is 1.84.
 
 
-## [0.8.0] - 2025-01-17 - "Clarity"
+## [0.8.1] - 2026-01-26
+
+Reconstructed from `git log v0.8.0..v0.8.1`; no changelog entry was written at release time.
+
+### Added
+- Module system in the parser: `module path @ version`, `use` with visibility (`pub`, `pub(spirit)`, `pub(parent)`), import sources (local, `@org/package` registry, `@git:`, `@https:`), glob and named imports with aliases (#19).
+- File-level validation (`validate_file`, `validate_file_with_options`) for module and `use` declarations (#19).
+- Spirit REPL (`src/repl/`) with tree shaking; tree shaking integrated into `WasmCompiler::compile_file` (#19).
+- Rust codegen for wasm-bindgen: `#[wasm_export]` → `#[wasm_bindgen]`, `thread_local!` + `RefCell` for `sex var` globals.
+- Example Spirits under `examples/spirits/` (scientific modelling, art, Game of Life). Several of these files label themselves "DOL v0.9.0"; no v0.9.0 has been released.
+- `docs/ARCHITECTURE.md` (architecture reference written for v0.8.0).
+
+### Changed
+- Bootstrap compiler sources in `dol/` updated to v0.8.0 syntax; `List<T>` replaced with `Vec<T>`.
+
+### Fixed
+- Parser: `gen` and `docs` keywords are handled when skipping `use` statements.
+- `InvalidDeclaration` error message lists the v0.8.0 keywords.
+- WASM backend updated for the v0.8.0 `Block`/`SexBlock` AST changes.
+- Tests use non-deprecated type names.
+
+## [0.8.0] - 2026-01-17 - "Clarity"
 
 ### Language Changes
 
@@ -115,7 +146,7 @@ cargo run --bin dol-migrate --features cli -- 0.7-to-0.8 --diff src/
 - Added HIR (High-level Intermediate Representation)
 - Reduced AST complexity from 50+ to 22 node types
 - Simplified codegen via canonical HIR forms
-- Added migration tool: `dol-migrate --from 0.2 --to 0.3`
+- Added migration tool: `dol-migrate 0.2-to-0.3`
 
 ### New Modules
 - `hir/` - HIR type definitions and utilities
@@ -126,10 +157,10 @@ cargo run --bin dol-migrate --features cli -- 0.7-to-0.8 --diff src/
 
 ```bash
 # Auto-migrate your DOL files
-cargo run --bin dol-migrate -- --from 0.2 --to 0.3 src/
+cargo run --bin dol-migrate --features cli -- 0.2-to-0.3 src/
 ```
 
-## [0.2.2] - 2024-12-26 - "Bootstrap"
+## [0.2.2] - 2025-12-26 - "Bootstrap"
 
 ### Added
 - **bootstrap.dol** - Wrapper types for DOL parser compatibility (LetStmt, VarStmt, BinaryExpr, CallExpr, etc.)
@@ -148,8 +179,9 @@ cargo run --bin dol-migrate -- --from 0.2 --to 0.3 src/
 
 ### Milestone
 - **DOL self-hosting bootstrap generates valid Rust** - Generated code from ast.dol, token.dol, and bootstrap.dol compiles successfully (2544 lines, 0 errors)
+  - Note (2026-11): this no longer holds. Regenerating the same files with the v0.8.2 toolchain produces code with 19 compile errors, and the crate generated from all of `dol/*.dol` fails with 850 errors. DOL is not self-hosting. See `docs/DOL-STATUS-2026-11.md`.
 
-## [0.2.1] - 2024-12-25 - "Community"
+## [0.2.1] - 2025-12-25 - "Community"
 
 ### Added
 - **CHANGELOG.md** - Keep a Changelog format with full version history
@@ -166,13 +198,13 @@ cargo run --bin dol-migrate -- --from 0.2 --to 0.3 src/
 ### Fixed
 - Improved codegen operators with Box for HasField variant
 
-## [0.2.0] - 2024-12-25 - "Meta-Programming"
+## [0.2.0] - 2025-12-25 - "Meta-Programming"
 
 ### Added
 - **Quote/Eval System** - AST manipulation at runtime
   - `'expr` captures expression as `Quoted<T>` AST data
   - `!quoted` evaluates quoted AST back to value
-  - Quasi-quote (`` `template ``) with unquote (`~splice`)
+  - Quasi-quote (`` `template ``) with unquote (`~splice`) (note: the v0.8.2 parser does not accept this syntax)
 - **Reflection System** (`src/reflect.rs`)
   - `?Type` returns `TypeInfo` at runtime
   - `TypeInfo`, `FieldInfo`, `MethodInfo` structs
@@ -212,7 +244,7 @@ cargo run --bin dol-migrate -- --from 0.2 --to 0.3 src/
 - Ontology files updated for DOL 2.0 syntax compliance
 - Binary expression parsing improvements
 
-## [0.1.0] - 2024-12-24 - "Genesis"
+## [0.1.0] - 2025-12-24 - "Genesis"
 
 ### Added
 - **DOL 2.0 Parser** - Full support for modern DOL syntax
@@ -257,7 +289,7 @@ cargo run --bin dol-migrate -- --from 0.2 --to 0.3 src/
 ### New Keywords
 `module`, `use`, `pub`, `fun`, `const`, `var`, `extern`, `sex`, `state`, `law`, `forall`, `migrate`
 
-## [0.0.1] - 2024-12-19 - "Prototype"
+## [0.0.1] - 2025-12-19 - "Prototype"
 
 ### Added
 - Initial DOL parser implementation
@@ -270,7 +302,10 @@ cargo run --bin dol-migrate -- --from 0.2 --to 0.3 src/
 
 ---
 
-[Unreleased]: https://github.com/univrs/dol/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/univrs/dol/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/univrs/dol/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/univrs/dol/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/univrs/dol/compare/v0.7.2...v0.8.0
 [0.3.0]: https://github.com/univrs/dol/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/univrs/dol/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/univrs/dol/compare/v0.2.1...v0.2.2
