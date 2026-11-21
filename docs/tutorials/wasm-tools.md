@@ -1,58 +1,52 @@
-# WASM Tools
+# Inspecting WASM produced by DOL
 
-## Install wasmtime (project likely uses it already)
-curl https://wasmtime.dev/install.sh -sSf | bash
-source ~/.bashrc
+> Applies to `dol` **0.8.2**. The WASM backend (`metadol::wasm::WasmCompiler`, feature `wasm` or
+> `wasm-compile`) compiles directly from the AST. It does not go through MLIR (`src/mlir` is a
+> feature-gated stub and is not in CI). The backend covers only a **subset** of the language. In
+> particular, it does not support:
+> - lambdas, tuples, lists, `sex { }` blocks, `?`, quote/meta, idiom brackets, `this` or casts
+> - `for` over anything except a range
+> - `u64` and `string` fields in gene layouts
+> - `println`
+>
+> Declarative-only files compile to an empty module.
 
-## Validate
-wasm-tools validate add.wasm && echo "✅ Valid WASM"
+## 1. Produce a module
 
-## See what functions are exported
-wasm-tools print add.wasm
+The repository ships an example that compiles a small `Counter` gene plus a free function:
 
-## Test execution
-`wasmtime run --invoke add add.wasm 5 7
-
-12`
-
-(module
-  (type (;0;) (func (param i64 i64) (result i64)))
-  (export "add" (func 0))
-  (func (;0;) (type 0) (param i64 i64) (result i64)
-    local.get 0    ;; Push first param
-    local.get 1    ;; Push second param
-    i64.add        ;; Add them
-    return         ;; Return result
-  )
-)
+```bash
+cargo run --example compile_counter --features wasm
+# ...
+# Generated 295 bytes of WASM
+# Wrote: vertical-slice-results/counter.wasm
+# WASM validated successfully!
+# Exports:
+#   - Counter.increment
+#   - Counter.get_value
+#   - Counter.add
+#   - add_numbers
+#   - new_Counter
+#   - memory
 ```
 
-That's textbook-perfect WASM generation—minimal, no bloat, correct instruction sequence.
+(The example's source still uses the deprecated `gene` keyword and `Int64` type, so it prints
+deprecation warnings.)
 
-## Phase 3 Status: ✅ COMPLETE
+## 2. Inspect and run it
 
-| Metric | Target | Actual |
-|--------|--------|--------|
-| WASM validity | Passes wasmtime | ✅ `12` |
-| WAT inspection | Clean output | ✅ 9 lines |
-| Test suite | Passing | ✅ **50 passed** |
-| Git push | Upstream | ✅ `feature/mlir-wasm` |
+These tools are not part of this repo. Install them separately: `cargo install wasm-tools`, and
+wasmtime from <https://wasmtime.dev>.
 
-## Summary
+```bash
+wasm-tools validate vertical-slice-results/counter.wasm && echo valid
+wasm-tools print vertical-slice-results/counter.wasm | head -20
+wasmtime run --invoke add_numbers vertical-slice-results/counter.wasm 3 4
+# 7   (wasmtime warns that --invoke with arguments is experimental)
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                 DOL v0.5.0 COMPILATION PIPELINE                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   .dol source                                                   │
-│       │                                                         │
-│       ▼                                                         │
-│   ┌───────┐     ┌───────┐    ┌───────┐    ┌───────┐             │
-│   │  HIR  │───▶│ MLIR  │──▶ │ WASM  │──▶ │.spirit│            │
-│   │  ✅   │    │  ✅   │    │  ✅   │    │  ✅   │            │
-│   └───────┘     └───────┘    └───────┘    └───────┘             │
-│                                                                 │
-│   50 tests passing │ Valid WAT │ Executes correctly             │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
 
+## Host functions
+
+Since 0.8.2, a bodiless `sex fun host_*` declaration imports from module `vudo`, using the VUDO VM
+linker's signatures (`src/wasm/host_abi.rs`). Running such a module therefore needs the VUDO VM
+(univrs/vudo). Plain `wasmtime` cannot provide those imports.

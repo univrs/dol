@@ -1,12 +1,25 @@
 # Game of Life Spirit: DOL Compiler Benchmark
 
+> **Status (dol 0.8.2).** The DOL sources in `examples/spirits/game-of-life/src/` parse.
+> All 10 files pass a whole-file parse (`metadol::parse_file_all`), and the code blocks below
+> are excerpts from them. Two caveats:
+>
+> - **The build is not reproducible from a clean checkout.** Step 2 of `build.sh` runs `cargo build` in
+>   `codegen/rust/`, but that crate (its `Cargo.toml` and hand-written `lib.rs`) is not
+>   committed. The WASM in `web/` (`game_of_life_bg.wasm`) is a prebuilt artifact.
+> - This pipeline goes through Rust (`dol-codegen --target rust`, then `cargo`/`wasm-bindgen`).
+>   The direct WASM backend (`dol-build`) is separate, and it fails on all 9 example Spirits in
+>   0.8.2.
+>
+> See [`docs/DOL-STATUS-2026-11.md`](../../DOL-STATUS-2026-11.md).
+
 This document establishes the Game of Life Spirit as the primary benchmark for DOL compiler development, providing a real-world WASM compilation target that exercises the full DOL → Rust → WASM pipeline.
 
 ## Overview
 
 The Game of Life Spirit serves as a comprehensive test benchmark for:
 
-1. **DOL Language Features**: Genes, Spells, Effects (Sex), type inference, pattern matching
+1. **DOL Language Features**: gens, pure functions ("spells"), effects (`sex`), pattern matching
 2. **Codegen Quality**: Thread-local state, WASM bindings, Rust idioms
 3. **Build Pipeline**: Multi-stage compilation (DOL → Rust → WASM → JS)
 4. **Runtime Verification**: Interactive browser-based testing
@@ -26,12 +39,12 @@ game-of-life/
 │   └── effects/           # Side-effectful operations
 │       ├── browser.dol    # WASM exports
 │       └── mod.dol        # Module declaration
-├── codegen/
+├── codegen/               # NOT in the repository (see status note)
 │   └── rust/
 │       ├── Cargo.toml     # Rust project config
 │       └── src/
 │           ├── lib.rs     # Reference implementation
-│           └── generated/ # DOL-generated code
+│           └── generated/ # DOL-generated code (written by build.sh)
 ├── web/                   # Browser frontend
 │   ├── index.html         # UI
 │   ├── game.js            # Game logic
@@ -44,17 +57,22 @@ game-of-life/
 ### 1. Genes (Pure Data Types)
 
 ```dol
-// genes/cell.dol
-gene CellState { Dead Alive }
+// excerpt from genes/cell.dol
+pub gen CellState {
+  type: enum { Dead, Alive }
+  docs { Binary state of a cell. }
+}
 
-gene Position { x: i32 y: i32 }
-
-gene Cell {
-  pos: Position
-  state: CellState
-  neighbors: u8
+pub gen Position {
+  has x: i32
+  has y: i32
+  rule non_negative { this.x >= 0 && this.y >= 0 }
+  docs { 2D coordinate on the grid. }
 }
 ```
+
+`pub` is accepted but not recorded in the AST. The body of a `rule` nested in a `gen` is
+discarded by the 0.8.2 parser, so `non_negative` is not checked.
 
 **Codegen targets:**
 - Rust enums with `#[derive(Clone, Copy, PartialEq)]`
@@ -63,11 +81,22 @@ gene Cell {
 ### 2. Spells (Pure Functions)
 
 ```dol
-// spells/rules.dol
-spell next_state(cell: Cell) -> CellState {
+// excerpt from spells/rules.dol
+pub fun next_state(cell: Cell) -> CellState {
   match cell.state {
-    Alive { match cell.neighbors { 0 | 1 { Dead } 2 | 3 { Alive } _ { Dead } } }
-    Dead { if cell.neighbors == 3 { Alive } else { Dead } }
+    CellState.Alive {
+      match cell.neighbors {
+        2 { CellState.Alive }
+        3 { CellState.Alive }
+        _ { CellState.Dead }
+      }
+    }
+    CellState.Dead {
+      match cell.neighbors {
+        3 { CellState.Alive }
+        _ { CellState.Dead }
+      }
+    }
   }
 }
 ```
@@ -128,10 +157,10 @@ wasm-bindgen target/wasm32-unknown-unknown/release/game_of_life.wasm \
 
 ```bash
 cd examples/spirits/game-of-life
-./build.sh
+./build.sh            # step 2 fails unless you supply codegen/rust/Cargo.toml
 cd web
-python3 -m http.server 8888
-# Open http://localhost:8888
+python3 serve.py      # serves the prebuilt WASM in web/ on port 8080
+# Open http://localhost:8080
 ```
 
 ## Codegen Verification Checklist
@@ -181,7 +210,7 @@ cd examples/spirits/game-of-life
 
 ### Browser Test
 
-1. Open http://localhost:8888
+1. Open http://localhost:8080
 2. Click "Start" - animation should run
 3. Click cells to toggle state
 4. Load patterns (glider, gun, etc.)
@@ -218,5 +247,5 @@ When adding new DOL language features:
 ## Related Documents
 
 - [DOL Architecture](../../ARCHITECTURE.md)
-- [Spirit Guide](spirit-guide.md)
-- [Codegen Reference](../codegen/rust.md)
+- [WASM compilation guide](wasm-guide.md)
+- [DOL status audit](../../DOL-STATUS-2026-11.md)
