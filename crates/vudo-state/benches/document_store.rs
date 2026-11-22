@@ -1,6 +1,6 @@
 //! Benchmarks for document store operations.
 
-use automerge::ROOT;
+use automerge::{transaction::Transactable, ReadDoc, ROOT};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use vudo_state::document_store::*;
 
