@@ -318,3 +318,75 @@ fn b3_junk_after_use_path_is_an_error() {
     assert!(metadol::parse_file_all(src).is_err());
     assert!(metadol::parse_dol_file(src).is_err());
 }
+
+// ============================================
+// B4. `mod x { }` blocks
+// ============================================
+
+fn assert_no_placeholders(decls: &[Declaration]) {
+    for d in decls {
+        assert!(
+            !d.name().starts_with('_'),
+            "placeholder declaration leaked: {}",
+            d.name()
+        );
+    }
+}
+
+#[test]
+fn b4_mod_block_as_first_item() {
+    let src = r#"
+mod helpers {
+  gen inner.thing {
+    has id: i64
+  }
+}
+
+gen a.thing {
+  has id: i64
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse_file_all");
+    assert_eq!(decls.len(), 1, "{:?}", decls);
+    assert_eq!(decls[0].name(), "a.thing");
+
+    let file = metadol::parse_dol_file(src).expect("parse_dol_file");
+    assert!(file.module.is_none(), "a mod block is not a file header");
+    assert_eq!(file.declarations.len(), 1);
+
+    let first = metadol::parse_file(src).expect("parse_file");
+    assert_eq!(first.name(), "a.thing");
+}
+
+#[test]
+fn b4_pub_mod_block_with_uses_and_trailing_mod() {
+    let src = r#"
+module biology @ 1.0.0
+
+pub mod prelude {
+    pub use dol.{ lex, parse }
+}
+
+gen a.thing {
+  has id: i64
+}
+
+mod empty { }
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse_file_all");
+    // Negative oracle: skipped mod blocks never surface as fake declarations.
+    assert_no_placeholders(&decls);
+    assert_eq!(decls.len(), 1, "{:?}", decls);
+
+    let file = metadol::parse_dol_file(src).expect("parse_dol_file");
+    assert!(file.module.is_some());
+    assert_no_placeholders(&file.declarations);
+    assert_eq!(file.declarations.len(), 1);
+}
+
+#[test]
+fn b4_unterminated_mod_block_is_an_error() {
+    let src = "mod helpers {\n  gen a.thing {\n    has id: i64\n  }\n";
+    assert!(metadol::parse_file_all(src).is_err());
+    assert!(metadol::parse_dol_file(src).is_err());
+}

@@ -135,7 +135,7 @@ impl<'a> Parser<'a> {
         while self.current.kind != TokenKind::Eof {
             // Mid-file `use` lines are parsed (and validated) but not
             // returned; use `parse_file` to keep them.
-            if self.parse_use_item()?.is_some() {
+            if self.parse_use_item()?.is_some() || self.skip_mod_block()? {
                 continue;
             }
             let decl = self.parse_declaration()?;
@@ -150,8 +150,8 @@ impl<'a> Parser<'a> {
     /// Returns a `DolFile` containing the module declaration (if any),
     /// use declarations, and all top-level declarations.
     pub fn parse_file(&mut self) -> Result<DolFile, ParseError> {
-        // Parse optional module declaration
-        let module = if self.current.kind == TokenKind::Module {
+        // Parse optional module declaration (a `mod x { }` block is not one)
+        let module = if self.current.kind == TokenKind::Module && !self.at_mod_block() {
             Some(self.parse_module_decl()?)
         } else {
             None
@@ -164,6 +164,9 @@ impl<'a> Parser<'a> {
         while self.current.kind != TokenKind::Eof {
             if let Some(use_decl) = self.parse_use_item()? {
                 uses.push(use_decl);
+                continue;
+            }
+            if self.skip_mod_block()? {
                 continue;
             }
             let decl = self.parse_declaration()?;
@@ -190,10 +193,51 @@ impl<'a> Parser<'a> {
         Ok(None)
     }
 
+    /// Returns true if a `mod name { ... }` block (optionally `pub`) starts at
+    /// the current token, as opposed to a `module a.b @ 1.0.0` file header.
+    fn at_mod_block(&mut self) -> bool {
+        if self.current.kind == TokenKind::Pub {
+            self.peek().kind == TokenKind::Module && self.peek3().kind == TokenKind::LeftBrace
+        } else {
+            self.current.kind == TokenKind::Module && self.peek2().kind == TokenKind::LeftBrace
+        }
+    }
+
+    /// Skips a `mod name { ... }` block if one starts at the current token.
+    ///
+    /// Block-module bodies are not yet represented in the AST, so their
+    /// contents are skipped (brace-balanced). Returns `true` if a block was
+    /// skipped; an unterminated block is an error.
+    fn skip_mod_block(&mut self) -> Result<bool, ParseError> {
+        if !self.at_mod_block() {
+            return Ok(false);
+        }
+        while self.current.kind != TokenKind::LeftBrace {
+            self.advance(); // pub / mod / name
+        }
+        self.advance(); // {
+        let mut depth = 1;
+        while depth > 0 {
+            match self.current.kind {
+                TokenKind::LeftBrace => depth += 1,
+                TokenKind::RightBrace => depth -= 1,
+                TokenKind::Eof => {
+                    return Err(ParseError::UnexpectedEof {
+                        context: "unterminated mod block: missing closing '}'".to_string(),
+                        span: self.current.span,
+                    })
+                }
+                _ => {}
+            }
+            self.advance();
+        }
+        Ok(true)
+    }
+
     /// Skips module declaration and use statements at the start of a file.
     fn skip_module_and_uses(&mut self) -> Result<(), ParseError> {
-        // Skip module declaration
-        if self.current.kind == TokenKind::Module {
+        // Skip module declaration (a `mod x { }` block is left for parse_declaration)
+        if self.current.kind == TokenKind::Module && !self.at_mod_block() {
             self.advance(); // module
                             // Skip path
             while self.current.kind == TokenKind::Identifier || self.current.kind == TokenKind::Dot
