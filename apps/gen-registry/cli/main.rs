@@ -173,9 +173,10 @@ async fn execute_command(command: Commands, config: RegistryConfig) -> anyhow::R
         } => {
             info!("Publishing {}@{}", id, version);
 
+            let owner_did = config.owner_did.clone();
             let registry = Registry::with_config(config).await?;
 
-            let mut module = GenModule::new(&id, &name, &description, &config.owner_did, &license);
+            let mut module = GenModule::new(&id, &name, &description, &owner_did, &license);
 
             if let Some(tags_str) = tags {
                 for tag in tags_str.split(',') {

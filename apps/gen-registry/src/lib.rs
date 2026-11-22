@@ -141,6 +141,6 @@ pub use version::{VersionResolver, VersionRequirement};
 pub use wasm::{WasmModule, WasmValidator};
 
 /// Re-export VUDO types
-pub use vudo_identity::DID;
+pub use vudo_identity::Did as DID;
 pub use vudo_p2p::{Capability as WillowCapability, WillowAdapter};
 pub use vudo_state::StateEngine;
