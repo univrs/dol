@@ -38,9 +38,21 @@ dol-migrate 0.7-to-0.8 src/
 # Dry run - preview changes without applying
 dol-migrate 0.7-to-0.8 --dry-run src/
 
-# Show diff of changes
+# Show diff of changes (preview only; nothing is written)
 dol-migrate 0.7-to-0.8 --diff src/
+
+# Show diff and apply the changes
+dol-migrate 0.7-to-0.8 --diff --write src/
 ```
+
+Files are rewritten in place by default. `--dry-run` and `--diff` are
+preview-only unless `--write` is also given (`--dry-run` and `--write`
+conflict).
+
+Migration is token-aware: only code positions change. Line comments (`//`,
+`--`), string literals and the bodies of `docs { ... }` / `exegesis { ... }`
+blocks are never altered, so prose such as "a gene describes..." is kept as
+written.
 
 ### Advanced Options
 
@@ -268,8 +280,8 @@ DONE: 1 files processed, 1 files updated
 ### Dry Run Output
 
 ```
-DRY RUN: 1 files scanned, 1 would be changed
-Run without --dry-run to apply changes.
+PREVIEW: 1 files scanned, 1 would be changed
+Re-run with --write to apply changes.
 ```
 
 ### Diff Output
