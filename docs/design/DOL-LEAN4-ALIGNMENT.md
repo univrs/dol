@@ -1,6 +1,6 @@
 # DOL × Lean 4: Design for the Next DOL Feature Set
 
-> **Status:** Proposal (2026-11-21). Nothing in this document is implemented unless it is marked **today**.
+> **Status:** Accepted direction (2026-11-21). Progress is tracked in §9. Everything else in this document is a proposal unless marked **today**.
 > **Inputs:** `Lean4.md` (Lean 4 survey), `docs/DOL-STATUS-2026-11.md` (verified DOL v0.8.2 status), and probes run against v0.8.2 (§2).
 > **Scope:** which missing DOL features should be built *by leaning on Lean 4*, what DOL must change to make that possible, and the goal posts.
 
@@ -178,7 +178,7 @@ class Transfer where
 end Ledger
 ```
 
-This Lean listing is illustrative and has **not been type-checked**: no Lean toolchain was available when this was written. L1's golden tests are where it gets checked. The arithmetic is deliberately lifted to `Nat` in the law. **Fixed-width overflow semantics is a key fidelity decision** (§7).
+This listing type-checks on Lean v4.36.0. It lives at `lean/DolLean/Examples/Ledger.lean`. The arithmetic is deliberately lifted to `Nat` in the law. **Fixed-width overflow semantics is a key fidelity decision** (§7).
 
 **Exit criteria (L1):**
 - Every `law`/`rule`/`where` in `examples/**` either translates or produces a precise "not translatable" diagnostic.
@@ -282,3 +282,34 @@ Only features with a clear payoff for VUDO/DOLOS are listed. Each is specified s
 | **1.0 candidate** | A spec document generated from (and tested against) the parser; Spirits compiled to the VUDO VM carry Lean-checked capability and CRDT guarantees; differential tests link Lean model and WASM |
 
 **The goal post in one sentence:** a DOL ontology, written once, yields running Spirits for the VUDO VM **and** a Lean 4 model whose laws a kernel has checked, so that "what the system *is*" (DOL's promise) becomes a machine-checked claim rather than documentation.
+
+---
+
+## 9. Progress and implementation steps
+
+### Done (2026-11-21)
+
+- **Lean toolchain pinned.** `lean/` is a Lake project on Lean v4.36.0 with no Mathlib.
+- **L2 gate prototype.**
+  - `lean/scripts/verify.sh` builds `DolLean` and rejects any theorem that depends on `sorryAx` or on axioms other than `propext`, `Classical.choice` and `Quot.sound`.
+  - `--self-test` checks the gate against fixtures: it accepts a proof, and rejects `sorry` and a custom `axiom`.
+- **First L3.7 result: LWW register laws.** `DolLean.Crdt.Lww` proves `merge` idempotent, associative, and commutative for *coherent* writes.
+  - Lean also proves commutativity is **false** when two distinct writes share a (timestamp, replica) pair.
+  - **Design requirement for DOLOS:** each replica must never issue two writes with the same timestamp (a strictly increasing per-replica clock). The Rust/WASM LWW implementations must be checked against this.
+- **The §5 ledger example type-checks** (`DolLean.Examples.Ledger`).
+
+### Next steps, in order
+
+1. **L0 (parser truthfulness):** `implies`, `exists`, parameterless `law`, keeping trait laws in the AST, and whole-file CLIs. This is in progress as a separate PR, together with the numeric-literal, `docs`-brace and `use`/`evo` parser fixes.
+2. **L0.6–L0.8:** a `prop` type distinct from `bool`; enforce the typechecker in the validator; generics on `fun`. This depends on step 1.
+3. **L1 skeleton:**
+   - Add `src/codegen/lean.rs` behind a `lean` feature, and `dol-codegen -t lean` emitting a Lake package.
+   - Translate `gen` → `structure`, field `where` → proof field, trait + laws → `class`, and `law` → `theorem … := sorry`.
+   - Golden tests compare the output with `lean/DolLean/Examples/*.lean`.
+4. **L1 corpus:** every `law` in `examples/**` either translates and type-checks, or gets a precise diagnostic.
+5. **L2 wiring:**
+   - `dol-check --verify` runs `dol-codegen -t lean`, then `lean/scripts/verify.sh`.
+   - External proof files are keyed by law name, with a statement-equality check.
+   - Add a CI job with a pinned toolchain (needs maintainer approval for `.github/workflows`).
+6. **L3.7 CRDT library:** prove the remaining `@crdt` strategies (`or_set`, counters, …) and map each strategy annotation to its proved instance.
+7. **L3.1–L3.6:** ADTs, impl obligations, totality, effect typing, evo preservation, in the order of §5.
