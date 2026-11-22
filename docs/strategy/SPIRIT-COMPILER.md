@@ -1,10 +1,17 @@
 # Spirit Compiler
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 > End-to-end compilation from DOL source to WebAssembly bytecode
 
 ## Overview
 
 The Spirit compiler is a complete compilation pipeline that transforms DOL (Design Ontology Language) source code into executable WebAssembly modules. It orchestrates multiple compilation phases, from lexical analysis through WASM emission.
+
+> **Correction (dol 0.8.2):** The pipeline below is the original plan. In the implemented `compile_source`
+> (`src/compiler/spirit.rs`), HIR lowering runs **for diagnostics only**, and WASM is emitted directly from the
+> AST by `crate::wasm::WasmCompiler`. There is no MLIR stage in this path. The MLIR backend (`src/mlir`) is
+> stubbed, behind the `mlir` feature, and not in CI.
 
 ## Architecture
 
@@ -443,12 +450,7 @@ Optimization opportunities:
 
 ## Contributing
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
-
-- Code style
-- Testing requirements
-- Documentation standards
-- Review process
+This project is not accepting external contributions or pull requests.
 
 ## References
 

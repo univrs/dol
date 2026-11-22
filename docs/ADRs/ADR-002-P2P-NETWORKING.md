@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted. Implemented as library code in `crates/vudo-p2p` (Iroh 0.28 plus custom Willow types), which is not built in CI; discovery is simulated (see the status audit §4) |
 | **Date** | 2025-11-01 |
 | **Deciders** | VUDO Core Team |
 | **Supersedes** | N/A |

@@ -1,6 +1,8 @@
 # SEX System: Side Effect eXecution
 
-The SEX (Side Effect eXecution) system is DOL 2.0's approach to managing impurity in a functional-first language. By default, all DOL code is pure. Side effects must be explicitly marked, tracked, and isolated.
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
+The SEX (Side Effect eXecution) system is DOL's approach to managing impurity in a functional-first language. By default, all DOL code is pure. Side effects must be explicitly marked, tracked, and isolated.
 
 ## Table of Contents
 
@@ -65,18 +67,18 @@ Functions with side effects must be marked with `sex`:
 
 ```dol
 // Pure function (default) - no side effects
-fun add(a: Int32, b: Int32) -> Int32 {
+fun add(a: i32, b: i32) -> i32 {
     return a + b
 }
 
 // Sex function - has side effects
-sex fun print(message: String) -> Void {
+sex fun print(message: string) -> () {
     // Can perform I/O
     console_write(message)
 }
 
 // Public sex function
-pub sex fun write_file(path: String, data: String) -> Result<(), Error> {
+pub sex fun write_file(path: string, data: string) -> Result<(), Error> {
     // Can perform file I/O
 }
 ```
@@ -87,11 +89,11 @@ Mutable global state requires `sex var`:
 
 ```dol
 // Immutable constant (pure)
-const PI: Float64 = 3.14159
+const PI: f64 = 3.14159
 
 // Mutable global (requires sex context)
-sex var counter: Int32 = 0
-sex var cache: Map<String, Value> = Map::new()
+sex var counter: i32 = 0
+sex var cache: Map<string, Value> = Map::new()
 ```
 
 ### SEX Blocks
@@ -99,13 +101,14 @@ sex var cache: Map<String, Value> = Map::new()
 Isolate side effects within otherwise pure code:
 
 ```dol
-fun compute_with_logging(x: Int32) -> Int32 {
+fun compute_with_logging(x: i32) -> i32 {
     let result = x * 2  // Pure computation
 
     sex {
-        // Side effects isolated here
-        log("computed: " + result.to_string())
-        metrics.increment("computations")
+        // Side effects isolated here. Statements inside `sex { }` need `;`
+        // separators; only the last expression may omit one.
+        log("computed: " + result.to_string());
+        metrics.increment("computations");
     }
 
     return result  // Pure return
@@ -114,22 +117,17 @@ fun compute_with_logging(x: Int32) -> Int32 {
 
 ### Extern (FFI)
 
-Foreign function declarations are implicitly `sex`:
+In dol 0.8.2, foreign functions are declared with `sex extern fun` (optionally `sex extern "C" fun`).
+The parser records them only as placeholders. A bare `extern fun`, pointer types (`*T`, `*Void`) and
+varargs (`...`) do **not** parse. For the WASM backend, the working mechanism is a bodiless `sex fun host_*`
+declaration, which imports from the VUDO VM host module `vudo`:
 
 ```dol
-// FFI declarations (implicitly sex)
-extern fun malloc(size: UInt64) -> *Void
-extern fun free(ptr: *Void) -> Void
-extern fun printf(format: *Int8, ...) -> Int32
+// FFI declaration (parsed; recorded as a placeholder)
+sex extern fun malloc(size: u64) -> u64
 
-// Using FFI (requires sex context)
-sex fun allocate_buffer(size: UInt64) -> *Void {
-    let ptr = malloc(size)
-    if ptr == null {
-        panic("allocation failed")
-    }
-    return ptr
-}
+// VUDO VM host import (WASM backend)
+sex fun host_log(level: i32, ptr: i32, len: i32)
 ```
 
 ---
@@ -349,7 +347,7 @@ Keep side effects as small and isolated as possible:
 
 ```dol
 // Bad: Large sex function
-sex fun process_all(items: [Item]) -> [Result] {
+sex fun process_all(items: Vec<Item>) -> Vec<Result> {
     let results = []
     for item in items {
         let processed = transform(item)  // Pure!
@@ -360,7 +358,7 @@ sex fun process_all(items: [Item]) -> [Result] {
 }
 
 // Good: Isolated sex blocks
-fun process_all(items: [Item]) -> [Result] {
+fun process_all(items: Vec<Item>) -> Vec<Result> {
     let results = items.map(|item| transform(item))  // Pure
 
     sex {
@@ -375,25 +373,15 @@ fun process_all(items: [Item]) -> [Result] {
 
 ### 2. Document Sex Functions
 
-Always provide thorough exegesis for sex functions:
+Document side effects in comments. In 0.8.2, a `docs` block is not accepted inside a function body, and
+docs blocks attached to functions are not recorded:
 
 ```dol
-sex fun write_config(path: String, config: Config) -> Result<(), Error> {
-    // Implementation
-
-    exegesis {
-        Writes configuration to the filesystem.
-
-        Side Effects:
-        - Writes to file at `path`
-        - Creates parent directories if needed
-        - Overwrites existing file
-
-        Error Conditions:
-        - Returns Err if path is invalid
-        - Returns Err if disk is full
-        - Returns Err if permissions denied
-    }
+// Writes configuration to the filesystem.
+// Side effects: writes the file at `path`, creating parent directories if needed.
+// Errors: returns Err if the path is invalid, the disk is full, or permission is denied.
+sex fun write_config(path: string, config: Config) -> Result<(), Error> {
+    return Ok(())
 }
 ```
 
@@ -530,7 +518,7 @@ impl SexLinter {
 
 ## Version
 
-This documentation covers the SEX system as implemented in DOL v0.1.0.
+This documentation was written for DOL v0.1.0 and its examples were updated to v0.8 syntax. The parse checks were run
+against dol 0.8.2.
 
-For syntax details, see [syntax-reference.md](./syntax-reference.md).
-For the full specification, see [specification.md](./specification.md).
+For syntax details, see [syntax-reference.md](../tutorials/syntax-reference.md) and [grammar.ebnf](../grammar.ebnf).

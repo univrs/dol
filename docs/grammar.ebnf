@@ -1,345 +1,423 @@
 (*
- * DOL Grammar Specification
- * Version: 0.0.1
- * Format: Extended Backus-Naur Form (EBNF)
+ * DOL grammar: the DOL language as implemented by dol 0.8.2
+ * =========================================================
  *
- * This grammar defines the complete syntax of the Metal DOL language.
- * It can be used to implement parsers or generate parser code.
+ * Format: ISO-style EBNF.
+ *   =  definition      ,  concatenation     |  alternative
+ *   [ ]  optional      { }  zero or more    ( )  grouping
+ *   'x'  terminal      (* *) comment        ? ... ?  informal description
+ *
+ * Source of truth
+ *   This file is derived from the hand-written parser, not the other way round.
+ *   It describes what crate `dol` 0.8.2 (library `metadol`) accepts:
+ *     - src/lexer.rs   (tokens; keyword table in `keyword_kind`)
+ *     - src/parser.rs  (recursive descent; top-level dispatch in `parse_declaration`)
+ *     - src/pratt.rs   (expression binding powers)
+ *   If this file and the code disagree, the code wins. Please file an issue.
+ *
+ * Entry points
+ *   `metadol::parse_file_all` / `Parser::parse_all` parse a whole file (rule `file`).
+ *   `metadol::parse_file` (used by the `dol-parse` and `dol-check` CLIs in 0.8.2)
+ *   parses only the FIRST declaration and silently ignores everything after it.
+ *   A file can pass `dol-parse` and still fail this grammar.
+ *
+ * Accepted but ignored (it parses, but the construct is dropped or skipped)
+ *   - `pub`, `pub(spirit)`, `pub(crate)`, ... before a top-level declaration:
+ *     it is consumed, and the AST always records `Private`.
+ *   - Generic parameters on gen/type/trait/rule/system headers (`gen Box<T> { }`):
+ *     the tokens between `<` and `>` are skipped, and `type_params` is never set.
+ *   - A `rule`/`constraint` nested inside a gen/trait/rule body: its body is skipped
+ *     token by token (it may contain anything with balanced braces). Only the name is
+ *     kept, recorded as a `requires` statement.
+ *   - A `law` inside a gen/rule body: the parameters and body are skipped. Inside a
+ *     trait body, laws are parsed and then discarded.
+ *   - `state` declarations in a system body, and `migrate { }` blocks in an evo body:
+ *     parsed, then discarded.
+ *   - `mod name { ... }` after the first declaration: the name and the brace-balanced
+ *     body are skipped without parsing. (As the first item of a file, `mod name { }`
+ *     is a parse error.)
+ *   - `use ...` in `parse_file_all`: the tokens are skipped up to the next declaration
+ *     keyword. `parse_dol_file` parses `use` declarations structurally (rule `use_decl`).
+ *     Bug in 0.8.2: the skip does not stop at `evo`/`evolves` (nor at `const` after the
+ *     first declaration), so a `use` line directly before such a declaration silently
+ *     swallows it.
+ *   - A `docs { }` block *inside* a gen/type/rule body is skipped. It does not become the
+ *     declaration's documentation; put `docs { }` after the closing brace instead.
+ *     Inside trait/system/evo bodies, a `docs { }` block is kept but may only appear
+ *     last, just before the closing brace.
+ *   - A `docs { }` block at file level that is not directly after a declaration is
+ *     skipped (it is treated as a module/section comment).
+ *   - `#[test]` before a `fun`: the whole function is skipped without parsing.
+ *   - `#[name ...]` attributes: only the name is kept; the arguments are skipped.
+ *   - `sex extern fun ...` produces a placeholder gen node (no `ExternDecl` in the AST).
+ *
+ * Documentation blocks
+ *   `docs { ... }` / `exegesis { ... }` contain free text. The parser finds the end of
+ *   the block at the first `}` token, so the text must not contain `{` or `}`. The text
+ *   is still tokenized, so an unbalanced `"` on one line can produce a lexer error.
+ *   The parser does not require a docs block. `dol-check --require-exegesis` does.
+ *
+ * Deprecated spellings (accepted with a "deprecated in v0.8.0" warning on stderr;
+ * planned to become errors in 0.9, which is unreleased)
+ *   keywords: gene -> gen, constraint -> rule, evolves -> evo, exegesis -> docs
+ *   types:    Int8..Int64 -> i8..i64, UInt8..UInt64 -> u8..u64, Float32/Float64 -> f32/f64,
+ *             Bool -> bool, String -> string, Void -> (), List<T> -> Vec<T>,
+ *             Optional<T> -> Option<T>
+ *
+ * Not accepted by the 0.8.2 parser (appear in older docs and proposals)
+ *   `let mut`, compound assignment (`+=` `-=` `*=` `/=` are lexed but never parsed),
+ *   reference/pointer/slice types (`&T`, `*T`, `[T]`), generic functions (`fun id<T>(...)`),
+ *   `impl` blocks, top-level `spirit` declarations, `extern` without a leading `sex`,
+ *   effect rows (`fun f() with IO`), `type X is enum {...}` and `type X = ...`,
+ *   versioned gen headers (`gen name @1.0.0 { }`), `evo A > B` without `@`,
+ *   `added`/`provides` predicates, `subject uses x` (only the bare `uses x` form),
+ *   backtick or `~` quasi-quotes, `implies` and `->` as expression operators,
+ *   `exists`, `<|`, `...`, block comments (`/* */`), negative literal patterns,
+ *   zero-parameter lambdas written `|| e` (`||` lexes as logical or).
+ *   Float exponents are NOT rejected but are mis-lexed: `1e9` is read as `1`
+ *   followed by an identifier `e9`.
+ *
+ * Note on "DOL 1.x" / "DOL 2.0": these are historical names for language generations
+ * (declarative ontology only, versus with functions and expressions). They are not
+ * versions. This grammar covers both, as one language versioned by the crate.
  *)
 
-(* ============================================ *)
-(* 1. Lexical Rules                             *)
-(* ============================================ *)
-
-(* Character classes *)
-letter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j'
-       | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't'
-       | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
-       | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J'
-       | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T'
-       | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' ;
-
-digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' ;
-
-underscore = '_' ;
-
-(* Whitespace and comments are skipped by the lexer *)
-whitespace = ' ' | '\t' | '\r' | '\n' ;
-comment = '//' , { ? any character except newline ? } , '\n' ;
-
-(* ============================================ *)
-(* 2. Tokens                                    *)
-(* ============================================ *)
-
-(* Identifiers *)
-identifier = letter , { letter | digit | underscore } ;
-qualified_identifier = identifier , { '.' , identifier } ;
-
-(* Version numbers follow semantic versioning *)
-version = digit , { digit } , '.' , digit , { digit } , '.' , digit , { digit } ;
-
-(* String literals *)
-string_literal = '"' , { string_char } , '"' ;
-string_char = ? any character except '"' or newline ?
-            | '\"'   (* escaped quote *)
-            | '\\'   (* escaped backslash *)
-            | '\n'   (* escaped newline *) ;
-
-(* ============================================ *)
-(* 3. Keywords                                  *)
-(* ============================================ *)
-
-(* Declaration keywords *)
-kw_gene = 'gene' ;
-kw_trait = 'trait' ;
-kw_constraint = 'constraint' ;
-kw_system = 'system' ;
-kw_evolves = 'evolves' ;
-kw_exegesis = 'exegesis' ;
-
-(* Predicate keywords *)
-kw_has = 'has' ;
-kw_is = 'is' ;
-kw_derives = 'derives' ;
-kw_from = 'from' ;
-kw_requires = 'requires' ;
-kw_uses = 'uses' ;
-kw_emits = 'emits' ;
-kw_matches = 'matches' ;
-kw_never = 'never' ;
-
-(* Evolution keywords *)
-kw_adds = 'adds' ;
-kw_deprecates = 'deprecates' ;
-kw_removes = 'removes' ;
-kw_because = 'because' ;
-
-(* Test keywords *)
-kw_test = 'test' ;
-kw_given = 'given' ;
-kw_when = 'when' ;
-kw_then = 'then' ;
-kw_always = 'always' ;
-
-(* Quantifiers *)
-kw_each = 'each' ;
-kw_all = 'all' ;
-kw_no = 'no' ;
-
-(* DOL 2.0 Instance Reference (v0.7.1) *)
-(* The 'this' keyword refers to the current instance within genes and spirits *)
-kw_this = 'this' ;
-
-(* DOL 2.0 Function and Control Flow *)
-kw_fun = 'fun' ;
-kw_let = 'let' ;
-kw_return = 'return' ;
-kw_if = 'if' ;
-kw_else = 'else' ;
-kw_match = 'match' ;
-kw_for = 'for' ;
-kw_while = 'while' ;
-kw_in = 'in' ;
-
-(* DOL 2.0 Logic Keywords *)
-kw_forall = 'forall' ;
-kw_exists = 'exists' ;
-kw_law = 'law' ;
-
-(* ============================================ *)
-(* 4. Operators and Delimiters                  *)
-(* ============================================ *)
-
-op_at = '@' ;
-op_gt = '>' ;
-op_ge = '>=' ;
-op_eq = '=' ;
-
-delim_lbrace = '{' ;
-delim_rbrace = '}' ;
-
-(* ============================================ *)
-(* 5. Top-Level Structure                       *)
-(* ============================================ *)
-
-(* A DOL file contains exactly one declaration followed by exegesis *)
-dol_file = declaration , exegesis_block ;
-
-declaration = gene_declaration
-            | trait_declaration
-            | constraint_declaration
-            | system_declaration
-            | evolution_declaration ;
-
-(* Exegesis is mandatory for all declarations *)
-exegesis_block = kw_exegesis , delim_lbrace , exegesis_text , delim_rbrace ;
-exegesis_text = { ? any character except unmatched '}' ? } ;
-
-(* ============================================ *)
-(* 6. Gene Declaration                          *)
-(* ============================================ *)
-
-(* Genes are atomic units that cannot be decomposed *)
-gene_declaration = kw_gene , qualified_identifier , delim_lbrace ,
-                   { gene_statement } ,
-                   delim_rbrace ;
-
-gene_statement = has_statement
-               | is_statement
-               | derives_statement
-               | requires_statement ;
-
-(* ============================================ *)
-(* 7. Trait Declaration                         *)
-(* ============================================ *)
-
-(* Traits compose genes and declare behaviors *)
-trait_declaration = kw_trait , qualified_identifier , delim_lbrace ,
-                    { trait_statement } ,
-                    delim_rbrace ;
-
-trait_statement = uses_statement
-                | has_statement
-                | is_statement
-                | emits_statement
-                | quantified_statement ;
-
-(* ============================================ *)
-(* 8. Constraint Declaration                    *)
-(* ============================================ *)
-
-(* Constraints define invariants that must always hold *)
-constraint_declaration = kw_constraint , qualified_identifier , delim_lbrace ,
-                         { constraint_statement } ,
-                         delim_rbrace ;
-
-constraint_statement = matches_statement
-                     | never_statement
-                     | has_statement
-                     | is_statement ;
-
-(* ============================================ *)
-(* 9. System Declaration                        *)
-(* ============================================ *)
-
-(* Systems are top-level compositions with version requirements *)
-system_declaration = kw_system , qualified_identifier , op_at , version ,
-                     delim_lbrace ,
-                     { system_statement } ,
-                     delim_rbrace ;
-
-system_statement = requires_clause
-                 | has_statement
-                 | is_statement
-                 | quantified_statement ;
-
-requires_clause = kw_requires , qualified_identifier , version_constraint ;
-version_constraint = ( op_ge | op_gt | op_eq ) , version ;
-
-(* ============================================ *)
-(* 10. Evolution Declaration                    *)
-(* ============================================ *)
-
-(* Evolutions track changes between versions *)
-evolution_declaration = kw_evolves , qualified_identifier ,
-                        op_at , version , op_gt , version ,
-                        delim_lbrace ,
-                        { evolution_statement } ,
-                        delim_rbrace ;
-
-evolution_statement = adds_statement
-                    | deprecates_statement
-                    | removes_statement
-                    | because_statement ;
-
-adds_statement = kw_adds , ( has_statement | is_statement ) ;
-deprecates_statement = kw_deprecates , ( has_statement | is_statement ) ;
-removes_statement = kw_removes , qualified_identifier ;
-because_statement = kw_because , string_literal ;
-
-(* ============================================ *)
-(* 11. Statements                               *)
-(* ============================================ *)
-
-(* Property possession: "subject has property" *)
-has_statement = subject , kw_has , property ;
-
-(* State or behavior: "subject is state" *)
-is_statement = subject , kw_is , state ;
-
-(* Origin relationship: "subject derives from origin" *)
-derives_statement = subject , kw_derives , kw_from , phrase ;
-
-(* Dependency: "subject requires requirement" *)
-requires_statement = subject , kw_requires , phrase ;
-
-(* Composition: "uses reference" *)
-uses_statement = kw_uses , qualified_identifier ;
-
-(* Event production: "action emits event" *)
-emits_statement = phrase , kw_emits , identifier ;
-
-(* Equivalence constraint: "subject matches target" *)
-matches_statement = phrase , kw_matches , phrase ;
-
-(* Negative constraint: "subject never action" *)
-never_statement = subject , kw_never , action ;
-
-(* Quantified statements for traits and systems *)
-quantified_statement = quantifier , phrase ;
-quantifier = kw_each | kw_all ;
-
-(* ============================================ *)
-(* 12. Primitives                               *)
-(* ============================================ *)
-
-subject = identifier ;
-property = identifier ;
-state = identifier ;
-action = identifier ;
-
-(* A phrase is one or more identifiers forming a semantic unit *)
-phrase = identifier , { identifier } ;
-
-(* ============================================ *)
-(* 13. Test File Syntax                         *)
-(* ============================================ *)
-
-(* Test files contain multiple test declarations *)
-test_file = { test_declaration } ;
-
-test_declaration = kw_test , identifier , delim_lbrace ,
-                   { given_clause } ,
-                   { when_clause } ,
-                   { then_clause } ,
-                   [ kw_always ] ,
-                   delim_rbrace ;
-
-given_clause = kw_given , phrase ;
-when_clause = kw_when , phrase ;
-then_clause = kw_then , phrase ;
-
-(* ============================================ *)
-(* 14. Precedence and Associativity             *)
-(* ============================================ *)
-
-(*
- * DOL is a declarative language without traditional expression operators.
- * Parsing is deterministic based on keyword recognition.
- *
- * Token priority (for disambiguation):
- * 1. Keywords have priority over identifiers
- * 2. Qualified identifiers are parsed greedily (longest match)
- * 3. Phrases extend until a keyword or delimiter is encountered
- *)
-
-(* ============================================ *)
-(* 15. Examples                                 *)
-(* ============================================ *)
-
-(*
- * Example 1: Gene Declaration
- *
- * gene container.exists {
- *   container has identity
- *   container has state
- *   container has boundaries
- * }
- *
- * exegesis {
- *   A container is the fundamental unit of workload isolation.
- * }
- *)
-
-(*
- * Example 2: Trait with Uses
- *
- * trait container.lifecycle {
- *   uses container.exists
- *   uses identity.cryptographic
- *
- *   container is created
- *   container is started
- *   each transition emits event
- * }
- *
- * exegesis {
- *   The container lifecycle defines state transitions.
- * }
- *)
-
-(*
- * Example 3: Evolution
- *
- * evolves container.lifecycle @ 0.0.2 > 0.0.1 {
- *   adds container is paused
- *   adds container is resumed
- *   because "workload migration requires state preservation"
- * }
- *
- * exegesis {
- *   Version 0.0.2 adds pause and resume capabilities.
- * }
- *)
-
-(* End of Grammar Specification *)
+
+(* ================================================================ *)
+(* 1. Lexical structure (src/lexer.rs)                              *)
+(* ================================================================ *)
+
+(* Whitespace is skipped. Line comments start with // or -- and run to end of line.
+   Note: because `--` starts a comment, `a--b` is `a` followed by a comment. *)
+line_comment     = ( '//' | '--' ) , { ? any character except newline ? } ;
+
+(* Identifiers may contain dots. `container.exists` and `self.count` are ONE
+   identifier token. A trailing dot is not included. *)
+identifier       = ( letter | '_' , ( letter | digit ) ) ,
+                   { letter | digit | '_' | '.' } ;
+letter           = ? any Unicode alphabetic character ? ;
+digit            = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' ;
+
+(* A lone `_` is its own token (wildcard / discard). *)
+underscore       = '_' ;
+
+(* Exactly three dot-separated digit groups form a version token. Pre-release
+   suffixes (1.0.0-alpha) are not lexed. *)
+version          = digit , { digit } , '.' , digit , { digit } , '.' , digit , { digit } ;
+
+(* Other digit sequences (`42`, `3.14`) are lexed as identifiers and turned into
+   integer/float literals by the parser (i64 / f64 parse). *)
+number           = digit , { digit } , [ '.' , digit , { digit } ] ;
+
+(* Strings are single-line. Escapes: \n \t \r \" \\ *)
+string           = '"' , { ? any character except '"', '\' and newline ? | escape } , '"' ;
+escape           = '\' , ( 'n' | 't' | 'r' | '"' | '\' ) ;
+
+(* Character literals: 'a' or '\n'. A lone ' is the quote operator. *)
+char             = "'" , ( ? any character ? | '\' , ? any character ? ) , "'" ;
+
+(* Keywords (reserved; several may still be used as names where the parser calls
+   `expect_identifier_or_keyword`, e.g. field names, parameters, function names). *)
+(* Declarations:  gen gene trait rule constraint system evo evolves docs exegesis
+                  type fun sex var val const extern module mod use pub spirit config
+   Predicates:    has is derives from requires uses emits matches never
+   Evolution:     adds deprecates removes because migrate
+   Quantifiers:   each all no
+   Test:          test given when then always
+   Control flow:  let if else match for while loop break continue return in where
+   Types:         i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 bool string
+                  Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64 Float32 Float64
+                  Bool String Void                                   (deprecated)
+   Other:         law state extends forall exists implies impl as mut not this
+                  true false null                                                   *)
+
+(* Operators and punctuation (longest match first) *)
+(*  ...  |>  >>  ::  :=  +=  -=  *=  /=  [|  |]  ->  =>  ==  !=  <=  >=  &&  ||  <|  ..
+    >  <  @  =  +  -  *  /  %  ^  &  |  '  !  #  ?  (  )  [  ]  {  }  ,  :  ;  .
+    Note: `&` and `&&` are both logical AND.                                      *)
+
+
+(* ================================================================ *)
+(* 2. Files                                                         *)
+(* ================================================================ *)
+
+file             = [ module_header ] , { use_decl } , { declaration } ;
+
+module_header    = 'module' , module_path , [ '@' , version ] ;
+module_path      = identifier , { '.' , identifier } ;
+
+(* Structural form, as parsed by `parse_dol_file`. `parse_file_all` skips these tokens. *)
+use_decl         = [ 'pub' ] , 'use' , import_source ,
+                   { ( '::' | '.' ) , name } ,
+                   [ ( '::' | '.' ) , ( '*' | '{' , use_item , { ',' , use_item } , '}' ) ] ,
+                   [ 'as' , identifier ] ;
+import_source    = name                                            (* local *)
+                 | '@' , identifier , '/' , identifier , [ ':' , ( string | identifier ) ]
+                                                                   (* registry @org/pkg *)
+                 | '@' , 'git' , ':' , url_path , [ ':' , identifier ]
+                 | '@' , 'https' , ':' , '//' , url_path ;
+use_item         = identifier , [ 'as' , identifier ] ;
+url_path         = identifier , { ( '/' | '.' ) , identifier } ;
+
+
+(* ================================================================ *)
+(* 3. Top-level declarations (src/parser.rs `parse_declaration`)    *)
+(* ================================================================ *)
+
+declaration      = { attribute } , [ visibility ] , declaration_body ;
+
+attribute        = '#' , '[' , ? balanced tokens up to the matching ']' ? ;
+visibility       = 'pub' , [ '(' , identifier , ')' ] ;        (* accepted, then dropped *)
+
+declaration_body = gen_decl
+                 | type_decl
+                 | trait_decl
+                 | rule_decl
+                 | system_decl
+                 | evo_decl
+                 | sex_decl
+                 | function_decl
+                 | const_decl
+                 | file_docs , [ declaration ]                  (* file-level docs, skipped *)
+                 | 'use' , ? tokens up to the next declaration keyword ? , [ declaration ]
+                 | 'mod' , [ identifier ] , [ balanced_braces ] , [ declaration ] ;
+
+file_docs        = docs_block ;
+docs_block       = ( 'docs' | 'exegesis' ) , '{' , ? free text without braces ? , '}' ;
+balanced_braces  = '{' , ? any tokens with balanced braces ? , '}' ;
+
+(* --- gen / type (identical; `type` produces a gen node) --- *)
+gen_decl         = ( 'gen' | 'gene' ) , gen_rest ;
+type_decl        = 'type' , gen_rest ;
+gen_rest         = identifier , [ skipped_generics ] , [ 'extends' , identifier ] ,
+                   '{' , { gen_statement } , [ docs_block ] , '}' , [ docs_block ] ;
+skipped_generics = '<' , ? tokens up to the matching '>' ? ;   (* ignored *)
+
+(* --- trait --- *)
+trait_decl       = 'trait' , identifier , [ skipped_generics ] ,
+                   '{' , { law_decl | gen_statement } , [ docs_block ] , '}' , [ docs_block ] ;
+law_decl         = 'law' , identifier , '(' , [ params ] , ')' , '{' , expression , '}' ,
+                   [ 'exegesis' , docs_text ] ;             (* parsed, then discarded *)
+docs_text        = '{' , ? free text without braces ? , '}' ;
+
+(* --- rule (formerly constraint) --- *)
+rule_decl        = ( 'rule' | 'constraint' ) , identifier , [ skipped_generics ] ,
+                   '{' , { gen_statement } , [ docs_block ] , '}' , [ docs_block ] ;
+
+(* --- system --- *)
+system_decl      = 'system' , identifier , [ skipped_generics ] , [ '@' , version ] ,
+                   '{' , { system_item } , [ docs_block ] , '}' , [ docs_block ] ;
+system_item      = 'requires' , identifier , ( '>=' | '>' | '=' ) , version
+                                         (* inside a system, `requires` always takes this form *)
+                 | 'state' , identifier , ':' , type , [ '=' , expression ]   (* discarded *)
+                 | gen_statement ;
+
+(* --- evo (formerly evolves) --- *)
+evo_decl         = ( 'evo' | 'evolves' ) , identifier , '@' , version , '>' , version ,
+                   '{' , { evo_item } , [ docs_block ] , '}' , [ docs_block ] ;
+evo_item         = 'adds' , gen_statement
+                 | 'deprecates' , gen_statement
+                 | 'removes' , identifier
+                 | 'because' , string
+                 | 'migrate' , '{' , { statement } , '}' ;            (* discarded *)
+
+(* --- effects --- *)
+sex_decl         = 'sex' , 'var' , identifier , [ ':' , type ] , [ '=' , expression ]
+                 | 'sex' , function_decl            (* a bodiless `sex fun` is a host import *)
+                 | 'sex' , 'extern' , [ string ] , 'fun' , name ,
+                   '(' , [ params ] , ')' , [ '->' , type ] ;
+
+(* --- functions --- *)
+function_decl    = 'fun' , name , '(' , [ params ] , ')' , [ '->' , type ] ,
+                   [ '{' , { statement } , '}' ] ;        (* body optional: import form *)
+params           = param , { ',' , param } ;
+param            = name , ':' , type ;
+
+(* --- constants --- *)
+const_decl       = 'const' , identifier , [ ':' , type ] , '=' , expression , [ ';' ] ;
+
+(* `name` = identifier or one of the keywords the parser allows as a name *)
+name             = identifier | ? keyword accepted by expect_identifier_or_keyword ? ;
+
+
+(* ================================================================ *)
+(* 4. Ontology statements (bodies of gen/type/trait/rule/system)    *)
+(* ================================================================ *)
+
+gen_statement    = { docs_block } ,        (* gen/type/rule bodies only; skipped, see header *)
+                   ( 'uses' , identifier
+                   | ( 'each' | 'all' ) , quantified_phrase
+                   | { annotation } , has_field
+                   | nested_rule
+                   | [ 'pub' ] , [ 'sex' ] , function_decl
+                   | 'law' , identifier , [ ? balanced parens ? ] , [ balanced_braces ]
+                                                            (* skipped *)
+                   | subject_statement ) ;
+
+annotation       = '@' , 'crdt' , '(' , crdt_strategy , { ',' , identifier , '=' , expression } , ')'
+                 | '@' , 'personal' ;
+crdt_strategy    = 'immutable' | 'lww' | 'or_set' | 'pn_counter' | 'peritext' | 'rga'
+                 | 'mv_register' ;
+
+has_field        = 'has' , name , ':' , type , [ '=' , expression ] , [ 'where' , expression ]
+                 | 'has' , name , [ '=' , expression ] ;       (* untyped: recorded as `self has name` *)
+
+nested_rule      = ( 'rule' | 'constraint' ) , identifier , [ balanced_braces ] ;   (* body discarded *)
+
+subject_statement
+                 = name , 'has' , name , [ ':' , type , [ '=' , expression ] , [ 'where' , expression ] ]
+                 | name , 'is' , identifier
+                 | name , 'derives' , 'from' , phrase
+                 | name , 'requires' , phrase
+                 | name , 'emits' , identifier
+                 | name , 'matches' , phrase
+                 | name , 'never' , identifier
+                 | name , ':' , type , [ '=' , expression ]          (* field shorthand *)
+                 | name , identifier , { identifier } ,             (* multi-word subject *)
+                   ( 'has' , name | 'is' , identifier | 'requires' , phrase
+                   | 'emits' , identifier | 'matches' , phrase | 'never' , identifier ) ;
+
+(* A phrase is one or more identifiers (or `no`). It stops before an identifier
+   that is followed by a predicate keyword, because that identifier starts the next
+   statement. *)
+phrase           = ( identifier | 'no' ) , { identifier | 'no' } ;
+
+(* After `each`/`all`, the phrase runs to the next `}`, `uses`, `each` or `all`, and
+   may contain predicate keywords. *)
+quantified_phrase
+                 = identifier , { identifier | 'has' | 'is' | 'emits' | 'matches' | 'never'
+                                | 'requires' | 'derives' | 'from' } ;
+
+
+(* ================================================================ *)
+(* 5. Types (src/parser.rs `parse_type`)                            *)
+(* ================================================================ *)
+
+type             = primitive_type
+                 | legacy_type                                       (* deprecated *)
+                 | '!'                                               (* never *)
+                 | 'enum' , '{' , [ variant , { [ ',' ] , variant } , [ ',' ] ] , '}'
+                 | identifier , [ '<' , type , { ',' , type } , '>' ]   (* named / generic *)
+                 | '(' , [ type , { ',' , type } ] , ')' , [ '->' , type ] ;
+                                         (* () unit, (A, B) tuple, (A) -> B function type *)
+primitive_type   = 'i8' | 'i16' | 'i32' | 'i64' | 'i128'
+                 | 'u8' | 'u16' | 'u32' | 'u64' | 'u128'
+                 | 'f32' | 'f64' | 'bool' | 'string' ;
+legacy_type      = 'Int8' | 'Int16' | 'Int32' | 'Int64' | 'UInt8' | 'UInt16' | 'UInt32'
+                 | 'UInt64' | 'Float32' | 'Float64' | 'Bool' | 'String' | 'Void' ;
+variant          = name , [ '(' , type , { ',' , type } , ')'
+                          | '{' , name , ':' , type , { ',' , name , ':' , type } , '}' ] ,
+                   [ '=' , number ] ;
+(* `Vec<T>`, `Option<T>`, `Result<T, E>`, `Map<K, V>` and user types are all plain
+   named/generic types. `List` and `Optional` are rewritten to `Vec` and `Option`. *)
+
+
+(* ================================================================ *)
+(* 6. Statements (function, loop and migrate bodies)                *)
+(* ================================================================ *)
+
+(* Semicolons are optional everywhere. *)
+statement        = ( 'let' | 'val' ) , ( name | '_' ) , [ ':' , type ] , [ '=' , expression ] , [ ';' ]
+                                         (* `= expression` is required unless a type is given *)
+                 | ( 'var' | 'const' ) , identifier , [ ':' , type ] , '=' , expression , [ ';' ]
+                 | 'for' , name , 'in' , expression , '{' , { statement } , '}'
+                 | 'while' , expression , '{' , { statement } , '}'
+                 | 'loop' , '{' , { statement } , '}'
+                 | 'break' , [ ';' ]
+                 | 'continue' , [ ';' ]
+                 | 'return' , [ expression ] , [ ';' ]
+                 | sex_block , [ ';' ]
+                 | expression , '=' , expression , [ ';' ]      (* assignment *)
+                 | expression , [ ';' ] ;                        (* expression statement *)
+
+
+(* ================================================================ *)
+(* 7. Expressions (Pratt parser, src/pratt.rs)                      *)
+(* ================================================================ *)
+
+(* Binary operators, loosest to tightest (left/right binding power):
+     :=          bind                  (10, 9)    right-assoc
+     |>          pipe                  (21, 20)   left-assoc
+     @           apply                 (31, 30)   left-assoc
+     >>          compose               (40, 41)   right-assoc
+     ..          range                 (55, 55)
+     || ( or )   logical or            (61, 60)   left-assoc
+     && & ( and) logical and           (71, 70)   left-assoc
+     == !=       equality              (80, 80)
+     < <= > >=   comparison            (90, 90)
+     + -         additive              (101, 100) left-assoc
+     * / %       multiplicative        (111, 110) left-assoc
+     ^           power                 (120, 121) right-assoc
+     as          cast (right side is a type)  (131, 130)
+     .           member access         (141, 140)
+   `implies` and `->` have binding powers in src/pratt.rs but are rejected when
+   building the expression ("invalid binary operator").
+   Prefix operators: - (neg), ! (not), * (deref) at 130; ' (quote), '' (quasi-quote),
+   , (unquote), ? (reflect) at 135.
+   Postfix: call `f(a, b)`, index `a[i]` (represented as a call), try `e?`,
+   member `.name`, struct literal `Name { field: e }`.                          *)
+
+expression       = prefix_expr , { binary_op , expression | postfix } ;
+binary_op        = ':=' | '|>' | '@' | '>>' | '..' | '||' | '&&' | '&'
+                 | '==' | '!=' | '<' | '<=' | '>' | '>=' | '+' | '-' | '*' | '/' | '%' | '^' ;
+postfix          = '(' , [ expression , { ',' , expression } ] , ')'
+                 | '[' , expression , ']'
+                 | '?'
+                 | '.' , identifier , [ struct_body ]     (* struct body only if the name is Capitalised *)
+                 | 'as' , type ;
+prefix_expr      = ( '-' | '!' | '*' | "'" | "''" | ',' | '?' ) , expression
+                 | '!' , '{' , expression , '}'                         (* eval *)
+                 | atom ;
+
+atom             = literal
+                 | 'this'
+                 | path , [ struct_body ]         (* struct literal only if Capitalised and
+                                                     the brace is followed by `}` or `name :` *)
+                 | '(' , ')'                                            (* unit *)
+                 | '(' , expression , ')'
+                 | '(' , expression , ',' , [ expression , { ',' , expression } ] , [ ',' ] , ')'
+                                                                        (* tuple *)
+                 | '[' , [ expression , { ',' , expression } ] , ']'    (* list *)
+                 | lambda
+                 | if_expr
+                 | match_expr
+                 | forall_expr
+                 | block
+                 | sex_block
+                 | '#' , identifier , [ '(' , [ expression , { ',' , expression } ] , ')' ]
+                                                                        (* macro call *)
+                 | '[|' , expression , { expression } , '|]'            (* idiom bracket *)
+                 | 'break' | 'continue' | 'return' , [ expression ] ;
+
+literal          = number | string | char | 'true' | 'false' | 'null' ;
+path             = name , { '::' , identifier } ;     (* Map::new, Type::Variant *)
+struct_body      = '{' , [ name , ':' , expression , { ',' , name , ':' , expression } ] , '}' ;
+
+lambda           = '|' , [ identifier , [ ':' , type ] , { ',' , identifier , [ ':' , type ] } ] , '|' ,
+                   [ '->' , type ] , expression ;
+if_expr          = 'if' , expression , block_body , [ 'else' , ( if_expr | block_body ) ] ;
+match_expr       = 'match' , expression , '{' , { match_arm } , '}' ;
+match_arm        = pattern , { '|' , pattern } , [ 'if' , expression ] ,
+                   ( '=>' , expression | block ) , [ ',' ] ;
+forall_expr      = 'forall' , identifier , ':' , type , '.' , expression
+                 | 'forall' , identifier , 'in' , expression , block_body ;
+block            = block_body ;
+block_body       = '{' , { statement } , [ expression ] , '}' ;
+sex_block        = 'sex' , block_body ;
+
+
+(* ================================================================ *)
+(* 8. Patterns                                                      *)
+(* ================================================================ *)
+
+pattern          = '_'
+                 | string | char
+                 | number | 'true' | 'false'
+                 | identifier , { '.' , identifier } ,
+                   [ '(' , [ pattern , { ',' , pattern } ] , ')'                (* constructor *)
+                   | '{' , field_pattern , { ',' , field_pattern } , '}' ]      (* struct, see note *)
+                 | '(' , [ pattern , { ',' , pattern } ] , ')' ;                (* tuple *)
+field_pattern    = identifier , [ ':' , pattern ] ;
+(* Struct patterns are recognised only when the brace is followed by `name :`, `name ,`,
+   or `name }` and then another `{`. `Shape.Circle { r } => r` is therefore NOT parsed
+   as a struct pattern. Negative number patterns (`-1`) are not accepted. *)

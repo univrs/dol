@@ -2,11 +2,19 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted. WASM is the primary target; the implementation details below were partly superseded (see Implementation Status) |
 | **Date** | 2025-10-20 |
 | **Deciders** | VUDO Core Team |
 | **Supersedes** | N/A |
 | **Superseded by** | N/A |
+
+## Implementation Status (dol 0.8.2, verified 2026-11)
+
+- **Shipped:** a direct WASM backend (`src/wasm`, built on `wasm-encoder`, feature `wasm-compile`). Bodiless `sex fun host_*` declarations become imports from the WASM module **`vudo`**, with the 15 host functions of the VUDO VM linker: `host_log`, `host_time_now`, `host_random_bytes`, `host_storage_read`/`_write`/`_delete`, `host_network_connect`/`_listen`/`_broadcast`, and `host_credit_balance`/`_available`/`_reserve`/`_consume`/`_release`/`_transfer` (`src/wasm/host_abi.rs`). In `univrs/vudo` CI, DOL source compiles to WASM and runs in the VUDO VM.
+- **Coverage:** the backend covers only a subset of the language. It does not support lambdas, tuples, lists, `sex {}` blocks, `?`, quote/meta, idioms, or `for` over anything other than a range. Gene layouts reject `u64` and `string` (status audit §5.5).
+- **Pipeline:** the WASM path compiles from the AST. HIR is kept for diagnostics only (`src/compiler/spirit.rs`), so the diagram below is aspirational.
+- **Not implemented as described here:** the 22-function host catalog (`print`, `http_get`, `crdt_merge`, …) and a `dol` import module. The older 22-name `vudo_*` list in `dol-abi::standard_host_functions()` is deprecated as of 0.8.2. The `spirit { targets { wasm: … } }` manifest block does not exist (see ADR-004).
+- **Not measured:** the "Performance Benchmarks" table below has no reproducible benchmark in this repo (the `benchmarks/` crate does not build in CI). Treat the numbers as unverified estimates.
 
 ## Context
 
@@ -121,9 +129,9 @@ Codegen   Codegen
 binary    files
 ```
 
-### WASM Target Configuration
+### WASM Target Configuration (proposed — not implemented)
 
-```dol
+```text
 // Spirit.dol
 spirit MySpirit {
     targets {
@@ -183,9 +191,9 @@ const { instance } = await WebAssembly.instantiate(bytes, imports);
 instance.exports.main();
 ```
 
-### Host Function Bindings
+### Host Function Bindings (original design — superseded)
 
-DOL provides 22 standard host functions:
+The original design listed 22 standard host functions. **This catalog was not implemented.** The shipped ABI has 15 `vudo.host_*` functions (see Implementation Status).
 
 | Category | Functions |
 |----------|-----------|
@@ -198,7 +206,7 @@ DOL provides 22 standard host functions:
 | CRDT | `crdt_merge`, `crdt_diff` |
 | Debug | `debug_log`, `debug_break` |
 
-## Performance Benchmarks
+## Performance Benchmarks (unverified estimates)
 
 | Operation | Native | WASM | Overhead |
 |-----------|--------|------|----------|
@@ -207,7 +215,7 @@ DOL provides 22 standard host functions:
 | CRDT merge 10K ops | 1.0x | 1.15x | +15% |
 | Regex match | 1.0x | 1.4x | +40% |
 
-Performance is acceptable for DOL's intended use cases.
+These figures are not backed by a benchmark in this repository.
 
 ## References
 
@@ -223,3 +231,4 @@ Performance is acceptable for DOL's intended use cases.
 | 2025-10-20 | Initial WASM-first decision |
 | 2025-11-15 | Added host function catalog |
 | 2026-01-10 | Performance benchmarks added |
+| 2026-11-21 | Added implementation status: shipped `vudo.host_*` ABI (15 functions), backend coverage gaps, benchmark numbers marked unverified |

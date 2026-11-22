@@ -1,5 +1,7 @@
 # HIR v0.4.0 Merge Decision Guide
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Current State Assessment
 
 ### What HIR v0.4.0 Delivers

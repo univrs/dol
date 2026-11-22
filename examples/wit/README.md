@@ -25,4 +25,6 @@ wit-bindgen typescript chat-message.wit
 
 These interfaces were automatically generated from DOL Gen declarations using `dol-codegen-wit`.
 
+> **Status (2026-11):** `crates/dol-codegen-wit` is not built in CI, and it currently fails to build (see `docs/DOL-STATUS-2026-11.md` §5.9). These `.wit` files are checked-in snapshots. They cannot be regenerated with the current tree, and the DOL compiler does not emit Component Model output.
+
 See the corresponding `.dol` files in `../crdt/` for the source declarations.

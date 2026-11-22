@@ -1,12 +1,12 @@
 // =============================================================================
-// DOL v0.9.0 Chemistry Spirit Package
+// Chemistry Spirit Package (written for the planned DOL v0.9 syntax, unreleased; does not fully parse with dol 0.8.2)
 // Comprehensive chemistry modeling for scientific computing
 // =============================================================================
 
 spirit chemistry @ 0.9.0
 
 docs {
-    Chemistry modeling Spirit for DOL v0.9.0.
+    Chemistry modeling Spirit, written for the planned (unreleased) DOL v0.9 syntax.
 
     This Spirit provides a comprehensive library for chemistry simulations including:
     - Periodic table elements with all properties

@@ -1,5 +1,7 @@
 # Road to 50% Spirits: Complete Implementation Guide
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 > **Version:** 2.0  
 > **Date:** January 2026  
 > **Status:** Ready for Implementation  

@@ -19,6 +19,11 @@ find examples -name "*.dol" -type f -exec \
   cargo run --release --features cli --bin dol-parse -- {} \;
 ```
 
+> **Caveat:** `dol-parse` and `dol-check` parse only the **first declaration** of each file and silently ignore
+> the rest, including garbage (`src/parser.rs`, `Parser::parse`; see `docs/DOL-STATUS-2026-11.md` §5.1).
+> A green result from them does not mean the whole file parses. For a real check, call
+> `metadol::parse_file_all` on the file contents (as `dol-codegen` does).
+
 ### 3. Check All Examples (with validation)
 
 ```bash
@@ -60,7 +65,7 @@ Parse error: expected expression, found 'from' at line 13, column 18
 ```
 
 **Fix**: Renamed variable `from` to `sender_id`:
-```dol
+```text
 // Before (line 10-13):
 let from = sender()
 println("Echo received: " + msg)
@@ -80,23 +85,37 @@ cargo run --release --features cli --bin dol-parse -- examples/echo.dol
 
 ---
 
-## Test Results Summary (2026-01-03)
+## Test Results Summary
 
-### Examples Parsing
-- **Total**: 37
-- **Passed**: 37 (100%)
-- **Failed**: 0
+### Examples Parsing (whole-file, dol 0.8.2, 2026-11-21)
+
+The 2026-01-03 report of "37/37 passed" was produced with `dol-parse`, which only checks the first declaration of each file. A whole-file parse (`metadol::parse_file_all`) of every `.dol` file under `examples/` gives:
+
+| Location | Whole-file parse |
+|----------|------------------|
+| `examples/*.dol` (top level) | 10/10 |
+| `examples/genes/` | 10/11 |
+| `examples/traits/` | 7/8 |
+| `examples/constraints/` | 4/4 |
+| `examples/systems/` | 4/4 |
+| `examples/evolutions/` | 2/2 |
+| `examples/crdt/` | 4/4 |
+| `examples/native/` | 12/12 |
+| `examples/v0.8/` | 1/4 |
+| `examples/stdlib/` | 2/8 |
+| `examples/spirits/` | 12/53 |
+| `examples/minimal-test/` | 0/1 |
+| **Total** | **68/121** |
+
+Most failures come from syntax that is documented but not implemented in 0.8.2, e.g. `let mut`, `+=`, `fun f<T>`, `impl`, top-level `spirit`, `type X is enum`, and float exponents such as `1e9` (status audit §5.4). Spirit manifests (`Spirit.dol`) use a separate manifest parser (`metadol::manifest::parse_spirit_manifest`) and are not expected to pass the main parser.
 
 ### Unit Tests (cargo test)
-- **Total**: 1,200+
-- **Passed**: All
-- **Failed**: 0
 
-### WASM Tests (cargo test --features wasm)
-- **Total**: 47
-- **Passed**: 43
-- **Failed**: 1
-- **Ignored**: 3
+Per the 2026-11 status audit: 2,512 tests pass with `--features cli,serde,wasm`, including doctests, with 0 failures (root crate only).
+
+### WASM Tests
+
+The counts previously listed here (47 total, 2026-01-03) are stale. The WASM backend has grown since then; see `docs/DOL-STATUS-2026-11.md` §3.2.
 
 ---
 
@@ -111,6 +130,7 @@ cargo run --release --features cli --bin dol-parse -- examples/echo.dol
 **Description**: Comparing enum types with equality operator (`a == b`) in a function produces invalid WASM bytecode. This is an edge case in the WASM compiler.
 
 **Workaround**: Avoid direct enum comparison in functions compiled to WASM. Use match expressions instead:
+<!-- fragment -->
 ```dol
 // Instead of: if a == b { ... }
 // Use:
@@ -123,26 +143,27 @@ match a {
 }
 ```
 
-**Status**: Open - documented as known limitation
+**Status**: Reported 2026-01-03 as a known limitation. Not re-verified for 0.8.2.
 
 ---
 
 ## Reserved Keywords
 
-The following are reserved keywords in DOL and cannot be used as identifiers:
+The following words are keywords (`src/lexer.rs`, `keyword_kind`). Do not use them as variable names. The parser accepts some of them as identifiers in a few positions (field names, parameter names), but `let from = …` fails, for example.
 
 | Keyword | Category |
 |---------|----------|
-| `from` | Import/messaging |
+| `from` | `derives from` |
 | `in` | Loop iteration |
-| `is` | Type checking |
-| `has` | Field declaration |
+| `is`, `has`, `derives`, `requires`, `uses`, `emits`, `matches`, `never` | Ontology predicates |
 | `if`, `else`, `match` | Control flow |
 | `for`, `while`, `loop` | Loops |
 | `break`, `continue`, `return` | Control flow |
-| `fun`, `gene`, `trait`, `constraint`, `system` | Declarations |
-| `true`, `false` | Boolean literals |
-| `pub`, `use`, `module` | Visibility/imports |
+| `gen`, `trait`, `rule`, `system`, `evo`, `docs`, `fun`, `type`, `const` | Declarations |
+| `gene`, `constraint`, `evolves`, `exegesis` | Deprecated declaration keywords (since v0.8.0) |
+| `let`, `val`, `var`, `sex`, `extern`, `mut` | Bindings and effects |
+| `true`, `false`, `null` | Literals |
+| `pub`, `use`, `module`, `mod` | Visibility/imports |
 
 ---
 
@@ -152,8 +173,8 @@ The following are reserved keywords in DOL and cannot be used as identifiers:
 |---------|-------------|
 | `dol-parse <file>` | Parse DOL file, output AST summary |
 | `dol-check <dir>` | Validate DOL files with semantic checks |
-| `dol-check --require-exegesis <dir>` | Require exegesis blocks |
-| `dol-check --typecheck <dir>` | Enable DOL 2.0 type checking |
+| `dol-check --require-exegesis <dir>` | Require `docs` (exegesis) blocks |
+| `dol-check --typecheck <dir>` | Run the type checker (type errors are not enforced in 0.8.2; see the status audit §5.2) |
 | `dol-test plan <file>` | Show test generation plan |
 | `dol-test generate <file>` | Generate Rust tests from .dol.test |
 
@@ -164,7 +185,7 @@ The following are reserved keywords in DOL and cannot be used as identifiers:
 When adding new `.dol` examples:
 
 1. **Avoid reserved keywords** as variable names
-2. **Include exegesis blocks** for documentation
-3. **Test parsing**: `cargo run --release --features cli --bin dol-parse -- <file>`
+2. **Include `docs` blocks** for documentation
+3. **Test parsing**: `cargo run --release --features cli --bin dol-parse -- <file>`. This checks only the first declaration; also check the whole file with `metadol::parse_file_all`
 4. **Run validation**: `cargo run --release --features cli --bin dol-check -- <file>`
 5. **Update this document** if fixes or workarounds are needed

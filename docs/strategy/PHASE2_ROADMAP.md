@@ -1,5 +1,7 @@
 # Phase 2: Tooling Implementation
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Objective
 Implement the three CLI tools that make DOL usable for developers.
 

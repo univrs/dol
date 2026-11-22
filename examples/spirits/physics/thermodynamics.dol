@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Physics Spirit - Thermodynamics Module
-// DOL v0.9.0
+// Written for the planned DOL v0.9 syntax (unreleased); does not fully parse with dol 0.8.2
 // ═══════════════════════════════════════════════════════════════════════════════
 
 module physics.thermodynamics @ 0.9.0

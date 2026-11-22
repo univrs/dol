@@ -1,5 +1,5 @@
 // Example: Collaborative Chat Message with CRDT Annotations
-// From RFC-001: DOL 2.0 CRDT Annotations
+// From RFC-001: CRDT annotations ("DOL 2.0" was the historical name of the expression-capable language generation, not a version)
 
 gen message.chat {
   // Immutable identity fields - set once, never modified

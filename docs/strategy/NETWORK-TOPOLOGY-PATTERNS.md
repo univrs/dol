@@ -1,5 +1,7 @@
 # Network Topology Patterns
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Hyphal-Inspired Topologies
 
 ### 1. Exploration Mesh

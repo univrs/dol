@@ -1,251 +1,243 @@
 # Tutorial 1: Getting Started with DOL
 
+> Applies to the `dol` crate **0.8.2** (library name `metadol`). Syntax is the v0.8 "Clarity" keyword set:
+> `gen`, `rule`, `evo`, `docs` and lowercase types (`string`, `i64`, `bool`, ...). The older keywords
+> (`gene`, `constraint`, `evolves`, `exegesis`) and PascalCase types (`String`, `Int64`, ...) still parse
+> but print deprecation warnings ("deprecated in v0.8.0"); they are planned to become errors in v0.9.
+
 ## Welcome to DOL
 
-DOL is a Domain-Specific Language (DSL) for **ontology-first development**. Instead of writing code and hoping it matches your mental model, you define your domain's ontology first, then generate code that perfectly aligns with it.
+DOL (Design Ontology Language) is a domain-specific language for **ontology-first development**. You
+describe what your domain *is* (genes, traits, rules, systems and their evolution), each with a
+`docs` block that explains it, and then use the toolchain to parse, validate and generate code from it.
 
-### What is the DOL-First Paradigm?
+### The DOL-first idea
 
-Traditional development follows a code-first approach:
+Code-first development usually goes:
 1. Write code
-2. Add comments/docs
+2. Add comments and docs
 3. Hope the implementation matches the design
 
 DOL-first inverts this:
-1. **Define your ontology** in Metal DOL (genes, traits, systems)
-2. **Generate tests** that validate the ontology
-3. **Implement code** that passes the tests
+1. **Define your ontology** in DOL (genes, traits, rules, systems)
+2. **Validate** it with the DOL tools
+3. **Generate or write code** that implements it
 
-This ensures your implementation always matches your domain model.
+### What DOL models well
 
-### What Can You Build with Metal DOL?
+- **Domain entities** (users, products, orders): `gen`
+- **Behaviours** (lifecycle states, events): `trait`
+- **Invariants and business rules**: `rule`
+- **Top-level compositions with versioned dependencies**: `system`
+- **Versioned change**: `evo`
 
-Metal DOL excels at modeling:
-- **Domain entities** (users, products, orders)
-- **System behaviors** (lifecycle states, event flows)
-- **Complex constraints** (business rules, invariants)
-- **Evolutionary systems** (versioned APIs, migrations)
+DOL also has an expression language (functions, `if`/`match`, loops, lambdas). That is covered in
+[05-dol2-features.md](05-dol2-features.md) and [syntax-reference.md](syntax-reference.md).
 
 ## Installation
 
 ### Prerequisites
 
-You'll need Rust installed. If you don't have it:
+You need a Rust toolchain (the crate's minimum supported Rust version is 1.84):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-### Building Metal DOL
+### Building the toolchain
 
-Clone and build the toolchain:
-
-```bash
-git clone https://github.com/univrs/metadol.git
-cd metadol
-cargo build --release
-```
-
-This compiles three CLI tools:
-- `dol-parse` - Parse and validate DOL files
-- `dol-test` - Generate tests from DOL specifications
-- `dol-check` - CI validation gate
-
-### Verify Installation
+The command-line tools are behind the `cli` feature:
 
 ```bash
-cargo test
-cargo run --bin dol-parse -- --version
+git clone https://github.com/univrs/dol.git
+cd dol
+cargo build --release --features cli
 ```
 
-## Your First DOL File
+This builds `dol-parse`, `dol-check`, `dol-test`, `dol-codegen`, `dol-migrate`, `dol-mcp`, `dol-build`
+and `dol-build-crate` into `target/release/`.
 
-Let's create a simple gene that models a container's existence.
+Installing from crates.io should work the same way, as long as you enable the feature
+(`cargo install dol --features cli`); without `--features cli` no binaries are built.
+
+### Verify the build
+
+```bash
+cargo run --features cli --bin dol-parse -- --version
+# dol-parse 0.8.2
+```
+
+## Your first DOL file
 
 Create `my-first.dol`:
 
 ```dol
-gene container.exists @1.0.0 {
+gen container.exists {
     has identifier: string
-    is entity
-    is persistent
+    container is entity
+    container is persistent
 }
 
-exegesis {
+docs {
     A container exists in the system and has a unique identifier.
     This is the most basic property of any container.
 }
 ```
 
-Let's break this down:
+Let's break it down.
 
-### Declaration Header
+### Declaration header
 
-```dol
-gene container.exists @1.0.0 {
-```
+`gen container.exists {` declares a gene:
 
-- `gene` - Declares an atomic ontological unit
-- `container.exists` - Qualified identifier (domain.property)
-- `@1.0.0` - Semantic version
-- Opening brace starts the body
+- `gen` declares an atomic ontological unit (a "gene").
+- `container.exists` is a qualified identifier. Dots are part of the name (`domain.property`).
+- Genes have **no version in their header**. `gen name @1.0.0 {` does not parse. Versions live on
+  `module x @ 1.0.0`, `system X @ 1.0.0 { }` and `evo X @ 1.1.0 > 1.0.0 { }`.
 
-### Exegesis (Required)
+### The `docs` block
 
-```dol
-exegesis {
-    A container exists in the system and has a unique identifier.
-    This is the most basic property of any container.
-}
-```
+The `docs { ... }` block after the closing brace documents the declaration. (It can also go inside the
+braces as the last item.)
 
-Every DOL declaration **must** include an exegesis block that follows the declaration. This is a core philosophy: your ontology must be self-documenting.
+DOL's convention is that every declaration has docs. Here is what the 0.8.2 tools actually enforce:
+- The parser accepts a declaration without docs.
+- The validator (and `dol-parse`) warns when the docs are shorter than 20 characters.
+- `dol-check --require-exegesis` fails a file whose declaration has no docs.
 
-### Predicates
+Avoid `{` and `}` inside docs text. The parser does not handle nested braces there.
 
-```dol
+### Statements
+
+These are the statements inside the body (a fragment, not a complete file):
+
+```text
 has identifier: string
-is entity
-is persistent
+container is entity
+container is persistent
 ```
 
-Predicates define properties and relationships:
-- `has` - Declares typed properties
-- `is` - Declares categorical membership
-- `derives from` - Declares inheritance
-- `requires` - Declares dependencies
+- `has name: type` declares a typed property.
+- `subject is state` declares a category or state. The subject is required. A bare `is entity`
+  does not parse.
+- Other predicates, covered in [Tutorial 2](02-writing-genes.md), are `subject has property`,
+  `subject derives from origin`, and `subject requires dependency`.
 
 ## Running dol-parse
 
-Parse your file:
-
 ```bash
-cargo run --bin dol-parse -- my-first.dol
+cargo run --features cli --bin dol-parse -- my-first.dol
 ```
 
-Success looks like:
+Output:
 
 ```
-Parsed successfully: my-first.dol
-1 declaration(s) found
+✓ my-first.dol (container.exists)
+    container.exists gene with 3 statements
 
-Gene: container.exists @1.0.0
-  Properties:
-    - identifier: string
-  Categories:
-    - entity
-    - persistent
+Summary
+  Total:    1
+  Success:  1
 ```
 
-### Common Errors
+**Important caveat:** in 0.8.2, `dol-parse` and `dol-check` parse **only the first declaration** of
+each file. Everything after it is ignored, including syntax errors. To check a whole file, call the
+library function `metadol::parse_file_all` from Rust.
 
-**Missing exegesis:**
+### Common errors
 
-```dol
-gene container.exists @1.0.0 {
+**Version on a gene header** (not supported):
+
+```text
+gen container.exists @1.0.0 {
     has identifier: string
 }
 ```
 
 ```
-Error: Missing exegesis for gene 'container.exists'
-  --> my-first.dol:1:1
+✗ bad1.dol
+  Parse error: expected {, found '@' at line 1, column 22
 ```
 
-**Invalid version:**
-
-```dol
-gene container.exists @1.0 {
-```
+**No docs block:** the file still parses, but you get a warning:
 
 ```
-Error: Invalid version format, expected X.Y.Z
-  --> my-first.dol:1:23
+✓ nodocs.dol (container.exists)
+    container.exists gene with 1 statements
+  warning: exegesis is unusually short (0 chars) at line 1, column 1
 ```
 
-## Understanding the Output
+With `dol-check --require-exegesis`, the same file fails with `Missing or empty exegesis block`.
 
-When you run `dol-parse` with `--json`:
+## Output formats
+
+`dol-parse` supports `-f pretty|json|compact|debug`:
 
 ```bash
-cargo run --bin dol-parse -- my-first.dol --json
+cargo run --features cli --bin dol-parse -- -f json my-first.dol
 ```
-
-You get a structured AST:
 
 ```json
 {
-  "declarations": [
+  "files": [
     {
-      "type": "Gene",
-      "name": "container.exists",
-      "version": "1.0.0",
-      "exegesis": "A container exists...",
-      "statements": [
-        {
-          "type": "Has",
-          "property": "identifier",
-          "property_type": "string"
-        },
-        {
-          "type": "Is",
-          "category": "entity"
-        },
-        {
-          "type": "Is",
-          "category": "persistent"
-        }
-      ]
+      "path": "my-first.dol",
+      "success": true,
+      "declaration_type": "gene",
+      "name": "container.exists"
     }
-  ]
+  ],
+  "summary": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0
+  }
 }
 ```
 
-This AST can be used to:
-- Generate Rust structs
-- Generate database schemas
-- Generate API specifications
-- Generate tests
+The JSON output is a per-file summary, not the AST. To work with the AST, use the library
+(`metadol::parse_file_all`, `metadol::parse_dol_file`).
 
-## Next Steps
+## Next steps
 
-Now that you can write and parse basic genes, explore:
+1. [Tutorial 2: Writing Genes](02-writing-genes.md) covers gene statements and fields in depth.
+2. [Tutorial 3: Composing Traits](03-composing-traits.md) covers combining genes into behaviours.
+3. [Tutorial 4: System Design](04-system-design.md) covers systems, version requirements and `evo`.
 
-1. **Tutorial 2: Writing Genes** - Deep dive into gene syntax and predicates
-2. **Tutorial 3: Composing Traits** - Learn to build complex behaviors
-3. **Tutorial 4: System Design** - Architect complete systems
-
-### Explore Examples
-
-Check out the examples directory:
+### Explore the examples
 
 ```bash
-ls examples/genes/
-ls examples/traits/
-ls examples/systems/
+ls examples/genes/ examples/traits/ examples/systems/ examples/v0.8/
+cargo run --features cli --bin dol-parse -- -r examples/genes
 ```
 
-Parse them all:
+Remember that `dol-parse` only checks the first declaration of each file.
 
-```bash
-find examples -name "*.dol" -exec cargo run --bin dol-parse -- {} \;
-```
+### Reference
 
-### Read the Specification
+- [syntax-reference.md](syntax-reference.md) is the language reference for the 0.8.2 parser.
+- [../grammar.ebnf](../grammar.ebnf) is the grammar.
+- The de facto specification is `src/lexer.rs` and `src/parser.rs`.
 
-For complete language reference:
+## Not yet supported in 0.8.2
 
-```bash
-cat docs/specification.md
-cat docs/grammar.ebnf
-```
+These forms appear in older docs but **do not parse** today:
+- versioned gene headers (`gen name @1.0.0 {`)
+- `let mut` and compound assignment (`+=`, `-=`)
+- reference and slice types (`&T`, `[T]`)
+- generic functions (`fun id<T>(...)`)
+- `impl` blocks, top-level `spirit` declarations, `extern fun` without `sex`
+- `type X is enum { ... }` (use `has kind: enum { A, B }` inside a `gen`)
+- effect annotations (`fun f() with IO`)
+- backtick or `~` quasi-quotes
 
-## Key Takeaways
+Float exponents (`1e9`) do not cause an error, but they are mis-lexed as `1` followed by an identifier
+`e9`.
 
-1. **DOL-first development** means ontology before implementation
-2. **Exegesis is mandatory** - your ontology documents itself
-3. **Qualified identifiers** use dot notation (domain.property)
-4. **Semantic versioning** is required for all declarations
-5. **The parser validates** your ontology before code generation
+## Key takeaways
 
-Welcome to ontology-first development!
+1. **Ontology first.** You describe the domain before writing the implementation.
+2. **Docs are a convention.** `dol-check --require-exegesis` enforces them.
+3. **Qualified identifiers** use dot notation (`domain.property`).
+4. **Versions** go on modules, systems and `evo` declarations, not on gene headers.
+5. **The CLI checks only the first declaration per file** in 0.8.2.

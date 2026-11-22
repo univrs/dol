@@ -1,178 +1,50 @@
-# VUDO CLI
+# DOL command-line tools
 
-The `vudo` command-line tool for working with DOL spirits.
+> Applies to `dol` **0.8.2**. Every binary needs a Cargo feature: `cli` for the `dol-*` tools and
+> `vudo` for `vudo`.
 
-## Installation
+## The `dol-*` tools (feature `cli`)
 
-```bash
-# From source
-cargo install --path . --features vudo
-
-# Or build locally
-cargo build --bin vudo --features vudo --release
-```
-
-## Commands
-
-### Run a Spirit
-
-Execute a compiled WASM spirit:
+| Binary | Purpose |
+|---|---|
+| `dol-parse` | Parse and validate `.dol` files. Flags: `-f pretty\|json\|compact\|debug`, `-r`, `--validate`, `--ci`, `-w`, `-q`, `--tree-shake`, `--roots`, `--shake-analyze` |
+| `dol-check` | CI gate. Flags: `--require-exegesis`, `--min-exegesis-length`, `--coverage-source`, `--strict`, `--typecheck`, `--ci`, `-f`, `-q` |
+| `dol-test` | Generate Rust tests from `.dol.test` files |
+| `dol-codegen` | Generate Rust, TypeScript or JSON Schema from DOL |
+| `dol-migrate` | Migrate syntax (`0.7-to-0.8`, `0.2-to-0.3`) |
+| `dol-mcp` | MCP server (JSON-RPC over stdio) |
+| `dol-build` | Spirit project → Rust → `wasm32` build pipeline |
+| `dol-build-crate` | Generate a Rust crate from DOL files |
 
 ```bash
-# Run with default function
-vudo run myspirit.wasm
-
-# Call specific function
-vudo run counter.wasm -f add_numbers -a '[3, 4]'
-
-# Call gene method with pointer argument
-vudo run counter.wasm -f Counter.increment -a '[1024]'
-
-# Verbose output
-vudo run myspirit.wasm -v
-
-# Enable execution tracing
-vudo run myspirit.wasm --trace
+cargo build --release --features cli
+cargo run --features cli --bin dol-parse -- --help
 ```
 
-**Options:**
-- `-f, --function <name>` - Function to call (default: main or first export)
-- `-a, --args <json>` - Arguments as JSON array
-- `--memory <pages>` - Initial memory pages (default: 16 = 1MB)
-- `--trace` - Enable execution tracing
+Known limitations in 0.8.2:
+- `dol-parse` and `dol-check` parse **only the first declaration** of each file. The rest of the file,
+  including syntax errors, is ignored. The library function `metadol::parse_file_all` parses the whole
+  file.
+- Type errors are **not enforced**. The validator's statement-level type check is a placeholder, so
+  `dol-check --typecheck` passes ill-typed functions.
+- `dol-build` fails on all 9 example Spirits in `examples/spirits/`.
 
-### Compile DOL to WASM
+## The `vudo` binary (feature `vudo`)
 
-Compile DOL source files to WASM:
+> **Status: does not compile in 0.8.2.** `cargo build --features vudo --bin vudo` fails with a
+> non-exhaustive `match` at `src/bin/vudo.rs:553` (`EvalResult::SpiritLoaded` is not covered).
+> The working VUDO VM and `vudo` CLI that run DOL-compiled Spirits live in the separate
+> [univrs/vudo](https://github.com/univrs/vudo) repository, which depends on `dol = "0.8.2"`.
 
-```bash
-# Basic compilation (outputs counter.wasm)
-vudo compile counter.dol
+For reference, `src/bin/vudo.rs` defines this interface. None of it can be run until the build error
+is fixed:
 
-# Specify output file
-vudo compile counter.dol -o build/counter.wasm
+| Command | Arguments and flags |
+|---|---|
+| `vudo run <file.wasm>` | `-f/--function <name>`, `-a/--args <json array>`, `--memory <pages>` (default 16), `--trace` |
+| `vudo compile <file.dol>` | `-o/--output <file>`, `--optimize`, `--debug` |
+| `vudo check <paths...>` | `-r/--recursive`, `--strict`, `--json` |
+| `vudo repl` | `-l/--load <file>`, `--tree-shake`, `--optimize`, `--session <name>` |
+| global | `-v/--verbose`, `-q/--quiet`, `-h/--help`, `-V/--version` |
 
-# With optimization
-vudo compile counter.dol --optimize
-
-# Verbose output
-vudo compile counter.dol -v
-```
-
-**Options:**
-- `-o, --output <file>` - Output file (default: `<input>.wasm`)
-- `--optimize` - Enable optimization
-- `--debug` - Include debug info
-
-### Type Check
-
-Check DOL files for errors:
-
-```bash
-# Check single file
-vudo check counter.dol
-
-# Check multiple files
-vudo check src/*.dol
-
-# Check directory recursively
-vudo check src/ -r
-
-# Strict mode (warnings are errors)
-vudo check src/ --strict
-
-# JSON output for tooling
-vudo check src/ --json
-```
-
-**Options:**
-- `-r, --recursive` - Recursively check directories
-- `--strict` - Treat warnings as errors
-- `--json` - Output as JSON
-
-## Global Options
-
-These options work with all commands:
-
-- `-v, --verbose` - Enable verbose output
-- `-q, --quiet` - Suppress non-error output
-- `-h, --help` - Print help
-- `-V, --version` - Print version
-
-## Examples
-
-### Full Development Workflow
-
-```bash
-# 1. Create a DOL file
-cat > counter.dol << 'EOF'
-gene Counter {
-    has value: Int64
-
-    fun increment() -> Int64 {
-        return value + 1
-    }
-
-    fun add(n: Int64) -> Int64 {
-        return value + n
-    }
-}
-
-fun add_numbers(a: Int64, b: Int64) -> Int64 {
-    return a + b
-}
-EOF
-
-# 2. Check it compiles
-vudo check counter.dol
-
-# 3. Compile to WASM
-vudo compile counter.dol -o counter.wasm
-
-# 4. Test standalone function
-vudo run counter.wasm -f add_numbers -a '[3, 4]'
-# Output: 7
-
-# 5. Test gene method
-vudo run counter.wasm -f Counter.increment -a '[0]'
-# Output: 1
-```
-
-### CI Integration
-
-```bash
-# Check all DOL files strictly
-vudo check src/ -r --strict
-
-# Compile all to WASM
-for f in src/*.dol; do
-    vudo compile "$f" -o "build/$(basename "$f" .dol).wasm"
-done
-```
-
-### JSON Output for Tooling
-
-```bash
-vudo check src/ --json
-# Output:
-# {
-#   "passed": 5,
-#   "failed": 1,
-#   "errors": [
-#     {"file": "src/broken.dol", "error": "Parse error: ..."}
-#   ]
-# }
-```
-
-## Exit Codes
-
-- `0` - Success
-- `1` - Error (compilation failed, file not found, etc.)
-
-## Feature Requirements
-
-The `vudo` binary requires the `vudo` feature, which enables both `cli` and `wasm`:
-
-```bash
-cargo build --features vudo
-```
+`vudo check` runs parsing and validation only. Like `dol-check`, it does not enforce types.

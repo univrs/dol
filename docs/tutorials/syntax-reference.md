@@ -1,65 +1,83 @@
-# DOL 2.0 Syntax Reference
+# DOL Syntax Reference (dol 0.8.2)
 
-Complete language reference for the Domain Ontology Language (DOL) version 2.0.
+This page describes the DOL syntax that the parser in the `dol` crate **0.8.2** accepts
+(`src/lexer.rs` and `src/parser.rs`). It only lists what actually parses. Things that
+appear in older docs but do not parse are listed under
+[Not yet supported](#not-yet-supported-in-082). Constructs that parse but are thrown away are
+listed under [Accepted but ignored](#accepted-but-ignored).
 
-## Table of Contents
+The language is versioned by the `dol` crate. "DOL 2.0" is the historical name for the
+expression-capable generation of the language (functions, control flow, pattern matching,
+lambdas, pipes, meta-programming). It is not a version number, and there is no separate
+"DOL 2.0" specification. For the grammar in EBNF form, see
+[`docs/grammar.ebnf`](../grammar.ebnf) ("DOL language as implemented by dol 0.8.2").
 
-1. [Lexical Elements](#lexical-elements)
+Every ```` ```dol ```` block on this page parses as a whole file with
+`metadol::parse_file_all`. Blocks marked *fragment* contain statements or expressions. They
+were checked by wrapping them in a `fun`.
+
+> **Checking your own files.** `dol-parse` and `dol-check` only parse the **first**
+> declaration in a file and silently ignore the rest. To check a whole file, call
+> `metadol::parse_file_all` from Rust.
+
+## Contents
+
+1. [Lexical elements](#lexical-elements)
 2. [Keywords](#keywords)
-3. [Operators](#operators)
-4. [Types](#types)
-5. [Declarations](#declarations)
-6. [Statements](#statements)
-7. [Expressions](#expressions)
-8. [SEX System](#sex-system)
-9. [Modules](#modules)
+3. [Types](#types)
+4. [Declarations](#declarations)
+5. [Ontology statements](#ontology-statements)
+6. [Functions and statements](#functions-and-statements)
+7. [Expressions and operators](#expressions-and-operators)
+8. [Side effects (`sex`)](#side-effects-sex)
+9. [Modules and imports](#modules-and-imports)
+10. [Attributes and annotations](#attributes-and-annotations)
+11. [Legacy (deprecated) syntax](#legacy-deprecated-syntax)
+12. [Accepted but ignored](#accepted-but-ignored)
+13. [Not yet supported in 0.8.2](#not-yet-supported-in-082)
 
 ---
 
-## Lexical Elements
+## Lexical elements
 
 ### Identifiers
 
-```
-identifier        = letter { letter | digit | '_' }
-qualified_id      = identifier { '.' identifier }
+An identifier starts with a letter or `_` and continues with letters, digits, `_` and `.`.
+The dot is part of the identifier, so `container.exists` and `self.count` are each a
+**single token**. This is how qualified names like `domain.property` work.
+
+```dol
+gen container.exists {
+    container has identity
+}
 ```
 
-Examples:
-```dol
-container           // simple identifier
-container.exists    // qualified identifier
-_private            // underscore prefix
-my_var123           // mixed
-```
+A lone `_` is the wildcard token.
 
 ### Literals
 
-```dol
-// Strings (double-quoted, escape sequences supported)
-"hello world"
-"line1\nline2"
-"path\\to\\file"
+| Kind | Examples | Notes |
+|------|----------|-------|
+| Integer | `0`, `42` | Decimal only |
+| Float | `3.14`, `0.5` | No exponent form |
+| String | `"hello"`, `"a\nb"` | Double-quoted, single line. Escapes: `\n \t \r \" \\` |
+| Char | `'a'`, `'\n'` | |
+| Bool | `true`, `false` | |
+| Null | `null` | |
+| Version | `0.1.0`, `1.2.3` | Exactly three numeric parts. Used after `@` and in `requires` |
 
-// Booleans
-true
-false
-
-// Null
-null
-
-// Versions (semantic versioning)
-0.0.1
-1.2.3
-```
+Number formats that look valid but are **mis-lexed without an error**: `1e9`, `1_000` and `0x10`.
+For example, `1e9` becomes the integer `1` followed by an identifier `e9`. Don't use them.
 
 ### Comments
 
+Line comments start with `//` or `--`. There are no block comments.
+
 ```dol
-// Single-line comment (only style supported)
-gene Example {
-  // This is a comment
-  container has identity
+// a comment
+-- also a comment
+gen Example {
+    has x: i64 // trailing comment
 }
 ```
 
@@ -67,651 +85,615 @@ gene Example {
 
 ## Keywords
 
-### Ontological Keywords (DOL 1.x)
+Preferred (v0.8) keywords:
 
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `gene` | Atomic ontological unit | `gene container.exists { }` |
-| `trait` | Behavioral composition | `trait container.lifecycle { }` |
-| `constraint` | Invariant definition | `constraint identity.unique { }` |
-| `system` | Versioned composition | `system cluster @ 1.0.0 { }` |
-| `evolves` | Version migration | `evolves foo @ 1.0.0 > 0.9.0 { }` |
-| `exegesis` | Mandatory documentation | `exegesis { ... }` |
+| Group | Keywords |
+|-------|----------|
+| Declarations | `gen`, `trait`, `rule`, `system`, `evo`, `docs`, `type`, `fun`, `const`, `module` / `mod`, `use` |
+| Ontology predicates | `has`, `is`, `derives from`, `requires`, `uses`, `emits`, `matches`, `never`, `extends` |
+| Quantifiers | `each`, `all` |
+| Evolution | `adds`, `deprecates`, `removes`, `because`, `migrate` |
+| Control flow | `if`, `else`, `match`, `for`, `in`, `while`, `loop`, `break`, `continue`, `return`, `where` |
+| Bindings | `let`, `val`, `var`, `const` |
+| Effects | `sex`, `extern` |
+| Visibility | `pub` |
+| Traits and systems | `law`, `state` |
+| Logic | `forall` |
+| Other | `as`, `this`, `true`, `false`, `null` |
 
-### Predicate Keywords
+These words are reserved by the lexer but **have no grammar rule** in 0.8.2. Using them
+causes a parse error: `impl`, `spirit` (except inside `pub(spirit)`), `config`, `mut`, `not`,
+`exists`, `implies`, `given`, `when`, `then`, `always`, `test`, `no`.
+(`given`, `when` and `then` belong to the separate `.dol.test` format that `dol-test` reads.)
 
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `has` | Property possession | `container has identity` |
-| `is` | State/behavior | `container is running` |
-| `derives` | Origin relationship | `container derives from image` |
-| `from` | Used with derives | `derives from base` |
-| `requires` | Dependency | `service requires database` |
-| `uses` | Composition | `uses container.exists` |
-| `emits` | Event production | `transition emits event` |
-| `matches` | Equivalence | `input matches output` |
-| `never` | Negative constraint | `container never orphaned` |
-
-### Evolution Keywords
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `adds` | Add capability | `adds container is paused` |
-| `deprecates` | Mark deprecated | `deprecates old_field` |
-| `removes` | Remove capability | `removes legacy_api` |
-| `because` | Reason for change | `because "migration required"` |
-| `migrate` | Migration logic | `migrate { ... }` |
-
-### Test Keywords
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `test` | Test declaration | `test my_test { }` |
-| `given` | Precondition | `given container exists` |
-| `when` | Action | `when container starts` |
-| `then` | Postcondition | `then container is running` |
-| `always` | Invariant check | `always` |
-
-### Quantifiers
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `each` | Universal (for each) | `each container has id` |
-| `all` | Universal (all) | `all services respond` |
-| `no` | Negation | `no container orphaned` |
-| `forall` | Logical universal | `forall x: T, P(x)` |
-| `exists` | Logical existential | `exists x: T, P(x)` |
-
-### Control Flow Keywords (DOL 2.0)
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `let` | Variable binding | `let x = 42` |
-| `if` | Conditional | `if cond { } else { }` |
-| `else` | Alternative branch | `else { }` |
-| `match` | Pattern matching | `match x { ... }` |
-| `for` | Iteration | `for x in items { }` |
-| `while` | While loop | `while cond { }` |
-| `loop` | Infinite loop | `loop { }` |
-| `break` | Exit loop | `break` |
-| `continue` | Next iteration | `continue` |
-| `return` | Return value | `return x` |
-| `in` | Membership | `for x in list` |
-| `where` | Constraint clause | `where T: Trait` |
-
-### Module Keywords (DOL 2.0)
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `module` | Module declaration | `module mylib @ 1.0.0` |
-| `pub` | Public visibility | `pub gene Foo { }` |
-| `use` | Import | `use std::io` |
-| `spirit` | Spirit pattern | `spirit SharedState { }` |
-
-### SEX Keywords (DOL 2.0)
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `sex` | Side effect marker | `sex fun write() { }` |
-| `var` | Mutable variable | `sex var counter = 0` |
-| `const` | Constant | `const PI = 3.14159` |
-| `extern` | FFI declaration | `extern fun malloc()` |
-
-### Logic Keywords (DOL 2.0)
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `implies` | Logical implication | `A implies B` |
-| `not` | Logical negation | `not condition` |
-| `impl` | Trait implementation | `impl Trait for Type` |
-| `as` | Type cast | `x as Int32` |
-| `state` | System state | `state Running { }` |
-| `law` | Trait law | `law associativity { }` |
-| `mut` | Mutable parameter | `fun modify(mut x: T)` |
-
----
-
-## Operators
-
-### Arithmetic Operators
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `+` | Addition | `a + b` |
-| `-` | Subtraction | `a - b` |
-| `*` | Multiplication | `a * b` |
-| `/` | Division | `a / b` |
-| `%` | Modulo | `a % b` |
-| `^` | Power | `a ^ b` |
-
-### Comparison Operators
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `==` | Equal | `a == b` |
-| `!=` | Not equal | `a != b` |
-| `<` | Less than | `a < b` |
-| `<=` | Less or equal | `a <= b` |
-| `>` | Greater than | `a > b` |
-| `>=` | Greater or equal | `a >= b` |
-
-### Logical Operators
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `&&` | Logical AND | `a && b` |
-| `\|\|` | Logical OR | `a \|\| b` |
-| `!` | Logical NOT | `!a` |
-| `&` | Bitwise AND | `a & b` |
-| `\|` | Bitwise OR | `a \| b` |
-
-### Assignment Operators
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `=` | Assignment | `x = 5` |
-| `:=` | Bind (monadic) | `result := computation` |
-| `+=` | Add-assign | `x += 1` |
-| `-=` | Sub-assign | `x -= 1` |
-| `*=` | Mul-assign | `x *= 2` |
-| `/=` | Div-assign | `x /= 2` |
-
-### Composition Operators (DOL 2.0)
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `\|>` | Pipe forward | `x \|> f \|> g` |
-| `<\|` | Pipe backward | `f <\| x` |
-| `>>` | Compose | `f >> g` |
-
-### Meta-Programming Operators (DOL 2.0)
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `'` | Quote (AST capture) | `'(1 + 2)` |
-| `!` | Eval/Unquote | `!(quoted_expr)` |
-| `#` | Macro invocation | `#[derive(Debug)]` |
-| `?` | Type reflection | `?Type` |
-| `[\|` `\|]` | Idiom brackets | `[\| f x y \|]` |
-
-### Other Operators
-
-| Operator | Name | Example |
-|----------|------|---------|
-| `@` | Version annotation | `system foo @ 1.0.0` |
-| `->` | Return type / lambda | `fun f() -> Int` |
-| `=>` | Match arm / closure | `x => x + 1` |
-| `::` | Path separator | `std::io::read` |
-| `.` | Member access | `obj.field` |
-| `...` | Spread | `[...arr, x]` |
-| `_` | Wildcard pattern | `match x { _ => }` |
-
-### Delimiters
-
-| Symbol | Name |
-|--------|------|
-| `{` `}` | Braces (blocks) |
-| `(` `)` | Parentheses (grouping, calls) |
-| `[` `]` | Brackets (arrays, indexing) |
-| `,` | Comma (separator) |
-| `:` | Colon (type annotation) |
-| `;` | Semicolon (statement end) |
+Many keywords can still be used as field names, parameter names and struct-field names, for
+example `has type: string` or `fun test()`. `docs`, `gen` and `evo` cannot be used this way.
 
 ---
 
 ## Types
 
-### Primitive Types
-
-| Type | Description | Size |
-|------|-------------|------|
-| `Int8` | Signed 8-bit integer | 1 byte |
-| `Int16` | Signed 16-bit integer | 2 bytes |
-| `Int32` | Signed 32-bit integer | 4 bytes |
-| `Int64` | Signed 64-bit integer | 8 bytes |
-| `UInt8` | Unsigned 8-bit integer | 1 byte |
-| `UInt16` | Unsigned 16-bit integer | 2 bytes |
-| `UInt32` | Unsigned 32-bit integer | 4 bytes |
-| `UInt64` | Unsigned 64-bit integer | 8 bytes |
-| `Float32` | 32-bit floating point | 4 bytes |
-| `Float64` | 64-bit floating point | 8 bytes |
-| `Bool` | Boolean | 1 byte |
-| `String` | UTF-8 string | variable |
-| `Void` | No value | 0 bytes |
-
-### Compound Types
+| Type | Syntax |
+|------|--------|
+| Signed integers | `i8`, `i16`, `i32`, `i64`, `i128` |
+| Unsigned integers | `u8`, `u16`, `u32`, `u64`, `u128` |
+| Floats | `f32`, `f64` |
+| Boolean | `bool` |
+| String | `string` |
+| Unit | `()` |
+| Never | `!` |
+| Generic application | `Vec<T>`, `Option<T>`, `Result<T, E>`, `Map<K, V>`, any `Name<...>` |
+| Tuple | `(i64, string)` |
+| Function | `(i64, i64) -> bool` |
+| Named | any identifier, e.g. `Point` |
+| Inline enum | `enum { A, B(i64), C { x: i64 }, D = 3 }` |
 
 ```dol
-// Arrays
-[Int32]           // array of Int32
-[[String]]        // nested array
-
-// Tuples
-(Int32, String)   // pair
-(A, B, C)         // triple
-
-// Functions
-(Int32) -> Bool   // function type
-() -> Void        // no args, no return
-
-// Generics
-List<T>           // generic type
-Map<K, V>         // multiple type params
-Option<T>         // optional value
-Result<T, E>      // result with error
+gen TypeShowcase {
+    has id: u64
+    has name: string
+    has ratio: f64
+    has active: bool
+    has tags: Vec<string>
+    has parent: Option<u64>
+    has lookup: Map<string, Vec<i64>>
+    has pair: (i64, string)
+    has predicate: (i64) -> bool
+    has status: enum { Pending, Running, Stopped }
+}
 ```
+
+Type names like `Vec` and `Map` are not checked: the parser accepts any `Name<...>`.
 
 ---
 
 ## Declarations
 
-### Gene Declaration
+A file is an optional `module` line, then `use` lines, then any number of declarations.
+Top-level declarations: `gen`, `type`, `trait`, `rule`, `system`, `evo`, `fun`, `sex fun`,
+`sex var`, `sex extern fun`, `const`, plus `docs { }`, `use`, and `mod` blocks.
 
-Genes are atomic ontological units that cannot be decomposed.
+### Documentation (`docs`)
+
+A `docs { ... }` block can appear:
+- **after** a `gen`/`trait`/`rule`/`system`/`evo` body, where it becomes that declaration's
+  documentation;
+- as the **last item inside** the body;
+- **standalone** at top level. A standalone block is skipped and is not attached to the next
+  declaration.
+
+The docs text is free prose. Avoid `{` and `}` inside it, because nested braces end the block
+early.
 
 ```dol
-gene container.exists {
-  container has identity
-  container has boundaries
-  container is isolated
+gen point {
+    has x: f64
+    has y: f64
+}
 
-  exegesis {
-    A container is the fundamental unit of workload isolation.
-  }
+docs {
+    A point in the plane.
+}
+
+gen size {
+    has width: f64
+    has height: f64
+
+    docs {
+        Docs can also be the last item inside the body.
+    }
 }
 ```
 
-### Trait Declaration
+The parser does not require `docs`. `dol-check --require-exegesis` enforces it, but only on
+the first declaration of each file.
 
-Traits compose genes and declare behaviors.
+### `gen` (genes) and `type`
+
+```dol
+gen container.exists {
+    container has identity
+    container has state
+    container is persistent
+    has id: u64
+    has name: string = "unnamed"
+    has replicas: u32 = 1 where replicas > 0
+}
+
+docs {
+    A container is an isolated unit with an identity and a state.
+}
+
+gen managed.container extends container.exists {
+    has owner: string
+}
+
+docs {
+    Extends adds fields to an existing gen.
+}
+
+type Meters {
+    has value: f64
+}
+```
+
+`type Name { ... }` is an alias for `gen` and produces the same AST. A gen body can also hold
+functions (`fun`, `pub fun`, `sex fun`).
+
+```dol
+gen counter {
+    has value: i64 = 0
+
+    fun get() -> i64 {
+        return value
+    }
+
+    sex fun increment() {
+        value = value + 1
+    }
+}
+
+docs {
+    A counter with a pure getter and a side-effecting increment.
+}
+```
+
+### `trait`
 
 ```dol
 trait container.lifecycle {
-  uses container.exists
+    uses container.exists
+    container is created
+    container is started
+    container is stopped
+    each transition emits event
+    law idempotent_stop(x: i64) { x == x }
+}
 
-  container is created
-  container is running
-  container is stopped
-  each transition emits event
-
-  exegesis {
-    The lifecycle defines state transitions for containers.
-  }
+docs {
+    Lifecycle states for a container.
 }
 ```
 
-### Constraint Declaration
+A `law name(params) { expr }` inside a trait is parsed. The law's body must be a single
+expression.
 
-Constraints define invariants that must hold.
+### `rule` (constraints)
 
 ```dol
-constraint identity.unique {
-  no two containers share identity
-  identity matches cryptographic_hash
-  identity never changes
+rule container.integrity {
+    identity never changes
+    state matches declared
+    has max_restarts: u32 = 5
+}
 
-  exegesis {
-    Container identities must be globally unique and immutable.
-  }
+docs {
+    Integrity guarantees for containers.
 }
 ```
 
-### System Declaration
-
-Systems are versioned top-level compositions.
+### `system`
 
 ```dol
-system kubernetes.cluster @ 1.0.0 {
-  requires container.runtime >= 1.0.0
-  requires network.cni >= 0.4.0
+system univrs.orchestrator @ 0.1.0 {
+    requires container.lifecycle >= 0.0.1
+    requires node.discovery >= 0.0.1
+    state tick: u64 = 0
+    all operations is authenticated
+}
 
-  cluster has control_plane
-  cluster has worker_nodes
-
-  exegesis {
-    A Kubernetes cluster orchestrates containerized workloads.
-  }
+docs {
+    The orchestrator composes lifecycle and discovery.
 }
 ```
 
-### Evolution Declaration
+The `@ version` after a system name is optional. Inside a system body, a line that starts with
+`requires` must be a versioned requirement: `requires name >= | > | = X.Y.Z`. To write a
+phrase requirement, start the line with a subject: `x requires y`.
 
-Evolutions track changes between versions.
+### `evo` (evolutions)
 
 ```dol
-evolves container.lifecycle @ 0.0.2 > 0.0.1 {
-  adds container is paused
-  adds container is resumed
-  deprecates container is suspended
-  because "workload migration requires state preservation"
+evo container.lifecycle @ 0.0.2 > 0.0.1 {
+    adds container is paused
+    adds has pause_reason: string
+    deprecates container is zombie
+    removes legacy_flag
+    because "Operators need to pause containers without stopping them"
+    migrate {
+        let note = "no data migration needed"
+    }
+}
 
-  migrate {
-    // Migration logic
-  }
-
-  exegesis {
-    Version 0.0.2 adds pause/resume for live migration.
-  }
+docs {
+    Adds a paused state.
 }
 ```
 
-### Function Declaration (DOL 2.0)
+The form is `evo Name @ new_version > parent_version { ... }`. Both versions are required.
+`adds` and `deprecates` take a statement. `removes` takes a name. `because` takes a string.
+
+### `fun`
 
 ```dol
-// Pure function
-fun add(a: Int32, b: Int32) -> Int32 {
-  return a + b
+fun add(a: i64, b: i64) -> i64 {
+    return a + b
 }
 
-// Public function
-pub fun greet(name: String) -> String {
-  return "Hello, " + name
+pub fun greet(name: string) -> string {
+    return "hello, " + name
 }
 
-// Generic function
-fun identity<T>(x: T) -> T {
-  return x
+fun noop() {
+}
+```
+
+The return type is optional. Function generics (`fun id<T>`) are not supported.
+
+### `const`
+
+```dol
+const MAX_RETRIES: u32 = 3
+const GREETING = "hello"
+```
+
+---
+
+## Ontology statements
+
+These statements can appear in `gen`, `trait`, `rule` and `system` bodies, and after
+`adds`/`deprecates` in `evo`.
+
+| Statement | Form |
+|-----------|------|
+| Has (property) | `subject has property` |
+| Has (typed field) | `has name: Type [= default] [where expr]` or `subject has name: Type ...` |
+| Field (short form) | `name: Type [= default]` |
+| Is | `subject is state` |
+| Derives | `subject derives from phrase` |
+| Requires | `subject requires phrase` |
+| Uses | `uses qualified.name` (no subject) |
+| Emits | `action emits event` |
+| Matches | `subject matches phrase` |
+| Never | `subject never action` |
+| Quantified | `each ...` / `all ...` followed by a phrase |
+
+Subjects can be multi-word phrases, such as `identity never changes`. A quantified statement
+(`each`/`all`) consumes words and predicates until the next `}`, `uses`, `each` or `all`, so
+put it last in the body or follow it with another quantifier.
+
+```dol
+gen identity.cryptographic {
+    identity derives from ed25519 keypair
+    identity requires secure randomness
+    identity has public_key
+    signature matches public_key
+    private_key never leaves
+    rotation emits key_rotated
+    created_at: u64 = 0
+    each identity has fingerprint
 }
 
-// Function with constraints
-fun compare<T>(a: T, b: T) -> Bool where T: Ord {
-  return a < b
+docs {
+    A cryptographic identity.
 }
 ```
 
 ---
 
-## Statements
+## Functions and statements
 
-### Has Statement
+Statements inside a function body. Semicolons are optional.
 
-Declares property possession.
-
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-container has identity
-container has state
-container has boundaries
-```
-
-### Is Statement
-
-Declares state or behavior.
-
-```dol
-container is running
-container is isolated
-service is healthy
-```
-
-### Derives Statement
-
-Declares origin relationship.
-
-```dol
-container derives from image
-service derives from template
-```
-
-### Requires Statement
-
-Declares dependency.
-
-```dol
-service requires database
-cluster requires network >= 1.0.0
-```
-
-### Uses Statement
-
-Declares composition.
-
-```dol
-uses container.exists
-uses network.interface
-```
-
-### Let Statement (DOL 2.0)
-
-Variable binding.
-
-```dol
-let x = 42
-let name: String = "DOL"
-let (a, b) = get_pair()
-```
-
-### Control Flow (DOL 2.0)
-
-```dol
-// If-else
-if condition {
-  do_something()
+let a = 1
+let b: i64 = 2
+let c: i64
+val d = 3
+var e: i64 = 4
+const F: i64 = 5
+c = a + b
+e = e + 1
+for i in 0..10 {
+    e = e + i
+}
+while e > 100 {
+    e = e - 1
+}
+loop {
+    break
+}
+if a > 0 {
+    return 1
+} else if a < 0 {
+    return -1
 } else {
-  do_other()
-}
-
-// Match
-match value {
-  0 => "zero",
-  1 => "one",
-  _ => "many"
-}
-
-// For loop
-for item in collection {
-  process(item)
-}
-
-// While loop
-while condition {
-  iterate()
+    return 0
 }
 ```
+
+| Statement | Notes |
+|-----------|-------|
+| `let x [: T] [= expr]` | The value can be omitted when a type is given |
+| `val x [: T] [= expr]` | Same as `let` |
+| `var x [: T] = expr` | Parsed like `let`; mutability is not tracked |
+| `const X [: T] = expr` | Inside a function |
+| `target = expr` | Assignment to a name, field (`a.b = 1`) or index (`a[i] = 1`) |
+| `for x in expr { }` | Any expression parses after `in`. The WASM backend only compiles ranges (`a..b`) |
+| `while cond { }`, `loop { }` | |
+| `break`, `continue`, `return [expr]` | |
+| any expression | `if`, `match`, calls, `sex { }` blocks, ... |
 
 ---
 
-## Expressions
+## Expressions and operators
 
-### Arithmetic
+### Operators by precedence (loosest first)
 
+| Precedence | Operators | Associativity |
+|------------|-----------|---------------|
+| 1 | `:=` (bind) | right |
+| 2 | `\|>` (pipe) | left |
+| 3 | `@` (apply) | left |
+| 4 | `>>` (compose) | right |
+| 5 | `->` | right |
+| 6 | `..` (range) | none |
+| 7 | `\|\|` | left |
+| 8 | `&&` (also a single `&`) | left |
+| 9 | `==`, `!=` | none |
+| 10 | `<`, `>`, `<=`, `>=` | none |
+| 11 | `+`, `-` | left |
+| 12 | `*`, `/`, `%` | left |
+| 13 | `^` (power) | right |
+| 14 | `as` (cast to a type) | left |
+| 15 | `.` (member) | left |
+
+Prefix operators: `-x`, `!x`, `*x` (deref), `'x` (quote), `?Type` (reflect), `!{ expr }` (eval).
+Postfix operators: calls `f(a, b)`, indexing `a[i]`, and `expr?` (try).
+
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-1 + 2 * 3       // = 7
-(1 + 2) * 3     // = 9
-10 / 3          // = 3
-10 % 3          // = 1
-2 ^ 10          // = 1024
+let sum = 1 + 2 * 3
+let pow = 2 ^ 10
+let ok = a >= 0 && b != 0 || !done
+let r = 0..10
+let n = x as f64
+let s = "hello, " + name
+let m = point.distance(other)
+let v = xs.map(|x| x * 2).filter(|x| x > 1)
+let first = xs[0]
+let value = parse(input)?
 ```
 
-### Comparison
+### Lambdas, pipes and composition
 
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-a == b
-a != b
-a < b && b < c
-x >= 0 || x <= 100
+let inc = |x: i64| x + 1
+let dbl = |x: i64| -> i64 { x * 2 }
+let both = inc >> dbl
+let out = 5 |> inc |> dbl
 ```
 
-### Function Calls
+### `if` and `match`
 
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-foo()
-bar(1, 2, 3)
-obj.method(arg)
+let sign = if n > 0 { 1 } else if n < 0 { -1 } else { 0 }
+
+let label = match opt {
+    Some(v) if v > 100 => "big",
+    Some(v) => "small",
+    None => "none"
+}
+
+let kind = match code {
+    1 | 2 => "low",
+    (a, b) => "pair",
+    _ => "other"
+}
 ```
 
-### Pipe Expressions (DOL 2.0)
+Patterns: `_`, literals, identifiers, constructors `Some(x)`, tuples `(a, b)`, or-patterns
+`a | b`, and guards `if cond`. A match arm can be `pattern => expr` or `pattern { block }`.
 
+### Collections, tuples and struct literals
+
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-// Forward pipe
-data |> parse |> validate |> process
-
-// Equivalent to:
-process(validate(parse(data)))
-
-// Function composition
-let pipeline = parse >> validate >> process
+let list = [1, 2, 3]
+let pair = (1, "one")
+let unit = ()
+let p = Point { x: 1.0, y: 2.0 }
+let m = Map::new()
 ```
 
-### Lambda Expressions (DOL 2.0)
+A struct literal needs a capitalised type name: `Point { x: 1 }`.
 
+### Logic and meta-programming
+
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-// Short form
-|x| x + 1
-
-// With types
-|x: Int32| -> Int32 { x + 1 }
-
-// Multiple params
-|a, b| a + b
+let all_equal = forall x: i64. x == x
+let q = 'expr
+let e = !{ 1 + 2 }
+let t = ?Point
+let i = [| add a b |]
+let m = #stringify(x)
 ```
 
-### Quote/Eval (DOL 2.0)
+These forms parse into the AST. The WASM backend **cannot compile** lambdas, tuples, lists,
+`sex { }` blocks, `?`, quote/eval/reflect, idiom brackets or `this`. It also cannot compile
+casts, or `for` loops over anything other than a range. See
+[`docs/DOL-STATUS-2026-11.md`](../DOL-STATUS-2026-11.md) §5.
 
-```dol
-// Quote captures AST
-let expr = '(1 + 2)
-
-// Eval executes quoted expression
-let result = !expr  // = 3
-
-// Quasi-quotation
-let x = 5
-let expr = '(x + !(get_value()))
-```
+> **No type checking.** `fun f() -> i64 { return "hello" + true }` parses and passes
+> validation in 0.8.2.
 
 ---
 
-## SEX System
+## Side effects (`sex`)
 
-The Side Effect eXecution (SEX) system explicitly marks impure code.
-
-### SEX Functions
+`sex` marks side-effecting code.
 
 ```dol
-// Impure function (has side effects)
-sex fun write_file(path: String, data: String) -> Result<(), Error> {
-  // Can perform I/O
+sex var REQUEST_COUNT: i64 = 0
+
+sex fun log_line(msg: string) {
+    println(msg)
 }
 
-// Pure function (no sex keyword)
-fun add(a: Int32, b: Int32) -> Int32 {
-  return a + b
+sex fun host_log(level: i32, ptr: i32, len: i32)
+
+sex extern fun c_abs(x: i32) -> i32
+
+fun tick() -> i64 {
+    sex {
+        log_line("tick")
+    }
+    return 0
 }
 ```
 
-### SEX Variables
-
-```dol
-// Mutable global state
-sex var counter: Int32 = 0
-
-// Mutable local (inside sex function)
-sex fun increment() {
-  counter += 1
-}
-```
-
-### SEX Blocks
-
-```dol
-fun mostly_pure() -> Int32 {
-  let x = compute()
-
-  sex {
-    // Side effects isolated here
-    log("computed: " + x)
-  }
-
-  return x
-}
-```
-
-### Extern (FFI)
-
-```dol
-// Declare external function
-extern sex fun malloc(size: UInt64) -> *Void
-extern sex fun free(ptr: *Void) -> Void
-
-// Use in sex context
-sex fun allocate() {
-  let ptr = malloc(1024)
-  // ...
-  free(ptr)
-}
-```
+- `sex fun name(...) { ... }`: a side-effecting function.
+- `sex fun host_*(...)` **without a body**: in 0.8.2 this is a host import. The WASM backend
+  imports it from module `vudo` with the VUDO VM's signature (`src/wasm/host_abi.rs`). A
+  bodiless `sex fun` the VM doesn't provide is a compile error.
+- `sex extern [ "abi" ] fun name(...) [-> T]`: parses, but the AST stores it only as a
+  placeholder.
+- `sex var NAME: T = value`: a mutable global.
+- `sex { ... }`: a side-effect block inside a function. Its body holds `let`/`var`
+  statements and expressions; plain assignment (`x = 1`) is not accepted inside it.
 
 ---
 
-## Modules
-
-### Module Declaration
+## Modules and imports
 
 ```dol
-module mylib @ 1.0.0
+module app.main @ 1.0.0
 
-pub gene PublicGene { }
-gene PrivateGene { }  // module-private
+use std.io
+use app::{Point, Size}
+
+fun main() -> i32 {
+    return 0
+}
 ```
 
-### Imports
+`parse_file_all` skips the `module` line and `use` lines. To keep them in the AST, use
+`metadol::parse_dol_file`. The `use` forms are:
 
-```dol
-use std::io
-use std::collections::HashMap
-use mylib::{Foo, Bar}
-use other::* // glob import
-```
-
-### Visibility
-
-```dol
-pub gene Public { }       // accessible outside module
-gene Private { }          // module-private (default)
-pub(crate) gene Crate { } // crate-visible only
-```
+- `use a.b`
+- `use a::b`
+- `use a::{X, Y as Z}`
+- `use a::*`
+- `use @org/pkg`
+- `pub use ...`
 
 ---
 
-## Grammar Summary (EBNF)
+## Attributes and annotations
 
-```ebnf
-dol_file = { declaration } ;
+```dol
+#[wasm_export]
+pub fun add(a: i64, b: i64) -> i64 {
+    return a + b
+}
 
-declaration = gene_decl | trait_decl | constraint_decl
-            | system_decl | evolution_decl | function_decl ;
+gen document {
+    @crdt(immutable) has id: string
+    @crdt(lww) has title: string
+    @crdt(peritext) has body: string
+    @crdt(or_set) has tags: Vec<string>
+    @crdt(pn_counter, min_value=0) has views: i64
+    @personal has author_email: string
+}
 
-gene_decl = [ 'pub' ] 'gene' qualified_id '{' { statement } exegesis '}' ;
-
-trait_decl = [ 'pub' ] 'trait' qualified_id '{' { statement } exegesis '}' ;
-
-statement = has_stmt | is_stmt | derives_stmt | requires_stmt
-          | uses_stmt | emits_stmt | let_stmt | if_stmt
-          | for_stmt | while_stmt | return_stmt | expr_stmt ;
-
-has_stmt = subject 'has' property ;
-is_stmt = subject 'is' state ;
-
-expr = literal | identifier | binary_expr | unary_expr
-     | call_expr | lambda_expr | quote_expr ;
-
-type = primitive_type | generic_type | function_type | tuple_type ;
+docs {
+    A collaborative document.
+}
 ```
+
+The valid `@crdt` strategies are `immutable`, `lww`, `or_set`, `pn_counter`, `peritext`, `rga`
+and `mv_register`. Any other name is a parse error. `@crdt` produces a real `CrdtAnnotation` in
+the AST.
 
 ---
 
-## File Extensions
+## Legacy (deprecated) syntax
+
+The pre-0.8 keywords and type names still parse. Each use prints a warning of the form
+`'gene' keyword is deprecated in v0.8.0, use 'gen' instead`. They are planned to become
+errors in 0.9. To convert files, run `dol-migrate 0.7-to-0.8 <path>`.
+
+| Deprecated | Use instead |
+|------------|-------------|
+| `gene` | `gen` |
+| `constraint` | `rule` |
+| `evolves` | `evo` |
+| `exegesis` | `docs` |
+| `Int8`..`Int64`, `UInt8`..`UInt64` | `i8`..`i64`, `u8`..`u64` |
+| `Float32`, `Float64` | `f32`, `f64` |
+| `Bool`, `String` | `bool`, `string` |
+| `Void` | `()` |
+| `List<T>`, `Optional<T>` | `Vec<T>`, `Option<T>` |
+
+---
+
+## Accepted but ignored
+
+These constructs parse in 0.8.2 but have no effect, or are dropped from the AST:
+
+- **Visibility on declarations**: `pub`, `pub(spirit)` and `pub(crate)` are accepted, but the
+  AST always records `Private`. Inside a gen body, `pub fun` is the exception: it is kept.
+- **Generic parameters on `gen`, `type`, `trait`, `rule` and `system`** (`gen Box<T> { }`) are
+  skipped.
+- **A `rule name { ... }` nested inside a gen body**: the body is discarded. Only the name is
+  kept, as a `requires` statement.
+- **A `law` inside a gen body** is skipped. A `law` inside a `trait` is parsed.
+- **`mod name { ... }` blocks** in the middle of a file are skipped entirely. As the **first**
+  item of a file, `mod name { ... }` is a parse error.
+- **`#[test]` functions** are skipped.
+- **`docs` blocks** written inside a body before other statements, or standalone at top level,
+  are skipped.
+- **`state` declarations in `system`** and **`migrate` blocks in `evo`** are parsed and then
+  dropped.
+
+---
+
+## Not yet supported in 0.8.2
+
+These forms appear in older docs and examples but **do not parse**:
+
+| Construct | Status |
+|-----------|--------|
+| `let mut x = ...` | Parse error. Use `let x` or `var x`; mutability is not tracked |
+| `x += 1` (also `-=`, `*=`, `/=`) | Parse error. Write `x = x + 1` |
+| `&T` (reference types) | Parse error |
+| `[T]` (array types) | Parse error. Use `Vec<T>` |
+| `*T` (pointer types, e.g. `*Void`) | Parse error |
+| `fun id<T>(x: T)` | Function generics: parse error |
+| `impl X { }` | Parse error |
+| top-level `spirit X { }` | Parse error |
+| `extern fun ...` / `extern sex fun ...` | Parse error. Use `sex extern fun` or a bodiless `sex fun` |
+| `fun f() -> T with IO` | Effect rows: parse error |
+| `gen name @ 1.0.0 { }` | Versioned gen headers: parse error. Only `system` takes `@ version` |
+| `evo A > B { }` (no `@`), `added ...` | Parse error. Use `evo A @ new > old { adds ... }` |
+| `gen A evolves B { }` | Parse error |
+| `type X is enum { }` | Parse error. Use `has kind: enum { ... }` |
+| `` `x `` and `~x` (quasi-quote) | Parse error |
+| `a implies b` | Lexed, then rejected as an invalid binary operator |
+| `container uses network` (subject form of `uses`) | Parse error. `uses` takes no subject |
+| `provides`, `exists`, `not` | No grammar rule |
+| Struct patterns with field shorthand, e.g. `Shape.Circle { r } =>` | Parse error |
+| `1e9`, `1_000`, `0x10` | Mis-lexed without an error (see [Literals](#literals)) |
+
+---
+
+## File extensions
 
 | Extension | Purpose |
 |-----------|---------|
 | `.dol` | DOL source file |
-| `.dol.test` | DOL test file |
-
----
-
-## Version
-
-This reference covers DOL 2.0 as implemented in `dol v0.1.0`.
-
-For the formal grammar, see [grammar.ebnf](./grammar.ebnf).
-For the language specification, see [specification.md](./specification.md).
+| `.dol.test` | Test spec read by `dol-test` (a separate format) |

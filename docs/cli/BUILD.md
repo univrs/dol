@@ -627,7 +627,7 @@ fun make_cell(alive: bool, neighbors: u8) -> Cell {
 
 ## Contributing
 
-Found a bug or want to contribute? See [CONTRIBUTING.md](../../CONTRIBUTING.md)
+This project is not accepting external contributions or pull requests.
 
 ## License
 

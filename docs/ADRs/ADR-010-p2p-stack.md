@@ -1,8 +1,10 @@
-# ADR-002: P2P Stack - Iroh + Willow Protocol
+# ADR-010: P2P Stack - Iroh + Willow Protocol
 
 **Status**: Accepted  
 **Date**: 2026-02-05  
 **Phase**: Phase 0 (SPORE)
+
+> **Status note (2026-11-21):** The decision stands. The Validation checkboxes below were **not reproduced** by the 2026-11 audit, so read them as targets, not measured results. The local-first crates (`crates/vudo-*`) are not built or tested in CI (there is no root `[workspace]`), and several of their test targets do not compile. P2P discovery, BFT voting and registry sync are simulated. Performance budgets have never been verified. See [DOL-STATUS-2026-11](../DOL-STATUS-2026-11.md) §4 and §7.
 
 ## Context
 

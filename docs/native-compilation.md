@@ -2,6 +2,12 @@
 
 Compile DOL programs to native machine code for ARM64, RISC-V, and x86-64 via LLVM.
 
+> **Status (dol 0.8.2): beta, outside CI.** The LLVM backend lives in `llvm-backend/`, which is a separate workspace.
+> It is not built or tested by this repository's CI and needs a manual LLVM 18 setup (see below).
+> At the 2026-11 audit, its 15 tests passed and all 12 `examples/native/*.dol` programs built, linked and ran on x86-64
+> Linux. The other targets are code-generation targets only and have not been run in CI.
+> See [DOL-STATUS-2026-11.md](DOL-STATUS-2026-11.md).
+
 ## Prerequisites
 
 - Rust 1.84+
@@ -43,8 +49,10 @@ dol-native emit-ir examples/native/hello_native.dol
 # Compile to object file
 dol-native build examples/native/hello_native.dol -o hello.o
 
-# Link into executable (provide VUDO runtime stubs)
-clang hello.o -o hello -lvudo_runtime
+# Link into executable against the native VUDO runtime
+# (build it first: cargo build --release -p vudo-runtime-native inside llvm-backend/)
+cc hello.o -o hello -L llvm-backend/target/release \
+   -Wl,-Bstatic -lvudo_runtime_native -Wl,-Bdynamic -lpthread -ldl -lm
 ./hello
 ```
 
@@ -252,7 +260,12 @@ These are compile-time constructs — they guide validation but don't generate r
 
 ### VUDO ABI
 
-The native compiler automatically declares all 22 VUDO host functions with C calling convention:
+The native compiler automatically declares the 22 `vudo_*` host functions with the C calling convention. These are
+implemented by `llvm-backend/crates/vudo-runtime-native`.
+
+This is **not** the same ABI as the WASM backend. In 0.8.2, WASM modules import 15 `host_*` functions from module
+`vudo`, matching the VUDO VM linker. The 22-name `vudo_*` set is deprecated in `dol-abi` in favour of
+`vm_host_functions()`.
 
 | Category   | Functions |
 |------------|-----------|
@@ -285,7 +298,7 @@ These features parse successfully but need runtime library implementations to wo
 | Field access (`.field`) | Stub codegen | Struct GEP codegen |
 | Index access (`[i]`) | Stub codegen | Bounds checking + GEP codegen |
 | `+=`, `-=` operators | Parser doesn't accept | Parser + assignment codegen |
-| Path syntax (`Foo::Bar`) | Parser doesn't accept | Namespace resolution |
+| Path syntax (`Foo::Bar`) | Parser accepts it (0.8.2); native codegen not verified | Namespace resolution |
 | Reference types (`&T`) | Parser doesn't accept | Borrow semantics |
 
 ## Architecture: llvm-backend/
@@ -310,7 +323,7 @@ llvm-backend/
 │   │       └── types.rs                # DOL → LLVM type mapping
 │   └── vudo-runtime-native/
 │       ├── Cargo.toml
-│       └── src/lib.rs                  # Runtime stubs (future)
+│       └── src/                        # Native runtime: io, memory, time, messaging, effects
 └── .gitignore
 ```
 
@@ -340,4 +353,4 @@ export LLVM_SYS_181_PREFIX=/usr/lib/llvm-18
 cargo test --all
 ```
 
-Current test count: **10 tests** (abi, functions, structs, types, targets, hir_lowering, codegen).
+The workspace has **15 tests** (abi, functions, structs, types, targets, hir_lowering, lib). They are not run in CI.

@@ -1,5 +1,7 @@
 # Applicative Functor Specification
 
+> **Design spec — not implemented.** There is no DOL standard library in dol 0.8.2: no stdlib `.dol` or `.rs` sources exist in `src/` or `stdlib/`, and the compiler loads none. This directory contains only Markdown specs. Code samples here may use syntax the 0.8.2 parser does not accept (see `docs/DOL-STATUS-2026-11.md` §5.4 and §7).
+
 > Extends Functor with function application in a context.
 > Uses extended DOL syntax with generics.
 

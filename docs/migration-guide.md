@@ -4,13 +4,21 @@
 
 The `dol-migrate` CLI tool automates the migration of DOL files from v0.7.x syntax to v0.8.0 syntax, including keyword changes, type system updates, and optional return statement modernization.
 
+**Deprecation timeline.** The old keywords and type names were deprecated in **v0.8.0**. The `dol` 0.8.x parser
+(currently 0.8.2) still accepts them and prints a `deprecated in v0.8.0` warning with the source location. The
+CHANGELOG plans to make them errors in 0.9, which has not been released.
+
 ## Installation
 
-The migration tool is built as part of the DOL crate:
+The migration tool is built as part of the DOL crate and needs the `cli` feature:
 
 ```bash
 cargo build --features cli --bin dol-migrate
+# or run it directly from a checkout:
+cargo run --features cli --bin dol-migrate -- 0.7-to-0.8 --dry-run src/
 ```
+
+The examples below assume the built `dol-migrate` binary is on your `PATH`.
 
 ## Usage
 
@@ -244,14 +252,14 @@ The migration tool provides clear, colored output:
 → Migrating from v0.7.x to v0.8.0
 (modernizing return statements)
 
-✓ src/container.dol
+✓ container.dol
   → gene → gen
-  → exegesis → docs
   → constraint → rule
-  → String → string
+  → exegesis → docs
   → Int32 → i32
-  → List<T> → Vec<T>
   → UInt16 → u16
+  → String → string
+  → List<T> → Vec<T>
   → return <expr> → <expr> (final expression)
 
 DONE: 1 files processed, 1 files updated
@@ -301,7 +309,8 @@ The tool uses word boundaries (`\b`) in regex patterns to avoid partial matches.
 
 ### Complex Return Statements
 
-The `--modernize` flag uses regex-based detection which may not handle all complex cases. Review the changes carefully, especially for:
+The `--modernize` flag uses regex-based detection, which may not handle every case. For example, it does not re-indent
+the remaining expression. Review the changes carefully, especially for:
 - Multi-line return statements
 - Return statements with complex expressions
 - Nested blocks with multiple return points
@@ -327,7 +336,7 @@ The migration tool includes comprehensive tests covering all transformation rule
 cargo test --features cli --bin dol-migrate
 ```
 
-All 17 tests pass successfully, covering:
+The 17 unit tests in `src/bin/dol-migrate.rs` cover:
 - Keyword transformations (gene, constraint, evolves, exegesis)
 - All type transformations (integers, floats, primitives, generics)
 - Return statement modernization

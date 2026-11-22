@@ -392,8 +392,10 @@ Warning: Gene should have an immutable ID field for distributed identity
 **Solution:**
 Add an immutable UUID field:
 ```dol
-@crdt(immutable)
-has id: Uuid
+gen Entity {
+    @crdt(immutable)
+    has id: Uuid
+}
 ```
 
 ### Issue: Performance concerns with large collections
@@ -406,8 +408,10 @@ Warning: OR-Set field 'members' has no size constraint
 **Solution:**
 Add size constraints to prevent unbounded growth:
 ```dol
-@crdt(or_set)
-has members: Set<Identity> where size <= 1000
+gen Group {
+    @crdt(or_set)
+    has members: Set<Identity> where size <= 1000
+}
 ```
 
 ### Issue: Concurrent text edits lost with LWW
@@ -420,12 +424,16 @@ Migrate from `@crdt(lww)` to `@crdt(peritext)` for text fields that need collabo
 
 ```dol
 // Before (problematic)
-@crdt(lww)
-has description: String
+gen TaskBefore {
+    @crdt(lww)
+    has description: string
+}
 
 // After (collaborative)
-@crdt(peritext, max_length=100000)
-has description: String
+gen TaskAfter {
+    @crdt(peritext, max_length=100000)
+    has description: string
+}
 ```
 
 ## Best Practices

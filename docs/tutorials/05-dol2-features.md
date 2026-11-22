@@ -1,546 +1,297 @@
-# Tutorial 5: DOL 2.0 Features
+# Tutorial 5: Expressions, Functions and Meta-programming
 
-## Introduction to DOL 2.0
+> **About the name "DOL 2.0".** Older docs call these features "DOL 2.0". It is a historical
+> name, not a version. It refers to the expression-capable generation of the language:
+> functions, control flow, pattern matching, lambdas, pipes and meta-programming, all
+> introduced around crate v0.1.0. There is no separate "DOL 2.0" specification. The language
+> is versioned by the `dol` crate, currently **0.8.2**. Before that generation, DOL was purely
+> declarative: `gen`, `trait`, `rule`, `system` and `evo`.
 
-DOL 2.0 extends DOL with functional programming features, pattern matching, advanced control flow, and meta-programming capabilities. These features enable more expressive ontology definitions while maintaining backward compatibility with DOL 1.x.
+This tutorial covers the expression side of DOL as the 0.8.2 parser accepts it. Every
+```` ```dol ```` block below parses as a whole file with `metadol::parse_file_all`. Blocks
+marked *fragment* are statements and expressions. They were checked by wrapping them in a
+`fun`. For the full list of syntax, see the [syntax reference](./syntax-reference.md).
 
-### What's New in DOL 2.0
+### What parses vs. what compiles
 
-- **Functional pipelines** - `|>` and `>>` operators for data flow
-- **Pattern matching** - `match` expressions with guards
-- **Lambdas** - First-class anonymous functions
-- **Advanced control flow** - `if/else`, `for`, `while`, `loop`
-- **Block expressions** - Scoped expressions with local bindings
-- **Rich type system** - Built-in types, generics, function types
-- **Meta-programming** - Quote, eval, and reflection
+These features all **parse** into the AST and lower to HIR. Code generation covers less:
 
-## Functional Pipelines
+- The **WASM backend** (`dol-build`, the VUDO path) supports functions, arithmetic, `if`,
+  `match`, `while`, `loop` and `for` over ranges. It does **not** support lambdas, tuples,
+  lists, `sex { }` blocks, `?`, quote/eval/reflect, idiom brackets, `this`, casts, or `for`
+  over anything other than a range.
+- **No type checking is enforced.** `fun f() -> i64 { return "hello" + true }` parses and
+  passes validation.
 
-DOL 2.0 introduces functional composition operators for expressing data transformations.
+See [`docs/DOL-STATUS-2026-11.md`](../DOL-STATUS-2026-11.md) §5 for details.
 
-### The Pipe Operator (`|>`)
+## Functions
 
-The pipe operator passes the left operand as input to the right operand:
-
-```dol
-// Data flows left to right
-data |> validate |> transform |> store
-
-// Equivalent to: store(transform(validate(data)))
-```
-
-Use pipe when you want to emphasize the data flowing through transformations:
+Functions are top-level declarations, or members of a `gen` body.
 
 ```dol
-gene data.pipeline @1.0.0 {
-    // Define a processing pipeline
-    has input: String
-    has output: String
-    is transformable
+fun add(a: i64, b: i64) -> i64 {
+    return a + b
 }
 
-exegesis {
-    A gene representing data flowing through a transformation pipeline.
-    The pipe operator (|>) passes data from left to right through each stage.
-}
-```
-
-### The Compose Operator (`>>`)
-
-The compose operator creates a new function by combining functions:
-
-```dol
-// Function composition: (f >> g)(x) = g(f(x))
-trim >> lowercase >> validate >> normalize
-
-// Creates a new function that applies all four in sequence
-```
-
-Use compose when building reusable transformation chains:
-
-```dol
-trait transform.chain @1.0.0 {
-    // Composable transformers
-    uses transform.trim @1.0.0
-    uses transform.normalize @1.0.0
-
-    is composable
-    is functional
+fun clamp(x: i64, lo: i64, hi: i64) -> i64 {
+    if x < lo {
+        return lo
+    } else if x > hi {
+        return hi
+    }
+    return x
 }
 
-exegesis {
-    Trait for composable transformation chains.
-    Use the compose operator (>>) to build pipelines.
+gen counter {
+    has value: i64 = 0
+
+    fun doubled() -> i64 {
+        return value * 2
+    }
+}
+
+docs {
+    A counter gen with a member function.
 }
 ```
 
-### Combining Pipe and Compose
+Function generics (`fun id<T>(x: T)`) do **not** parse in 0.8.2.
 
-You can mix both operators for expressive data flows:
+## Functional pipelines
 
+### Pipe (`|>`)
+
+`a |> f` passes `a` to `f`. Data flows left to right.
+
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-// Apply composed functions to data
-data |> (trim >> validate) |> process
-
-// The parenthesized composition runs first, then pipes
+let result = data |> validate |> transform |> store
 ```
 
-## Pattern Matching
+### Compose (`>>`)
 
-DOL 2.0 adds powerful pattern matching with the `match` expression.
+`f >> g` is the function that applies `f`, then `g`.
 
-### Basic Match
-
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-match value {
+let normalize = trim >> lowercase >> validate
+let out = input |> (trim >> validate) |> process
+```
+
+`|>` binds more loosely than `>>`, so `a |> f >> g` parses as `a |> (f >> g)`.
+
+## Pattern matching
+
+<!-- fragment: checked wrapped in a fun -->
+```dol
+let v = match value {
     Some(x) => x,
-    None => default,
-    _ => fallback
+    None => 0
+}
+
+let label = match n {
+    0 => "zero",
+    1 | 2 => "small",
+    x if x > 100 => "big",
+    _ => "other"
+}
+
+let p = match pair {
+    (Some(x), Some(y)) => x + y,
+    (Some(x), None) => x,
+    _ => 0
 }
 ```
 
-Pattern types supported:
-- **Identifier** - Matches and binds: `x => ...`
-- **Wildcard** - Matches anything: `_ => ...`
-- **Constructor** - Matches variants: `Some(x) => ...`
-- **Tuple** - Matches tuples: `(a, b) => ...`
-- **Literal** - Matches values: `42 => ...`
+Supported patterns: wildcards `_`, literals, identifiers, constructors `Some(x)`, tuples
+`(a, b)`, or-patterns `a | b`, and guards `if cond`. An arm can also use a block:
+`Some(x) { ... }`.
 
-### Match with Guards
+## Lambdas
 
-Add conditions to patterns with `if`:
-
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-match x {
-    value if condition => positive,
-    value if other_condition => alternative,
-    _ => default
-}
+let id = |x| x
+let double = |x: i64| x * 2
+let add = |x: i64, y: i64| -> i64 { x + y }
+let curried = |x: i64| |y: i64| x + y
+let doubled = xs.map(|x| x * 2)
+let piped = 5 |> double
 ```
 
-### Nested Patterns
+Lambdas parse, but the WASM backend cannot compile them.
 
-Patterns can be nested for complex matching:
+## Control flow
 
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-match pair {
-    (Some(x), Some(y)) => result,
-    (Some(x), None) => partial,
-    (None, _) => empty,
-    _ => default
-}
-```
+let sign = if n > 0 { 1 } else if n < 0 { -1 } else { 0 }
 
-### Using Match in Ontology
-
-```dol
-gene state.machine @1.0.0 {
-    has current_state: String
-    is stateful
+for i in 0..10 {
+    process(i)
 }
 
-exegesis {
-    State machine gene that uses pattern matching for state transitions.
-
-    Example transition logic:
-    match current_state {
-        "idle" => start_processing,
-        "running" if complete => finish,
-        "error" => recover,
-        _ => maintain
-    }
-}
-```
-
-## Lambda Expressions
-
-DOL 2.0 supports anonymous functions (lambdas) with optional type annotations.
-
-### Basic Lambda
-
-```dol
-// Simple lambda
-|x| x
-
-// Lambda with body expression
-|x| x * 2
-```
-
-### Typed Lambda
-
-Add type annotations for clarity:
-
-```dol
-// Single typed parameter
-|x: Int32| x * 2
-
-// Multiple typed parameters with return type
-|x: Int32, y: Int32| -> Int32 { x + y }
-```
-
-### Lambda in Pipelines
-
-Lambdas work naturally with pipe operators:
-
-```dol
-data |> (|x| x * 2) |> result
-
-// Or as function arguments
-map(|x| x * 2, list)
-```
-
-### Nested Lambdas (Currying)
-
-```dol
-// Curried function
-|x| |y| x + y
-
-// Equivalent to a function that returns a function
-```
-
-## Control Flow
-
-DOL 2.0 adds structured control flow expressions.
-
-### If-Else Expressions
-
-```dol
-if condition {
-    then_value
-} else {
-    else_value
-}
-
-// Chained conditions
-if x { a } else if y { b } else if z { c } else { d }
-```
-
-### For Loops
-
-Iterate over collections:
-
-```dol
 for item in collection {
-    process(item);
+    process(item)
 }
 
-// Nested loops
-for outer in outers {
-    for inner in inners {
-        combine(outer, inner);
-    }
+while running {
+    step()
+    if done { break }
 }
-```
 
-### While Loops
-
-Conditional iteration:
-
-```dol
-while condition {
-    step();
-    if done { break; }
-    continue;
-}
-```
-
-### Infinite Loops
-
-Use `loop` for infinite iteration with explicit exit:
-
-```dol
 loop {
-    process();
-    if should_stop {
-        break;
+    if should_stop() {
+        break
     }
+    continue
 }
 ```
 
-### Break and Continue
+`if` and `match` are expressions. `for`, `while`, `loop`, `break`, `continue` and `return`
+are statements. The WASM backend only compiles `for` over a range (`a..b`).
 
-- `break` - Exit the current loop
-- `continue` - Skip to the next iteration
+## Block expressions
 
-## Block Expressions
+A `{ ... }` block in expression position evaluates to its last expression.
 
-Blocks create scoped expressions with local bindings.
-
-### Basic Blocks
-
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-{
-    let x = 1;
-    let y = 2;
-    x + y  // Final expression is the block's value
+let total = {
+    let x = 1
+    let y = 2
+    x + y
 }
 ```
 
-### Nested Blocks
+## Types
+
+Use the v0.8 lowercase names: `i8`..`i128`, `u8`..`u128`, `f32`, `f64`, `bool`, `string`,
+`()`. Compound types include generics (`Vec<T>`, `Option<T>`, `Result<T, E>`), tuples,
+function types and inline enums.
 
 ```dol
-{
-    let outer = 1;
-    {
-        let inner = 2;
-        inner + outer  // Can access outer scope
-    }
+gen typed.entity {
+    has id: u64
+    has name: string
+    has score: f64
+    has active: bool
+    has metadata: Option<string>
+    has history: Vec<Result<i64, string>>
+    has scorer: (i64, string) -> bool
+    has kind: enum { User, Admin, Guest }
+}
+
+docs {
+    An entity with typed fields.
 }
 ```
 
-### Blocks in Pipelines
-
-```dol
-data |> {
-    let validated = validate(data);
-    let transformed = transform(validated);
-    transformed
-} |> store
-```
-
-## Type System
-
-DOL 2.0 includes a rich type system with built-in types, generics, and function types.
-
-### Built-in Types
-
-Integer types:
-- `Int8`, `Int16`, `Int32`, `Int64` - Signed integers
-- `UInt8`, `UInt16`, `UInt32`, `UInt64` - Unsigned integers
-
-Floating-point types:
-- `Float32`, `Float64`
-
-Other types:
-- `Bool` - Boolean
-- `String` - Text
-- `Void` - No value
-
-### Generic Types
-
-```dol
-// Option type
-Option<Int32>
-
-// Result type
-Result<Int32, String>
-
-// Nested generics
-Result<Option<Int32>, String>
-```
-
-### Function Types
-
-```dol
-// Simple function type
-(Int32) -> Int32
-
-// Multiple parameters
-(Int32, String, Bool) -> Result<Int32, String>
-
-// Higher-order function type
-((Int32) -> Int32, List<Int32>) -> List<Int32>
-```
-
-### Using Types in Ontology
-
-```dol
-gene typed.entity @1.0.0 {
-    has id: UInt64
-    has name: String
-    has score: Float64
-    has active: Bool
-    has metadata: Option<String>
-
-    is typed
-}
-
-exegesis {
-    Entity with explicit DOL 2.0 type annotations.
-    Types enable static analysis and code generation.
-}
-```
+The old `Int32`/`String`/`Void`/`List<T>` names still parse, but warn "deprecated in v0.8.0".
+They are planned to become errors in 0.9.
 
 ## Meta-programming
 
-DOL 2.0 includes meta-programming primitives for code manipulation.
-
-### Quote (`'`)
-
-Quote prevents evaluation, treating code as data:
-
+<!-- fragment: checked wrapped in a fun -->
 ```dol
-'{ value }
-
-// The expression inside is not evaluated
-// It becomes a data structure representing the code
+let code = 'value
+let three = !{ 1 + 2 }
+let info = ?Point
+let applied = [| add a b |]
+let s = #stringify(x)
 ```
 
-### Eval (`!`)
+| Form | Meaning | Status |
+|------|---------|--------|
+| `'expr` | Quote: the expression as data | Parses into `Expr::Quote` |
+| `!{ expr }` | Eval | Parses into `Expr::Eval` |
+| `?Type` | Reflect on a type | Parses. `src/reflect.rs` provides the runtime type registry |
+| `[\| f a b \|]` | Idiom brackets (applicative style) | Parses. Desugared by `IdiomDesugar` |
+| `#name(args)` | Macro invocation | Parses. Built-in macros live in `src/macros` |
 
-Eval evaluates quoted code:
+None of these compile to WASM. Quasi-quote with a backtick or `~` does **not** parse.
 
-```dol
-!{ code }
+## Operator precedence
 
-// Executes the code inside the braces
-```
+Listed from loosest to tightest, as defined in `src/pratt.rs`:
 
-### Reflect (`?`)
+| Operators | Associativity |
+|-----------|---------------|
+| `:=` | right |
+| `\|>` | left |
+| `@` (apply) | left |
+| `>>` | right |
+| `->` | right |
+| `..` | none |
+| `\|\|` | left |
+| `&&` | left |
+| `==` `!=` | none |
+| `<` `>` `<=` `>=` | none |
+| `+` `-` | left |
+| `*` `/` `%` | left |
+| `^` | right |
+| `as` | left |
+| `.` | left |
 
-Reflect inspects type information:
+Prefix operators (`-`, `!`, `'`, `?`) bind tighter than every infix operator except `as` and `.`.
 
-```dol
-?TypeName
-
-// Returns type metadata about TypeName
-```
-
-### Meta-programming Use Cases
-
-```dol
-gene meta.aware @1.0.0 {
-    has type_info: String
-    is reflective
-}
-
-exegesis {
-    Gene that can inspect its own type at runtime.
-
-    Use reflection for:
-    - Dynamic dispatch
-    - Serialization/deserialization
-    - Type-safe code generation
-}
-```
-
-## Operator Precedence
-
-DOL 2.0 operators follow standard precedence rules:
-
-| Precedence | Operators | Associativity |
-|------------|-----------|---------------|
-| Highest    | `()`, `[]`, `.` | Left |
-| | Unary: `!`, `-`, `?`, `'` | Right |
-| | `*`, `/`, `%` | Left |
-| | `+`, `-` | Left |
-| | `>>` (compose) | Left |
-| | `|>` (pipe) | Left |
-| | `<`, `>`, `<=`, `>=` | Left |
-| | `==`, `!=` | Left |
-| | `&&` | Left |
-| Lowest | `\|\|` | Left |
-
-Example:
+## Complete example
 
 ```dol
-// a + b * c parses as a + (b * c)
-a + b * c
+module stream.processing @ 0.1.0
 
-// a |> f >> g >> h parses as a |> (f >> g >> h)
-a |> f >> g >> h
-
-// a == b && c != d parses as (a == b) && (c != d)
-a == b && c != d
-```
-
-## Backward Compatibility
-
-DOL 2.0 is fully backward compatible with DOL 1.x:
-
-```dol
-// DOL 1.x syntax still works
-gene container.exists @1.0.0 {
-    has identifier: string
-    is entity
-    is persistent
+gen stream.processor {
+    has buffer_size: u32 = 64
+    has dropped: u64 = 0
+    processor is streaming
 }
 
-exegesis {
-    Standard DOL 1.x gene works unchanged in DOL 2.0.
+docs {
+    A stream processor with a bounded buffer.
 }
 
-// DOL 1.x trait syntax
-trait container.lifecycle @1.0.0 {
-    uses container.exists @1.0.0
-    is lifecycle
+fun classify(code: i64) -> string {
+    return match code {
+        0 => "ok",
+        c if c < 100 => "warning",
+        _ => "error"
+    }
 }
 
-exegesis {
-    Standard DOL 1.x trait works unchanged in DOL 2.0.
+fun process(items: Vec<i64>) -> i64 {
+    let total = items
+        |> filter_valid
+        |> sum
+    if total > 1000 {
+        return 1000
+    }
+    return total
+}
+
+sex fun report(msg: string) {
+    println(msg)
 }
 ```
 
-## Complete Example
+## Checking your files
 
-Here's a complete example combining DOL 2.0 features:
-
-```dol
-gene stream.processor @1.0.0 {
-    has input_type: String
-    has output_type: String
-    has buffer_size: UInt32
-
-    is functional
-    is streaming
-    is typed
-}
-
-exegesis {
-    Stream processor gene with DOL 2.0 functional features.
-
-    Processing model:
-    - Input flows through pipeline stages
-    - Each stage can transform, filter, or aggregate
-    - Output is produced incrementally
-
-    Example pipeline:
-        input
-        |> (parse >> validate)
-        |> transform
-        |> {
-            let filtered = filter(|x| x.valid, data);
-            aggregate(filtered)
-        }
-        |> output
-
-    Pattern matching for error handling:
-        match result {
-            Ok(data) => emit(data),
-            Err(e) if recoverable(e) => retry(),
-            Err(e) => fail(e)
-        }
-}
-```
-
-## Testing DOL 2.0 Syntax
-
-Parse your DOL 2.0 files:
+`dol-parse` and `dol-check` only parse the **first** declaration of a file and silently ignore
+the rest. To check a whole file, call `metadol::parse_file_all` from Rust. The parser tests
+for these features live in `tests/dol2_tests.rs`:
 
 ```bash
-cargo run --bin dol-parse -- my-file.dol
+cargo test --test dol2_tests
 ```
 
-Run the DOL 2.0 test suite:
+## Key takeaways
 
-```bash
-cargo test dol2
-```
+1. "DOL 2.0" is a historical name for the expression features, not a version. The language
+   ships as `dol` 0.8.2.
+2. Pipes, composition, `match`, lambdas, blocks and meta-programming all parse.
+3. Only a subset compiles to WASM, and types are not enforced yet.
 
-## Key Takeaways
+## Next steps
 
-1. **Pipe operator (`|>`)** - Data flows left to right
-2. **Compose operator (`>>`)** - Build function chains
-3. **Pattern matching** - Destructure and match with guards
-4. **Lambdas** - Anonymous functions with optional types
-5. **Control flow** - `if`, `for`, `while`, `loop` expressions
-6. **Block expressions** - Scoped local bindings
-7. **Rich types** - Built-in types, generics, function types
-8. **Meta-programming** - Quote, eval, reflect primitives
-9. **Backward compatible** - All DOL 1.x code works unchanged
-
-## Next Steps
-
-- Explore the [Type System Reference](../reference/types.md)
-- Learn about [Code Generation](../reference/codegen.md)
-- See [Advanced Patterns](../advanced/patterns.md)
+- [Syntax reference](./syntax-reference.md)
+- [Grammar (EBNF)](../grammar.ebnf)

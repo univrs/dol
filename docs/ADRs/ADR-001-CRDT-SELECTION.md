@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted. `@crdt(...)` field annotations are implemented in the parser; Automerge code generation is partial (see Implementation Notes) |
 | **Date** | 2025-10-15 |
 | **Deciders** | VUDO Core Team |
 | **Supersedes** | N/A |
@@ -91,21 +91,25 @@ While Yrs is excellent, Automerge offered:
 
 ### DOL CRDT Annotations
 
+The annotation goes **before** the field. Valid strategies (`src/parser.rs`, `CrdtStrategy`): `immutable`, `lww`, `or_set`, `pn_counter`, `peritext`, `rga`, `mv_register`. A trailing annotation (`has id: u64 @crdt(...)`) does not do what it looks like: the parser attaches it to the *next* field.
+
 ```dol
 gen UserProfile {
-    has id: u64 @crdt(immutable)
-    has name: string @crdt(lww)
-    has bio: string @crdt(peritext)
-    has tags: Vec<string> @crdt(or_set)
-    has score: i64 @crdt(pn_counter)
-    
+    @crdt(immutable) has id: u64
+    @crdt(lww) has name: string
+    @crdt(peritext) has bio: string
+    @crdt(or_set) has tags: Vec<string>
+    @crdt(pn_counter) has score: i64
+
     docs {
         User profile with field-level CRDT strategies.
     }
 }
 ```
 
-### Generated Automerge Code
+### Generated Automerge Code (illustrative)
+
+The CRDT → Automerge generator lives in `crates/dol-codegen-rust`. As of dol 0.8.2 it is not wired into any CLI, it is not built in CI, and its output is not compiled by its tests (status audit §4). The sketch below shows the intended shape. It is not verified output.
 
 ```rust
 impl UserProfile {
@@ -127,8 +131,8 @@ impl UserProfile {
 
 - [Automerge Documentation](https://automerge.org/docs/)
 - [Ink & Switch Local-First Research](https://www.inkandswitch.com/local-first/)
-- [DOL CRDT Specification](../specs/dol-crdt-schema-v1.0.md)
-- [CRDT Implementation Guide](../specs/dol-crdt-implementation-guide.md)
+- [DOL CRDT Specification](../../specs/dol-crdt-schema-v1.0.md)
+- [CRDT Implementation Guide](../../specs/dol-crdt-implementation-guide.md)
 
 ## Changelog
 
@@ -136,4 +140,5 @@ impl UserProfile {
 |------|--------|
 | 2025-10-15 | Initial decision |
 | 2025-12-01 | Added 7th strategy (mv_register) |
-| 2026-01-15 | Updated to v0.8.1 syntax examples |
+| 2026-01-15 | Updated to v0.8 syntax examples |
+| 2026-11-21 | Fixed annotation placement in example (prefix form); marked Automerge codegen as partial; fixed spec links |

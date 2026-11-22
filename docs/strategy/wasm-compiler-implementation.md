@@ -1,5 +1,7 @@
 # WASM Compiler Implementation
 
+> **Planning document (historical).** Status claims here are not authoritative. See [docs/DOL-STATUS-2026-11.md](../DOL-STATUS-2026-11.md).
+
 ## Overview
 
 This document describes the implementation of the WASM compilation pipeline for the DOL language using direct bytecode emission.
