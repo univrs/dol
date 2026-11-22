@@ -15,6 +15,18 @@ entries; see `git log` between the tags for their changes. Dates below are git t
 - Packaging: the published crate now contains only `src/`, `Cargo.toml`, `README.md`, `CHANGELOG.md` and the licence files. dol 0.8.2 shipped 734 files, including internal notes, prototypes and sibling apps.
 - The internal `wasm-stress-test` binary now requires `--features cli,wasm`, so `cargo install dol` without `--features cli` no longer installs it.
 - README rewritten for v0.8.2.
+- `dol-migrate`: `--diff` is now preview-only, like `--dry-run`. Add `--write` to show the diff and apply it. Plain invocation still rewrites files in place.
+
+### Fixed
+- `vudo` binary compiles again (`EvalResult::SpiritLoaded` was not handled in the REPL loop). Smoke tests added.
+- `examples/wasm_basic.rs` compiles again (missing `attributes` field), so plain `cargo test --features cli,serde,wasm` builds.
+- `dol-migrate` no longer rewrites prose. Line comments, string literals and `docs`/`exegesis` bodies are left untouched, e.g. "gene" stays "gene" in documentation text.
+- `dol-codegen -t typescript` and `-t jsonschema` now emit typed `has x: T` fields; they were silently dropped. JSON Schema fields with a default are not marked required.
+- Stale "DOL v0.9.0" module docs in `manifest` and `system`.
+- `apps/gen-registry`: removed `[[bench]]` and `[[bin]]` entries whose sources do not exist, and fixed API drift so the library and CLI compile. Its integration tests and examples still do not compile.
+- `crates/dol-codegen-wit` compiles again (missing `HasField::personal`). Trivial API drift fixed in examples, tests and benches of `dol-reflect`, `vudo-ai`, `vudo-planetserve` and `vudo-state`.
+- Dead links to the removed `docs/book/` CRDT guide.
+- `docs/security/IMPLEMENTATION-SUMMARY.md` and `bft-test-report.md` no longer claim passing tests or production readiness: the adversarial suite does not compile and BFT voting is simulated. `docs/reports/DOL_Bootstrap_Completion.md` is flagged as a task brief, because self-hosting does not work.
 
 ## [0.8.2] - 2026-11-20
 
