@@ -334,13 +334,7 @@ Warning: Field 'tags' uses LWW on collection type Set<String>
 
 ## Contributing
 
-To add new CRDT tools or improve recommendations:
-
-1. Edit `src/mcp/recommendations.rs` for recommendation logic
-2. Edit `src/mcp/diagnostics.rs` for validation rules
-3. Edit `src/mcp/server.rs` to add new tool handlers
-4. Add tests in the respective modules
-5. Update documentation
+This project is not accepting external contributions or pull requests.
 
 ## References
 

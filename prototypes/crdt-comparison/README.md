@@ -223,13 +223,7 @@ See [`docs/research/crdt-evaluation-matrix.md`](../../docs/research/crdt-evaluat
 
 ## Contributing
 
-To add a new CRDT library:
-
-1. Create `<library>-impl/` directory
-2. Implement `CRDTTodoList` interface from `common/domain.ts`
-3. Add to benchmark harness
-4. Run benchmarks
-5. Update evaluation matrix
+This project is not accepting external contributions or pull requests.
 
 ## License
 

@@ -313,7 +313,6 @@ RUST_LOG=debug
 
 - [API Documentation](api.md)
 - [Architecture](ARCHITECTURE.md)
-- [Contributing](../CONTRIBUTING.md)
 - [Examples](../examples/)
 
 ---

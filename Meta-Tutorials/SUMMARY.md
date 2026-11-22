@@ -357,11 +357,9 @@ dol-codegen --all-targets schema.dol
 3. Build a real application
 4. Share with the community
 
-### Contribute
-1. Add more examples
-2. Improve tutorials
-3. Fix issues
-4. Share patterns
+### Contributing
+
+This project is not accepting external contributions or pull requests.
 
 ## Resources
 

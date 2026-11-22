@@ -110,20 +110,7 @@ dol-export --format json schemas/my-schema.dol
 
 ## Contributing
 
-We welcome contributions to the specification!
-
-### Feedback
-
-- **Issues:** https://github.com/univrs/dol/issues
-- **Discussions:** https://github.com/univrs/dol/discussions
-- **Email:** standards@univrs.org
-
-### Process
-
-1. Open an issue describing the problem or suggestion
-2. Discuss with maintainers and community
-3. Submit a pull request with proposed changes
-4. Participate in review process
+This project is not accepting external contributions or pull requests.
 
 ## License
 

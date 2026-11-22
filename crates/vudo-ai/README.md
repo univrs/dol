@@ -266,12 +266,7 @@ at your option.
 
 ## Contributing
 
-Contributions are welcome! Please ensure:
-
-1. All tests pass: `cargo test`
-2. Code is formatted: `cargo fmt`
-3. No clippy warnings: `cargo clippy`
-4. Documentation is updated
+This project is not accepting external contributions or pull requests.
 
 ## Acknowledgments
 

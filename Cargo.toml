@@ -4,7 +4,7 @@ version = "0.8.2"
 edition = "2021"
 rust-version = "1.84"
 authors = ["Univrs <ardeshir.org@gmail.com>"]
-description = "DOL (Design Ontology Language) - A declarative specification language for ontology-first development"
+description = "DOL (Design Ontology Language): parser, validator and code generators (Rust, TypeScript, JSON Schema, WebAssembly) for an ontology-first DSL"
 documentation = "https://docs.rs/dol"
 homepage = "https://github.com/univrs/dol"
 repository = "https://github.com/univrs/dol"
@@ -12,16 +12,15 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["dsl", "ontology", "specification", "parser", "language"]
 categories = ["development-tools", "parser-implementations", "command-line-utilities"]
-exclude = [
-    ".github/",
-    "docs/tutorials/",
-    "examples/*.test",
-    "packages/",
-    "compiler-progress/",
-    "effect-v2-results/",
-    "identity-progress/",
-    "vm-progress/",
-    "stdlib/",
+# Ship only what the library and binaries need. Tests, examples and the rest
+# of the repository (docs, prototypes, sibling crates) stay in git.
+include = [
+    "/src/**/*.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
 ]
 
 [lib]
@@ -67,6 +66,12 @@ required-features = ["cli"]
 name = "dol-build"
 path = "src/bin/dol-build.rs"
 required-features = ["cli"]
+
+# Internal stress-test tool; not installed by `cargo install dol --features cli`.
+[[bin]]
+name = "wasm-stress-test"
+path = "src/bin/wasm-stress-test.rs"
+required-features = ["cli", "wasm"]
 
 [[bin]]
 name = "vudo"

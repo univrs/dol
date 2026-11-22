@@ -3,7 +3,12 @@
 **A P2P registry for sharing DOL Gen definitions with CRDT annotations**
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-79%20passing-brightgreen)](#testing)
+
+> [!WARNING]
+> **Status: prototype, does not build.** As of dol v0.8.2 `cargo check` fails on this crate's
+> manifest (the `search_performance` and `sync_performance` benches it declares do not exist), so
+> none of its tests run. It is not part of the published `dol` crate and is not built in CI.
+> P2P sync is simulated. Treat the rest of this README as design intent.
 
 ---
 
@@ -398,7 +403,6 @@ cargo bench
 - [API Documentation](docs/api.md)
 - [CRDT Schema Design](docs/crdt-schema.md)
 - [Architecture Overview](docs/architecture.md)
-- [Contributing Guide](docs/contributing.md)
 
 ### Examples
 
@@ -410,16 +414,7 @@ cargo bench
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new functionality
-4. Ensure `cargo test` passes
-5. Run `cargo fmt` and `cargo clippy`
-6. Submit a pull request
-
----
+This project is not accepting external contributions or pull requests.
 
 ## License
 

@@ -138,13 +138,4 @@ wasm-pack build
 
 ## Contributing
 
-Add your own examples! Follow the pattern:
-
-1. Create `XX-descriptive-name.dol`
-2. Include comprehensive docs block
-3. Demonstrate specific feature
-4. Add to this README
-
----
-
-**See also**: [Meta-Programming Tutorials](../README.md)
+This project is not accepting external contributions or pull requests.

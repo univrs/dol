@@ -223,4 +223,4 @@ MIT OR Apache-2.0
 
 ## Contributing
 
-This is part of the VUDO Runtime (MYCELIUM phase) within the univrs-dol project.
+This project is not accepting external contributions or pull requests.

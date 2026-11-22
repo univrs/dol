@@ -1,713 +1,410 @@
-# DOL 2.0
+# DOL — Design Ontology Language
 
-[![Build Status](https://github.com/univrs/metadol/workflows/CI/badge.svg)](https://github.com/univrs/metadol/actions)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/univrs/dol/actions/workflows/ci.yml/badge.svg)](https://github.com/univrs/dol/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/dol.svg)](https://crates.io/crates/dol)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
 [![Rust Version](https://img.shields.io/badge/rust-1.84%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-1914%20passing-brightgreen)](https://github.com/univrs/metadol/actions)
 
 > [!CAUTION]
-> This project is a research demonstrator. It is in early development and may change significantly. Using permissive Univrs tools in your repository requires careful attention to security considerations and careful human supervision, and even then things can still go wrong. Use it with caution, and at your own risk. See [Disclaimer](#disclaimer).
+> DOL is an experimental research project. It changes often, has no stability guarantees, and is not production software. No support is provided (see [SUPPORT.md](SUPPORT.md)). Read [Known limitations](#known-limitations) before relying on it.
 
-> **[📖 Architecture Documentation](docs/ARCHITECTURE.md)** — Comprehensive technical reference for DOL v0.8.0
+DOL is a declarative DSL for ontology-first development. You declare what a system *is* — genes (data shapes), traits (behaviours), rules (invariants), systems (compositions) and evolutions (version lineage), each with a `docs` block — and the toolchain parses, validates and generates code from it. The language also has functions, pattern matching, effects (`sex`) and meta-programming.
 
-**A declarative DSL for ontology-first development with meta-programming and multi-target compilation**
+This README describes **crate `dol` v0.8.2** (library name `metadol`). The syntax era is v0.8 "Clarity". For a verified, line-by-line account of what works, see [docs/DOL-STATUS-2026-11.md](docs/DOL-STATUS-2026-11.md).
 
----
-
-## Overview
-
-DOL (Design Ontology Language) is a DSL toolchain that enables ontology-first development. Instead of writing code and hoping it aligns with your domain model, DOL lets you declare your domain's fundamental structure, behaviors, and constraints explicitly. The toolchain then validates, type-checks, and compiles to multiple targets including Rust, TypeScript, WebAssembly, and JSON Schema.
-
-### What Makes DOL 2.0 Different?
-
-| Traditional Approach | DOL 2.0 Approach |
-|---------------------|------------------|
-| Code → Tests → Documentation | **Design Ontology → Tests → Code** |
-| Runtime errors from type mismatches | **Compile-time guarantees** |
-| Scattered domain knowledge | **Single source of truth** |
-| Manual code generation | **Multi-target compilation** |
-| Limited metaprogramming | **Quote, Eval, Macros, Reflection** |
-
-DOL 2.0 treats ontology as a first-class concern. You define **genes** (atomic types), **traits** (composable behaviors), **constraints** (invariants), **systems** (compositions), and **evolutions** (version tracking). Each declaration includes mandatory **exegesis**—human-readable documentation that bridges formal specification and domain understanding.
-
-**Full documentation available at [https://learn.univrs.io/dol](https://learn.univrs.io/dol)**
+> **About "DOL 2.0".** Older docs call the language "DOL 2.0". That is a historical name for the generation of the language that added expressions (functions, `match`, lambdas, pipes, quote/eval, `sex` effects) on top of the original declarative DOL 1.x. It is not a version number and there is no separate DOL 2.0 specification. The only enforced version is the crate version.
 
 ---
 
-## Features
+## What's new in 0.8.2 — VUDO host ABI
 
-### Core Language
+DOL-compiled Spirits now link and run in the VUDO VM. A bodiless `sex fun host_*` declaration compiles to a WebAssembly import from module `vudo`, with the exact signature the VM linker registers (`src/wasm/host_abi.rs`). There are 15 host functions:
 
-- **Genes** — Atomic types with fields and constraints
-- **Traits** — Interface contracts with methods and events
-- **Constraints** — Validation rules and invariants
-- **Systems** — Module compositions with versioned dependencies
-- **Evolutions** — Semantic versioning and migration tracking
-
-### DOL 2.0 Expressions
-
-```dol
-// Lambdas and higher-order functions
-transform = |x: Int64| -> Int64 { x * 2 }
-
-// Pattern matching with guards
-match container.state {
-    Running if container.healthy { continue() }
-    Stopped { restart() }
-    _ { log("unknown state") }
-}
-
-// Pipelines and composition
-result = data |> validate >> transform |> persist
-
-// Control flow
-for item in collection {
-    if item.active { process(item) }
-}
-```
-
-### Meta-Programming (Q2)
+| Area | Functions |
+|------|-----------|
+| Time / random | `host_time_now`, `host_random_bytes` |
+| Logging | `host_log` |
+| Storage | `host_storage_read`, `host_storage_write`, `host_storage_delete` |
+| Network | `host_network_connect`, `host_network_listen`, `host_network_broadcast` |
+| Credit | `host_credit_balance`, `host_credit_transfer`, `host_credit_reserve`, `host_credit_release`, `host_credit_consume`, `host_credit_available` |
 
 ```dol
-// Quote — capture expressions as AST data
-expr = '(1 + 2 * 3)           // Quoted<Int64>
+sex fun host_log(level: i64, msg: string) -> i64
 
-// Eval — execute quoted expressions
-result = !expr                 // Int64 = 7
-
-// Macros — compile-time code transformation
-#derive(Debug, Clone)
-gene Container { has id: UInt64 }
-
-message = #format("Hello, {}!", name)
-#assert(count > 0, "count must be positive")
-
-// Reflect — runtime type introspection
-info = ?Container
-// info.name == "Container"
-// info.fields == [{ name: "id", type: "UInt64" }]
-
-// Idiom Brackets — applicative functor style
-result = [| add mx my |]      // Desugars to: add <$> mx <*> my
-```
-
-### 20 Built-in Macros
-
-| Macro | Description |
-|-------|-------------|
-| `#stringify(expr)` | Convert expression to string |
-| `#concat(a, b, ...)` | Concatenate string literals |
-| `#env("VAR")` | Read environment variable at compile time |
-| `#cfg(condition)` | Conditional compilation |
-| `#derive(Trait, ...)` | Generate trait implementations |
-| `#assert(cond)` | Runtime assertion with auto-generated message |
-| `#assert_eq(a, b)` | Assert equality |
-| `#assert_ne(a, b)` | Assert inequality |
-| `#format(fmt, ...)` | String formatting with `{}` placeholders |
-| `#dbg(expr)` | Debug print (returns value) |
-| `#todo(msg)` | Mark unimplemented code |
-| `#unreachable()` | Mark unreachable code paths |
-| `#compile_error(msg)` | Emit compile-time error |
-| `#vec(a, b, c)` | Create vector from elements |
-| `#file()` | Current file name |
-| `#line()` | Current line number |
-| `#column()` | Current column number |
-| `#module_path()` | Current module path |
-| `#option_env("VAR")` | Optional environment variable |
-| `#include(path)` | Include file contents |
-
-### Multi-Target Compilation
-
-```bash
-# Compile to Rust
-dol build --target rust src/domain.dol -o generated/
-
-# Compile to TypeScript
-dol build --target typescript src/domain.dol -o generated/
-
-# Generate JSON Schema for validation
-dol build --target jsonschema src/domain.dol -o schemas/
-
-# Compile Spirit projects to WASM with JS bindings (v0.8.1+)
-dol-build                              # DOL → HIR → Rust → WASM + bindings
-dol-build --release -o ./dist          # Optimized production build
-```
-
-See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** for a 5-minute WASM tutorial.
-
-### MCP Server (AI Integration)
-
-DOL 2.0 includes a Model Context Protocol (MCP) server for AI-driven development:
-
-```bash
-# Start MCP server
-dol-mcp serve
-
-# Available tools
-dol/parse           # Parse DOL source → AST
-dol/typecheck       # Type check source
-dol/compile/rust    # Compile to Rust
-dol/compile/typescript  # Compile to TypeScript
-dol/eval            # Evaluate expression
-dol/reflect         # Get type information
-dol/format          # Format source code
-dol/macros/list     # List available macros
-dol/macros/expand   # Expand a macro
-```
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Rust toolchain 1.84 or later ([install from rustup.rs](https://rustup.rs))
-
-### Clone and Build
-
-```bash
-# Clone the repository
-git clone https://github.com/univrs/dol.git
-cd dol
-
-# Build the project
-cargo build --release
-
-# Run tests (1914 tests)
-cargo test
-```
-
-### Create Your First .dol File
-
-Create a file named `example.dol`:
-
-```dol
-gene user.Account {
-    has id: UInt64
-    has email: String
-    has created_at: Timestamp
-    
-    constraint valid_email {
-        this.email.contains("@")
-    }
-  
-  exegesis {
-      A user account represents an authenticated entity in the system.
-      Every account has a unique identifier, validated email address,
-      and creation timestamp.
-    }
+sex fun hello() -> i64 {
+    return host_log(2, "hello from DOL")
 }
-
-
-
-trait user.Authenticatable {
-    uses user.Account
-    
-    fun authenticate(password: String) -> Bool
-    fun reset_password(new_password: String) -> Result<Void, Error>
-    
-    each authentication emits AuthEvent 
-  
-    exegesis {
-      Authenticatable provides password-based authentication
-      with secure password reset capabilities.
-    }
-}
-
-
 ```
 
-### Parse and Validate
-
-```bash
-# Parse the file
-cargo run --features cli --bin dol-parse -- example.dol
-
-# Validate with type checking
-cargo run --features cli --bin dol-check -- example.dol
-
-# Generate Rust code
-cargo run --features cli --bin dol-parse -- --format rust example.dol
-```
-
-### Expected Output
-
-```
-✓ example.dol
-    user.Account gene with 3 fields, 1 constraint
-    user.Authenticatable trait with 2 methods
-
-Summary
-  Total:    2 declarations
-  Success:  2
-  Errors:   0
-```
+A `string` argument lowers to a `(ptr, len)` pair, and modules that import pointer-taking host functions export `memory`. Declaring a `host_*` function the VM does not provide, or with the wrong arity or parameter types, is a compile error. See [CHANGELOG.md](CHANGELOG.md#082---2026-11-20) for details.
 
 ---
 
 ## Installation
 
-### From Source
+All command-line tools are behind the `cli` feature:
 
 ```bash
-# Clone and build
+cargo install dol --features cli
+```
+
+This installs `dol-parse`, `dol-check`, `dol-test`, `dol-codegen`, `dol-migrate`, `dol-mcp`, `dol-build` and `dol-build-crate`. There is no single `dol` binary. Without `--features cli`, no DOL tools are installed.
+
+From source:
+
+```bash
 git clone https://github.com/univrs/dol.git
 cd dol
-cargo build --release
-
-# Install CLI tools
-cargo install --path . --features cli
-
-# Verify installation
-dol-parse --version
-dol-check --version
-dol-test --version
-dol-build --version
+cargo build --features cli --bins
 ```
 
-### Optional Features
+Requires Rust 1.84 or later.
 
-```bash
-# With CLI tools
-cargo build --features cli
+To use DOL as a library:
 
-# With serialization support
-cargo build --features serde
-
-# With MLIR/WASM (requires LLVM 18)
-cargo build --features mlir,wasm
+```toml
+[dependencies]
+dol = "0.8.2"                                          # parser, validator, codegen, transforms
+# dol = { version = "0.8.2", features = ["wasm-compile"] }  # + direct WASM compiler
 ```
+
+The library is imported as `metadol`, not `dol`.
+
+### Cargo features
+
+| Feature | Enables |
+|---------|---------|
+| *(default)* | Lexer, parser, AST, validator, typechecker, HIR lowering, Rust/TypeScript/JSON Schema codegen, macros, reflection, transforms |
+| `cli` | The command-line tools (implies `serde`) |
+| `serde` | Serialization of the AST; required by the MCP server |
+| `wasm-compile` | Direct DOL → WASM compiler (`metadol::compile_source`, `WasmCompiler`); browser-compatible |
+| `wasm-runtime` | WASM execution via `wasmtime` (native only) |
+| `wasm` | `wasm-compile` + `wasm-runtime` |
+| `mlir`, `wasm-mlir` | Experimental MLIR backend. Needs MLIR/LLVM development headers; not built in CI |
+| `vudo` | The `vudo` binary. **It does not compile in 0.8.2** (non-exhaustive match in `src/bin/vudo.rs`) |
 
 ---
 
-## CLI Tools
+## Quick start
 
-### `dol-parse`
-
-Parse DOL files and output AST in various formats.
-
-```bash
-dol-parse <file.dol>                    # Human-readable output
-dol-parse --format json <file.dol>      # JSON AST
-dol-parse --format rust <file.dol>      # Generate Rust code
-dol-parse --format typescript <file.dol> # Generate TypeScript
-```
-
-### `dol-check`
-
-Validate DOL files with full type checking.
-
-```bash
-dol-check examples/                     # Check directory
-dol-check --strict src/**/*.dol         # Strict mode
-dol-check --require-exegesis *.dol      # Require documentation
-```
-
-### `dol-test`
-
-Run tests defined in `.dol.test` files.
-
-```bash
-dol-test examples/tests/                # Run test suite
-dol-test --output tests/ *.dol.test     # Generate Rust tests
-```
-
-### `dol-build`
-
-Compile DOL Spirit projects to WebAssembly with JavaScript bindings.
-
-```bash
-dol-build                               # Build current directory
-dol-build --release                     # Optimized build
-dol-build -v                           # Verbose output
-dol-build --clean                      # Clean build
-```
-
-**6-Stage Pipeline**: Module resolution → Rust codegen → Cargo.toml → WASM compilation → JS bindings → Package
-
-See **[docs/cli/BUILD.md](docs/cli/BUILD.md)** for comprehensive documentation, examples, and roadmap.
-
-**Quick Example:**
-```dol
-// src/lib.dol
-fun add(a: i32, b: i32) -> i32 { a + b }
-```
-```bash
-dol-build && node -e "
-  import('./target/spirit/pkg/my_spirit.js').then(async m => {
-    await m.default();
-    console.log(m.add(5, 3)); // 8
-  })
-"
-```
-
-### `dol-mcp`
-
-Model Context Protocol server for AI integration.
-
-```bash
-dol-mcp serve                           # Start MCP server (stdio)
-dol-mcp manifest                        # Print server manifest
-dol-mcp tool dol/parse source="..."     # Execute tool directly
-```
-
----
-
-## Language Reference
-
-### Genes
-
-Atomic types with fields, constraints, and optional inheritance.
+Create `example.dol`:
 
 ```dol
-gene container.Container {
-    has id: UInt64
-    has name: String
-    has state: ContainerState
-    has resources: ResourceLimits
-    
-    constraint valid_name {
-        this.name.length > 0 && this.name.length <= 255
-    }
-    
-    constraint resources_bounded {
-        this.resources.memory <= MAX_MEMORY
-    }
-  
-    exegesis {
-      Container is the fundamental unit of workload isolation.
-      Each container has immutable identity, mutable state,
-      and enforced resource boundaries.
-    }
+gen user.account {
+    has id: u64
+    has email: string
+    has active: bool
 }
 
-```
-
-### Traits
-
-Interface contracts with methods, events, and quantified statements.
-
-```dol
-trait container.Lifecycle {
-    uses container.Container
-    
-    fun start() -> Result<Void, Error>
-    fun stop(force: Bool) -> Result<Void, Error>
-    fun restart() -> Result<Void, Error>
-    
-    each state_change emits LifecycleEvent
-    all containers is monitored
-  
-    exegesis {
-      Lifecycle defines the state machine for container
-      management with event emission on transitions.
-    }
+docs {
+    A user account is an authenticated entity with a unique id,
+    an email address and an active flag.
 }
 
-trait container.Health {
-    uses container.Container
-    
-    fun check() -> Result<HealthStatus, Error>
-    
-    exegesis {
-      Health provides a mechanism to assess the health
-      of a container based on its current state and
-      resource utilization.
-    }
+trait user.authenticatable {
+    uses user.account
+    each login emits auth_event
 }
 
-```
-
-### Constraints
-
-Validation rules and domain invariants.
-
-```dol
-constraint container.Integrity {
-    identity matches original_identity
-    state never undefined
-    boundaries never exceeded
-  
-  exegesis {
-    Container integrity ensures immutable identity,
-    defined state, and enforced resource limits.
-  }
+docs {
+    An authenticatable account emits an event on every login.
 }
 
-```
-
-### Systems
-
-Top-level compositions with versioned dependencies.
-
-```dol
-system univrs.Orchestrator @ 0.3.0 {
-    requires container.Container >= 0.1.0
-    requires container.Lifecycle >= 0.1.0
-    requires scheduler.Scheduler >= 0.2.0
-    
-    each container has supervisor
-    all containers is health_checked
-  
-   exegesis {
-     The Orchestrator manages container lifecycles,
-     scheduling, and health monitoring across nodes.
-  }
-  
+rule user.identity {
+    id never changes
+    email matches verified_address
 }
 
-
-```
-
-### Evolutions
-
-Version migration with semantic tracking.
-
-```dol
-evolves container.Lifecycle @ 0.2.0 > 0.1.0 {
-    adds fun pause() -> Result<Void, Error>
-    adds fun resume() -> Result<Void, Error>
-    deprecates fun restart()
-    because "Live migration requires pause/resume semantics"
-  
-
-  exegesis {
-     Version 0.2.0 introduces pause/resume for live migration
-     support, deprecating the atomic restart operation.
-  }
+docs {
+    An account keeps its id for life, and its email must match a
+    verified address.
 }
-
-
 ```
 
----
+Generate code from it:
 
-## Type System
-
-### Primitive Types
-
-| Type | Description |
-|------|-------------|
-| `Bool` | Boolean value |
-| `Int8`, `Int16`, `Int32`, `Int64` | Signed integers |
-| `UInt8`, `UInt16`, `UInt32`, `UInt64` | Unsigned integers |
-| `Float32`, `Float64` | Floating-point numbers |
-| `String` | UTF-8 string |
-| `Bytes` | Byte array |
-| `Timestamp` | Date/time |
-| `Duration` | Time span |
-| `Void` | No value |
-
-### Generic Types
-
-```dol
-// Collections
-List<T>
-Map<K, V>
-Set<T>
-
-// Results
-Option<T>
-Result<T, E>
-
-// Quoted expressions (meta-programming)
-Quoted<T>
+```bash
+dol-codegen --target rust example.dol         # Rust structs/traits
+dol-codegen --target typescript example.dol   # TypeScript
+dol-codegen --target jsonschema example.dol   # JSON Schema
 ```
 
-### Function Types
+`dol-codegen` reads every declaration in the file. **`dol-parse` and `dol-check` do not**: in 0.8.2 they parse only the first declaration of each file and silently ignore the rest. On the file above, `dol-parse example.dol` reports a single `user.account` gene. See [Known limitations](#known-limitations).
 
-```dol
-// Simple function
-Fun<Int64, Int64>
-
-// Multiple parameters
-Fun<(Int64, String), Bool>
-
-// Higher-order
-Fun<Fun<Int64, Int64>, Int64>
-```
-
----
-
-## AST Transformation
-
-DOL 2.0 includes a powerful AST transformation framework:
+### As a library
 
 ```rust
-use dol::transform::{Pass, PassPipeline, Visitor, Fold};
+use metadol::{parse_file_all, validate};
 
-// Built-in passes
-let pipeline = PassPipeline::new()
-    .add(ConstantFolding)
-    .add(DeadCodeElimination)
-    .add(DesugarIdiom)
-    .add(Simplify);
+let source = std::fs::read_to_string("example.dol")?;
+let decls = parse_file_all(&source)?; // every declaration in the file
 
-let optimized = pipeline.run(ast)?;
+for decl in &decls {
+    let result = validate(decl);
+    println!("{}: valid = {}", decl.name(), result.is_valid());
+}
 ```
 
-### Available Passes
-
-| Pass | Description |
-|------|-------------|
-| `ConstantFolding` | Evaluate constant expressions at compile time |
-| `DeadCodeElimination` | Remove unreachable code |
-| `DesugarIdiom` | Transform `[| f x y |]` to `f <$> x <*> y` |
-| `Simplify` | Simplify expressions (double negation, identity ops) |
+Use `parse_file_all` (or `metadol::parse_dol_file`, which also returns `module`/`use` headers). `metadol::parse_file` returns only the first declaration.
 
 ---
 
-## Project Structure
+## The language (v0.8)
 
+### Keywords
+
+| Current | Legacy (deprecated) |
+|---------|---------------------|
+| `gen` | `gene` |
+| `rule` | `constraint` |
+| `evo` | `evolves` |
+| `docs` | `exegesis` |
+
+Legacy keywords still parse but print a deprecation warning. They are planned to become errors in v0.9. `dol-migrate 0.7-to-0.8` rewrites them.
+
+Other top-level declarations: `type`, `trait`, `system`, `fun`, `sex`, `const`, `use`, `mod`/`module`.
+
+### Types
+
+Types follow Rust naming: `i8`…`i128`, `u8`…`u128`, `f32`, `f64`, `bool`, `string`, `()`, `Vec<T>`, `Option<T>`. Legacy names (`Int64`, `UInt64`, `String`, `Bool`, `Void`, `List<T>`, …) still parse with a deprecation warning.
+
+### Ontology declarations
+
+Write each `docs { }` block **after** the closing brace of its declaration. Missing or short docs are a validator warning; `dol-check --require-exegesis` makes them an error.
+
+```dol
+system user.directory @ 0.1.0 {
+    requires user.account >= 0.1.0
+    requires user.authenticatable >= 0.1.0
+}
+
+docs {
+    The directory composes accounts and authentication.
+}
+
+evo user.account @ 0.2.0 > 0.1.0 {
+    adds has display_name: string
+    because "users asked for a visible name"
+}
+
+docs {
+    Version 0.2.0 adds a display name to accounts.
+}
 ```
-dol/
-├── src/
-│   ├── lib.rs              # Library entry point
-│   ├── lexer.rs            # Tokenization
-│   ├── parser.rs           # AST construction
-│   ├── pratt.rs            # Expression parsing (Pratt parser)
-│   ├── ast.rs              # AST node definitions
-│   ├── typechecker.rs      # Type inference and checking
-│   ├── validator.rs        # Semantic validation
-│   ├── error.rs            # Error types
-│   ├── codegen/            # Code generation
-│   │   ├── rust.rs         # Rust target
-│   │   ├── typescript.rs   # TypeScript target
-│   │   └── jsonschema.rs   # JSON Schema target
-│   ├── eval/               # Expression evaluation
-│   │   ├── interpreter.rs  # Quote/Eval execution
-│   │   ├── value.rs        # Runtime values
-│   │   └── builtins.rs     # Built-in functions
-│   ├── macros/             # Macro system
-│   │   ├── builtin.rs      # 20 built-in macros
-│   │   ├── expand.rs       # Macro expansion
-│   │   └── registry.rs     # Macro registry
-│   ├── reflect.rs          # Runtime type introspection
-│   ├── transform/          # AST transformations
-│   │   ├── visitor.rs      # AST traversal
-│   │   ├── fold.rs         # Functional transformation
-│   │   ├── passes.rs       # Optimization passes
-│   │   └── desugar_idiom.rs # Idiom bracket desugaring
-│   ├── mlir/               # MLIR code generation (optional)
-│   ├── wasm/               # WASM backend (optional)
-│   ├── mcp/                # MCP server
-│   └── bin/                # CLI binaries
-├── tests/                  # Test suites (1914 tests)
-├── examples/               # Example DOL files
-└── docs/                   # Documentation
+
+### Functions and control flow
+
+```dol
+fun classify(n: i64) -> string {
+    match n {
+        0 => "zero",
+        x if x < 0 => "negative",
+        _ => "positive"
+    }
+}
+
+fun sum_to(limit: i64) -> i64 {
+    var total: i64 = 0
+    for i in 0..limit {
+        total = total + i
+    }
+    return total
+}
+
+fun pipeline(x: i64) -> i64 {
+    val double = |v: i64| v * 2
+    return x |> double
+}
 ```
+
+The parser also accepts `if`/`else`, `while`, `loop`/`break`, `?`, method calls, struct literals, tuples, function types such as `(i64) -> bool`, `::` paths, and the `>>` composition operator.
+
+### CRDT annotations
+
+```dol
+gen chat.message {
+    @crdt(lww)
+    has text: string
+
+    @crdt(or_set)
+    has reactions: Set<string>
+
+    @crdt(pn_counter)
+    has likes: i64
+}
+
+docs {
+    A chat message whose text is last-writer-wins, whose reactions
+    are an add-wins set and whose like count is a PN-counter.
+}
+```
+
+The validator checks that each strategy fits its field type. The MCP tool `recommend_crdt` suggests strategies.
+
+### Meta-programming
+
+The core library implements quote (`'expr`), eval (`!expr`), reflection (`?Type`), idiom brackets (`[| f x y |]`) and macros (`#name(...)`):
+
+```dol
+fun meta() -> i64 {
+    val expr = '(1 + 2 * 3)
+    val result = !expr
+    return result
+}
+```
+
+There are 20 built-in macros: `#derive`, `#stringify`, `#concat`, `#env`, `#option_env`, `#cfg`, `#file`, `#line`, `#column`, `#include_str`, `#assert`, `#assert_eq`, `#assert_ne`, `#debug_assert`, `#format`, `#dbg`, `#todo`, `#unreachable`, `#compile_error`, `#vec`.
+
+Meta-programming is evaluated by the in-library interpreter. The WASM backend does not support it yet.
+
+---
+
+## Command-line tools
+
+All need `--features cli`.
+
+| Tool | What it does |
+|------|--------------|
+| `dol-parse` | Parse files and print a summary (`--format pretty\|json\|compact\|debug`), with `--tree-shake`. **Only the first declaration per file is parsed.** |
+| `dol-check` | Validation gate for CI: `--require-exegesis`, `--strict`, `--typecheck`, `--ci`. **Only the first declaration per file is checked.** |
+| `dol-test` | Generate Rust tests from `.dol.test` files (`generate`, `validate`, `plan`). |
+| `dol-codegen` | Generate Rust, TypeScript or JSON Schema (`--target rust\|typescript\|jsonschema`). |
+| `dol-migrate` | Rewrite syntax: `0.7-to-0.8` and `0.2-to-0.3`. Use `--dry-run --diff` to preview; without `--dry-run` files are rewritten in place. |
+| `dol-mcp` | Model Context Protocol server over stdio (`dol-mcp serve`), plus `dol-mcp manifest` and `dol-mcp tool <name> key=value`. |
+| `dol-build` | Spirit project → Rust → `wasm32` + JS bindings. **Experimental:** it fails on all 9 example Spirits in `examples/spirits/`. |
+| `dol-build-crate` | Generate a Rust crate from DOL files (used by the self-hosting bootstrap). **Experimental.** |
+
+### MCP tools
+
+`dol-mcp` exposes these tools by name: `parse`, `typecheck`, `compile_rust`, `compile_typescript`, `compile_wasm`, `eval`, `reflect`, `format`, `list_macros`, `expand_macro`, `validate_schema`, `recommend_crdt`, `explain_strategy`, `generate_example`, `generate_schema_from_description`, `validate_and_suggest`, `get_suggestions`.
+
+`compile_wasm` and `format` currently return "not yet implemented". The server handles the JSON-RPC methods `initialize` (which returns the tool manifest) and `tools/call`; it does not implement `tools/list`.
+
+```bash
+dol-mcp tool parse 'source=gen point { has x: i64 }'
+```
+
+---
+
+## Compiling to WebAssembly
+
+With the `wasm-compile` feature, `metadol::compile_source` compiles DOL source directly to a WASM module:
+
+```rust
+let source = r#"
+sex fun host_log(level: i64, msg: string) -> i64
+
+sex fun hello() -> i64 {
+    return host_log(2, "hello from DOL")
+}
+"#;
+let spirit = metadol::compile_source(source, "hello.dol")?;
+std::fs::write("hello.wasm", &spirit.wasm)?;
+```
+
+The resulting module imports `vudo.host_log` and runs in the VUDO VM (`univrs/vudo`). The WASM backend covers a subset of the language; see below.
+
+---
+
+## AST transforms
+
+```rust
+use metadol::transform::{ConstantFolding, DeadCodeElimination, IdiomDesugar, PassPipeline};
+
+let mut pipeline = PassPipeline::new();
+pipeline
+    .add(ConstantFolding::new())
+    .add(DeadCodeElimination::new())
+    .add(IdiomDesugar::new());
+let optimized = pipeline.run_all(decls)?;
+```
+
+| Pass | Path | Description |
+|------|------|-------------|
+| `ConstantFolding` | `metadol::transform` | Evaluate constant expressions |
+| `DeadCodeElimination` | `metadol::transform` | Remove unreachable code |
+| `IdiomDesugar` | `metadol::transform` | Rewrite `[\| f x y \|]` to `f <$> x <*> y` |
+| `Simplify` | `metadol::transform::passes` | Simplify expressions (double negation, identity operations) |
+| `TreeShaking` | `metadol::transform` | Drop declarations unreachable from the roots (used by `dol-parse --tree-shake`) |
+
+---
+
+## Component status (v0.8.2)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Lexer, parser, AST | Real | Some syntax is parsed then discarded (see below) |
+| Validator | Real, shallow | Checks naming, docs and CRDT strategies; does **not** enforce types |
+| Typechecker | Partial | Runs with `dol-check --typecheck`, but type errors do not fail validation |
+| HIR lowering | Real | Not used by the WASM backend |
+| Direct WASM backend + VUDO host ABI | Beta | Subset of the language |
+| Rust codegen | Real, quality varies | Output does not always compile standalone |
+| TypeScript / JSON Schema codegen | Real, quality varies | Typed fields (`has x: T`) are currently omitted from the output |
+| `dol-migrate`, `dol-test` | Real | |
+| `dol-mcp` | Real | `compile_wasm` and `format` are stubs |
+| Macros, reflection, quote/eval | Real in the library | Not supported by the WASM backend |
+| `dol-build` (Spirit → Rust → WASM) | Experimental | Fails on the example Spirits |
+| LLVM native backend (`llvm-backend/`) | Beta | Separate crate, not published, not in CI; needs a manual LLVM 18 setup |
+| MLIR backend (`mlir` feature) | Experimental | Largely stubs; not in CI |
+| `vudo` binary | Broken | Does not compile in 0.8.2 |
+| Automerge codegen (`crates/dol-codegen-rust`) | Experimental | Separate unpublished crate, not wired into any CLI |
+| Self-hosting (`dol/*.dol`) | Not working | The sources parse, but the generated Rust crate does not compile |
+
+---
+
+## Known limitations
+
+- **`dol-parse` and `dol-check` only parse the first declaration in a file.** Everything after it is ignored, including invalid content, so their pass rates are overstated. Use `metadol::parse_file_all` or `dol-codegen` to process whole files.
+- **Types are not enforced.** For example, `fun f() -> i64 { return "hello" + true }` passes validation, `dol-check --typecheck`, HIR lowering and WASM compilation.
+- **Parsed but discarded:** `pub` visibility, generic parameters on `gen`/`trait`, a `rule` nested inside a `gen`, the contents of `mod x { … }`, and a `docs` block placed inside a `gen` body that has fields (put `docs` after the closing brace instead).
+- **Not parseable** (even though some older docs show it): `let mut`, `+=`, `&T`, `[T]`, generic functions `fun id<T>(…)`, `impl`, top-level `spirit`, `extern`, `with IO` effect annotations, quasi-quote, versioned headers like `gen name @1.0.0 {`, and float exponents such as `1e9`.
+- **WASM is a subset.** Not supported: lambdas, tuples, lists, `sex { }` blocks, `?`, quote/eval and other meta-programming, idiom brackets, `this`, casts, and `for` loops over anything except a range. Gene layouts reject `u64` and `string` fields. `println` is unknown. Purely declarative files compile to an empty module.
+- **Self-hosting does not work.** The bootstrap sources in `dol/` parse, but the crate generated from them fails to compile.
+- **MLIR is experimental** and does not build without MLIR headers.
+- `docs/grammar.ebnf` is out of date: it describes only the original declarative language. The de facto specification is `src/lexer.rs`, `src/parser.rs` and [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
 ## Testing
 
 ```bash
-# Run all tests (1914 tests)
-cargo test
-
-# Run specific test suite
-cargo test --test parser_tests
-cargo test --test macro_tests
-cargo test --test idiom_tests
-
-# Run with output
-cargo test -- --nocapture
-
-# Run benchmarks
-cargo bench
+cargo test                                                   # default features
+cargo test --features cli,serde,wasm --lib --bins --tests    # with CLI and WASM
+cargo test --features cli,serde,wasm --doc
 ```
 
-### Test Coverage
-
-| Suite | Tests |
-|-------|-------|
-| Unit Tests | 187 |
-| DOL2 Tests | 41 |
-| Idiom Tests | 27 |
-| Integration Tests | 24 |
-| Lexer Tests | 77 |
-| Parser Tests | 80 |
-| Quote Tests | 33 |
-| Reflect Tests | 17 |
-| Doc Tests | 30 |
-| Additional Tests | 115 |
-| **Total** | **1914** |
+On 2026-11-21, with `--features cli,serde,wasm`, the two commands above ran 2,512 tests (including doctests) with 0 failures. These counts cover the root crate only. The crates under `crates/`, `apps/`, `llvm-backend/` and `benchmarks/` are not part of a Cargo workspace and are not built in CI.
 
 ---
 
-## Roadmap
+## Roadmap (planned, not implemented)
 
-### Completed
+None of the following exists yet:
 
-| Phase | Milestone | Status |
-|-------|-----------|--------|
-| Q1 | Foundation — Lexer, Parser, TypeChecker, Codegen | ✅ |
-| Q2 | Meta-Programming — Quote, Eval, Macro, Reflect, Idiom | ✅ |
-| Q3 | Infrastructure — MLIR, WASM, MCP Server | ✅ |
-
-### Planned
-
-| Phase | Milestone | Description |
-|-------|-----------|-------------|
-| Q4 | Self-Hosting | DOL compiler written in DOL |
-| Q5 | Package Manager | Spirit packages, Mycelium registry |
-| Q6 | IDE Support | LSP server, syntax highlighting |
-
----
-
-## Examples
-
-The `examples/` directory contains comprehensive examples:
-
-```
-examples/
-├── genes/          # Atomic type definitions
-├── traits/         # Interface contracts
-├── constraints/    # Validation rules
-├── systems/        # System compositions
-├── evolutions/     # Version migrations
-└── tests/          # Test specifications
-```
+- v0.9: legacy keywords and type names become errors.
+- `dol-parse` / `dol-check` parsing whole files, and type errors failing validation.
+- A specification and grammar for the language as implemented.
+- Wider WASM coverage (strings and `u64` in gene layouts, lambdas, collections).
+- A self-hosting compiler.
+- A package registry for Spirits.
+- A language server (an LSP completion library exists in `src/lsp`, but no server).
 
 ---
 
 ## Documentation
 
-- **[WASM Quick Start](docs/QUICKSTART.md)** — 5-minute DOL → WASM tutorial
-- **[dol-build CLI](docs/cli/BUILD.md)** — Complete WASM compilation reference
-- **[Language Specification](docs/specification.md)** — Formal language spec
-- **[Grammar (EBNF)](docs/grammar.ebnf)** — Formal grammar
-- **[Tutorials](docs/tutorials/)** — Step-by-step guides
-- **[API Docs](https://docs.rs/dol)** — Rust API reference
-
-Generate local documentation:
-
-```bash
-cargo doc --open
-```
-
----
-
-## Links
-
-- **Docs**: [https://learn.univrs.io/dol](https://learn.univrs.io/dol)
-- **Learn**: [https://learn.univrs.io](https://learn.univrs.io)
-- **GitHub**: [https://github.com/univrs/dol](https://github.com/univrs/dol)
+- [docs/DOL-STATUS-2026-11.md](docs/DOL-STATUS-2026-11.md) — verified status audit of v0.8.2
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — architecture reference (written for v0.8.0)
+- [docs/tutorials/](docs/tutorials/) — tutorials (some examples predate v0.8 syntax)
+- [API docs on docs.rs](https://docs.rs/dol)
+- [learn.univrs.io](https://learn.univrs.io) — learning site for the Univrs ecosystem
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
-1. Run `cargo fmt` before committing
-2. Ensure `cargo clippy -- -D warnings` passes
-3. Add tests for new functionality
-4. Update documentation for API changes
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
----
+This project is not accepting external contributions or pull requests.
 
 ## License
 
@@ -720,34 +417,4 @@ at your option.
 
 ---
 
-## Acknowledgments
-
-DOL is part of the [Univrs](https://github.com/univrs) ecosystem, building the foundation for DOLOS, the DOL Operating System of the VUDO platform — 
-a distributed, AI-native operating system where systems describe their ontological nature before their functionality.
-
-## Disclaimer
-
-> [!IMPORTANT] > **This is an experimental system. _We break things frequently_.**
-
-- Not accepting contributions yet (but we plan to!)
-- No stability guarantees
-- Pin commits if you need consistency
-- This is a learning resource, not production software
-- **No support provided** - See [SUPPORT.md](SUPPORT.md)
-
----
-
-## Disclaimer
-
-> [!IMPORTANT]
-> **This is an experimental system. _We break things frequently_.**
-
-- Not accepting contributions yet (but we plan to!)
-- No stability guarantees
-- Pin commits if you need consistency
-- This is a learning resource, not production software
-- **No support provided** - See [SUPPORT.md](SUPPORT.md)
-
----
-
-**Built with Rust. Powered by Ontology. Driven by Clarity.** 🍄
+DOL is part of the [Univrs](https://github.com/univrs) ecosystem. DOL-compiled Spirits run in the VUDO VM, the application layer of DOLOS.

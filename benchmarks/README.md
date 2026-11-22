@@ -335,13 +335,4 @@ Use browser DevTools:
 
 ## Contributing
 
-When adding new benchmarks:
-
-1. Follow existing naming conventions
-2. Include budget assertions for regression tests
-3. Document the purpose and expected results
-4. Add to CI pipeline if critical
-
----
-
-**Questions?** See the [Performance Optimization Report](../docs/performance/optimization-report.md) for detailed analysis.
+This project is not accepting external contributions or pull requests.
