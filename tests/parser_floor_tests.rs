@@ -656,3 +656,67 @@ fn l0_3_quantifier_with_several_binders_nests() {
         other => panic!("expected forall, got {:?}", other),
     }
 }
+
+// ============================================
+// L0.4 Keep trait laws in the AST
+// ============================================
+
+fn trait_laws(src: &str) -> Vec<String> {
+    let decls = metadol::parse_file_all(src).expect("parse");
+    match &decls[0] {
+        Declaration::Trait(t) => t.laws.iter().map(|l| l.name.clone()).collect(),
+        other => panic!("expected trait, got {:?}", other),
+    }
+}
+
+#[test]
+fn l0_4_trait_keeps_its_laws() {
+    let src = r#"
+trait ordering.comparable {
+  uses ordering.base
+  law reflexive {
+    forall x: Self. x.compare(x) == 0
+  }
+  comparable is ordered
+  law symmetric(a: Self, b: Self) {
+    a.eq(b) implies b.eq(a)
+  }
+  law total {
+    forall a: Self, b: Self. a.compare(b) <= 0 || b.compare(a) <= 0
+  }
+  docs {
+    Ordering laws.
+  }
+}
+"#;
+    // Negative oracle: a trait with N laws never reports 0 laws.
+    assert_eq!(trait_laws(src), vec!["reflexive", "symmetric", "total"]);
+    let decls = metadol::parse_file_all(src).unwrap();
+    if let Declaration::Trait(t) = &decls[0] {
+        assert_eq!(t.statements.len(), 2, "laws are not statements");
+        assert_eq!(t.exegesis, "Ordering laws.");
+        assert_eq!(t.laws[1].params.len(), 2);
+    }
+}
+
+#[test]
+fn l0_4_trait_without_laws_has_empty_laws() {
+    let src = "trait a.b {\n  a is ready\n}\n";
+    assert!(trait_laws(src).is_empty());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn l0_4_trait_without_laws_field_deserializes() {
+    // Serde compatibility: JSON written before `laws` existed still loads.
+    let src = "trait a.b {\n  law l { true }\n}\n";
+    let decls = metadol::parse_file_all(src).unwrap();
+    let mut json: serde_json::Value = serde_json::to_value(&decls[0]).unwrap();
+    assert_eq!(json["Trait"]["laws"].as_array().unwrap().len(), 1);
+    json["Trait"].as_object_mut().unwrap().remove("laws");
+    let back: Declaration = serde_json::from_value(json).unwrap();
+    match back {
+        Declaration::Trait(t) => assert!(t.laws.is_empty()),
+        other => panic!("expected trait, got {:?}", other),
+    }
+}

@@ -145,3 +145,46 @@ gen a.second {
     );
     assert!(!out.status.success(), "{}", stdout(&out));
 }
+
+const TRAIT_WITH_LAWS: &str = r#"
+trait ordering.comparable {
+  law reflexive {
+    forall x: Self. x.compare(x) == 0
+  }
+  law antisymmetric {
+    forall x: Self, y: Self. x.compare(y) == 0 implies y.compare(x) == 0
+  }
+  law total(a: Self, b: Self) {
+    a.compare(b) <= 0 || b.compare(a) <= 0
+  }
+  docs {
+    Total ordering laws.
+  }
+}
+"#;
+
+#[test]
+fn dol_parse_shows_trait_laws() {
+    let f = write_dol(TRAIT_WITH_LAWS);
+    let path = f.path().to_str().unwrap();
+
+    // Negative oracle: a trait with N laws never reports 0 laws.
+    let out = run(env!("CARGO_BIN_EXE_dol-parse"), &[path]);
+    assert!(out.status.success(), "{}", stdout(&out));
+    let text = stdout(&out);
+    assert!(text.contains("3 laws"), "{}", text);
+    assert!(!text.contains("0 laws"), "{}", text);
+
+    let out = run(
+        env!("CARGO_BIN_EXE_dol-parse"),
+        &["--quiet", "--format", "json", path],
+    );
+    let json: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let laws: Vec<_> = json["files"][0]["declarations"][0]["laws"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no laws in: {}", json))
+        .iter()
+        .map(|l| l.as_str().unwrap())
+        .collect();
+    assert_eq!(laws, vec!["reflexive", "antisymmetric", "total"]);
+}

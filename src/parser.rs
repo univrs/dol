@@ -946,7 +946,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LeftBrace)?;
 
         let mut statements = Vec::new();
-        let mut _laws: Vec<LawDecl> = Vec::new();
+        let mut laws: Vec<LawDecl> = Vec::new();
 
         while self.current.kind != TokenKind::RightBrace
             && self.current.kind != TokenKind::Eof
@@ -956,7 +956,7 @@ impl<'a> Parser<'a> {
             // Check for law declarations
             if self.current.kind == TokenKind::Law {
                 let law = self.parse_law_decl()?;
-                _laws.push(law);
+                laws.push(law);
             } else {
                 statements.push(self.parse_statement()?);
             }
@@ -982,6 +982,7 @@ impl<'a> Parser<'a> {
             visibility: Visibility::default(),
             name,
             statements,
+            laws,
             exegesis,
             span,
         }))

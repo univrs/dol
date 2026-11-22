@@ -231,6 +231,7 @@ fn test_codegen_simple_trait() {
                 span: Span::default(),
             },
         ],
+        laws: vec![],
         exegesis: "Lifecycle state machine".to_string(),
         span: Span::default(),
     };
@@ -279,6 +280,7 @@ fn test_codegen_trait_with_supertraits() {
                 span: Span::default(),
             },
         ],
+        laws: vec![],
         exegesis: "Advanced trait with multiple supertraits".to_string(),
         span: Span::default(),
     };
@@ -305,6 +307,7 @@ fn test_codegen_trait_no_supertraits() {
             state: "active".to_string(),
             span: Span::default(),
         }],
+        laws: vec![],
         exegesis: "Simple trait".to_string(),
         span: Span::default(),
     };
@@ -851,6 +854,7 @@ fn test_codegen_generate_all() {
             state: "visible".to_string(),
             span: Span::default(),
         }],
+        laws: vec![],
         exegesis: "Can be drawn".to_string(),
         span: Span::default(),
     };
@@ -1049,6 +1053,7 @@ fn test_codegen_empty_trait() {
         visibility: Visibility::default(),
         name: "Empty".to_string(),
         statements: vec![],
+        laws: vec![],
         exegesis: "Empty trait".to_string(),
         span: Span::default(),
     };

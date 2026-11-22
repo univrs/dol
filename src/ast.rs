@@ -612,6 +612,10 @@ pub struct Trait {
     /// The statements including uses and behavior declarations
     pub statements: Vec<Statement>,
 
+    /// The `law` declarations (logical properties) in the trait body
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub laws: Vec<LawDecl>,
+
     /// The mandatory exegesis
     pub exegesis: String,
 
@@ -2033,6 +2037,7 @@ mod tests {
                     span: Span::default(),
                 },
             ],
+            laws: vec![],
             exegesis: "Test".to_string(),
             span: Span::default(),
         };

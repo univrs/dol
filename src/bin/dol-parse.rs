@@ -367,6 +367,9 @@ fn output_json(results: &[ParseResult], _args: &Args, shake_stats: Option<&TreeS
         #[serde(rename = "type")]
         decl_type: String,
         name: String,
+        /// Law names (traits only)
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        laws: Vec<String>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         eliminated: bool,
     }
@@ -398,6 +401,10 @@ fn output_json(results: &[ParseResult], _args: &Args, shake_stats: Option<&TreeS
                 .map(|(d, &eliminated)| JsonDeclaration {
                     decl_type: decl_type(d).to_string(),
                     name: d.name().to_string(),
+                    laws: match d {
+                        Declaration::Trait(t) => t.laws.iter().map(|l| l.name.clone()).collect(),
+                        _ => Vec::new(),
+                    },
                     eliminated,
                 })
                 .collect(),
@@ -526,10 +533,11 @@ fn print_declaration_summary(decl: &Declaration) {
                 .filter(|s| matches!(s, metadol::Statement::Uses { .. }))
                 .count();
             println!(
-                "    {} trait using {} dependencies, {} behaviors",
+                "    {} trait using {} dependencies, {} behaviors, {} laws",
                 t.name.dimmed(),
                 uses_count,
-                t.statements.len() - uses_count
+                t.statements.len() - uses_count,
+                t.laws.len()
             );
         }
         Declaration::Constraint(c) => {
