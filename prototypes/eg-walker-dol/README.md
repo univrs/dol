@@ -170,4 +170,4 @@ See `docs/research/eg-walker-evaluation.md` for the complete evaluation report a
 - [Diamond-types Rust Implementation](https://crates.io/crates/diamond-types)
 - [Eg-walker GitHub Repository](https://github.com/josephg/egwalker-paper)
 - [Automerge](https://automerge.org/)
-- [DOL CRDT Guide](../../docs/book/local-first/crdt-guide/)
+- [DOL CRDT Examples](../../examples/crdt/) and [ADR-001: CRDT Selection](../../docs/ADRs/ADR-001-CRDT-SELECTION.md)
