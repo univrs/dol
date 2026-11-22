@@ -71,7 +71,7 @@ CHANGELOG defects:
 
 | Component | Status | Evidence |
 |---|---|---|
-| Lexer / parser / AST | REAL | 2,183 tests pass with default features; 2,405 with `cli,serde,wasm` (0 failures). |
+| Lexer / parser / AST | REAL | 2,512 tests pass with `--features cli,serde,wasm`, including doctests (0 failures). |
 | Validator | REAL but shallow | Runs, but **type errors are not enforced** (§5). |
 | HIR + lowering | REAL | Lowers everything that parses. **Not used by the WASM path**: `src/compiler/spirit.rs:303` keeps it "for diagnostics only". |
 | Direct WASM backend + VUDO host ABI | **REAL (beta)**, the 0.8.2 headline | `src/wasm/host_abi.rs`: 15 `vudo.host_*` imports, **name and signature parity verified** against `univrs-vudo/vudo/vudo_vm/src/linker.rs`. 114 + 163 WASM tests. Covers a subset of the language (§5). |
@@ -154,7 +154,7 @@ CHANGELOG defects:
 | Library path | `use dol::transform`, `DesugarIdiom` | — | — | `metadol::…`, `IdiomDesugar` |
 | MCP tool names | `dol/parse`, `dol/compile/rust`… | — | — | `parse`, `compile_rust`, … |
 | Self-hosting | "Planned Q4" | — | "Full self-hosting… Stage2 compiles!" | Not real (§5.8) |
-| Test count | 1914 | 1,705+ / 1,800+ | 1532 | **2,183** default / **2,405** with `cli,serde,wasm` (root crate only) |
+| Test count | 1914 | 1,705+ / 1,800+ | 1532 | **2,512** with `cli,serde,wasm`, including doctests (root crate only) |
 | VUDO host ABI (0.8.2 headline) | absent | absent | absent | shipped |
 | Links | badges → `univrs/metadol`; `docs/specification.md` (missing); `learn.univrs.io/dol` (404) | — | — | — |
 

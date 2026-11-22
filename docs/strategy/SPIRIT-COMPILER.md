@@ -450,12 +450,7 @@ Optimization opportunities:
 
 ## Contributing
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
-
-- Code style
-- Testing requirements
-- Documentation standards
-- Review process
+This project is not accepting external contributions or pull requests.
 
 ## References
 

@@ -21,7 +21,7 @@ The current syntax era is v0.8 "Clarity": `gen`/`rule`/`evo`/`docs` and lowercas
 
 | Component | Status |
 |---|---|
-| Lexer / parser / AST | Works. 2,183 tests pass with default features and 2,405 with `cli,serde,wasm` (root crate only). |
+| Lexer / parser / AST | Works. 2,512 tests pass with `cli,serde,wasm`, including doctests (root crate only). |
 | Validator | Runs, but type errors are **not** enforced. |
 | HIR + lowering | Works. Not used by the WASM path. |
 | Direct WASM backend + VUDO host ABI | Beta. Supports a subset of the language. The 15 `vudo.host_*` imports match the VUDO VM linker. |

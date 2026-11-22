@@ -111,7 +111,7 @@ Most failures come from syntax that is documented but not implemented in 0.8.2, 
 
 ### Unit Tests (cargo test)
 
-Per the 2026-11 status audit: 2,183 tests pass with default features and 2,405 with `--features cli,serde,wasm`, with 0 failures (root crate only).
+Per the 2026-11 status audit: 2,512 tests pass with `--features cli,serde,wasm`, including doctests, with 0 failures (root crate only).
 
 ### WASM Tests
 

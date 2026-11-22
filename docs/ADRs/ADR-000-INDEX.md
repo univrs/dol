@@ -76,8 +76,4 @@ Proposed → Accepted → [Deprecated | Superseded]
 
 ## Contributing
 
-When adding a new ADR:
-1. Copy `ADR-TEMPLATE.md`
-2. Use next available number
-3. Add to index table above
-4. Submit PR for review
+This project is not accepting external contributions or pull requests.

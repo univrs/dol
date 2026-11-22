@@ -236,13 +236,7 @@ cd examples/spirits/game-of-life
 
 ## Contributing
 
-When adding new DOL language features:
-
-1. Add test case to Game of Life if applicable
-2. Verify build pipeline completes
-3. Test in browser
-4. Update this benchmark document
-5. Run full test suite: `cargo test`
+This project is not accepting external contributions or pull requests.
 
 ## Related Documents
 
