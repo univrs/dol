@@ -227,3 +227,94 @@ rule counter.bounded {
         other => panic!("expected constraint, got {:?}", other),
     }
 }
+
+// ============================================
+// B3. `use` must not swallow the following declaration
+// ============================================
+
+#[test]
+fn b3_use_before_evo_keeps_evo() {
+    let src = r#"
+use container.lifecycle
+
+evo container.lifecycle @ 0.0.2 > 0.0.1 {
+  adds container is paused
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    assert_eq!(decls.len(), 1, "{:?}", decls);
+    assert!(
+        matches!(decls[0], Declaration::Evolution(_)),
+        "{:?}",
+        decls[0]
+    );
+
+    let file = metadol::parse_dol_file(src).expect("parse");
+    assert_eq!(file.uses.len(), 1);
+    assert_eq!(file.declarations.len(), 1);
+}
+
+#[test]
+fn b3_mid_file_use_before_const_keeps_const() {
+    let src = r#"
+gen a.thing {
+  has id: i64
+}
+
+use b.other
+
+const LIMIT: i64 = 10
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    // Negative oracle: the declaration after a mid-file `use` is never dropped.
+    assert_eq!(decls.len(), 2, "{:?}", decls);
+    assert_eq!(decls[1].name(), "LIMIT");
+}
+
+#[test]
+fn b3_mid_file_use_is_recorded_in_dol_file() {
+    let src = r#"
+use a.first
+
+gen a.thing {
+  has id: i64
+}
+
+pub use b.other.{ X, Y }
+
+evo a.thing @ 0.0.2 > 0.0.1 {
+  adds thing is ready
+}
+"#;
+    let file = metadol::parse_dol_file(src).expect("parse");
+    assert_eq!(file.uses.len(), 2, "{:?}", file.uses);
+    assert_eq!(file.declarations.len(), 2, "{:?}", file.declarations);
+}
+
+#[test]
+fn b3_use_path_may_name_keyword_modules() {
+    // `evo`/`gen`/`docs` are valid module names in a use path, like their
+    // deprecated spellings `evolves`/`gene`/`exegesis`.
+    let src = r#"
+module biology @ 1.0.0
+
+pub use types.*
+pub use evo.*
+use gen.core.{ A }
+
+gen a.thing {
+  has id: i64
+}
+"#;
+    let file = metadol::parse_dol_file(src).expect("parse");
+    assert_eq!(file.uses.len(), 3);
+    assert_eq!(metadol::parse_file_all(src).expect("parse").len(), 1);
+}
+
+#[test]
+fn b3_junk_after_use_path_is_an_error() {
+    // Negative oracle: tokens after a `use` path are not silently skipped.
+    let src = "use a.b c d e\n\ngen a.thing {\n  has id: i64\n}\n";
+    assert!(metadol::parse_file_all(src).is_err());
+    assert!(metadol::parse_dol_file(src).is_err());
+}

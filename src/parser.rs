@@ -133,6 +133,11 @@ impl<'a> Parser<'a> {
         let mut declarations = Vec::new();
 
         while self.current.kind != TokenKind::Eof {
+            // Mid-file `use` lines are parsed (and validated) but not
+            // returned; use `parse_file` to keep them.
+            if self.parse_use_item()?.is_some() {
+                continue;
+            }
             let decl = self.parse_declaration()?;
             declarations.push(decl);
         }
@@ -152,24 +157,15 @@ impl<'a> Parser<'a> {
             None
         };
 
-        // Parse use declarations
+        // Parse use declarations and all declarations. `use` lines may
+        // also appear between declarations; they are all kept in `uses`.
         let mut uses = Vec::new();
-        loop {
-            // Handle pub use (re-exports)
-            if self.current.kind == TokenKind::Pub && self.peek().kind == TokenKind::Use {
-                self.advance(); // consume pub
-                let use_decl = self.parse_use_decl(Visibility::Public)?;
-                uses.push(use_decl);
-            } else if self.current.kind == TokenKind::Use {
-                uses.push(self.parse_use_decl(Visibility::Private)?);
-            } else {
-                break;
-            }
-        }
-
-        // Parse all declarations
         let mut declarations = Vec::new();
         while self.current.kind != TokenKind::Eof {
+            if let Some(use_decl) = self.parse_use_item()? {
+                uses.push(use_decl);
+                continue;
+            }
             let decl = self.parse_declaration()?;
             declarations.push(decl);
         }
@@ -179,6 +175,19 @@ impl<'a> Parser<'a> {
             uses,
             declarations,
         })
+    }
+
+    /// Parses a `use` or `pub use` declaration if one starts at the current
+    /// token. Returns `None` (consuming nothing) otherwise.
+    fn parse_use_item(&mut self) -> Result<Option<UseDecl>, ParseError> {
+        if self.current.kind == TokenKind::Pub && self.peek().kind == TokenKind::Use {
+            self.advance(); // consume pub
+            return Ok(Some(self.parse_use_decl(Visibility::Public)?));
+        }
+        if self.current.kind == TokenKind::Use {
+            return Ok(Some(self.parse_use_decl(Visibility::Private)?));
+        }
+        Ok(None)
     }
 
     /// Skips module declaration and use statements at the start of a file.
@@ -200,47 +209,8 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Skip use declarations (including pub use)
-        loop {
-            // Skip optional pub modifier
-            if self.current.kind == TokenKind::Pub {
-                if self.peek().kind == TokenKind::Use {
-                    self.advance(); // pub
-                } else {
-                    // pub followed by something else (like pub gene) - stop skipping
-                    break;
-                }
-            }
-
-            if self.current.kind != TokenKind::Use {
-                break;
-            }
-
-            self.advance(); // use
-                            // Skip path (identifiers, ::, ., *, etc.)
-            while self.current.kind != TokenKind::Eof
-                && self.current.kind != TokenKind::Gen
-                && self.current.kind != TokenKind::Gene
-                && self.current.kind != TokenKind::Type
-                && self.current.kind != TokenKind::Trait
-                && self.current.kind != TokenKind::Constraint
-                && self.current.kind != TokenKind::Rule
-                && self.current.kind != TokenKind::System
-                && self.current.kind != TokenKind::Evolves
-                && self.current.kind != TokenKind::Pub
-                && self.current.kind != TokenKind::Use
-                && self.current.kind != TokenKind::Module
-                && self.current.kind != TokenKind::Exegesis
-                && self.current.kind != TokenKind::Docs
-                && self.current.kind != TokenKind::Macro    // Stop before attributes
-                && self.current.kind != TokenKind::Sex      // Stop before sex declarations
-                && self.current.kind != TokenKind::Function // Stop before functions
-                && self.current.kind != TokenKind::Const
-            // Stop before constants
-            {
-                self.advance();
-            }
-        }
+        // Parse (and discard) leading use declarations, including `pub use`
+        while self.parse_use_item()?.is_some() {}
 
         Ok(())
     }
@@ -446,30 +416,8 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::Use => {
-                // Skip use statement and parse next declaration
-                self.advance(); // consume 'use'
-                                // Skip path (identifiers, ::, ., *, { }, etc.)
-                while self.current.kind != TokenKind::Eof
-                    && self.current.kind != TokenKind::Gen
-                    && self.current.kind != TokenKind::Gene
-                    && self.current.kind != TokenKind::Type
-                    && self.current.kind != TokenKind::Trait
-                    && self.current.kind != TokenKind::Constraint
-                    && self.current.kind != TokenKind::Rule
-                    && self.current.kind != TokenKind::System
-                    && self.current.kind != TokenKind::Evolves
-                    && self.current.kind != TokenKind::Pub
-                    && self.current.kind != TokenKind::Use
-                    && self.current.kind != TokenKind::Exegesis
-                    && self.current.kind != TokenKind::Docs
-                    && self.current.kind != TokenKind::Sex
-                    && self.current.kind != TokenKind::Function
-                    && self.current.kind != TokenKind::Module
-                    && self.current.kind != TokenKind::Macro
-                // Stop before attributes
-                {
-                    self.advance();
-                }
+                // Parse (and discard) the use statement, then the next declaration
+                self.parse_use_decl(Visibility::Private)?;
                 // Parse next declaration
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gen {
@@ -4359,6 +4307,10 @@ impl<'a> Parser<'a> {
             | TokenKind::Rule
             | TokenKind::Evolves
             | TokenKind::Exegesis
+            // v0.8.0 spellings of the keywords above (e.g. `use evo.*`)
+            | TokenKind::Gen
+            | TokenKind::Evo
+            | TokenKind::Docs
             | TokenKind::Test
             | TokenKind::Law
             | TokenKind::State
