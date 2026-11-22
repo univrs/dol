@@ -790,6 +790,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Repositions the lexer at byte offset `pos` of the source.
+    ///
+    /// Used by the parser to skip raw (non-tokenized) text such as the
+    /// prose inside `docs { ... }` blocks. `pos` must be a char boundary.
+    pub(crate) fn seek(&mut self, pos: usize) {
+        if pos < self.position {
+            self.position = 0;
+            self.line = 1;
+            self.column = 1;
+            self.remaining = self.source;
+        }
+        self.advance(pos - self.position);
+    }
+
     /// Returns any errors accumulated during lexing.
     pub fn errors(&self) -> &[LexError] {
         &self.errors

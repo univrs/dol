@@ -4,7 +4,7 @@
 //! Each section holds a positive oracle (the construct parses to the right
 //! shape) and a negative oracle (the forbidden behaviour never happens).
 
-use metadol::ast::{Expr, Literal};
+use metadol::ast::{Declaration, Expr, Literal};
 use metadol::lexer::{Lexer, TokenKind};
 use metadol::parser::Parser;
 
@@ -85,4 +85,72 @@ fn b1_identifier_and_version_lexing_unchanged() {
     // Range syntax `0..10` must not be eaten by float lexing.
     let lexemes: Vec<_> = Lexer::new("0..10").map(|t| t.lexeme).collect();
     assert_eq!(lexemes, vec!["0", "..", "10"]);
+}
+
+// ============================================
+// B2. Balanced braces inside docs / exegesis
+// ============================================
+
+fn gene_exegesis(decl: &Declaration) -> String {
+    match decl {
+        Declaration::Gene(g) => g.exegesis.clone(),
+        other => panic!("expected gene, got {:?}", other),
+    }
+}
+
+#[test]
+fn b2_braces_inside_trailing_docs_block() {
+    let src = r#"
+gen a.thing {
+  thing has id
+}
+
+docs {
+  Example: `gen X { has y: i64 }` and a map {k: v}.
+}
+
+gen b.thing {
+  thing has id
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    // Negative oracle: the docs block must not end early and leak `}` text
+    // into the token stream, and the following declaration must survive.
+    assert_eq!(decls.len(), 2, "{:?}", decls);
+    let ex = gene_exegesis(&decls[0]);
+    assert!(ex.contains("gen X { has y: i64 }"), "exegesis: {:?}", ex);
+    assert!(ex.ends_with("a map {k: v}."), "exegesis: {:?}", ex);
+    assert_eq!(decls[1].name(), "b.thing");
+}
+
+#[test]
+fn b2_braces_inside_inline_docs_block() {
+    let src = r#"
+trait a.thing {
+  thing is ready
+  docs {
+    Nested { braces { two deep } } and "quotes" and it's fine.
+  }
+}
+
+gen b.thing {
+  has id: i64
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    assert_eq!(decls.len(), 2, "{:?}", decls);
+    let ex = match &decls[0] {
+        Declaration::Trait(t) => t.exegesis.clone(),
+        other => panic!("expected trait, got {:?}", other),
+    };
+    assert_eq!(
+        ex,
+        "Nested { braces { two deep } } and \"quotes\" and it's fine."
+    );
+}
+
+#[test]
+fn b2_unterminated_docs_block_is_an_error() {
+    let src = "gen a.thing {\n  has id: i64\n}\ndocs {\n  never { closed\n";
+    assert!(metadol::parse_file_all(src).is_err());
 }

@@ -430,16 +430,7 @@ impl<'a> Parser<'a> {
                 // Skip file-level exegesis/docs block
                 self.advance(); // consume 'exegesis'/'docs'
                 self.expect(TokenKind::LeftBrace)?;
-                let mut depth = 1;
-                while depth > 0 && self.current.kind != TokenKind::Eof {
-                    if self.current.kind == TokenKind::LeftBrace {
-                        depth += 1;
-                    }
-                    if self.current.kind == TokenKind::RightBrace {
-                        depth -= 1;
-                    }
-                    self.advance();
-                }
+                self.read_raw_braced_text()?;
                 // Try to parse next declaration, or return placeholder if EOF
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gen {
@@ -1227,15 +1218,7 @@ impl<'a> Parser<'a> {
             self.advance(); // consume 'exegesis' or 'docs'
             if self.current.kind == TokenKind::LeftBrace {
                 self.advance();
-                let mut depth = 1;
-                while depth > 0 && self.current.kind != TokenKind::Eof {
-                    match self.current.kind {
-                        TokenKind::LeftBrace => depth += 1,
-                        TokenKind::RightBrace => depth -= 1,
-                        _ => {}
-                    }
-                    self.advance();
-                }
+                self.read_raw_braced_text()?;
             }
             // If we're at the end of the block, return a no-op marker
             if self.current.kind == TokenKind::RightBrace || self.current.kind == TokenKind::Eof {
@@ -2173,43 +2156,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokenKind::LeftBrace)?;
-
-        // Collect all text until closing brace
-        // We need to handle nested braces
-        let mut content = String::new();
-        let mut brace_depth = 1;
-
-        // Get position after opening brace
-        let start_pos = self.current.span.start;
-
-        // Re-lex from the source to get raw text
-        let source_after_brace = &self.lexer_source()[start_pos..];
-
-        for ch in source_after_brace.chars() {
-            if ch == '{' {
-                brace_depth += 1;
-                content.push(ch);
-            } else if ch == '}' {
-                brace_depth -= 1;
-                if brace_depth == 0 {
-                    break;
-                }
-                content.push(ch);
-            } else {
-                content.push(ch);
-            }
-        }
-
-        // Skip past the exegesis content in the lexer
-        // We need to advance until we find the matching closing brace
-        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
-            self.advance();
-        }
-
-        if self.current.kind == TokenKind::RightBrace {
-            self.advance();
-        }
-
+        let content = self.read_raw_braced_text()?;
         Ok(content.trim().to_string())
     }
 
@@ -2223,38 +2170,50 @@ impl<'a> Parser<'a> {
         self.advance(); // consume 'exegesis' or 'docs'
         self.expect(TokenKind::LeftBrace)?;
 
-        // Collect all text until closing brace
-        let mut content = String::new();
-        let mut brace_depth = 1;
+        let content = self.read_raw_braced_text()?;
+        Ok(Some(content.trim().to_string()))
+    }
 
-        let start_pos = self.current.span.start;
-        let source_after_brace = &self.lexer_source()[start_pos..];
-
-        for ch in source_after_brace.chars() {
-            if ch == '{' {
-                brace_depth += 1;
-                content.push(ch);
-            } else if ch == '}' {
-                brace_depth -= 1;
-                if brace_depth == 0 {
-                    break;
+    /// Reads raw source text up to the `}` matching an already-consumed `{`.
+    ///
+    /// Docs prose is not DOL code, so it is read from the source text rather
+    /// than tokenized: balanced `{ }` pairs, quotes and apostrophes inside
+    /// the text are kept verbatim. The lexer is then repositioned after the
+    /// closing brace, which is consumed.
+    fn read_raw_braced_text(&mut self) -> Result<String, ParseError> {
+        let start_pos = self.previous.span.end;
+        let source = self.lexer_source();
+        let mut depth = 1usize;
+        let mut end_pos = None;
+        for (i, ch) in source[start_pos..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_pos = Some(start_pos + i);
+                        break;
+                    }
                 }
-                content.push(ch);
-            } else {
-                content.push(ch);
+                _ => {}
             }
         }
+        let Some(end_pos) = end_pos else {
+            return Err(ParseError::UnexpectedEof {
+                context: "unterminated docs block: missing closing '}'".to_string(),
+                span: self.previous.span,
+            });
+        };
 
-        // Skip past the exegesis content in the lexer
-        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
-            self.advance();
-        }
+        // Discard any lookahead and resume lexing at the closing brace.
+        self.peeked = None;
+        self.peeked2 = None;
+        self.peeked3 = None;
+        self.lexer.seek(end_pos);
+        self.current = self.lexer.next_token();
+        self.expect(TokenKind::RightBrace)?;
 
-        if self.current.kind == TokenKind::RightBrace {
-            self.advance();
-        }
-
-        Ok(Some(content.trim().to_string()))
+        Ok(source[start_pos..end_pos].to_string())
     }
 
     // === DOL 2.0 Expression Parsing ===
