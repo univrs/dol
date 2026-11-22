@@ -4,7 +4,7 @@
 //! Each section holds a positive oracle (the construct parses to the right
 //! shape) and a negative oracle (the forbidden behaviour never happens).
 
-use metadol::ast::{BinaryOp, Declaration, Expr, Literal};
+use metadol::ast::{BinaryOp, Declaration, Expr, Literal, TypeExpr};
 use metadol::lexer::{Lexer, TokenKind};
 use metadol::parser::Parser;
 
@@ -499,4 +499,70 @@ fn l0_1_implies_inside_forall_body() {
         ),
         other => panic!("expected forall, got {:?}", other),
     }
+}
+
+// ============================================
+// L0.2 `exists x: T. p` in expression position
+// ============================================
+
+#[test]
+fn l0_2_exists_parses_in_expression_position() {
+    match expr("exists x: Int. x > 0") {
+        Expr::Exists(e) => {
+            assert_eq!(e.var, "x");
+            assert_eq!(e.type_, TypeExpr::Named("Int".to_string()));
+            assert_eq!(
+                *e.body,
+                bin(id("x"), BinaryOp::Gt, Expr::Literal(Literal::Int(0)))
+            );
+        }
+        other => panic!("expected exists, got {:?}", other),
+    }
+}
+
+#[test]
+fn l0_2_exists_nests_with_forall_and_implies() {
+    match expr("forall x: Int. exists y: Int. y > x implies p(y)") {
+        Expr::Forall(f) => match *f.body {
+            Expr::Exists(e) => assert!(
+                matches!(
+                    *e.body,
+                    Expr::Binary {
+                        op: BinaryOp::Implies,
+                        ..
+                    }
+                ),
+                "{:?}",
+                e.body
+            ),
+            other => panic!("expected exists body, got {:?}", other),
+        },
+        other => panic!("expected forall, got {:?}", other),
+    }
+}
+
+#[test]
+fn l0_2_exists_inside_function_body() {
+    let src = r#"
+fun has_positive(xs: List<Int>) -> Bool {
+  return exists x: Int. x > 0
+}
+"#;
+    assert_eq!(metadol::parse_file_all(src).expect("parse").len(), 1);
+}
+
+#[test]
+fn l0_2_exists_requires_typed_binder() {
+    // Negative oracle: a malformed quantifier is an error, not an identifier.
+    assert!(Parser::new("exists x. p(x)").parse_expr(0).is_err());
+    assert!(Parser::new("exists x: Int p(x)").parse_expr(0).is_err());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn l0_2_exists_round_trips_through_serde() {
+    let e = expr("exists x: Int. x > 0 implies q(x)");
+    let json = serde_json::to_string(&e).unwrap();
+    let back: Expr = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, e);
 }

@@ -2637,6 +2637,9 @@ impl<'a> Parser<'a> {
             // Syntax 2: forall x in iter { body } (iterator style)
             TokenKind::Forall => self.parse_forall_expr(),
 
+            // Existential quantifier expression: exists x: T. expr
+            TokenKind::Exists => self.parse_exists_expr(),
+
             // Block expression
             TokenKind::LeftBrace => self.parse_block_expr(),
 
@@ -2949,6 +2952,30 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RightBrace)?;
 
         Ok(Expr::Match { scrutinee, arms })
+    }
+
+    /// Parses an existential quantifier expression: `exists x: T. expr`.
+    ///
+    /// Mirrors the first-order `forall x: T. expr` form; the body extends as
+    /// far right as possible.
+    fn parse_exists_expr(&mut self) -> Result<Expr, ParseError> {
+        let start_span = self.current.span;
+        self.expect(TokenKind::Exists)?;
+
+        let var = self.expect_identifier()?;
+        self.expect(TokenKind::Colon)?;
+        let type_ = self.parse_type()?;
+        self.expect(TokenKind::Dot)?;
+
+        let body = self.parse_expr(0)?;
+        let span = start_span.merge(&self.previous.span);
+
+        Ok(Expr::Exists(ExistsExpr {
+            var,
+            type_,
+            body: Box::new(body),
+            span,
+        }))
     }
 
     /// Parses a forall quantifier expression (v0.3.0).
