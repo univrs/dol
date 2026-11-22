@@ -1,4 +1,4 @@
-//! System manifest parsing for DOL v0.9.0.
+//! System manifest parsing for DOL (shipped since v0.8.1).
 //!
 //! This module handles parsing of `System.dol` manifest files that define
 //! multi-spirit systems. A system composes multiple spirits with inter-spirit

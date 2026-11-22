@@ -1,4 +1,4 @@
-//! Spirit manifest parsing for DOL v0.9.0.
+//! Spirit manifest parsing for DOL (shipped since v0.8.1).
 //!
 //! This module handles parsing of `Spirit.dol` manifest files that define
 //! DOL packages (spirits). A spirit is a compilation unit that produces
