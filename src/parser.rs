@@ -135,7 +135,10 @@ impl<'a> Parser<'a> {
         while self.current.kind != TokenKind::Eof {
             // Mid-file `use` lines are parsed (and validated) but not
             // returned; use `parse_file` to keep them.
-            if self.parse_use_item()?.is_some() || self.skip_mod_block()? {
+            if self.parse_use_item()?.is_some()
+                || self.skip_mod_block()?
+                || self.skip_file_docs()?
+            {
                 continue;
             }
             let decl = self.parse_declaration()?;
@@ -166,7 +169,7 @@ impl<'a> Parser<'a> {
                 uses.push(use_decl);
                 continue;
             }
-            if self.skip_mod_block()? {
+            if self.skip_mod_block()? || self.skip_file_docs()? {
                 continue;
             }
             let decl = self.parse_declaration()?;
@@ -231,6 +234,24 @@ impl<'a> Parser<'a> {
             }
             self.advance();
         }
+        Ok(true)
+    }
+
+    /// Skips a free-standing (file-level) `docs { ... }` / `exegesis { ... }`
+    /// block if one starts at the current token. Returns `true` if skipped.
+    ///
+    /// Declaration docs are consumed by the declaration parsers, so a block
+    /// reaching this point documents the module itself, which the AST does
+    /// not yet represent.
+    fn skip_file_docs(&mut self) -> Result<bool, ParseError> {
+        if !matches!(self.current.kind, TokenKind::Docs | TokenKind::Exegesis)
+            || self.peek().kind != TokenKind::LeftBrace
+        {
+            return Ok(false);
+        }
+        self.advance(); // docs / exegesis
+        self.advance(); // {
+        self.read_raw_braced_text()?;
         Ok(true)
     }
 

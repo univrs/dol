@@ -390,3 +390,32 @@ fn b4_unterminated_mod_block_is_an_error() {
     assert!(metadol::parse_file_all(src).is_err());
     assert!(metadol::parse_dol_file(src).is_err());
 }
+
+// ============================================
+// B6. Whole-file parsing
+// ============================================
+
+#[test]
+fn b6_module_docs_only_file_has_no_fake_declarations() {
+    let src = r#"
+module biology @ 1.0.0
+
+pub use types.*
+
+docs {
+  Module-level documentation.
+}
+"#;
+    // Negative oracle: a file-level docs block never becomes a declaration.
+    assert_eq!(metadol::parse_file_all(src).expect("parse").len(), 0);
+    let file = metadol::parse_dol_file(src).expect("parse");
+    assert_eq!(file.declarations.len(), 0, "{:?}", file.declarations);
+    assert_eq!(file.uses.len(), 1);
+}
+
+#[test]
+fn b6_whole_file_rejects_trailing_garbage() {
+    let src = "gen a.thing {\n  has id: i64\n}\n\nthis is not dol }}}\n";
+    assert!(metadol::parse_file_all(src).is_err());
+    assert!(metadol::parse_dol_file(src).is_err());
+}
