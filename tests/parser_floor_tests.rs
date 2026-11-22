@@ -4,7 +4,7 @@
 //! Each section holds a positive oracle (the construct parses to the right
 //! shape) and a negative oracle (the forbidden behaviour never happens).
 
-use metadol::ast::{Declaration, Expr, Literal};
+use metadol::ast::{BinaryOp, Declaration, Expr, Literal};
 use metadol::lexer::{Lexer, TokenKind};
 use metadol::parser::Parser;
 
@@ -418,4 +418,85 @@ fn b6_whole_file_rejects_trailing_garbage() {
     let src = "gen a.thing {\n  has id: i64\n}\n\nthis is not dol }}}\n";
     assert!(metadol::parse_file_all(src).is_err());
     assert!(metadol::parse_dol_file(src).is_err());
+}
+
+// ============================================
+// L0.1 `implies` as a binary operator
+// ============================================
+
+fn expr(src: &str) -> Expr {
+    Parser::new(src)
+        .parse_expr(0)
+        .unwrap_or_else(|e| panic!("`{}` failed: {}", src, e))
+}
+
+fn id(name: &str) -> Expr {
+    Expr::Identifier(name.to_string())
+}
+
+fn bin(left: Expr, op: BinaryOp, right: Expr) -> Expr {
+    Expr::Binary {
+        left: Box::new(left),
+        op,
+        right: Box::new(right),
+    }
+}
+
+#[test]
+fn l0_1_implies_parses_as_binary_operator() {
+    assert_eq!(
+        expr("a implies b"),
+        bin(id("a"), BinaryOp::Implies, id("b"))
+    );
+}
+
+#[test]
+fn l0_1_implies_binds_looser_than_or() {
+    // Negative oracle: `||` never captures an `implies` operand.
+    assert_eq!(
+        expr("a || b implies c"),
+        bin(
+            bin(id("a"), BinaryOp::Or, id("b")),
+            BinaryOp::Implies,
+            id("c")
+        )
+    );
+    assert_eq!(
+        expr("a implies b || c"),
+        bin(
+            id("a"),
+            BinaryOp::Implies,
+            bin(id("b"), BinaryOp::Or, id("c"))
+        )
+    );
+}
+
+#[test]
+fn l0_1_implies_is_right_associative() {
+    assert_eq!(
+        expr("a implies b implies c"),
+        bin(
+            id("a"),
+            BinaryOp::Implies,
+            bin(id("b"), BinaryOp::Implies, id("c"))
+        )
+    );
+}
+
+#[test]
+fn l0_1_implies_inside_forall_body() {
+    match expr("forall x: Int. p(x) implies q(x)") {
+        Expr::Forall(f) => assert!(
+            matches!(
+                *f.body,
+                Expr::Binary {
+                    op: BinaryOp::Implies,
+                    ..
+                }
+            ),
+            "{:?}",
+            f.body
+        ),
+        other => panic!("expected forall, got {:?}", other),
+    }
 }

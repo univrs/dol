@@ -2769,6 +2769,7 @@ impl<'a> Parser<'a> {
             TokenKind::Bind => BinaryOp::Bind,
             TokenKind::Dot => BinaryOp::Member,
             TokenKind::DotDot => BinaryOp::Range,
+            TokenKind::Implies => BinaryOp::Implies,
             _ => {
                 return Err(ParseError::InvalidStatement {
                     message: format!("invalid binary operator: {:?}", op_token),
