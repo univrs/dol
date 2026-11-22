@@ -844,10 +844,8 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::LeftBrace)?;
 
-        let statements = self.parse_statements()?;
-
-        // DOL 2.0: exegesis can be inside braces
-        let inline_exegesis = self.parse_inline_exegesis()?;
+        // DOL 2.0: exegesis can be inside braces (anywhere in the body)
+        let (statements, inline_exegesis) = self.parse_statements()?;
 
         self.expect(TokenKind::RightBrace)?;
 
@@ -896,10 +894,8 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::LeftBrace)?;
 
-        let statements = self.parse_statements()?;
-
-        // DOL 2.0: exegesis can be inside braces
-        let inline_exegesis = self.parse_inline_exegesis()?;
+        // DOL 2.0: exegesis can be inside braces (anywhere in the body)
+        let (statements, inline_exegesis) = self.parse_statements()?;
 
         self.expect(TokenKind::RightBrace)?;
 
@@ -1002,10 +998,8 @@ impl<'a> Parser<'a> {
         self.skip_type_params()?;
         self.expect(TokenKind::LeftBrace)?;
 
-        let statements = self.parse_statements()?;
-
-        // DOL 2.0: exegesis can be inside braces
-        let inline_exegesis = self.parse_inline_exegesis()?;
+        // DOL 2.0: exegesis can be inside braces (anywhere in the body)
+        let (statements, inline_exegesis) = self.parse_statements()?;
 
         self.expect(TokenKind::RightBrace)?;
 
@@ -1197,16 +1191,28 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses multiple statements until a closing brace.
-    fn parse_statements(&mut self) -> Result<Vec<Statement>, ParseError> {
+    ///
+    /// Returns the statements and the text of any inline `docs { }` /
+    /// `exegesis { }` blocks in the body (joined by blank lines), or `None`
+    /// if the body has no docs block.
+    fn parse_statements(&mut self) -> Result<(Vec<Statement>, Option<String>), ParseError> {
         let mut statements = Vec::new();
+        let mut docs: Option<String> = None;
 
         // Stop at RightBrace or Eof
-        // DOL 2.0/v0.4.0: exegesis blocks can appear throughout gene body, handled in parse_statement
+        // DOL 2.0/v0.4.0: exegesis blocks can appear throughout the body
         while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
+            if let Some(text) = self.parse_inline_exegesis()? {
+                docs = Some(match docs {
+                    Some(prev) => format!("{}\n\n{}", prev, text),
+                    None => text,
+                });
+                continue;
+            }
             statements.push(self.parse_statement()?);
         }
 
-        Ok(statements)
+        Ok((statements, docs))
     }
 
     /// Parses a single statement.

@@ -154,3 +154,76 @@ fn b2_unterminated_docs_block_is_an_error() {
     let src = "gen a.thing {\n  has id: i64\n}\ndocs {\n  never { closed\n";
     assert!(metadol::parse_file_all(src).is_err());
 }
+
+// ============================================
+// B5. docs inside a gen body with fields
+// ============================================
+
+fn assert_no_skip_markers(decl: &Declaration) {
+    if let Declaration::Gene(g) = decl {
+        for s in &g.statements {
+            let dbg = format!("{:?}", s);
+            assert!(
+                !dbg.contains("_skip"),
+                "placeholder statement leaked: {}",
+                dbg
+            );
+        }
+    }
+}
+
+#[test]
+fn b5_docs_at_end_of_gen_body_with_fields_is_captured() {
+    let src = r#"
+gen counter.state {
+  has value: i64
+  has label: string
+  docs {
+    A counter with a label.
+  }
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    assert_eq!(decls.len(), 1);
+    assert_eq!(gene_exegesis(&decls[0]), "A counter with a label.");
+    assert_no_skip_markers(&decls[0]);
+    if let Declaration::Gene(g) = &decls[0] {
+        assert_eq!(g.statements.len(), 2, "{:?}", g.statements);
+    }
+}
+
+#[test]
+fn b5_docs_in_middle_of_gen_body_is_captured_and_fields_kept() {
+    let src = r#"
+gen counter.state {
+  has value: i64
+  docs {
+    Middle docs.
+  }
+  has label: string
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    assert_eq!(gene_exegesis(&decls[0]), "Middle docs.");
+    assert_no_skip_markers(&decls[0]);
+    if let Declaration::Gene(g) = &decls[0] {
+        assert_eq!(g.statements.len(), 2, "{:?}", g.statements);
+    }
+}
+
+#[test]
+fn b5_docs_inside_rule_body_is_captured() {
+    let src = r#"
+rule counter.bounded {
+  value never negative
+  docs {
+    Counters never go below zero.
+  }
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    match &decls[0] {
+        Declaration::Constraint(c) => assert_eq!(c.exegesis, "Counters never go below zero."),
+        other => panic!("expected constraint, got {:?}", other),
+    }
+}
