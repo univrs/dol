@@ -30,6 +30,33 @@ use crate::lexer::{Lexer, Token, TokenKind};
 use crate::macros::{AttributeArg, MacroAttribute, MacroInvocation};
 use crate::pratt::{infix_binding_power, prefix_binding_power};
 
+/// Interprets a numeric lexeme (the lexer emits numbers as identifiers).
+///
+/// Handles decimal integers, `_` digit separators, `0x`/`0b`/`0o` radix
+/// prefixes, and floats with optional exponents (`1e9`, `3.0e8`).
+/// Returns `None` if the lexeme is not a numeric literal.
+fn numeric_literal(lexeme: &str) -> Option<Literal> {
+    if !lexeme.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    let clean: String = lexeme.chars().filter(|&c| c != '_').collect();
+    let radix = match clean.get(..2) {
+        Some("0x") | Some("0X") => 16,
+        Some("0b") | Some("0B") => 2,
+        Some("0o") | Some("0O") => 8,
+        _ => 10,
+    };
+    if radix != 10 {
+        return i64::from_str_radix(&clean[2..], radix)
+            .ok()
+            .map(Literal::Int);
+    }
+    if let Ok(v) = clean.parse::<i64>() {
+        return Some(Literal::Int(v));
+    }
+    clean.parse::<f64>().ok().map(Literal::Float)
+}
+
 /// The parser for Metal DOL source text.
 ///
 /// The parser uses recursive descent to transform tokens into an AST.
@@ -2519,11 +2546,8 @@ impl<'a> Parser<'a> {
                 }
 
                 // Check for numeric literals (lexer sends them as identifiers)
-                if let Ok(int_val) = name.parse::<i64>() {
-                    return Ok(Expr::Literal(Literal::Int(int_val)));
-                }
-                if let Ok(float_val) = name.parse::<f64>() {
-                    return Ok(Expr::Literal(Literal::Float(float_val)));
+                if let Some(lit) = numeric_literal(&name) {
+                    return Ok(Expr::Literal(lit));
                 }
 
                 // Handle path expressions like Map::new, Type::Variant
@@ -3168,11 +3192,9 @@ impl<'a> Parser<'a> {
                     Ok(Pattern::Literal(Literal::Bool(true)))
                 } else if name == "false" {
                     Ok(Pattern::Literal(Literal::Bool(false)))
-                } else if let Ok(int_val) = name.parse::<i64>() {
+                } else if let Some(lit) = numeric_literal(&name) {
                     // Numeric pattern (lexer sends numbers as identifiers)
-                    Ok(Pattern::Literal(Literal::Int(int_val)))
-                } else if let Ok(float_val) = name.parse::<f64>() {
-                    Ok(Pattern::Literal(Literal::Float(float_val)))
+                    Ok(Pattern::Literal(lit))
                 } else {
                     Ok(Pattern::Identifier(name))
                 }
@@ -3827,7 +3849,7 @@ impl<'a> Parser<'a> {
                         if self.current.kind == TokenKind::Equal {
                             self.advance(); // consume '='
                                             // Numeric values are tokenized as Identifier
-                            if let Ok(val) = self.current.lexeme.parse::<i64>() {
+                            if let Some(Literal::Int(val)) = numeric_literal(&self.current.lexeme) {
                                 discriminant = Some(val);
                             }
                             self.advance();
