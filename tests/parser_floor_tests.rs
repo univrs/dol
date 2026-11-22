@@ -566,3 +566,93 @@ fn l0_2_exists_round_trips_through_serde() {
     let back: Expr = serde_json::from_str(&json).unwrap();
     assert_eq!(back, e);
 }
+
+// ============================================
+// L0.3 `law name { ... }` without params
+// ============================================
+
+#[test]
+fn l0_3_law_without_params_parses() {
+    let law = Parser::new("law reflexive { forall x: Self. x.compare(x) == 0 }")
+        .parse_law_decl()
+        .expect("parse");
+    assert_eq!(law.name, "reflexive");
+    assert!(law.params.is_empty());
+    assert!(matches!(law.body, Expr::Forall(_)), "{:?}", law.body);
+}
+
+#[test]
+fn l0_3_law_with_params_still_parses() {
+    let law = Parser::new("law positive(a: Int, b: Int) { a + b > 0 }")
+        .parse_law_decl()
+        .expect("parse");
+    assert_eq!(law.params.len(), 2);
+    let law = Parser::new("law trivially() { true }")
+        .parse_law_decl()
+        .expect("parse");
+    assert!(law.params.is_empty());
+}
+
+#[test]
+fn l0_3_paramless_laws_in_trait_parse_whole_file() {
+    let src = r#"
+trait ordering.comparable {
+  law reflexive {
+    forall x: Self. x.compare(x) == 0
+  }
+
+  law antisymmetric {
+    forall x: Self. forall y: Self.
+      x.compare(y) <= 0 && y.compare(x) <= 0 implies x.compare(y) == 0
+  }
+
+  docs {
+    Total ordering laws.
+  }
+}
+"#;
+    let decls = metadol::parse_file_all(src).expect("parse");
+    assert_eq!(decls.len(), 1);
+}
+
+#[test]
+fn l0_3_law_without_body_is_an_error() {
+    // Negative oracle: optional params do not make the body optional.
+    assert!(Parser::new("law reflexive").parse_law_decl().is_err());
+    assert!(Parser::new("law reflexive { }").parse_law_decl().is_err());
+}
+
+#[test]
+fn l0_3_quantifier_with_several_binders_nests() {
+    // `forall a: A, b: B. p` is sugar for `forall a: A. forall b: B. p`
+    // (the form used by the stdlib laws); same for `exists`.
+    match expr("forall a: A, b: B. a == b") {
+        Expr::Forall(outer) => {
+            assert_eq!(outer.var, "a");
+            match *outer.body {
+                Expr::Forall(inner) => {
+                    assert_eq!(inner.var, "b");
+                    assert_eq!(*inner.body, bin(id("a"), BinaryOp::Eq, id("b")));
+                }
+                other => panic!("expected nested forall, got {:?}", other),
+            }
+        }
+        other => panic!("expected forall, got {:?}", other),
+    }
+    match expr("exists a: A, b: B. a == b") {
+        Expr::Exists(outer) => {
+            assert_eq!(outer.var, "a");
+            assert!(matches!(*outer.body, Expr::Exists(_)), "{:?}", outer.body);
+        }
+        other => panic!("expected exists, got {:?}", other),
+    }
+    let law = Parser::new(
+        "law capacity { forall flow: Flow<T>, edge: Edge. flow.amount <= edge.capacity }",
+    )
+    .parse_law_decl()
+    .expect("parse");
+    match law.body {
+        Expr::Forall(f) => assert!(matches!(*f.body, Expr::Forall(_)), "{:?}", f.body),
+        other => panic!("expected forall, got {:?}", other),
+    }
+}

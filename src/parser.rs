@@ -2963,19 +2963,53 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Exists)?;
 
         let var = self.expect_identifier()?;
+        self.parse_typed_quantifier(var, start_span, true)
+    }
+
+    /// Parses the rest of a typed quantifier after its first variable:
+    /// `: T[, y: U]* . body`.
+    ///
+    /// Several binders are sugar for nested quantifiers:
+    /// `forall a: A, b: B. p` is `forall a: A. forall b: B. p`.
+    fn parse_typed_quantifier(
+        &mut self,
+        first_var: String,
+        start_span: Span,
+        exists: bool,
+    ) -> Result<Expr, ParseError> {
         self.expect(TokenKind::Colon)?;
-        let type_ = self.parse_type()?;
+        let mut binders = vec![(first_var, self.parse_type()?)];
+        while self.current.kind == TokenKind::Comma {
+            self.advance();
+            let var = self.expect_identifier()?;
+            self.expect(TokenKind::Colon)?;
+            binders.push((var, self.parse_type()?));
+        }
+
+        // Expect dot separator for the body
         self.expect(TokenKind::Dot)?;
 
-        let body = self.parse_expr(0)?;
+        let mut body = self.parse_expr(0)?;
         let span = start_span.merge(&self.previous.span);
 
-        Ok(Expr::Exists(ExistsExpr {
-            var,
-            type_,
-            body: Box::new(body),
-            span,
-        }))
+        for (var, type_) in binders.into_iter().rev() {
+            body = if exists {
+                Expr::Exists(ExistsExpr {
+                    var,
+                    type_,
+                    body: Box::new(body),
+                    span,
+                })
+            } else {
+                Expr::Forall(ForallExpr {
+                    var,
+                    type_,
+                    body: Box::new(body),
+                    span,
+                })
+            };
+        }
+        Ok(body)
     }
 
     /// Parses a forall quantifier expression (v0.3.0).
@@ -2991,21 +3025,7 @@ impl<'a> Parser<'a> {
 
         // Check for type-annotated syntax: forall x: T. expr
         if self.current.kind == TokenKind::Colon {
-            self.advance();
-            let type_ = self.parse_type()?;
-
-            // Expect dot separator for the body
-            self.expect(TokenKind::Dot)?;
-
-            let body = self.parse_expr(0)?;
-            let span = start_span.merge(&self.previous.span);
-
-            Ok(Expr::Forall(ForallExpr {
-                var,
-                type_,
-                body: Box::new(body),
-                span,
-            }))
+            self.parse_typed_quantifier(var, start_span, false)
         } else if self.current.kind == TokenKind::In {
             // Iterator syntax: forall x in iter { body }
             self.advance();
@@ -4026,7 +4046,10 @@ impl<'a> Parser<'a> {
 
     /// Parses a law declaration in a trait.
     ///
-    /// Syntax: `law name(params) { body } [exegesis { ... }]`
+    /// Syntax: `law name[(params)] { body } [exegesis { ... }]`
+    ///
+    /// The parameter list is optional: `law name { forall x: T. p }` binds
+    /// its variables with quantifiers in the body instead.
     ///
     /// Laws are declarative constraints/properties that must hold for a trait.
     /// Unlike `fun` which contains implementation code, `law` bodies are
@@ -4037,26 +4060,29 @@ impl<'a> Parser<'a> {
 
         let name = self.expect_identifier()?;
 
-        // Parse parameters
-        self.expect(TokenKind::LeftParen)?;
+        // Parse optional parameters
         let mut params = Vec::new();
-        while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof {
-            // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
-            let param_name = self.expect_identifier_or_keyword()?;
-            self.expect(TokenKind::Colon)?;
-            let type_ann = self.parse_type()?;
-            params.push(FunctionParam {
-                name: param_name,
-                type_ann,
-            });
+        if self.current.kind == TokenKind::LeftParen {
+            self.advance();
+            while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof
+            {
+                // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
+                let param_name = self.expect_identifier_or_keyword()?;
+                self.expect(TokenKind::Colon)?;
+                let type_ann = self.parse_type()?;
+                params.push(FunctionParam {
+                    name: param_name,
+                    type_ann,
+                });
 
-            if self.current.kind == TokenKind::Comma {
-                self.advance();
-            } else {
-                break;
+                if self.current.kind == TokenKind::Comma {
+                    self.advance();
+                } else {
+                    break;
+                }
             }
+            self.expect(TokenKind::RightParen)?;
         }
-        self.expect(TokenKind::RightParen)?;
 
         // Parse body expression (a predicate/constraint)
         self.expect(TokenKind::LeftBrace)?;
