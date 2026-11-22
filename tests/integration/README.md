@@ -308,10 +308,4 @@ tests/integration/
 
 ## Contributing
 
-When adding new integration tests:
-
-1. Add test to appropriate category file
-2. Use `TestNode` from `test_harness`
-3. Verify convergence with `verify_full_convergence()`
-4. Document performance expectations
-5. Update this README with test count
+This project is not accepting external contributions or pull requests.

@@ -403,7 +403,6 @@ cargo bench
 - [API Documentation](docs/api.md)
 - [CRDT Schema Design](docs/crdt-schema.md)
 - [Architecture Overview](docs/architecture.md)
-- [Contributing Guide](docs/contributing.md)
 
 ### Examples
 
@@ -415,16 +414,7 @@ cargo bench
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new functionality
-4. Ensure `cargo test` passes
-5. Run `cargo fmt` and `cargo clippy`
-6. Submit a pull request
-
----
+This project is not accepting external contributions or pull requests.
 
 ## License
 

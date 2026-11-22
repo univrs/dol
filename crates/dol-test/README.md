@@ -307,12 +307,7 @@ For large test suites, consider:
 
 ## Contributing
 
-Contributions are welcome! Please ensure:
-
-- All tests pass: `cargo test --package dol-test`
-- Code is formatted: `cargo fmt`
-- No clippy warnings: `cargo clippy -- -D warnings`
-- New properties include tests
+This project is not accepting external contributions or pull requests.
 
 ## References
 

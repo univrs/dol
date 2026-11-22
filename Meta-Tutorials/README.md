@@ -209,20 +209,9 @@ $ dol-codegen example.dol
 - **Advanced**: Deep understanding of type systems
 - **Expert**: Meta-programming experience
 
-## 🤝 Contributing
+## Contributing
 
-Found an issue or want to improve a tutorial?
-
-```bash
-# Open an issue
-https://github.com/univrs/dol/issues
-
-# Submit a PR
-git checkout -b improve-tutorial-01
-# Make changes
-git commit -m "Improve Tutorial 01 with XYZ"
-git push origin improve-tutorial-01
-```
+This project is not accepting external contributions or pull requests.
 
 ## 📚 Additional Resources
 

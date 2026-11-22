@@ -356,14 +356,7 @@ Tests run on:
 
 ## Contributing
 
-When contributing tests:
-
-1. Ensure all tests pass locally
-2. Add tests for new features
-3. Update documentation
-4. Follow existing patterns
-5. Use meaningful test names
-6. Document edge cases
+This project is not accepting external contributions or pull requests.
 
 ## License
 

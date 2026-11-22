@@ -219,15 +219,7 @@ When the full ABI specification is implemented, enable these tests by implementi
 
 ## Contributing
 
-When adding new tests:
-1. Place unit tests in the relevant `src/*.rs` file
-2. Place integration tests in `tests/integration_tests.rs`
-3. Place host-specific tests in `tests/host_tests.rs`
-4. Use `#[cfg(target_arch = "wasm32")]` for WASM-only tests
-5. Use `#[cfg(feature = "full-abi")]` for future ABI tests
-6. Ensure all tests have descriptive names and comments
-7. Test both success and failure cases
-8. Include edge cases and boundary conditions
+This project is not accepting external contributions or pull requests.
 
 ## Test Results
 

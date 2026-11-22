@@ -373,7 +373,7 @@ cargo test --features cli,serde,wasm --lib --bins --tests    # with CLI and WASM
 cargo test --features cli,serde,wasm --doc
 ```
 
-On 2026-11-21, `cargo test` ran 2,183 tests with 0 failures. With `--features cli,serde,wasm`, the two commands above ran 2,512 tests with 0 failures. These counts cover the root crate only. The crates under `crates/`, `apps/`, `llvm-backend/` and `benchmarks/` are not part of a Cargo workspace and are not built in CI.
+On 2026-11-21, with `--features cli,serde,wasm`, the two commands above ran 2,512 tests (including doctests) with 0 failures. These counts cover the root crate only. The crates under `crates/`, `apps/`, `llvm-backend/` and `benchmarks/` are not part of a Cargo workspace and are not built in CI.
 
 ---
 
@@ -404,9 +404,7 @@ None of the following exists yet:
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow (`cargo fmt`, `cargo clippy -- -D warnings`, tests). This is an experimental project with no support commitment, so issues and pull requests may not receive a response.
-
----
+This project is not accepting external contributions or pull requests.
 
 ## License
 

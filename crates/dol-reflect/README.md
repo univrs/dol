@@ -243,4 +243,4 @@ MIT OR Apache-2.0
 
 ## Contributing
 
-Contributions are welcome! Please see the main DOL repository for contribution guidelines.
+This project is not accepting external contributions or pull requests.

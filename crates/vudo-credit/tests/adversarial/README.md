@@ -210,13 +210,7 @@ See `/docs/security/threat-model.md` for complete threat analysis.
 
 ## Contributing
 
-When adding new adversarial tests:
-
-1. Follow the test pattern above
-2. Add to appropriate category file
-3. Update this README
-4. Document in threat model
-5. Add to attack scenarios
+This project is not accepting external contributions or pull requests.
 
 ## License
 
