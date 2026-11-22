@@ -345,17 +345,19 @@ impl TypeScriptCodegen {
         output
     }
 
-    /// Extract fields from "has" statements.
+    /// Extract fields from "has" statements, in source order.
+    ///
+    /// Typed fields (`has x: T`) map their type; untyped `subject has x`
+    /// properties carry no type and become `unknown`.
     fn extract_fields(&self, statements: &[Statement]) -> Vec<(String, String)> {
         statements
             .iter()
-            .filter_map(|stmt| {
-                if let Statement::Has { property, .. } = stmt {
-                    // Since AST doesn't have type annotations, use "unknown"
-                    Some((property.clone(), "unknown".to_string()))
-                } else {
-                    None
+            .filter_map(|stmt| match stmt {
+                Statement::Has { property, .. } => Some((property.clone(), "unknown".to_string())),
+                Statement::HasField(field) => {
+                    Some((field.name.clone(), Self::map_type_expr(&field.type_)))
                 }
+                _ => None,
             })
             .collect()
     }
@@ -483,8 +485,11 @@ impl TypeMapper for TypeScriptCodegen {
                 "Int8" | "Int16" | "Int32" | "Int64" => "number".to_string(),
                 "UInt8" | "UInt16" | "UInt32" | "UInt64" => "number".to_string(),
                 "Float32" | "Float64" => "number".to_string(),
-                "String" => "string".to_string(),
-                "Bool" => "boolean".to_string(),
+                "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "f32" | "f64" => {
+                    "number".to_string()
+                }
+                "String" | "string" => "string".to_string(),
+                "Bool" | "bool" => "boolean".to_string(),
                 "Void" => "void".to_string(),
                 "Any" => "any".to_string(),
                 _ => to_pascal_case(name),
@@ -492,7 +497,7 @@ impl TypeMapper for TypeScriptCodegen {
             TypeExpr::Generic { name, args } => {
                 let mapped_args: Vec<_> = args.iter().map(Self::map_type_expr).collect();
                 match name.as_str() {
-                    "List" => {
+                    "List" | "Vec" => {
                         if args.len() == 1 {
                             format!("{}[]", mapped_args[0])
                         } else {
