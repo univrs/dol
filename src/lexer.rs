@@ -790,6 +790,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Repositions the lexer at byte offset `pos` of the source.
+    ///
+    /// Used by the parser to skip raw (non-tokenized) text such as the
+    /// prose inside `docs { ... }` blocks. `pos` must be a char boundary.
+    pub(crate) fn seek(&mut self, pos: usize) {
+        if pos < self.position {
+            self.position = 0;
+            self.line = 1;
+            self.column = 1;
+            self.remaining = self.source;
+        }
+        self.advance(pos - self.position);
+    }
+
     /// Returns any errors accumulated during lexing.
     pub fn errors(&self) -> &[LexError] {
         &self.errors
@@ -1228,10 +1242,61 @@ impl<'a> Lexer<'a> {
         let mut lexeme = String::new();
         let mut dots = 0;
 
+        // Radix-prefixed integers: 0x.., 0b.., 0o.. (underscores allowed).
+        let bytes = self.remaining.as_bytes();
+        if bytes.len() > 2 && bytes[0] == b'0' {
+            let is_digit: Option<fn(u8) -> bool> = match bytes[1] {
+                b'x' | b'X' => Some(|b: u8| b.is_ascii_hexdigit()),
+                b'b' | b'B' => Some(|b: u8| b == b'0' || b == b'1'),
+                b'o' | b'O' => Some(|b: u8| (b'0'..=b'7').contains(&b)),
+                _ => None,
+            };
+            if let Some(is_digit) = is_digit {
+                if is_digit(bytes[2]) {
+                    let len = 2 + bytes[2..]
+                        .iter()
+                        .take_while(|&&b| is_digit(b) || b == b'_')
+                        .count();
+                    lexeme.push_str(&self.remaining[..len]);
+                    self.advance(len);
+                    return Some(Token::new(
+                        TokenKind::Identifier,
+                        lexeme,
+                        Span::new(start_pos, self.position, start_line, start_col),
+                    ));
+                }
+            }
+        }
+
         while let Some(ch) = self.remaining.chars().next() {
             if ch.is_ascii_digit() {
                 lexeme.push(ch);
                 self.advance(ch.len_utf8());
+            } else if ch == '_'
+                && self
+                    .remaining
+                    .as_bytes()
+                    .get(1)
+                    .is_some_and(|b| b.is_ascii_digit())
+            {
+                // Digit separator: 1_000
+                lexeme.push(ch);
+                self.advance(1);
+            } else if (ch == 'e' || ch == 'E') && dots < 2 {
+                // Float exponent: 1e9, 3.0e8, 1.5e-3, 2e+10
+                let rest = self.remaining.as_bytes();
+                let sign = matches!(rest.get(1), Some(b'+') | Some(b'-'));
+                let digit_at = if sign { 2 } else { 1 };
+                if rest.get(digit_at).is_some_and(|b| b.is_ascii_digit()) {
+                    let len = digit_at
+                        + rest[digit_at..]
+                            .iter()
+                            .take_while(|b| b.is_ascii_digit() || **b == b'_')
+                            .count();
+                    lexeme.push_str(&self.remaining[..len]);
+                    self.advance(len);
+                }
+                break;
             } else if ch == '.' && dots < 2 {
                 // Check if next char is a digit (version) or not (identifier)
                 let next = self.remaining.chars().nth(1);

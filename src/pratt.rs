@@ -15,6 +15,7 @@
 //! # Precedence Table
 //!
 //! From lowest to highest:
+//! 0. Implication `implies` (3, 2) - right associative
 //! 1. Assignment `:=` (10, 9) - right associative
 //! 2. Pipe `|>` (21, 20) - left associative
 //! 3. Application `@` (31, 30) - left associative

@@ -24,11 +24,11 @@
 
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use metadol::validator::{validate_with_options, ValidationOptions};
-use metadol::{parse_file, Declaration};
+use metadol::{parse_dol_file, Declaration};
 
 /// Validate DOL files and check coverage
 #[derive(Parser, Debug)]
@@ -154,9 +154,9 @@ fn run_checks(args: &Args) -> CheckResults {
         results.files_checked += 1;
 
         match check_file(&path, args) {
-            Ok((decl_info, warnings)) => {
+            Ok((decl_infos, warnings)) => {
                 results.files_passed += 1;
-                results.declarations.push(decl_info);
+                results.declarations.extend(decl_infos);
                 for warning in warnings {
                     results.warnings.push(warning);
                     results.total_warnings += 1;
@@ -210,10 +210,12 @@ fn collect_dol_files_recursive(dir: &PathBuf, files: &mut Vec<PathBuf>) {
     }
 }
 
+/// Parses the whole file (every declaration; trailing content is an error)
+/// and checks each declaration.
 fn check_file(
     path: &PathBuf,
     args: &Args,
-) -> Result<(DeclarationInfo, Vec<CheckWarning>), Vec<CheckError>> {
+) -> Result<(Vec<DeclarationInfo>, Vec<CheckWarning>), Vec<CheckError>> {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -230,9 +232,9 @@ fn check_file(
         }
     };
 
-    // Parse file
-    let decl = match parse_file(&source) {
-        Ok(d) => d,
+    // Parse the whole file
+    let file = match parse_dol_file(&source) {
+        Ok(f) => f,
         Err(e) => {
             errors.push(CheckError {
                 path: path.clone(),
@@ -243,17 +245,43 @@ fn check_file(
         }
     };
 
+    let mut infos = Vec::new();
+    for decl in &file.declarations {
+        infos.push(check_declaration(
+            path,
+            decl,
+            args,
+            &mut errors,
+            &mut warnings,
+        ));
+    }
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    Ok((infos, warnings))
+}
+
+/// Validates one declaration and checks its exegesis, recording problems.
+fn check_declaration(
+    path: &Path,
+    decl: &Declaration,
+    args: &Args,
+    errors: &mut Vec<CheckError>,
+    warnings: &mut Vec<CheckWarning>,
+) -> DeclarationInfo {
     // Validate with optional type checking
     let validation_options = ValidationOptions {
         typecheck: args.typecheck,
     };
-    let validation = validate_with_options(&decl, &validation_options);
+    let validation = validate_with_options(decl, &validation_options);
 
     // Check validation errors
     for error in &validation.errors {
         errors.push(CheckError {
-            path: path.clone(),
-            message: error.to_string(),
+            path: path.to_path_buf(),
+            message: format!("{}: {}", decl.name(), error),
             line: None,
         });
     }
@@ -261,8 +289,8 @@ fn check_file(
     // Check validation warnings
     for warning in &validation.warnings {
         warnings.push(CheckWarning {
-            path: path.clone(),
-            message: warning.to_string(),
+            path: path.to_path_buf(),
+            message: format!("{}: {}", decl.name(), warning),
             line: None,
         });
     }
@@ -274,39 +302,34 @@ fn check_file(
     if args.require_exegesis {
         if exegesis.trim().is_empty() {
             errors.push(CheckError {
-                path: path.clone(),
-                message: "Missing or empty exegesis block".to_string(),
+                path: path.to_path_buf(),
+                message: format!("'{}': missing or empty exegesis block", decl.name()),
                 line: None,
             });
         } else if exegesis_length < args.min_exegesis_length {
             warnings.push(CheckWarning {
-                path: path.clone(),
+                path: path.to_path_buf(),
                 message: format!(
-                    "Exegesis too short ({} chars, minimum {})",
-                    exegesis_length, args.min_exegesis_length
+                    "'{}': exegesis too short ({} chars, minimum {})",
+                    decl.name(),
+                    exegesis_length,
+                    args.min_exegesis_length
                 ),
                 line: None,
             });
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // ADD THIS BLOCK - v0.3.0: Always warn about empty exegesis
-    // ═══════════════════════════════════════════════════════════════════
+    // v0.3.0: Always warn about empty exegesis
     if exegesis.trim().is_empty() && !args.require_exegesis {
         warnings.push(CheckWarning {
-            path: path.clone(),
+            path: path.to_path_buf(),
             message: format!("'{}' has no exegesis", decl.name()),
             line: None,
         });
     }
-    // ═══════════════════════════════════════════════════════════════════
 
-    if !errors.is_empty() {
-        return Err(errors);
-    }
-
-    let decl_type = match &decl {
+    let decl_type = match decl {
         Declaration::Gene(_) => "gene",
         Declaration::Trait(_) => "trait",
         Declaration::Constraint(_) => "constraint",
@@ -317,15 +340,12 @@ fn check_file(
         Declaration::SexVar(_) => "sex_var",
     };
 
-    Ok((
-        DeclarationInfo {
-            path: path.clone(),
-            name: decl.name().to_string(),
-            decl_type: decl_type.to_string(),
-            exegesis_length,
-        },
-        warnings,
-    ))
+    DeclarationInfo {
+        path: path.to_path_buf(),
+        name: decl.name().to_string(),
+        decl_type: decl_type.to_string(),
+        exegesis_length,
+    }
 }
 
 fn check_coverage(source_dir: &PathBuf, declarations: &[DeclarationInfo]) -> CoverageReport {

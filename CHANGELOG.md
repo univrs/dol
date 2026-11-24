@@ -15,6 +15,23 @@ entries; see `git log` between the tags for their changes. Dates below are git t
 - Packaging: the published crate now contains only `src/`, `Cargo.toml`, `README.md`, `CHANGELOG.md` and the licence files. dol 0.8.2 shipped 734 files, including internal notes, prototypes and sibling apps.
 - The internal `wasm-stress-test` binary now requires `--features cli,wasm`, so `cargo install dol` without `--features cli` no longer installs it.
 - README rewritten for v0.8.2.
+- `dol-parse` and `dol-check` parse the whole file and report every declaration. Previously they saw only the first declaration and silently ignored the rest of the file, including garbage. Unparseable trailing content is now an error. `dol-parse --format json` lists a `declarations` array per file, replacing the single `declaration_type`/`name` pair.
+- `metadol::parse_file` and `parse_and_validate` still return only the first declaration; their docs now say so and point to `parse_dol_file` / `parse_file_all`.
+- `ast::Trait` has a new `laws: Vec<LawDecl>` field (serde default: empty). Code that builds `Trait` literals must set it.
+
+### Added
+- `a implies b` binary operator: right-associative, binds looser than `||` (Lean-alignment L0.1).
+- `exists x: T. p` in expression position (L0.2).
+- `law name { ... }` without a parameter list (L0.3). Quantifiers accept several binders: `forall a: A, b: B. p` is `forall a: A. forall b: B. p`.
+- Trait laws are kept in the AST, and `dol-parse` shows them (L0.4).
+
+### Fixed
+- Numeric literals `1e9`, `3.0e8`, `1_000`, `0x10`, `0b1010` and `0o17` were split into a number followed by an identifier.
+- A `{` or `}` inside a `docs { }` / `exegesis { }` block ended the block early. An unterminated docs block is now an error.
+- A `use` line before an `evo` declaration, or mid-file before a `const`, swallowed that declaration. `use` lines are now parsed rather than skipped token by token, and junk after a use path is an error. `parse_dol_file` keeps mid-file `use` declarations.
+- `mod x { }` as the first item of a file was a parse error. Block-module bodies are still skipped, not kept in the AST.
+- `docs { }` inside a `gen`, `type` or `rule` body was dropped (empty exegesis) and replaced by a placeholder `_skip is _noop` statement.
+- Whole-file parsing no longer returns placeholder declarations (`_module_doc`, `_module_decl`, `_use_only`) for file-level docs blocks, trailing `mod` blocks or `use` lines.
 
 ## [0.8.2] - 2026-11-20
 

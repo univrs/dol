@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use metadol::transform::{TreeShaking, TreeShakingStats};
-use metadol::{parse_file, validate, Declaration, ValidationResult};
+use metadol::{parse_dol_file, validate, Declaration, ValidationResult};
 
 /// Parse and validate Metal DOL files
 #[derive(Parser, Debug)]
@@ -113,18 +113,17 @@ fn main() -> ExitCode {
         total_files += 1;
 
         match process_file(path) {
-            Ok((decl, validation)) => {
+            Ok((declarations, validations)) => {
                 successful += 1;
-                if validation.has_warnings() {
-                    warnings_count += validation.warnings.len();
-                }
+                warnings_count += validations.iter().map(|v| v.warnings.len()).sum::<usize>();
+                let eliminated = vec![false; declarations.len()];
                 results.push(ParseResult {
                     path: path.clone(),
                     success: true,
-                    declaration: Some(decl),
-                    validation: Some(validation),
+                    declarations,
+                    validations,
                     error: None,
-                    eliminated: false,
+                    eliminated,
                 });
             }
             Err(e) => {
@@ -132,10 +131,10 @@ fn main() -> ExitCode {
                 results.push(ParseResult {
                     path: path.clone(),
                     success: false,
-                    declaration: None,
-                    validation: None,
+                    declarations: Vec::new(),
+                    validations: Vec::new(),
                     error: Some(e),
-                    eliminated: false,
+                    eliminated: Vec::new(),
                 });
             }
         }
@@ -210,7 +209,7 @@ fn apply_tree_shaking(results: &mut [ParseResult], args: &Args) -> TreeShakingSt
     // Collect all successful declarations
     let declarations: Vec<Declaration> = results
         .iter()
-        .filter_map(|r| r.declaration.clone())
+        .flat_map(|r| r.declarations.iter().cloned())
         .collect();
 
     // Create tree shaker with extra roots
@@ -230,9 +229,9 @@ fn apply_tree_shaking(results: &mut [ParseResult], args: &Args) -> TreeShakingSt
         // Mark eliminated declarations in results
         let reachable = shaker.reachable_names();
         for result in results.iter_mut() {
-            if let Some(ref decl) = result.declaration {
+            for (decl, eliminated) in result.declarations.iter().zip(result.eliminated.iter_mut()) {
                 if !reachable.contains(decl.name()) {
-                    result.eliminated = true;
+                    *eliminated = true;
                 }
             }
         }
@@ -244,11 +243,13 @@ fn apply_tree_shaking(results: &mut [ParseResult], args: &Args) -> TreeShakingSt
 struct ParseResult {
     path: PathBuf,
     success: bool,
-    declaration: Option<Declaration>,
-    validation: Option<ValidationResult>,
+    /// Every declaration in the file, in source order
+    declarations: Vec<Declaration>,
+    /// Validation result for each declaration (same order)
+    validations: Vec<ValidationResult>,
     error: Option<String>,
-    /// Whether this declaration was eliminated by tree shaking
-    eliminated: bool,
+    /// Whether each declaration was eliminated by tree shaking (same order)
+    eliminated: Vec<bool>,
 }
 
 fn collect_dol_files(paths: &[PathBuf], recursive: bool) -> Vec<PathBuf> {
@@ -293,20 +294,45 @@ fn collect_dol_files_recursive(dir: &PathBuf, files: &mut Vec<PathBuf>) {
     }
 }
 
-fn process_file(path: &PathBuf) -> Result<(Declaration, ValidationResult), String> {
+/// Parses the whole file (every declaration; trailing content is an error)
+/// and validates each declaration.
+fn process_file(path: &PathBuf) -> Result<(Vec<Declaration>, Vec<ValidationResult>), String> {
     let source =
         std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    let decl = parse_file(&source).map_err(|e| format!("Parse error: {}", e))?;
+    let file = parse_dol_file(&source).map_err(|e| format!("Parse error: {}", e))?;
 
-    let validation = validate(&decl);
+    let validations: Vec<ValidationResult> = file.declarations.iter().map(validate).collect();
 
-    if !validation.is_valid() {
-        let errors: Vec<String> = validation.errors.iter().map(|e| e.to_string()).collect();
+    let errors: Vec<String> = file
+        .declarations
+        .iter()
+        .zip(&validations)
+        .flat_map(|(decl, v)| {
+            v.errors
+                .iter()
+                .map(move |e| format!("{}: {}", decl.name(), e))
+        })
+        .collect();
+    if !errors.is_empty() {
         return Err(format!("Validation errors:\n  {}", errors.join("\n  ")));
     }
 
-    Ok((decl, validation))
+    Ok((file.declarations, validations))
+}
+
+/// Short type label for a declaration.
+fn decl_type(decl: &Declaration) -> &'static str {
+    match decl {
+        Declaration::Gene(_) => "gene",
+        Declaration::Trait(_) => "trait",
+        Declaration::Constraint(_) => "constraint",
+        Declaration::System(_) => "system",
+        Declaration::Evolution(_) => "evolution",
+        Declaration::Function(_) => "function",
+        Declaration::Const(_) => "const",
+        Declaration::SexVar(_) => "sex_var",
+    }
 }
 
 fn output_results(results: &[ParseResult], args: &Args, shake_stats: Option<&TreeShakingStats>) {
@@ -331,12 +357,19 @@ fn output_json(results: &[ParseResult], _args: &Args, shake_stats: Option<&TreeS
     struct JsonFileResult {
         path: String,
         success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        declaration_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
+        declarations: Vec<JsonDeclaration>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+    }
+
+    #[derive(serde::Serialize)]
+    struct JsonDeclaration {
+        #[serde(rename = "type")]
+        decl_type: String,
+        name: String,
+        /// Law names (traits only)
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        laws: Vec<String>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         eliminated: bool,
     }
@@ -361,19 +394,21 @@ fn output_json(results: &[ParseResult], _args: &Args, shake_stats: Option<&TreeS
         .map(|r| JsonFileResult {
             path: r.path.display().to_string(),
             success: r.success,
-            declaration_type: r.declaration.as_ref().map(|d| match d {
-                Declaration::Gene(_) => "gene".to_string(),
-                Declaration::Trait(_) => "trait".to_string(),
-                Declaration::Constraint(_) => "constraint".to_string(),
-                Declaration::System(_) => "system".to_string(),
-                Declaration::Evolution(_) => "evolution".to_string(),
-                Declaration::Function(_) => "function".to_string(),
-                Declaration::Const(_) => "const".to_string(),
-                Declaration::SexVar(_) => "sex_var".to_string(),
-            }),
-            name: r.declaration.as_ref().map(|d| d.name().to_string()),
+            declarations: r
+                .declarations
+                .iter()
+                .zip(&r.eliminated)
+                .map(|(d, &eliminated)| JsonDeclaration {
+                    decl_type: decl_type(d).to_string(),
+                    name: d.name().to_string(),
+                    laws: match d {
+                        Declaration::Trait(t) => t.laws.iter().map(|l| l.name.clone()).collect(),
+                        _ => Vec::new(),
+                    },
+                    eliminated,
+                })
+                .collect(),
             error: r.error.clone(),
-            eliminated: r.eliminated,
         })
         .collect();
 
@@ -403,27 +438,30 @@ fn output_pretty(results: &[ParseResult], args: &Args) {
     for result in results {
         if result.success {
             if !args.validate {
-                let decl = result.declaration.as_ref().unwrap();
-                let status = if result.eliminated {
+                let all_eliminated =
+                    !result.eliminated.is_empty() && result.eliminated.iter().all(|&e| e);
+                let status = if all_eliminated {
                     "~".yellow()
                 } else {
                     "✓".green()
                 };
-                let suffix = if result.eliminated {
-                    format!("({}) [eliminated]", decl.name()).dimmed()
-                } else {
-                    format!("({})", decl.name()).dimmed()
-                };
+                let suffix = format!("({} declarations)", result.declarations.len()).dimmed();
                 println!("{} {} {}", status, result.path.display(), suffix);
 
-                if !args.quiet && !result.eliminated {
-                    print_declaration_summary(decl);
+                if !args.quiet {
+                    for (decl, &eliminated) in result.declarations.iter().zip(&result.eliminated) {
+                        if eliminated {
+                            println!("    {} {}", decl.name().dimmed(), "[eliminated]".yellow());
+                        } else {
+                            print_declaration_summary(decl);
+                        }
+                    }
                 }
             }
 
             // Show warnings if enabled
             if args.warnings {
-                if let Some(validation) = &result.validation {
+                for validation in &result.validations {
                     for warning in &validation.warnings {
                         println!("  {}: {}", "warning".yellow(), warning);
                     }
@@ -443,25 +481,16 @@ fn output_pretty(results: &[ParseResult], args: &Args) {
 fn output_compact(results: &[ParseResult], _args: &Args) {
     for result in results {
         if result.success {
-            let decl = result.declaration.as_ref().unwrap();
-            let decl_type = match decl {
-                Declaration::Gene(_) => "gene",
-                Declaration::Trait(_) => "trait",
-                Declaration::Constraint(_) => "constraint",
-                Declaration::System(_) => "system",
-                Declaration::Evolution(_) => "evolution",
-                Declaration::Function(_) => "function",
-                Declaration::Const(_) => "const",
-                Declaration::SexVar(_) => "sex_var",
-            };
-            let status = if result.eliminated { "ELIM" } else { "OK" };
-            println!(
-                "{}\t{}\t{}\t{}",
-                status,
-                result.path.display(),
-                decl_type,
-                decl.name()
-            );
+            for (decl, &eliminated) in result.declarations.iter().zip(&result.eliminated) {
+                let status = if eliminated { "ELIM" } else { "OK" };
+                println!(
+                    "{}\t{}\t{}\t{}",
+                    status,
+                    result.path.display(),
+                    decl_type(decl),
+                    decl.name()
+                );
+            }
         } else {
             println!(
                 "ERR\t{}\t{}",
@@ -474,13 +503,11 @@ fn output_compact(results: &[ParseResult], _args: &Args) {
 
 fn output_debug(results: &[ParseResult], _args: &Args) {
     for result in results {
-        let status = if result.eliminated {
-            " [ELIMINATED]"
-        } else {
-            ""
-        };
-        println!("=== {}{} ===", result.path.display(), status);
-        if let Some(decl) = &result.declaration {
+        println!("=== {} ===", result.path.display());
+        for (decl, &eliminated) in result.declarations.iter().zip(&result.eliminated) {
+            if eliminated {
+                println!("[ELIMINATED]");
+            }
             println!("{:#?}", decl);
         }
         if let Some(error) = &result.error {
@@ -506,10 +533,11 @@ fn print_declaration_summary(decl: &Declaration) {
                 .filter(|s| matches!(s, metadol::Statement::Uses { .. }))
                 .count();
             println!(
-                "    {} trait using {} dependencies, {} behaviors",
+                "    {} trait using {} dependencies, {} behaviors, {} laws",
                 t.name.dimmed(),
                 uses_count,
-                t.statements.len() - uses_count
+                t.statements.len() - uses_count,
+                t.laws.len()
             );
         }
         Declaration::Constraint(c) => {

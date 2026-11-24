@@ -800,6 +800,7 @@ mod tests {
             visibility,
             name: name.to_string(),
             statements,
+            laws: vec![],
             exegesis: format!("{} trait", name),
             span: Span::default(),
         })

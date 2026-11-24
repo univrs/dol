@@ -30,6 +30,33 @@ use crate::lexer::{Lexer, Token, TokenKind};
 use crate::macros::{AttributeArg, MacroAttribute, MacroInvocation};
 use crate::pratt::{infix_binding_power, prefix_binding_power};
 
+/// Interprets a numeric lexeme (the lexer emits numbers as identifiers).
+///
+/// Handles decimal integers, `_` digit separators, `0x`/`0b`/`0o` radix
+/// prefixes, and floats with optional exponents (`1e9`, `3.0e8`).
+/// Returns `None` if the lexeme is not a numeric literal.
+fn numeric_literal(lexeme: &str) -> Option<Literal> {
+    if !lexeme.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    let clean: String = lexeme.chars().filter(|&c| c != '_').collect();
+    let radix = match clean.get(..2) {
+        Some("0x") | Some("0X") => 16,
+        Some("0b") | Some("0B") => 2,
+        Some("0o") | Some("0O") => 8,
+        _ => 10,
+    };
+    if radix != 10 {
+        return i64::from_str_radix(&clean[2..], radix)
+            .ok()
+            .map(Literal::Int);
+    }
+    if let Ok(v) = clean.parse::<i64>() {
+        return Some(Literal::Int(v));
+    }
+    clean.parse::<f64>().ok().map(Literal::Float)
+}
+
 /// The parser for Metal DOL source text.
 ///
 /// The parser uses recursive descent to transform tokens into an AST.
@@ -106,6 +133,14 @@ impl<'a> Parser<'a> {
         let mut declarations = Vec::new();
 
         while self.current.kind != TokenKind::Eof {
+            // Mid-file `use` lines are parsed (and validated) but not
+            // returned; use `parse_file` to keep them.
+            if self.parse_use_item()?.is_some()
+                || self.skip_mod_block()?
+                || self.skip_file_docs()?
+            {
+                continue;
+            }
             let decl = self.parse_declaration()?;
             declarations.push(decl);
         }
@@ -118,31 +153,25 @@ impl<'a> Parser<'a> {
     /// Returns a `DolFile` containing the module declaration (if any),
     /// use declarations, and all top-level declarations.
     pub fn parse_file(&mut self) -> Result<DolFile, ParseError> {
-        // Parse optional module declaration
-        let module = if self.current.kind == TokenKind::Module {
+        // Parse optional module declaration (a `mod x { }` block is not one)
+        let module = if self.current.kind == TokenKind::Module && !self.at_mod_block() {
             Some(self.parse_module_decl()?)
         } else {
             None
         };
 
-        // Parse use declarations
+        // Parse use declarations and all declarations. `use` lines may
+        // also appear between declarations; they are all kept in `uses`.
         let mut uses = Vec::new();
-        loop {
-            // Handle pub use (re-exports)
-            if self.current.kind == TokenKind::Pub && self.peek().kind == TokenKind::Use {
-                self.advance(); // consume pub
-                let use_decl = self.parse_use_decl(Visibility::Public)?;
-                uses.push(use_decl);
-            } else if self.current.kind == TokenKind::Use {
-                uses.push(self.parse_use_decl(Visibility::Private)?);
-            } else {
-                break;
-            }
-        }
-
-        // Parse all declarations
         let mut declarations = Vec::new();
         while self.current.kind != TokenKind::Eof {
+            if let Some(use_decl) = self.parse_use_item()? {
+                uses.push(use_decl);
+                continue;
+            }
+            if self.skip_mod_block()? || self.skip_file_docs()? {
+                continue;
+            }
             let decl = self.parse_declaration()?;
             declarations.push(decl);
         }
@@ -154,10 +183,82 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parses a `use` or `pub use` declaration if one starts at the current
+    /// token. Returns `None` (consuming nothing) otherwise.
+    fn parse_use_item(&mut self) -> Result<Option<UseDecl>, ParseError> {
+        if self.current.kind == TokenKind::Pub && self.peek().kind == TokenKind::Use {
+            self.advance(); // consume pub
+            return Ok(Some(self.parse_use_decl(Visibility::Public)?));
+        }
+        if self.current.kind == TokenKind::Use {
+            return Ok(Some(self.parse_use_decl(Visibility::Private)?));
+        }
+        Ok(None)
+    }
+
+    /// Returns true if a `mod name { ... }` block (optionally `pub`) starts at
+    /// the current token, as opposed to a `module a.b @ 1.0.0` file header.
+    fn at_mod_block(&mut self) -> bool {
+        if self.current.kind == TokenKind::Pub {
+            self.peek().kind == TokenKind::Module && self.peek3().kind == TokenKind::LeftBrace
+        } else {
+            self.current.kind == TokenKind::Module && self.peek2().kind == TokenKind::LeftBrace
+        }
+    }
+
+    /// Skips a `mod name { ... }` block if one starts at the current token.
+    ///
+    /// Block-module bodies are not yet represented in the AST, so their
+    /// contents are skipped (brace-balanced). Returns `true` if a block was
+    /// skipped; an unterminated block is an error.
+    fn skip_mod_block(&mut self) -> Result<bool, ParseError> {
+        if !self.at_mod_block() {
+            return Ok(false);
+        }
+        while self.current.kind != TokenKind::LeftBrace {
+            self.advance(); // pub / mod / name
+        }
+        self.advance(); // {
+        let mut depth = 1;
+        while depth > 0 {
+            match self.current.kind {
+                TokenKind::LeftBrace => depth += 1,
+                TokenKind::RightBrace => depth -= 1,
+                TokenKind::Eof => {
+                    return Err(ParseError::UnexpectedEof {
+                        context: "unterminated mod block: missing closing '}'".to_string(),
+                        span: self.current.span,
+                    })
+                }
+                _ => {}
+            }
+            self.advance();
+        }
+        Ok(true)
+    }
+
+    /// Skips a free-standing (file-level) `docs { ... }` / `exegesis { ... }`
+    /// block if one starts at the current token. Returns `true` if skipped.
+    ///
+    /// Declaration docs are consumed by the declaration parsers, so a block
+    /// reaching this point documents the module itself, which the AST does
+    /// not yet represent.
+    fn skip_file_docs(&mut self) -> Result<bool, ParseError> {
+        if !matches!(self.current.kind, TokenKind::Docs | TokenKind::Exegesis)
+            || self.peek().kind != TokenKind::LeftBrace
+        {
+            return Ok(false);
+        }
+        self.advance(); // docs / exegesis
+        self.advance(); // {
+        self.read_raw_braced_text()?;
+        Ok(true)
+    }
+
     /// Skips module declaration and use statements at the start of a file.
     fn skip_module_and_uses(&mut self) -> Result<(), ParseError> {
-        // Skip module declaration
-        if self.current.kind == TokenKind::Module {
+        // Skip module declaration (a `mod x { }` block is left for parse_declaration)
+        if self.current.kind == TokenKind::Module && !self.at_mod_block() {
             self.advance(); // module
                             // Skip path
             while self.current.kind == TokenKind::Identifier || self.current.kind == TokenKind::Dot
@@ -173,47 +274,8 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Skip use declarations (including pub use)
-        loop {
-            // Skip optional pub modifier
-            if self.current.kind == TokenKind::Pub {
-                if self.peek().kind == TokenKind::Use {
-                    self.advance(); // pub
-                } else {
-                    // pub followed by something else (like pub gene) - stop skipping
-                    break;
-                }
-            }
-
-            if self.current.kind != TokenKind::Use {
-                break;
-            }
-
-            self.advance(); // use
-                            // Skip path (identifiers, ::, ., *, etc.)
-            while self.current.kind != TokenKind::Eof
-                && self.current.kind != TokenKind::Gen
-                && self.current.kind != TokenKind::Gene
-                && self.current.kind != TokenKind::Type
-                && self.current.kind != TokenKind::Trait
-                && self.current.kind != TokenKind::Constraint
-                && self.current.kind != TokenKind::Rule
-                && self.current.kind != TokenKind::System
-                && self.current.kind != TokenKind::Evolves
-                && self.current.kind != TokenKind::Pub
-                && self.current.kind != TokenKind::Use
-                && self.current.kind != TokenKind::Module
-                && self.current.kind != TokenKind::Exegesis
-                && self.current.kind != TokenKind::Docs
-                && self.current.kind != TokenKind::Macro    // Stop before attributes
-                && self.current.kind != TokenKind::Sex      // Stop before sex declarations
-                && self.current.kind != TokenKind::Function // Stop before functions
-                && self.current.kind != TokenKind::Const
-            // Stop before constants
-            {
-                self.advance();
-            }
-        }
+        // Parse (and discard) leading use declarations, including `pub use`
+        while self.parse_use_item()?.is_some() {}
 
         Ok(())
     }
@@ -403,16 +465,7 @@ impl<'a> Parser<'a> {
                 // Skip file-level exegesis/docs block
                 self.advance(); // consume 'exegesis'/'docs'
                 self.expect(TokenKind::LeftBrace)?;
-                let mut depth = 1;
-                while depth > 0 && self.current.kind != TokenKind::Eof {
-                    if self.current.kind == TokenKind::LeftBrace {
-                        depth += 1;
-                    }
-                    if self.current.kind == TokenKind::RightBrace {
-                        depth -= 1;
-                    }
-                    self.advance();
-                }
+                self.read_raw_braced_text()?;
                 // Try to parse next declaration, or return placeholder if EOF
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gen {
@@ -428,30 +481,8 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::Use => {
-                // Skip use statement and parse next declaration
-                self.advance(); // consume 'use'
-                                // Skip path (identifiers, ::, ., *, { }, etc.)
-                while self.current.kind != TokenKind::Eof
-                    && self.current.kind != TokenKind::Gen
-                    && self.current.kind != TokenKind::Gene
-                    && self.current.kind != TokenKind::Type
-                    && self.current.kind != TokenKind::Trait
-                    && self.current.kind != TokenKind::Constraint
-                    && self.current.kind != TokenKind::Rule
-                    && self.current.kind != TokenKind::System
-                    && self.current.kind != TokenKind::Evolves
-                    && self.current.kind != TokenKind::Pub
-                    && self.current.kind != TokenKind::Use
-                    && self.current.kind != TokenKind::Exegesis
-                    && self.current.kind != TokenKind::Docs
-                    && self.current.kind != TokenKind::Sex
-                    && self.current.kind != TokenKind::Function
-                    && self.current.kind != TokenKind::Module
-                    && self.current.kind != TokenKind::Macro
-                // Stop before attributes
-                {
-                    self.advance();
-                }
+                // Parse (and discard) the use statement, then the next declaration
+                self.parse_use_decl(Visibility::Private)?;
                 // Parse next declaration
                 if self.current.kind == TokenKind::Eof {
                     Ok(Declaration::Gene(Gen {
@@ -826,10 +857,8 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::LeftBrace)?;
 
-        let statements = self.parse_statements()?;
-
-        // DOL 2.0: exegesis can be inside braces
-        let inline_exegesis = self.parse_inline_exegesis()?;
+        // DOL 2.0: exegesis can be inside braces (anywhere in the body)
+        let (statements, inline_exegesis) = self.parse_statements()?;
 
         self.expect(TokenKind::RightBrace)?;
 
@@ -878,10 +907,8 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::LeftBrace)?;
 
-        let statements = self.parse_statements()?;
-
-        // DOL 2.0: exegesis can be inside braces
-        let inline_exegesis = self.parse_inline_exegesis()?;
+        // DOL 2.0: exegesis can be inside braces (anywhere in the body)
+        let (statements, inline_exegesis) = self.parse_statements()?;
 
         self.expect(TokenKind::RightBrace)?;
 
@@ -919,7 +946,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LeftBrace)?;
 
         let mut statements = Vec::new();
-        let mut _laws: Vec<LawDecl> = Vec::new();
+        let mut laws: Vec<LawDecl> = Vec::new();
 
         while self.current.kind != TokenKind::RightBrace
             && self.current.kind != TokenKind::Eof
@@ -929,7 +956,7 @@ impl<'a> Parser<'a> {
             // Check for law declarations
             if self.current.kind == TokenKind::Law {
                 let law = self.parse_law_decl()?;
-                _laws.push(law);
+                laws.push(law);
             } else {
                 statements.push(self.parse_statement()?);
             }
@@ -955,6 +982,7 @@ impl<'a> Parser<'a> {
             visibility: Visibility::default(),
             name,
             statements,
+            laws,
             exegesis,
             span,
         }))
@@ -984,10 +1012,8 @@ impl<'a> Parser<'a> {
         self.skip_type_params()?;
         self.expect(TokenKind::LeftBrace)?;
 
-        let statements = self.parse_statements()?;
-
-        // DOL 2.0: exegesis can be inside braces
-        let inline_exegesis = self.parse_inline_exegesis()?;
+        // DOL 2.0: exegesis can be inside braces (anywhere in the body)
+        let (statements, inline_exegesis) = self.parse_statements()?;
 
         self.expect(TokenKind::RightBrace)?;
 
@@ -1179,16 +1205,28 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses multiple statements until a closing brace.
-    fn parse_statements(&mut self) -> Result<Vec<Statement>, ParseError> {
+    ///
+    /// Returns the statements and the text of any inline `docs { }` /
+    /// `exegesis { }` blocks in the body (joined by blank lines), or `None`
+    /// if the body has no docs block.
+    fn parse_statements(&mut self) -> Result<(Vec<Statement>, Option<String>), ParseError> {
         let mut statements = Vec::new();
+        let mut docs: Option<String> = None;
 
         // Stop at RightBrace or Eof
-        // DOL 2.0/v0.4.0: exegesis blocks can appear throughout gene body, handled in parse_statement
+        // DOL 2.0/v0.4.0: exegesis blocks can appear throughout the body
         while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
+            if let Some(text) = self.parse_inline_exegesis()? {
+                docs = Some(match docs {
+                    Some(prev) => format!("{}\n\n{}", prev, text),
+                    None => text,
+                });
+                continue;
+            }
             statements.push(self.parse_statement()?);
         }
 
-        Ok(statements)
+        Ok((statements, docs))
     }
 
     /// Parses a single statement.
@@ -1200,15 +1238,7 @@ impl<'a> Parser<'a> {
             self.advance(); // consume 'exegesis' or 'docs'
             if self.current.kind == TokenKind::LeftBrace {
                 self.advance();
-                let mut depth = 1;
-                while depth > 0 && self.current.kind != TokenKind::Eof {
-                    match self.current.kind {
-                        TokenKind::LeftBrace => depth += 1,
-                        TokenKind::RightBrace => depth -= 1,
-                        _ => {}
-                    }
-                    self.advance();
-                }
+                self.read_raw_braced_text()?;
             }
             // If we're at the end of the block, return a no-op marker
             if self.current.kind == TokenKind::RightBrace || self.current.kind == TokenKind::Eof {
@@ -2146,43 +2176,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokenKind::LeftBrace)?;
-
-        // Collect all text until closing brace
-        // We need to handle nested braces
-        let mut content = String::new();
-        let mut brace_depth = 1;
-
-        // Get position after opening brace
-        let start_pos = self.current.span.start;
-
-        // Re-lex from the source to get raw text
-        let source_after_brace = &self.lexer_source()[start_pos..];
-
-        for ch in source_after_brace.chars() {
-            if ch == '{' {
-                brace_depth += 1;
-                content.push(ch);
-            } else if ch == '}' {
-                brace_depth -= 1;
-                if brace_depth == 0 {
-                    break;
-                }
-                content.push(ch);
-            } else {
-                content.push(ch);
-            }
-        }
-
-        // Skip past the exegesis content in the lexer
-        // We need to advance until we find the matching closing brace
-        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
-            self.advance();
-        }
-
-        if self.current.kind == TokenKind::RightBrace {
-            self.advance();
-        }
-
+        let content = self.read_raw_braced_text()?;
         Ok(content.trim().to_string())
     }
 
@@ -2196,38 +2190,50 @@ impl<'a> Parser<'a> {
         self.advance(); // consume 'exegesis' or 'docs'
         self.expect(TokenKind::LeftBrace)?;
 
-        // Collect all text until closing brace
-        let mut content = String::new();
-        let mut brace_depth = 1;
+        let content = self.read_raw_braced_text()?;
+        Ok(Some(content.trim().to_string()))
+    }
 
-        let start_pos = self.current.span.start;
-        let source_after_brace = &self.lexer_source()[start_pos..];
-
-        for ch in source_after_brace.chars() {
-            if ch == '{' {
-                brace_depth += 1;
-                content.push(ch);
-            } else if ch == '}' {
-                brace_depth -= 1;
-                if brace_depth == 0 {
-                    break;
+    /// Reads raw source text up to the `}` matching an already-consumed `{`.
+    ///
+    /// Docs prose is not DOL code, so it is read from the source text rather
+    /// than tokenized: balanced `{ }` pairs, quotes and apostrophes inside
+    /// the text are kept verbatim. The lexer is then repositioned after the
+    /// closing brace, which is consumed.
+    fn read_raw_braced_text(&mut self) -> Result<String, ParseError> {
+        let start_pos = self.previous.span.end;
+        let source = self.lexer_source();
+        let mut depth = 1usize;
+        let mut end_pos = None;
+        for (i, ch) in source[start_pos..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_pos = Some(start_pos + i);
+                        break;
+                    }
                 }
-                content.push(ch);
-            } else {
-                content.push(ch);
+                _ => {}
             }
         }
+        let Some(end_pos) = end_pos else {
+            return Err(ParseError::UnexpectedEof {
+                context: "unterminated docs block: missing closing '}'".to_string(),
+                span: self.previous.span,
+            });
+        };
 
-        // Skip past the exegesis content in the lexer
-        while self.current.kind != TokenKind::RightBrace && self.current.kind != TokenKind::Eof {
-            self.advance();
-        }
+        // Discard any lookahead and resume lexing at the closing brace.
+        self.peeked = None;
+        self.peeked2 = None;
+        self.peeked3 = None;
+        self.lexer.seek(end_pos);
+        self.current = self.lexer.next_token();
+        self.expect(TokenKind::RightBrace)?;
 
-        if self.current.kind == TokenKind::RightBrace {
-            self.advance();
-        }
-
-        Ok(Some(content.trim().to_string()))
+        Ok(source[start_pos..end_pos].to_string())
     }
 
     // === DOL 2.0 Expression Parsing ===
@@ -2519,11 +2525,8 @@ impl<'a> Parser<'a> {
                 }
 
                 // Check for numeric literals (lexer sends them as identifiers)
-                if let Ok(int_val) = name.parse::<i64>() {
-                    return Ok(Expr::Literal(Literal::Int(int_val)));
-                }
-                if let Ok(float_val) = name.parse::<f64>() {
-                    return Ok(Expr::Literal(Literal::Float(float_val)));
+                if let Some(lit) = numeric_literal(&name) {
+                    return Ok(Expr::Literal(lit));
                 }
 
                 // Handle path expressions like Map::new, Type::Variant
@@ -2634,6 +2637,9 @@ impl<'a> Parser<'a> {
             // Syntax 1: forall x: T. expr (first-order logic style)
             // Syntax 2: forall x in iter { body } (iterator style)
             TokenKind::Forall => self.parse_forall_expr(),
+
+            // Existential quantifier expression: exists x: T. expr
+            TokenKind::Exists => self.parse_exists_expr(),
 
             // Block expression
             TokenKind::LeftBrace => self.parse_block_expr(),
@@ -2767,6 +2773,7 @@ impl<'a> Parser<'a> {
             TokenKind::Bind => BinaryOp::Bind,
             TokenKind::Dot => BinaryOp::Member,
             TokenKind::DotDot => BinaryOp::Range,
+            TokenKind::Implies => BinaryOp::Implies,
             _ => {
                 return Err(ParseError::InvalidStatement {
                     message: format!("invalid binary operator: {:?}", op_token),
@@ -2948,6 +2955,64 @@ impl<'a> Parser<'a> {
         Ok(Expr::Match { scrutinee, arms })
     }
 
+    /// Parses an existential quantifier expression: `exists x: T. expr`.
+    ///
+    /// Mirrors the first-order `forall x: T. expr` form; the body extends as
+    /// far right as possible.
+    fn parse_exists_expr(&mut self) -> Result<Expr, ParseError> {
+        let start_span = self.current.span;
+        self.expect(TokenKind::Exists)?;
+
+        let var = self.expect_identifier()?;
+        self.parse_typed_quantifier(var, start_span, true)
+    }
+
+    /// Parses the rest of a typed quantifier after its first variable:
+    /// `: T[, y: U]* . body`.
+    ///
+    /// Several binders are sugar for nested quantifiers:
+    /// `forall a: A, b: B. p` is `forall a: A. forall b: B. p`.
+    fn parse_typed_quantifier(
+        &mut self,
+        first_var: String,
+        start_span: Span,
+        exists: bool,
+    ) -> Result<Expr, ParseError> {
+        self.expect(TokenKind::Colon)?;
+        let mut binders = vec![(first_var, self.parse_type()?)];
+        while self.current.kind == TokenKind::Comma {
+            self.advance();
+            let var = self.expect_identifier()?;
+            self.expect(TokenKind::Colon)?;
+            binders.push((var, self.parse_type()?));
+        }
+
+        // Expect dot separator for the body
+        self.expect(TokenKind::Dot)?;
+
+        let mut body = self.parse_expr(0)?;
+        let span = start_span.merge(&self.previous.span);
+
+        for (var, type_) in binders.into_iter().rev() {
+            body = if exists {
+                Expr::Exists(ExistsExpr {
+                    var,
+                    type_,
+                    body: Box::new(body),
+                    span,
+                })
+            } else {
+                Expr::Forall(ForallExpr {
+                    var,
+                    type_,
+                    body: Box::new(body),
+                    span,
+                })
+            };
+        }
+        Ok(body)
+    }
+
     /// Parses a forall quantifier expression (v0.3.0).
     ///
     /// Supports two syntaxes:
@@ -2961,21 +3026,7 @@ impl<'a> Parser<'a> {
 
         // Check for type-annotated syntax: forall x: T. expr
         if self.current.kind == TokenKind::Colon {
-            self.advance();
-            let type_ = self.parse_type()?;
-
-            // Expect dot separator for the body
-            self.expect(TokenKind::Dot)?;
-
-            let body = self.parse_expr(0)?;
-            let span = start_span.merge(&self.previous.span);
-
-            Ok(Expr::Forall(ForallExpr {
-                var,
-                type_,
-                body: Box::new(body),
-                span,
-            }))
+            self.parse_typed_quantifier(var, start_span, false)
         } else if self.current.kind == TokenKind::In {
             // Iterator syntax: forall x in iter { body }
             self.advance();
@@ -3168,11 +3219,9 @@ impl<'a> Parser<'a> {
                     Ok(Pattern::Literal(Literal::Bool(true)))
                 } else if name == "false" {
                     Ok(Pattern::Literal(Literal::Bool(false)))
-                } else if let Ok(int_val) = name.parse::<i64>() {
+                } else if let Some(lit) = numeric_literal(&name) {
                     // Numeric pattern (lexer sends numbers as identifiers)
-                    Ok(Pattern::Literal(Literal::Int(int_val)))
-                } else if let Ok(float_val) = name.parse::<f64>() {
-                    Ok(Pattern::Literal(Literal::Float(float_val)))
+                    Ok(Pattern::Literal(lit))
                 } else {
                     Ok(Pattern::Identifier(name))
                 }
@@ -3827,7 +3876,7 @@ impl<'a> Parser<'a> {
                         if self.current.kind == TokenKind::Equal {
                             self.advance(); // consume '='
                                             // Numeric values are tokenized as Identifier
-                            if let Ok(val) = self.current.lexeme.parse::<i64>() {
+                            if let Some(Literal::Int(val)) = numeric_literal(&self.current.lexeme) {
                                 discriminant = Some(val);
                             }
                             self.advance();
@@ -3998,7 +4047,10 @@ impl<'a> Parser<'a> {
 
     /// Parses a law declaration in a trait.
     ///
-    /// Syntax: `law name(params) { body } [exegesis { ... }]`
+    /// Syntax: `law name[(params)] { body } [exegesis { ... }]`
+    ///
+    /// The parameter list is optional: `law name { forall x: T. p }` binds
+    /// its variables with quantifiers in the body instead.
     ///
     /// Laws are declarative constraints/properties that must hold for a trait.
     /// Unlike `fun` which contains implementation code, `law` bodies are
@@ -4009,26 +4061,29 @@ impl<'a> Parser<'a> {
 
         let name = self.expect_identifier()?;
 
-        // Parse parameters
-        self.expect(TokenKind::LeftParen)?;
+        // Parse optional parameters
         let mut params = Vec::new();
-        while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof {
-            // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
-            let param_name = self.expect_identifier_or_keyword()?;
-            self.expect(TokenKind::Colon)?;
-            let type_ann = self.parse_type()?;
-            params.push(FunctionParam {
-                name: param_name,
-                type_ann,
-            });
+        if self.current.kind == TokenKind::LeftParen {
+            self.advance();
+            while self.current.kind != TokenKind::RightParen && self.current.kind != TokenKind::Eof
+            {
+                // Allow DOL keywords as parameter names (e.g., `gene: GeneDecl`)
+                let param_name = self.expect_identifier_or_keyword()?;
+                self.expect(TokenKind::Colon)?;
+                let type_ann = self.parse_type()?;
+                params.push(FunctionParam {
+                    name: param_name,
+                    type_ann,
+                });
 
-            if self.current.kind == TokenKind::Comma {
-                self.advance();
-            } else {
-                break;
+                if self.current.kind == TokenKind::Comma {
+                    self.advance();
+                } else {
+                    break;
+                }
             }
+            self.expect(TokenKind::RightParen)?;
         }
-        self.expect(TokenKind::RightParen)?;
 
         // Parse body expression (a predicate/constraint)
         self.expect(TokenKind::LeftBrace)?;
@@ -4372,6 +4427,10 @@ impl<'a> Parser<'a> {
             | TokenKind::Rule
             | TokenKind::Evolves
             | TokenKind::Exegesis
+            // v0.8.0 spellings of the keywords above (e.g. `use evo.*`)
+            | TokenKind::Gen
+            | TokenKind::Evo
+            | TokenKind::Docs
             | TokenKind::Test
             | TokenKind::Law
             | TokenKind::State

@@ -605,6 +605,7 @@ mod tests {
                     span: Span::default(),
                 },
             ],
+            laws: vec![],
             exegesis: "Container lifecycle management.".to_string(),
             span: Span::default(),
         };
