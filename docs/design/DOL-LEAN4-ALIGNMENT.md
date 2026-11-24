@@ -1,10 +1,10 @@
 # DOL × Lean 4: Design for the Next DOL Feature Set
 
 > **Status:** Accepted direction (2026-11-21). Progress is tracked in §9. Everything else in this document is a proposal unless marked **today**.
-> **Inputs:** `Lean4.md` (Lean 4 survey), `docs/DOL-STATUS-2026-11.md` (verified DOL v0.8.2 status), and probes run against v0.8.2 (§2).
+> **Inputs:** [`docs/research/LEAN4-SURVEY-2026.md`](../research/LEAN4-SURVEY-2026.md) (Lean 4 survey; its 2026 news items are unverified), `docs/DOL-STATUS-2026-11.md` (verified DOL v0.8.2 status), and probes run against v0.8.2 (§2).
 > **Scope:** which missing DOL features should be built *by leaning on Lean 4*, what DOL must change to make that possible, and the goal posts.
 
-**About the source material.** `Lean4.md` mixes stable technical facts about Lean 4 with very recent news, such as AI-produced proofs of Fermat's Last Theorem and the Riemann Hypothesis, the 2026 kernel CVEs, and `lake check --paranoid` in v4.35.0. This design relies only on the stable core:
+**About the source material.** The Lean survey mixes stable technical facts about Lean 4 with very recent news, such as AI-produced proofs of Fermat's Last Theorem and the Riemann Hypothesis, the 2026 kernel CVEs, and `lake check --paranoid` in v4.35.0. This design relies only on the stable core:
 
 - the CIC type theory and propositions-as-types;
 - the small trusted kernel (the de Bruijn criterion);
@@ -12,7 +12,7 @@
 - subtypes, `partial`, termination checking, `Decidable`;
 - `#print axioms` and Lake.
 
-Anything that depends on the 2026 trust tooling (comparator, con-leche, `--paranoid`) is marked **"per Lean4.md, verify before adopting."**
+Anything that depends on the 2026 trust tooling (comparator, con-leche, `--paranoid`) is marked **"per the survey, verify before adopting."**
 
 ---
 
@@ -32,7 +32,7 @@ But **none of that vocabulary has semantics** today (§2). The cheapest, most cr
 > **Do not build a proof kernel in DOL. Make Lean 4 DOL's verification backend.**
 > DOL stays the ontology/systems DSL that compiles to Rust, TypeScript and WASM for the VUDO VM. Its declarative half (laws, rules, refinements, evolutions, CRDT annotations) compiles to **Lean 4 propositions**, checked by Lean's kernel. The DOL front-end stays *untrusted*, exactly as Lean's own elaborator is (de Bruijn criterion).
 
-This is AWS Cedar's *verification-guided development* pattern (Lean4.md §5). A small Lean model is proved correct, the production code is generated separately, and differential testing ties the two together. DOL is unusually well placed for it, because it **already emits both sides**: Rust/WASM for production, and (proposed) Lean for the model. That gives the Univrs **Oracle Pattern** a real oracle.
+This is AWS Cedar's *verification-guided development* pattern (survey §5). A small Lean model is proved correct, the production code is generated separately, and differential testing ties the two together. DOL is unusually well placed for it, because it **already emits both sides**: Rust/WASM for production, and (proposed) Lean for the model. That gives the Univrs **Oracle Pattern** a real oracle.
 
 ---
 
@@ -42,7 +42,7 @@ Probes were run with `dol-parse` built from main (`9959d8b`). Code references ar
 
 | Spec-language feature | Today | Evidence |
 |---|---|---|
-| `law name(params) { expr }` inside a trait | **Parsed, then discarded** | `parser.rs:922` collects into `_laws` and drops them; `dol-parse` reports "0 behaviors" |
+| `law name(params) { expr }` inside a trait | **Parsed, then discarded** | `parser.rs:922` collects into `_laws` and drops them; laws are neither kept nor counted (fixed in dol#42: `Trait.laws`) |
 | `law name { forall x: T. … }` (the form used in `examples/genes/graph.dol`, `examples/stdlib/**`) | **Does not parse** | "expected (, found '{'" (`parse_law_decl` requires parens, `parser.rs:4006`) |
 | `a implies b` in any expression | **Does not parse** | "invalid binary operator: Implies" (`parser.rs:2772`); `pratt.rs:53` gives it a binding power but the binary-op conversion rejects it |
 | `exists x: T. p` in expression position | **Does not parse** | "expected expression, found 'exists'" |
@@ -68,12 +68,12 @@ Probes were run with `dol-parse` built from main (`9959d8b`). Code references ar
 | `gen a.b { has f: T … }` | `structure A.B where f : T` | Dotted names map to Lean namespaces |
 | `has f: T where c` | `{f : T // c}` (Subtype), or a proof field `h_f : c` | A proof field keeps runtime layout identical to the Rust/WASM output |
 | `has k: enum { A, B }` / `type X { … }` | `inductive K \| A \| B deriving DecidableEq, Repr` | Payload-carrying variants need a DOL syntax extension (§5.3) |
-| `trait t { fun …; law …(…) { … } }` | `class T (α : Type) where op : …; law : ∀ …, …` | This is Lean's "lawful class" pattern (cf. `LawfulMonad`) |
+| `trait t { fun …; law …(…) { … } }` | `class T (α : Type) where op : …; law : ∀ …, …` if the trait has a self type; a parameterless `class T where …` if its functions are free (like `ledger.transfer` in §5) | This is Lean's "lawful class" pattern (cf. `LawfulMonad`) |
 | impl of a trait (not in DOL today) | `instance : T X where … law := by …` | Proof obligations attach to instances |
 | `rule r { … }` (formalised) | `def r : Prop := …` plus `theorem r_holds : r` | Only *formal* rule bodies translate (§5.2) |
 | `forall x: T. p` / `exists` / `implies` | `∀ x : T, p` / `∃ x : T, p` / `p → q` | In `Prop`, not `Bool` |
 | pure `fun` | `def` (total) or `partial def` | Totality is checked by Lean |
-| `sex fun` / `sex var` | `IO` / `EStateM` actions; host functions as `opaque` axioms-free stubs | Effects are visible in types |
+| `sex fun` / `sex var` | `IO` / `EStateM` actions; host functions modelled by a Lean *specification* (a `structure` of state transitions per host function), not by `opaque` stubs. Proofs cannot see inside `opaque`, and `opaque` also needs an `Inhabited`/`Nonempty` instance | Effects are visible in types |
 | `evo X @ v2 > v1` | `def migrate : X_v1 → X_v2` plus `theorem migrate_preserves_R` | Evolution becomes a *proof obligation* |
 | `@crdt(lww\|or_set\|…)` | Instance of a `CRDT`/semilattice class with `merge_comm`, `merge_assoc`, `merge_idem` | Proved **once** per strategy in a DOL-Lean library |
 | `system s @ v { requires t >= v' }` | Lake package plus `import`s | Version constraints stay in DOL; Lean checks the composition |
@@ -87,12 +87,15 @@ Probes were run with `dol-parse` built from main (`9959d8b`). Code references ar
 
 1. **Lean is the kernel; DOL is untrusted.**
    - DOL never claims "verified" on its own authority.
-   - "Verified" means: `lake build` passes, there are **zero `sorry`s**, and `#print axioms` shows only `propext`, `Classical.choice` and `Quot.sound`.
+   - "Verified" means: `lake build` passes and the gate accepts. The gate allows only the axioms `propext`, `Classical.choice` and `Quot.sound`.
+   - It names and rejects: `sorryAx` (`sorry`); `native_decide`, whose compiler-trusting axiom is `Lean.ofReduceBool` in older Lean and an auxiliary `…native_decide.ax_*` in v4.36; and any custom `axiom`.
+   - It also rejects definitions carrying `@[implemented_by]` or `@[extern]`, which replace checked code with unverified code. Generated code must never use them.
+   - All of this is implemented in `lean/scripts/CheckAxioms.lean`, with a fixture per reject in `lean/GateFixtures/`.
 2. **Separate `bool` (computation) from `prop` (specification).**
    - Today `forall` is typed as `Bool`, which is unsound as a specification and uncomputable as code.
    - Laws and rules live in `prop`.
    - `prop`s that are `Decidable` may also be compiled to runtime checks in Rust/WASM.
-3. **Statement fidelity first** (Lean4.md §8: "did we prove the right thing?").
+3. **Statement fidelity first** (survey §8: "did we prove the right thing?").
    - Every law and rule keeps mandatory `docs`.
    - The generated Lean must be readable, with one DOL law mapping to one named Lean theorem.
    - Translation is covered by golden tests.
@@ -188,7 +191,10 @@ This listing type-checks on Lean v4.36.0. It lives at `lean/DolLean/Examples/Led
 
 ### Phase L2: proofs and the verification gate
 
-1. **Proof attachment.** Recommended start: **external proof files**, i.e. `proofs/<Module>.lean` containing `theorem <law_name> : <stmt> := by …`. `dol-lean` checks that each proof's statement is *syntactically identical* to the generated statement, a lightweight comparator.
+1. **Proof attachment.** Recommended start: **external proof files** with a **kernel-checked statement binding**.
+   - `dol-lean` generates `def <law>_stmt : Prop := …` for every law.
+   - A proof file must prove exactly `theorem <law> : <Module>.<law>_stmt := by …`.
+   - Lean itself then guarantees the proof is about the generated statement. There is no textual comparison to break on whitespace, notation or elaboration differences.
    - This keeps DOL's grammar simple, lets Lean experts and AI agents work in native Lean with the infoview, and gives a clear review boundary.
    - An inline `law … proof by { <lean tactics> }` escape hatch can come later.
 2. **`dol-check --verify`** runs:
@@ -196,7 +202,7 @@ This listing type-checks on Lean v4.36.0. It lives at `lean/DolLean/Examples/Led
    2. `lake build`
    3. a `#print axioms` gate that rejects `sorry` and non-standard axioms
    4. a report: proved / open (`sorry`) / failed per law
-3. **CI job** with a pinned Lean version. Per Lean4.md, add the 2026 trust steps (`lake check`, multiple kernels, comparator) **after verifying they exist in the pinned release**.
+3. **CI job** with a pinned Lean version. Per the survey, add the 2026 trust steps (`lake check`, multiple kernels, comparator) **after verifying they exist in the pinned release**.
 
 **Exit criteria (L2):**
 - At least one real DOL trait with laws is fully proved with no `sorry`.
@@ -213,7 +219,7 @@ Only features with a clear payoff for VUDO/DOLOS are listed. Each is specified s
 | L3.2 | **Trait implementations with law obligations** | `impl ledger.transfer for MyLedger { … }` | `instance` + per-law proof obligation | Laws attach to concrete code, not just interfaces |
 | L3.3 | **Refinement types** | `has n: u64 where n > 0` (exists today) | Subtype / proof field; a runtime check in Rust/WASM when unproved | Validated Spirit inputs and the host ABI |
 | L3.4 | **Totality by default** | `fun` = total; `partial fun` opts out | `def` with termination checking / `partial def` | Total Spirit handlers; fuel limits become a backstop, not the only guarantee |
-| L3.5 | **Effect typing** | `sex fun` types become effectful; a pure `fun` cannot call a `sex fun` | `IO`/`EStateM`; host functions as `opaque` | Capability reasoning about what a Spirit can do |
+| L3.5 | **Effect typing** | `sex fun` types become effectful; a pure `fun` cannot call a `sex fun` | `IO`/`EStateM`; host functions as specified models (§5 L4.1) | Capability reasoning about what a Spirit can do |
 | L3.6 | **Evolution obligations** | `evo X @ 2 > 1 { migrate(x) = … preserves rule.r }` | `def migrate` + `theorem migrate_preserves_r` | Safe schema evolution for local-first data: DOL's founding idea, made checkable |
 | L3.7 | **CRDT laws** | `@crdt(lww)` (exists today) | Instance of a `CRDT` class; `merge_comm/assoc/idem` proved once per strategy | Proved convergence for DOLOS local-first state |
 | L3.8 | **Decidable props as runtime guards** | a `rule` whose body is decidable | `Decidable` instance → a generated check in Rust/WASM | One rule is both a proof obligation and a production assertion |
@@ -227,9 +233,9 @@ Only features with a clear payoff for VUDO/DOLOS are listed. Each is specified s
 
 ### Phase L4: ecosystem payoffs
 
-1. **Verified Spirit capability policies.** Model each Spirit's declared capabilities and the VUDO VM's 15 host functions in Lean. Prove properties such as "a Spirit without `storage` capability never reaches `host_storage_write`". This is Cedar's pattern applied to the VUDO host ABI.
+1. **Verified Spirit capability policies.** Write a Lean *specification* of each of the VUDO VM's 15 host functions: its capability check and its effect on VM state. `opaque` stubs would hide exactly what the proofs need to see. Then model each Spirit's declared capabilities against those specifications. Prove properties such as "a Spirit without `storage` capability never reaches `host_storage_write`". This is Cedar's pattern applied to the VUDO host ABI.
 2. **Differential testing (Oracle Pattern).** For decidable laws, generate inputs, run the Lean model (`#eval`/compiled) and the DOL→WASM Spirit in the VUDO VM, and compare. Use binary search over the declaration graph to localise divergence.
-3. **Proof DAG for agents.** Laws form a dependency graph (`uses`, `requires`, `evo`). Expose it as the shared, verifiable state for multi-agent proof work (the Prove2Me pattern, Lean4.md §8): agents fill `sorry`s and the gate accepts only kernel-checked nodes.
+3. **Proof DAG for agents.** Laws form a dependency graph (`uses`, `requires`, `evo`). Expose it as the shared, verifiable state for multi-agent proof work (the Prove2Me pattern, survey §8; unverified 2026 news): agents fill `sorry`s and the gate accepts only kernel-checked nodes.
 4. **A `dol-lean` standard library** of proved CRDT strategies, the ledger/credit invariants used by `host_credit_*`, and the ordering and lattice classes reused by DOL traits.
 
 ---
@@ -258,7 +264,7 @@ Only features with a clear payoff for VUDO/DOLOS are listed. Each is specified s
 |---|---|
 | **Translation fidelity** (DOL→Lean is untrusted code) | Readable output, one-to-one naming, golden tests, statements human-reviewed before proving |
 | **Fixed-width integers vs `Nat`.** Rust/WASM wrap or trap; mathematics does not. | **Decision needed:** model `u64` as `UInt64` (faithful, harder proofs) or as `Nat` with explicit bound hypotheses. Recommendation: `UInt64` in structures, `toNat` in law statements, plus generated no-overflow side conditions. |
-| **Lean/Mathlib version churn** (Lean4.md §8) | Pin `lean-toolchain`; no Mathlib by default; a scheduled upgrade job |
+| **Lean/Mathlib version churn** (survey §8) | Pin `lean-toolchain`; no Mathlib by default; a scheduled upgrade job |
 | **Toolchain weight** | `lean` Cargo feature, separate CI job, never in the default build |
 | **Model/implementation divergence** (Rust codegen today compiles only 14/41 files standalone) | L4.2 differential tests; fix Rust codegen correctness in parallel |
 | **Scope creep into a dependently typed DOL** | The non-goals in §5; L3 features must each lower to both Rust/WASM and Lean |
@@ -277,7 +283,7 @@ Only features with a clear payoff for VUDO/DOLOS are listed. Each is specified s
 |---|---|
 | **v0.9: "Truthful front-end"** (L0) | Laws and quantifiers parse and are kept; whole-file CLIs; types enforced; `prop` separated from `bool`; every `law` in `examples/**` parses |
 | **v0.10: "Statements in Lean"** (L1) | `dol-codegen -t lean`; all example laws produce a Lean statement or a precise diagnostic; `lake build` green with `sorry`s only |
-| **v0.11: "First proofs"** (L2) | `dol-check --verify` gate; one real Univrs trait (credit/ledger, or one CRDT strategy) proved with zero `sorry`; negative oracles for `sorry`/`axiom` |
+| **v0.11: "First proofs"** (L2) | `dol-check --verify` gate. First target: the ENR credit escrow invariant `balance + reserved + consumed = funded` (univrs/network#32, `crates/mycelial-network/src/enr_bridge/credits.rs`, already tested by `concurrent_reservations_never_overdraw`), proved with zero `sorry` and used for the first L4.2 Lean-vs-Rust differential test. Second: the LWW laws, already proved in `lean/DolLean/Crdt/Lww.lean`. Negative oracles for every gate reject. |
 | **v0.12+: "Lean-shaped DOL"** (L3) | ADTs plus exhaustive match, impl obligations, totality, effect typing, evo preservation, proved CRDT strategies |
 | **1.0 candidate** | A spec document generated from (and tested against) the parser; Spirits compiled to the VUDO VM carry Lean-checked capability and CRDT guarantees; differential tests link Lean model and WASM |
 
@@ -292,7 +298,7 @@ Only features with a clear payoff for VUDO/DOLOS are listed. Each is specified s
 - **Lean toolchain pinned.** `lean/` is a Lake project on Lean v4.36.0 with no Mathlib.
 - **L2 gate prototype.**
   - `lean/scripts/verify.sh` builds `DolLean` and rejects any theorem that depends on `sorryAx` or on axioms other than `propext`, `Classical.choice` and `Quot.sound`.
-  - `--self-test` checks the gate against fixtures: it accepts a proof, and rejects `sorry` and a custom `axiom`.
+  - `--self-test` checks the gate against fixtures: it accepts a proof, and rejects `sorry`, a custom `axiom`, `native_decide`, `@[implemented_by]` and `@[extern]`.
 - **First L3.7 result: LWW register laws.** `DolLean.Crdt.Lww` proves `merge` idempotent, associative, and commutative for *coherent* writes.
   - Lean also proves commutativity is **false** when two distinct writes share a (timestamp, replica) pair.
   - **Design requirement for DOLOS:** each replica must never issue two writes with the same timestamp (a strictly increasing per-replica clock). The Rust/WASM LWW implementations must be checked against this.
