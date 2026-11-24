@@ -1,216 +1,46 @@
-// messaging.dol - Spirit-to-Spirit Communication
-// This example demonstrates inter-spirit messaging through the ABI,
-// showing how to send and receive messages between spirits.
+// messaging.dol - Broadcasting to peers through the VUDO host ABI
+//
+// host_network_broadcast(msg) -> i64
+//   msg:   a DOL `string`, lowered to the ABI's (ptr, len) pair; the VM
+//          sends the bytes as-is and rejects an empty message
+//   returns the number of peers the message was sent to, or -1 on error
+//   (missing broadcast capability, empty or oversized message, or a
+//   network backend failure)
+//
+// Receiving is NOT available: the VM has no host function that delivers
+// incoming messages to a Spirit, so this example only sends. The VM also
+// provides host_network_connect and host_network_listen, but no function to
+// send or receive on the connection they return, so they are not used here.
+//
+// Log levels for host_log: 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR
 
-// Host function: Send a message to another spirit
-// Parameters: recipient_id, message pointer, message length
-// Returns: ResultCode (0 = success, 1 = recipient not found, 2 = buffer full)
-sex fun vudo_send(recipient_id: i32, msg_ptr: i32, msg_len: i32) -> i32
+sex fun host_network_broadcast(msg: string) -> i64
 
-// Host function: Receive a pending message
-// Returns: message string (or empty if no messages pending)
-sex fun vudo_recv() -> string
+sex fun host_log(level: i32, msg: string) -> i32
 
-// Host function: Get the sender ID of the current message
-// Returns: SpiritId of the message sender
-sex fun vudo_sender() -> i32
-
-// Host function: Check if there are pending messages
-// Returns: number of messages in the queue (0 if empty)
-sex fun vudo_pending() -> i32
-
-// Host function: Print a string to standard output
-// Returns: ResultCode
-sex fun vudo_println(ptr: i32, len: i32) -> i32
-
-// Represents a message with metadata
-gen Message {
-    has content: string
-    has sender_id: i32
-    has timestamp: i64
-
-    fun new(text: string, from_id: i32, ts: i64) {
-        this.content = text
-        this.sender_id = from_id
-        this.timestamp = ts
+// Broadcast a message and log the outcome.
+// Returns the peer count, or -1 on error.
+sex fun announce(msg: string) -> i64 {
+    let peers = host_network_broadcast(msg)
+    if peers < 0 {
+        host_log(4, "broadcast failed")
+        return -1
     }
-
-    fun display() {
-        let output = "Message from " + this.sender_id.to_string() + ": " + this.content
-        vudo_println(output)
+    if peers == 0 {
+        host_log(3, "broadcast reached no peers")
+        return 0
     }
+    host_log(2, "broadcast sent")
+    return peers
 }
 
-// A spirit that acts as a message broker/relay
-gen MessageBroker {
-    has name: string
-    has messages_processed: i32
-    has total_bytes_relayed: i32
-
-    fun new(broker_name: string) {
-        this.name = broker_name
-        this.messages_processed = 0
-        this.total_bytes_relayed = 0
-    }
-
-    // Process all pending messages
-    // Demonstrates vudo_pending, vudo_recv, vudo_sender
-    fun process_messages() {
-        let pending_count = vudo_pending()
-        vudo_println("Broker: Processing " + pending_count.to_string() + " messages")
-
-        // Process each pending message
-        if pending_count > 0 {
-            let msg = vudo_recv()
-            let sender_id = vudo_sender()
-
-            // Log the message
-            let log_msg = "Broker received from " + sender_id.to_string() + ": " + msg
-            vudo_println(log_msg)
-
-            // Track statistics
-            this.messages_processed = this.messages_processed + 1
-            this.total_bytes_relayed = this.total_bytes_relayed + msg.length
-        }
-    }
-
-    // Relay a message to a specific recipient
-    // Demonstrates vudo_send with error handling
-    fun relay_message(recipient_id: i32, content: string) -> i32 {
-        vudo_println("Broker: Relaying message to " + recipient_id.to_string())
-
-        // Send the message through the ABI
-        let result_code = vudo_send(recipient_id, content)
-
-        // Check the result code
-        if result_code == 0 {
-            vudo_println("Message sent successfully")
-            this.messages_processed = this.messages_processed + 1
-            return 0
-        } else if result_code == 1 {
-            let error_msg = "Error: Recipient " + recipient_id.to_string() + " not found"
-            vudo_println(error_msg)
-            return 1
-        } else if result_code == 2 {
-            vudo_println("Error: Message queue is full")
-            return 2
-        }
-
-        return result_code
-    }
-
-    // Get statistics about processed messages
-    fun get_stats() {
-        let stats = "Broker Stats - Messages: " + this.messages_processed.to_string() +
-                    ", Bytes relayed: " + this.total_bytes_relayed.to_string()
-        vudo_println(stats)
-    }
-}
-
-// A spirit that sends messages to other spirits
-gen MessageSender {
-    has sender_id: i32
-    has messages_sent: i32
-
-    fun new(id: i32) {
-        this.sender_id = id
-        this.messages_sent = 0
-    }
-
-    // Send a message to a recipient
-    // Demonstrates vudo_send usage and result code checking
-    fun send_message(recipient_id: i32, content: string) {
-        let prefix = "Sender #" + this.sender_id.to_string() + " sending: "
-        let message = prefix + content
-
-        vudo_println("Attempting to send message...")
-
-        // Call vudo_send with the recipient ID and message
-        let result = vudo_send(recipient_id, message)
-
-        // Check for success or error
-        if result == 0 {
-            vudo_println("Message delivered successfully")
-            this.messages_sent = this.messages_sent + 1
-        } else {
-            let error = "Failed to send message. Error code: " + result.to_string()
-            vudo_println(error)
-        }
-    }
-
-    fun get_sent_count() -> i32 {
-        return this.messages_sent
-    }
-}
-
-// A spirit that receives and processes messages
-gen MessageReceiver {
-    has receiver_id: i32
-    has messages_received: i32
-    has last_message: string
-
-    fun new(id: i32) {
-        this.receiver_id = id
-        this.messages_received = 0
-        this.last_message = ""
-    }
-
-    // Listen for and process incoming messages
-    // Demonstrates vudo_pending, vudo_recv, vudo_sender
-    fun listen() {
-        let pending_count = vudo_pending()
-
-        if pending_count > 0 {
-            // Receive the message
-            let msg = vudo_recv()
-
-            // Get sender information
-            let sender_id = vudo_sender()
-
-            // Update state
-            this.last_message = msg
-            this.messages_received = this.messages_received + 1
-
-            // Log receipt
-            let receipt = "Receiver #" + this.receiver_id.to_string() +
-                         " received from #" + sender_id.to_string() + ": " + msg
-            vudo_println(receipt)
-        }
-    }
-
-    // Get statistics
-    fun get_receive_count() -> i32 {
-        return this.messages_received
-    }
+// Entry point: announce this Spirit to its peers.
+sex fun main() -> i64 {
+    return announce("hello from a DOL Spirit")
 }
 
 docs {
-    This example demonstrates inter-spirit communication using the messaging ABI:
-
-    1. Host Functions for Messaging:
-       - vudo_send(recipient_id, message): Send a message to another spirit
-       - vudo_recv(): Receive the next pending message
-       - vudo_sender(): Get the ID of the message sender
-       - vudo_pending(): Check for pending messages
-
-    2. Result Codes: vudo_send returns different codes:
-       - 0: Success
-       - 1: Recipient not found
-       - 2: Message queue is full
-       These should be checked to handle communication failures.
-
-    3. Message Structure: Messages are serialized as strings when sent through
-       the ABI. The runtime handles the pointer/length conversion automatically.
-
-    4. Queue Processing: vudo_pending() allows spirits to check if messages
-       are waiting, enabling event-driven message processing.
-
-    5. Sender Tracking: vudo_sender() provides the ID of the sender, enabling
-       reply patterns and routing decisions.
-
-    6. Error Handling: The MessageBroker example shows proper error handling
-       by checking result codes and logging appropriately.
-
-    The messaging system enables the publish/subscribe and request/response
-    patterns fundamental to spirit-based architectures.
+    Sends a message to all connected peers with host_network_broadcast and
+    logs whether it reached anyone. The VUDO VM currently has no host
+    function for receiving messages, so a Spirit cannot read replies.
 }

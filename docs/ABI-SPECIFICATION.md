@@ -1,5 +1,13 @@
 # DOL ABI Specification
 
+> **Superseded (dol 0.8.2).** This document describes the retired `vudo_*` ABI
+> (`vudo_println`, `vudo_send`, `vudo_emit_effect`, ...). The VUDO VM does not
+> provide these functions, and declaring one with `sex fun` is a compile error.
+> The canonical Spirit host ABI is WASM import module `vudo` with exactly 15
+> `host_*` functions, defined in [`src/wasm/host_abi.rs`](../src/wasm/host_abi.rs)
+> and pinned by `tests/wasm_host_abi.rs`. See the README section "What's new in
+> 0.8.2" and [`docs/examples/`](examples/) for working examples.
+
 > **Version:** 0.1.0
 > **Status:** Stable
 > **Last Updated:** 2026-02-04
