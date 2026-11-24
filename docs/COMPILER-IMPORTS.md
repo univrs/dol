@@ -1,5 +1,11 @@
 # DOL Compiler: WASM Import Generation
 
+> **Superseded (dol 0.8.2).** This guide describes generating imports for the
+> retired `vudo_*` ABI. The WASM compiler now emits imports only for the 15
+> `host_*` functions in module `vudo` that the VUDO VM provides; see
+> [`src/wasm/host_abi.rs`](../src/wasm/host_abi.rs) and
+> [`docs/examples/`](examples/).
+
 > **Status:** Implementation Guide
 > **Version:** 0.8.1
 > **Depends On:** dol-abi (via host.rs)
