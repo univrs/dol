@@ -217,9 +217,15 @@ pub use lsp::{
     CrdtStrategyCompletion, Diagnostic, DiagnosticSeverity, DolLspServer, FieldTypeCompletion,
 };
 
-/// Parse a DOL source string into an AST.
+/// Parse the first declaration of a DOL source string into an AST.
 ///
-/// This is the primary entry point for parsing DOL files.
+/// # Warning
+///
+/// This returns only the **first** declaration. Everything after it,
+/// including further declarations and unparseable trailing content, is
+/// ignored and **not** reported as an error. To parse a whole file, use
+/// [`parse_dol_file`] (keeps `module`/`use` declarations) or
+/// [`parse_file_all`].
 ///
 /// # Arguments
 ///
@@ -255,7 +261,12 @@ pub fn parse_file(source: &str) -> Result<Declaration, ParseError> {
 /// Parse all declarations from a DOL source string.
 ///
 /// Returns all declarations in the file (genes, traits, constraints,
-/// systems, evolutions, and functions).
+/// systems, evolutions, and functions). The whole input must parse:
+/// trailing content that is not a declaration is an error.
+///
+/// `module` headers and `use` declarations are parsed and validated but not
+/// returned; use [`parse_dol_file`] to keep them. `mod name { ... }` block
+/// bodies and file-level `docs { ... }` blocks are skipped.
 ///
 /// # Arguments
 ///
@@ -289,7 +300,10 @@ pub fn parse_file_all(source: &str) -> Result<Vec<Declaration>, ParseError> {
 /// Parse a complete DOL file with module and use declarations.
 ///
 /// Returns a `DolFile` containing the module declaration (if any),
-/// use declarations, and all top-level declarations.
+/// use declarations (including those between declarations), and all
+/// top-level declarations. The whole input must parse: trailing content
+/// that is not a declaration is an error. `mod name { ... }` block bodies
+/// and file-level `docs { ... }` blocks are skipped.
 ///
 /// # Arguments
 ///
@@ -306,6 +320,10 @@ pub fn parse_dol_file(source: &str) -> Result<ast::DolFile, ParseError> {
 /// Parse and validate a DOL source string.
 ///
 /// Combines parsing and validation into a single operation.
+///
+/// Like [`parse_file`], this only sees the **first** declaration; for a
+/// whole file, parse with [`parse_dol_file`] and call [`validate`] on each
+/// declaration.
 ///
 /// # Arguments
 ///
