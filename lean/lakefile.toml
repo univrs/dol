@@ -1,0 +1,10 @@
+name = "dol-lean"
+version = "0.1.0"
+defaultTargets = ["DolLean"]
+
+[[lean_lib]]
+name = "DolLean"
+
+# Deliberately bad modules used only by the gate's self-test (not a default target).
+[[lean_lib]]
+name = "GateFixtures"
