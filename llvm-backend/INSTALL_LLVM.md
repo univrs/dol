@@ -286,7 +286,7 @@ export LD_LIBRARY_PATH=$LLVM_SYS_181_PREFIX/lib:$LD_LIBRARY_PATH
 | Traits, rules, systems | Compile-time only (no IR emitted) | Working |
 | String literals | Global string constants | Working |
 | print/println | Calls to `vudo_println` ABI | Working |
-| VUDO ABI (22 host functions) | `declare` with C calling convention | Working |
+| VUDO host ABI (15 `host_*` functions, bodiless `sex fun`) | `declare` with C calling convention | Working |
 | Cross-compilation (5 targets) | Target triple + machine selection | Working |
 
 ### What needs codegen work (in hir_lowering.rs)
@@ -324,7 +324,7 @@ export LD_LIBRARY_PATH=$LLVM_SYS_181_PREFIX/lib:$LD_LIBRARY_PATH
 | `dol-io` | `read_file`, `write_file`, `stdin_line`, `format` (sprintf-style) |
 | `dol-json` | `json_encode`, `json_decode`, `json_get` |
 | `dol-crdt` | Peritext, RGA, OR-Set, PN-Counter, LWW-Register merge implementations |
-| `dol-time` | `now`, `duration`, `format_time`, `parse_time` (beyond raw `vudo_now`) |
+| `dol-time` | `now`, `duration`, `format_time`, `parse_time` (beyond raw `host_time_now`) |
 
 ### Priority Roadmap
 

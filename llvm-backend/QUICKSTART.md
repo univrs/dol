@@ -117,7 +117,7 @@ entry:
 **What Works:**
 - ✅ LLVM IR generation for functions and structs
 - ✅ Type mapping (primitives, structs, strings)
-- ✅ ABI declarations for all 22 VUDO host functions
+- ✅ ABI declarations for the 15 VUDO VM host functions (`host_*`)
 - ✅ Native runtime (I/O, memory, time)
 - ✅ Target definitions (ARM64, RISC-V, x86-64, Windows)
 

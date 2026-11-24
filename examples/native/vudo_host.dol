@@ -1,30 +1,51 @@
-// VUDO Host Functions - Native ABI for Spirit runtime
-// Demonstrates: VUDO ABI host function calls, message passing
+// VUDO Host ABI - one Spirit source for the VUDO VM and native builds
+// Demonstrates: declaring the canonical `host_*` functions as bodiless `sex fun`s
+//
+// The VUDO VM provides 15 host functions (module `vudo`):
+//   Time:     host_time_now
+//   Random:   host_random_bytes
+//   Logging:  host_log
+//   Storage:  host_storage_read, host_storage_write, host_storage_delete
+//   Network:  host_network_connect, host_network_listen, host_network_broadcast
+//   Credit:   host_credit_balance, host_credit_transfer, host_credit_reserve,
+//             host_credit_release, host_credit_consume, host_credit_available
+//
+// The WASM backend imports them from the VM; the native backend links them from
+// libvudo_runtime_native. Natively, storage is an in-process map, and network and
+// credit calls always return -1 (there is no P2P network or ledger).
+// DOL integers are i64; each call converts to the ABI's i32/i64.
 
-// The native compiler automatically declares all 22 VUDO host functions:
-//   I/O:       vudo_print, vudo_println, vudo_log, vudo_error
-//   Memory:    vudo_alloc, vudo_free, vudo_realloc
-//   Time:      vudo_now, vudo_sleep, vudo_monotonic_now
-//   Messaging: vudo_send, vudo_recv, vudo_pending, vudo_broadcast, vudo_free_message
-//   Random:    vudo_random, vudo_random_bytes
-//   Effects:   vudo_emit_effect, vudo_subscribe
-//   Debug:     vudo_breakpoint, vudo_assert, vudo_panic
+sex fun host_log(level: i64, msg: string) -> i64
+sex fun host_time_now() -> i64
+sex fun host_storage_write(key: string, value: string) -> i64
+sex fun host_storage_delete(key: string) -> i64
+sex fun host_network_broadcast(msg: string) -> i64
 
-gen EchoSpirit {
-    has messages_handled: i64
-
-    fun tick() {
-        if pending() > 0 {
-            let msg = recv()
-            let sender_id = sender()
-            println(msg)
-            send(sender_id, msg)
-            this.messages_handled = this.messages_handled + 1
-        }
+// Log `label` at info if `rc` is the expected value, else at warn.
+sex fun expect(rc: i64, want: i64, label: string) -> i64 {
+    if rc == want {
+        return host_log(2, label)
     }
+    return host_log(3, label)
 }
 
-fun main() {
-    println("VUDO host functions are available in native builds.")
-    println("22 host functions declared via C ABI.")
+// Log `label` at info if `x` is positive, else at warn.
+sex fun positive(x: i64, label: string) -> i64 {
+    if x > 0 {
+        return host_log(2, label)
+    }
+    return host_log(3, label)
+}
+
+sex fun run() -> i64 {
+    val started = host_log(2, "Spirit started")
+    val clock = positive(host_time_now(), "clock: time is after the epoch")
+    val wrote = expect(host_storage_write("greeting", "hello"), 0, "storage: wrote greeting")
+    val deleted = expect(host_storage_delete("greeting"), 1, "storage: deleted greeting")
+    val sent = expect(host_network_broadcast("tick"), -1, "network: broadcast unavailable (-1, as expected natively)")
+    return 0
+}
+
+sex fun main() {
+    val rc = run()
 }

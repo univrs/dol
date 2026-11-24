@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType};
+use inkwell::values::{
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+};
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 
@@ -18,7 +20,7 @@ use metadol::hir::{
     Symbol, SymbolTable,
 };
 
-use crate::abi::AbiGenerator;
+use crate::abi::{self, AbiGenerator, HostFunction, Slot};
 use crate::types::TypeMapper;
 use crate::{CodegenError, Result};
 
@@ -35,6 +37,27 @@ pub struct HirLowering<'a, 'ctx> {
 
     /// Named struct types already generated
     struct_types: HashMap<String, inkwell::types::StructType<'ctx>>,
+
+    /// Host functions declared by bodiless `sex fun`s (name → DOL view)
+    host_imports: HashMap<String, HostImport<'ctx>>,
+}
+
+/// How a DOL argument of a host function declaration maps onto the ABI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HostArg {
+    /// `string`: one `(ptr, i32 len)` pair
+    Str,
+    /// Any integer: one slot
+    Int,
+}
+
+/// A host function as declared in DOL source by a bodiless `sex fun`.
+#[derive(Debug, Clone)]
+struct HostImport<'ctx> {
+    host: &'static HostFunction,
+    args: Vec<HostArg>,
+    /// Declared DOL return type (`None` for unit)
+    ret: Option<IntType<'ctx>>,
 }
 
 impl<'a, 'ctx> HirLowering<'a, 'ctx> {
@@ -52,6 +75,7 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
             symbols,
             named_values: HashMap::new(),
             struct_types: HashMap::new(),
+            host_imports: HashMap::new(),
         }
     }
 
@@ -66,10 +90,113 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
 
     /// Lower an entire HIR module to LLVM IR.
     pub fn lower_module(&mut self, hir: &HirModule) -> Result<()> {
+        // Register host function declarations first, so calls may precede them.
+        self.register_host_imports(&hir.decls)?;
         for decl in &hir.decls {
             self.lower_decl(decl)?;
         }
         Ok(())
+    }
+
+    /// Register every bodiless function as a host function import.
+    fn register_host_imports(&mut self, decls: &[HirDecl]) -> Result<()> {
+        for decl in decls {
+            match decl {
+                HirDecl::Function(f) if f.body.is_none() => self.register_host_import(f)?,
+                HirDecl::Module(m) => self.register_host_imports(&m.decls)?,
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Check a bodiless `sex fun` against the canonical host ABI ([`abi`]).
+    ///
+    /// Like the WASM backend, an unknown name, a `string` where the ABI has no
+    /// `(ptr, len)` pair, or an arity that does not cover the ABI exactly is a
+    /// compile error: such a Spirit could never link in the VUDO VM.
+    fn register_host_import(&mut self, decl: &HirFunctionDecl) -> Result<()> {
+        let name = self.sym(decl.name).to_string();
+        let host = abi::lookup(&name).ok_or_else(|| {
+            CodegenError::LlvmError(format!(
+                "unknown host function `{}`: a bodiless `sex fun` must be one of the VUDO \
+                 host ABI functions: {}",
+                name,
+                abi::names()
+            ))
+        })?;
+
+        let mut args = Vec::with_capacity(decl.params.len());
+        let mut slot = 0usize;
+        for (i, param) in decl.params.iter().enumerate() {
+            if self.is_string_type(&param.ty) {
+                if !host.str_pairs.contains(&slot) {
+                    return Err(CodegenError::LlvmError(format!(
+                        "host function `{}` parameter {} is a string, but ABI parameter {} \
+                         is not a (ptr, len) pair",
+                        name, i, slot
+                    )));
+                }
+                args.push(HostArg::Str);
+                slot += 2;
+            } else {
+                if slot >= host.params.len() {
+                    return Err(CodegenError::LlvmError(format!(
+                        "host function `{}` takes {} ABI parameter(s), but is declared with more",
+                        name,
+                        host.params.len()
+                    )));
+                }
+                if !self.map_hir_type(&param.ty)?.is_int_type() {
+                    return Err(CodegenError::LlvmError(format!(
+                        "host function `{}` parameter {} must be an integer or string",
+                        name, i
+                    )));
+                }
+                args.push(HostArg::Int);
+                slot += 1;
+            }
+        }
+        if slot != host.params.len() {
+            return Err(CodegenError::LlvmError(format!(
+                "host function `{}` takes {} ABI parameter(s), but the declaration covers {}",
+                name,
+                host.params.len(),
+                slot
+            )));
+        }
+
+        let ret = if self.is_unit_type(&decl.return_type) {
+            None
+        } else {
+            match self.map_hir_type(&decl.return_type)? {
+                BasicTypeEnum::IntType(t) => Some(t),
+                _ => {
+                    return Err(CodegenError::LlvmError(format!(
+                        "host function `{}` returns an integer in the VUDO ABI",
+                        name
+                    )))
+                }
+            }
+        };
+
+        self.host_imports
+            .insert(name, HostImport { host, args, ret });
+        Ok(())
+    }
+
+    /// Whether a HIR type is a DOL string.
+    fn is_string_type(&self, ty: &HirType) -> bool {
+        matches!(ty, HirType::Named(n) if matches!(self.sym(n.name), "string" | "String" | "str"))
+    }
+
+    /// Whether a HIR type is unit.
+    fn is_unit_type(&self, ty: &HirType) -> bool {
+        match ty {
+            HirType::Named(n) => matches!(self.sym(n.name), "()" | "Unit"),
+            HirType::Tuple(elems) => elems.is_empty(),
+            _ => false,
+        }
     }
 
     /// Lower a single declaration.
@@ -204,6 +331,27 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
     /// Lower a function declaration to LLVM.
     pub fn lower_function_decl(&mut self, decl: &HirFunctionDecl) -> Result<FunctionValue<'ctx>> {
         let name = self.sym(decl.name).to_string();
+
+        // Host functions are declared once, with their canonical signature.
+        if let Some(host) = abi::lookup(&name) {
+            if decl.body.is_some() {
+                return Err(CodegenError::LlvmError(format!(
+                    "`{}` is a VUDO host function name; declare it without a body",
+                    name
+                )));
+            }
+            if !self.host_imports.contains_key(&name) {
+                self.register_host_import(decl)?;
+            }
+            return Ok(self
+                .module
+                .get_function(host.name)
+                .expect("host functions are declared in HirLowering::new"));
+        }
+        if decl.body.is_none() {
+            // Reports the unknown host function.
+            self.register_host_import(decl)?;
+        }
 
         // Map parameter types
         let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = decl
@@ -565,6 +713,9 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
             }
         } else if val.is_int_value() {
             // Integer: convert to string via vudo_i64_to_string
+            let val: BasicValueEnum<'ctx> = self
+                .cast_int(val.into_int_value(), self.context.i64_type())?
+                .into();
             let function = self
                 .builder
                 .get_insert_block()
@@ -726,9 +877,19 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
             return Ok(result.into());
         }
 
-        // Integer operations
-        let lhs_int = lhs.into_int_value();
-        let rhs_int = rhs.into_int_value();
+        // Integer operations (operands of different widths, e.g. an i32 host
+        // result against an i64 literal, are sign-extended to the wider one)
+        let mut lhs_int = lhs.into_int_value();
+        let mut rhs_int = rhs.into_int_value();
+        let (lw, rw) = (
+            lhs_int.get_type().get_bit_width(),
+            rhs_int.get_type().get_bit_width(),
+        );
+        if lw < rw {
+            lhs_int = self.cast_int(lhs_int, rhs_int.get_type())?;
+        } else if rw < lw {
+            rhs_int = self.cast_int(rhs_int, lhs_int.get_type())?;
+        }
 
         let result = match bin.op {
             HirBinaryOp::Add => self.builder.build_int_add(lhs_int, rhs_int, "add"),
@@ -817,23 +978,124 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
         }
     }
 
-    /// Map DOL built-in function names to VUDO host function names.
+    /// Map DOL built-in function names to the runtime symbols that implement
+    /// them: native-only intrinsics (`vudo_*`) or host ABI functions (`host_*`).
     fn builtin_to_vudo(name: &str) -> Option<&'static str> {
         match name {
             "print" => Some("vudo_print"),
             "println" => Some("vudo_println"),
-            "log" => Some("vudo_log"),
-            "error" => Some("vudo_error"),
+            "log" => Some("host_log"),
             "alloc" => Some("vudo_alloc"),
             "free" => Some("vudo_free"),
             "realloc" => Some("vudo_realloc"),
-            "now" => Some("vudo_now"),
-            "sleep" => Some("vudo_sleep"),
-            "random" => Some("vudo_random"),
+            "now" => Some("host_time_now"),
             "breakpoint" => Some("vudo_breakpoint"),
             "assert" => Some("vudo_assert"),
             "panic" => Some("vudo_panic"),
             _ => None,
+        }
+    }
+
+    /// Convert an integer to `target` width (sign-extending, except `i1`).
+    fn cast_int(&self, val: IntValue<'ctx>, target: IntType<'ctx>) -> Result<IntValue<'ctx>> {
+        let from = val.get_type().get_bit_width();
+        let to = target.get_bit_width();
+        let res = if from == to {
+            return Ok(val);
+        } else if from < to && from == 1 {
+            self.builder.build_int_z_extend(val, target, "zext")
+        } else if from < to {
+            self.builder.build_int_s_extend(val, target, "sext")
+        } else {
+            self.builder.build_int_truncate(val, target, "trunc")
+        };
+        res.map_err(|e| CodegenError::LlvmError(e.to_string()))
+    }
+
+    /// Build a call to a host function declared by a bodiless `sex fun`,
+    /// lowering DOL arguments to the native host ABI (see [`abi`]).
+    fn build_host_call(
+        &mut self,
+        name: &str,
+        call: &metadol::hir::HirCallExpr,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let import = self.host_imports[name].clone();
+        if call.args.len() != import.args.len() {
+            return Err(CodegenError::LlvmError(format!(
+                "host function `{}` called with {} argument(s), declared with {}",
+                name,
+                call.args.len(),
+                import.args.len()
+            )));
+        }
+        let function = self
+            .module
+            .get_function(import.host.name)
+            .ok_or_else(|| CodegenError::LlvmError(format!("undefined host fn: {}", name)))?;
+        let i32_t = self.context.i32_type();
+        let i64_t = self.context.i64_type();
+        let ptr_t = self.context.ptr_type(AddressSpace::default());
+
+        let mut args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        let mut slot = 0usize;
+        for (arg_expr, kind) in call.args.iter().zip(&import.args) {
+            let val = self.lower_expr(arg_expr)?.ok_or_else(|| {
+                CodegenError::LlvmError(format!("host function `{}`: void argument", name))
+            })?;
+            match kind {
+                HostArg::Str => {
+                    let (ptr, len) = self.coerce_to_string_parts(val, arg_expr)?;
+                    let len = self.cast_int(len.into_int_value(), i32_t)?;
+                    args.push(ptr.into());
+                    args.push(len.into());
+                    slot += 2;
+                }
+                HostArg::Int => {
+                    let lowered: BasicMetadataValueEnum<'ctx> =
+                        match (import.host.params[slot], val) {
+                            (Slot::Ptr, BasicValueEnum::PointerValue(p)) => p.into(),
+                            (Slot::Ptr, BasicValueEnum::IntValue(i)) => {
+                                let i = self.cast_int(i, i64_t)?;
+                                self.builder
+                                    .build_int_to_ptr(i, ptr_t, "host_ptr")
+                                    .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                                    .into()
+                            }
+                            (Slot::I32, BasicValueEnum::IntValue(i)) => {
+                                self.cast_int(i, i32_t)?.into()
+                            }
+                            (Slot::I64, BasicValueEnum::IntValue(i)) => {
+                                self.cast_int(i, i64_t)?.into()
+                            }
+                            _ => {
+                                return Err(CodegenError::LlvmError(format!(
+                                    "host function `{}` ABI parameter {} needs an integer",
+                                    name, slot
+                                )))
+                            }
+                        };
+                    args.push(lowered);
+                    slot += 1;
+                }
+            }
+        }
+
+        let call_val = self
+            .builder
+            .build_call(function, &args, name)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let result = match call_val.try_as_basic_value() {
+            inkwell::values::ValueKind::Basic(v) => v.into_int_value(),
+            inkwell::values::ValueKind::Instruction(_) => {
+                return Err(CodegenError::LlvmError(format!(
+                    "host function `{}` returned no value",
+                    name
+                )))
+            }
+        };
+        match import.ret {
+            Some(ret) => Ok(Some(self.cast_int(result, ret)?.into())),
+            None => Ok(None),
         }
     }
 
@@ -883,7 +1145,18 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
             }
         };
 
-        // Check for built-in → VUDO host function mapping
+        // Host function declared by a bodiless `sex fun`
+        if self.host_imports.contains_key(&func_name) {
+            return self.build_host_call(&func_name, call);
+        }
+        if abi::lookup(&func_name).is_some() {
+            return Err(CodegenError::LlvmError(format!(
+                "host function `{}` must be declared with a bodiless `sex fun` before use",
+                func_name
+            )));
+        }
+
+        // Check for built-in → runtime function mapping
         if let Some(vudo_name) = Self::builtin_to_vudo(&func_name) {
             // String-accepting builtins: print, println, panic, assert, error, log
             match func_name.as_str() {
@@ -893,15 +1166,27 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
                 "panic" if !call.args.is_empty() => {
                     return self.build_string_call(vudo_name, &call.args[0], &[]);
                 }
-                "error" if call.args.len() >= 2 => {
-                    // error(code, msg) → vudo_error(i32, ptr, len)
-                    let code = self.lower_expr(&call.args[0])?.unwrap();
-                    return self.build_string_call(vudo_name, &call.args[1], &[code.into()]);
-                }
                 "log" if call.args.len() >= 2 => {
-                    // log(level, msg) → vudo_log(i32, ptr, len)
-                    let level = self.lower_expr(&call.args[0])?.unwrap();
-                    return self.build_string_call(vudo_name, &call.args[1], &[level.into()]);
+                    // log(level, msg) → host_log(i32 level, ptr, i32 len) -> i32
+                    let level = self.lower_expr(&call.args[0])?.unwrap().into_int_value();
+                    let level = self.cast_int(level, self.context.i32_type())?;
+                    let val = self.lower_expr(&call.args[1])?.unwrap();
+                    let (ptr, len) = self.coerce_to_string_parts(val, &call.args[1])?;
+                    let len = self.cast_int(len.into_int_value(), self.context.i32_type())?;
+                    let function = self.module.get_function(vudo_name).ok_or_else(|| {
+                        CodegenError::LlvmError(format!("undefined host fn: {}", vudo_name))
+                    })?;
+                    let rc = self
+                        .builder
+                        .build_call(function, &[level.into(), ptr.into(), len.into()], "log")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    return match rc.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(v) => Ok(Some(
+                            self.cast_int(v.into_int_value(), self.context.i64_type())?
+                                .into(),
+                        )),
+                        inkwell::values::ValueKind::Instruction(_) => Ok(None),
+                    };
                 }
                 "assert" if call.args.len() >= 2 => {
                     // assert(cond, msg) → vudo_assert(i32, ptr, len)
@@ -1288,6 +1573,31 @@ fun sign(x: i64) -> string {
             !ir.contains("ret { ptr, i64 }\n  br"),
             "No dead br after ret"
         );
+    }
+
+    #[test]
+    fn test_sex_fun_host_log_uses_canonical_declaration() {
+        let source = r#"
+sex fun host_log(level: i32, msg: string) -> i32
+
+fun main() {
+    host_log(2, "hi")
+    log(3, "builtin")
+}
+"#;
+        let (hir, ctx) = lower_file(source).expect("parse failed");
+        let context = Context::create();
+        let module = context.create_module("test");
+        let mut lowering = HirLowering::new(&context, &module, &ctx.symbols);
+        lowering.lower_module(&hir).expect("lowering failed");
+        module.verify().expect("valid module");
+
+        let ir = module.print_to_string().to_string();
+        assert!(ir.contains("declare i32 @host_log(i32, ptr, i32)"), "{ir}");
+        assert!(ir.contains("@host_log(i32 2, ptr @str, i32 2)"), "{ir}");
+        assert!(ir.contains("@host_log(i32 3, ptr @str.1, i32 7)"), "{ir}");
+        assert!(!ir.contains("host_log.1"), "declared twice: {ir}");
+        assert!(!ir.contains("@vudo_log"), "old host ABI emitted: {ir}");
     }
 
     #[test]
