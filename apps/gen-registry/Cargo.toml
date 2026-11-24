@@ -35,7 +35,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # CLI
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.4", features = ["derive", "env"] }
 
 # Crypto
 blake3 = "1.5"           # Fast hashing for module IDs
@@ -90,18 +90,6 @@ rand = "0.8"
 [[bin]]
 name = "gen-registry"
 path = "cli/main.rs"
-
-[[bin]]
-name = "gen-registry-server"
-path = "src/bin/server.rs"
-
-[[bench]]
-name = "search_performance"
-harness = false
-
-[[bench]]
-name = "sync_performance"
-harness = false
 
 [lib]
 name = "gen_registry"

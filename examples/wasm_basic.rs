@@ -40,6 +40,7 @@ fn main() {
         }))],
         exegesis: "Adds two numbers".to_string(),
         span: Span::default(),
+        attributes: Vec::new(),
     };
 
     let decl = Declaration::Function(Box::new(func));

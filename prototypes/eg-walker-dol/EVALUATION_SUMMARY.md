@@ -197,7 +197,7 @@ Worth evaluating as Plan B.
 - [Eg-walker Paper](https://martin.kleppmann.com/2025/03/30/eg-walker-collaborative-text.html)
 - [Diamond-types Crate](https://crates.io/crates/diamond-types)
 - [Research Repository](https://github.com/josephg/egwalker-paper)
-- [DOL CRDT Guide](../../docs/book/local-first/crdt-guide/)
+- [DOL CRDT Examples](../../examples/crdt/) and [ADR-001: CRDT Selection](../../docs/ADRs/ADR-001-CRDT-SELECTION.md)
 
 ---
 

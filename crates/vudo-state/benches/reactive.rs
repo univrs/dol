@@ -1,6 +1,6 @@
 //! Benchmarks for reactive subscriptions.
 
-use automerge::ROOT;
+use automerge::{transaction::Transactable, ReadDoc, ROOT};
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use vudo_state::document_store::*;
 use vudo_state::reactive::*;

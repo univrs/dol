@@ -242,7 +242,7 @@ impl Registry {
         // Install dependencies first
         for dep in resolved {
             if dep.module_id != module_id {
-                self.install(&dep.module_id, Some(&dep.version)).await?;
+                Box::pin(self.install(&dep.module_id, Some(&dep.version))).await?;
             }
         }
 

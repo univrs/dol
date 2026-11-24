@@ -1,8 +1,24 @@
 # Byzantine Fault Tolerance Testing - Implementation Summary
 
+> **Status correction (2026-11-21, DOL v0.8.2).** The claims below of passing
+> tests, verified security properties and production readiness are **not true**:
+>
+> - `cargo test --test adversarial_tests` in `crates/vudo-credit` fails to
+>   compile (17 errors: missing `ReputationManager::new`, `ReputationTier::Tier0`,
+>   `MasterIdentity::did`, `CreditAccountHandle::confirmed_balance`, and an
+>   outdated automerge `Change` literal). None of the 46 adversarial tests has run.
+> - BFT vote collection is simulated (`crates/vudo-credit/src/bft.rs`,
+>   `crates/vudo-planetserve/src/bft.rs`): votes are generated locally with
+>   zeroed signatures, not gathered from peers.
+> - Detection times, damage levels and resource-limit effectiveness figures were
+>   never measured.
+>
+> Treat this document as a design and test plan, not as evidence. See
+> `docs/DOL-STATUS-2026-11.md`.
+
 **Task**: t3.5 - Byzantine Fault Tolerance Testing
 **Phase**: Phase 3 (FRUITING-BODY)
-**Status**: ✅ **COMPLETE**
+**Status**: Incomplete. Test code and documents written; the test suite does not compile.
 **Date**: 2026-02-05
 
 ---
@@ -60,7 +76,7 @@ This document summarizes the implementation of comprehensive Byzantine Fault Tol
 | Eclipse Attack Mitigation | 6 | 210 | ✅ Complete |
 | Resource Exhaustion | 8 | 220 | ✅ Complete |
 | Byzantine Committee | 8 | 270 | ✅ Complete |
-| **TOTAL** | **46** | **1,450** | ✅ Complete |
+| **TOTAL** | **46** | **1,450** | Written, does not compile |
 
 ### Attack Vectors Covered
 
@@ -196,7 +212,7 @@ pub enum DamageLevel {
 
 ---
 
-## Security Properties Verified
+## Security Properties Targeted (not verified; tests do not compile)
 
 ### Safety Properties ✅
 
@@ -218,7 +234,7 @@ pub enum DamageLevel {
 
 ---
 
-## Mitigation Effectiveness
+## Mitigation Effectiveness (design targets, never measured)
 
 | Threat | Mitigation | Detection Time | Damage Level |
 |--------|------------|----------------|--------------|
@@ -278,11 +294,11 @@ Thus, honest majority can always achieve consensus even with maximum f Byzantine
 - Performance impact
 - Recommendations
 
-**Key Findings**:
-- ✅ All 35+ tests pass
-- ✅ All attacks unsuccessful
-- ✅ Damage level: None or Minimal
-- ✅ System ready for production
+**Key Findings** (as claimed by that report; not reproducible, since the tests do not compile):
+- All 35+ tests pass
+- All attacks unsuccessful
+- Damage level: None or Minimal
+- System ready for production
 
 ### Threat Model
 
@@ -334,7 +350,7 @@ Thus, honest majority can always achieve consensus even with maximum f Byzantine
 ### Current State
 
 - ✅ Test infrastructure: Complete (400+ lines)
-- ✅ Test cases: Complete (46 tests, 1,450+ lines)
+- ❌ Test cases: written (46 tests, 1,450+ lines) but do not compile
 - ✅ Documentation: Complete (2,500+ lines)
 - 🔄 Integration: Pending minor API additions
 
@@ -377,19 +393,19 @@ Estimated effort: **2-4 hours**
 
 ## Success Criteria
 
-### ✅ All Criteria Met
+### Not met (only the threat model is done)
 
-- [x] **Corrupted CRDT ops rejected** by all honest peers
-- [x] **Sybil attacks don't inflate** credit balances
-- [x] **Replay attacks on credit** operations prevented
-- [x] **Eclipse attack mitigated** by multi-source discovery
-- [x] **Formal threat model** documented and reviewed
-- [x] **All 35+ tests pass** (46 implemented)
-- [x] **BFT committee tolerates** f Byzantine faults in 3f+1 setup
+- [ ] **Corrupted CRDT ops rejected** by all honest peers
+- [ ] **Sybil attacks don't inflate** credit balances
+- [ ] **Replay attacks on credit** operations prevented
+- [ ] **Eclipse attack mitigated** by multi-source discovery
+- [x] **Formal threat model** documented (not independently reviewed)
+- [ ] **All 35+ tests pass** (46 written; the suite does not compile)
+- [ ] **BFT committee tolerates** f Byzantine faults in 3f+1 setup (vote collection is simulated)
 
 ---
 
-## Performance Metrics
+## Performance Metrics (design targets, never measured)
 
 ### Attack Detection Speed
 
@@ -433,16 +449,14 @@ Estimated effort: **2-4 hours**
 
 ## Conclusion
 
-The Byzantine Fault Tolerance testing implementation is **COMPLETE** and demonstrates:
+The Byzantine Fault Tolerance testing work is **incomplete**:
 
-1. **Comprehensive Coverage**: 46 tests across 7 attack categories
-2. **Robust Infrastructure**: Reusable malicious/honest node framework
-3. **Detailed Documentation**: 2,500+ lines across 4 documents
-4. **Production Ready**: All security properties verified
+1. **Coverage written, not run**: 46 tests across 7 attack categories exist but do not compile
+2. **Infrastructure**: a malicious/honest node harness exists, pending the API additions listed above
+3. **Documentation**: threat model and attack scenarios written
+4. **Not production ready**: no security property has been verified; BFT voting is simulated
 
-**System Status**: ✅ **READY FOR PRODUCTION**
-
-The VUDO Runtime demonstrates robust Byzantine fault tolerance across all tested attack vectors. The combination of CRDT validation, reputation tiers, transaction tracking, privacy-preserving sync, multi-source discovery, resource limits, and BFT consensus provides comprehensive defense against malicious actors while maintaining excellent performance for honest users.
+**System Status**: NOT production ready.
 
 ---
 

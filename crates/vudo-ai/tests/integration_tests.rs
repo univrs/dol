@@ -126,8 +126,8 @@ fn test_batch_conflict_resolution() {
             document_id: "doc3".to_string(),
             object_id: "root".to_string(),
             key: "field3".to_string(),
-            local_value: ConflictValue::Int(42).to_string(),
-            remote_value: ConflictValue::Int(100).to_string(),
+            local_value: ConflictValue::Int(42),
+            remote_value: ConflictValue::Int(100),
             context: vec![],
         },
     ];

@@ -1,9 +1,25 @@
 # Byzantine Fault Tolerance Test Report
 
+> **Status correction (2026-11-21, DOL v0.8.2).** The claims below of passing
+> tests, verified security properties and production readiness are **not true**:
+>
+> - `cargo test --test adversarial_tests` in `crates/vudo-credit` fails to
+>   compile (17 errors: missing `ReputationManager::new`, `ReputationTier::Tier0`,
+>   `MasterIdentity::did`, `CreditAccountHandle::confirmed_balance`, and an
+>   outdated automerge `Change` literal). None of the 46 adversarial tests has run.
+> - BFT vote collection is simulated (`crates/vudo-credit/src/bft.rs`,
+>   `crates/vudo-planetserve/src/bft.rs`): votes are generated locally with
+>   zeroed signatures, not gathered from peers.
+> - Detection times, damage levels and resource-limit effectiveness figures were
+>   never measured.
+>
+> Treat this document as a design and test plan, not as evidence. See
+> `docs/DOL-STATUS-2026-11.md`.
+
 **Project**: VUDO Runtime - Phase 3 (FRUITING-BODY)
 **Task**: t3.5 - Byzantine Fault Tolerance Testing
 **Date**: 2026-02-05
-**Status**: ✅ Complete
+**Status**: Incomplete (see correction above)
 
 ---
 

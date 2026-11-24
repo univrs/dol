@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
-use vudo_p2p::{WillowAdapter, WillowCapability};
+use vudo_p2p::{Capability as WillowCapability, WillowAdapter};
 use vudo_state::StateEngine;
 
 /// Sync progress

@@ -81,7 +81,7 @@ Does the field change after creation?
 - [Specification](../dol-crdt-schema-v1.0.md)
 - [Implementation Guide](../dol-crdt-implementation-guide.md)
 - [JSON Schema](../../schemas/dol-crdt.json)
-- [DOL Book - CRDT Guide](../../docs/book/local-first/crdt-guide/)
+- [CRDT Examples](../../examples/crdt/) and [ADR-001: CRDT Selection](../../docs/ADRs/ADR-001-CRDT-SELECTION.md)
 
 ## License
 

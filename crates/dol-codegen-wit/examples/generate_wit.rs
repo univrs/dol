@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     options: vec![],
                     span: Span::default(),
                 }),
+                personal: false,
                 span: Span::default(),
             })),
             // Peritext content field
@@ -45,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     options: vec![],
                     span: Span::default(),
                 }),
+                personal: false,
                 span: Span::default(),
             })),
             // OR-Set reactions field
@@ -61,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     options: vec![],
                     span: Span::default(),
                 }),
+                personal: false,
                 span: Span::default(),
             })),
             // LWW edited_at field
@@ -77,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     options: vec![],
                     span: Span::default(),
                 }),
+                personal: false,
                 span: Span::default(),
             })),
         ],

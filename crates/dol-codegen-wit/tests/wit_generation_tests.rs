@@ -29,6 +29,7 @@ fn create_gen_with_crdt(
                     options: vec![],
                     span: Span::default(),
                 }),
+                personal: false,
                 span: Span::default(),
             }))
         })
@@ -251,6 +252,7 @@ fn test_complex_nested_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -269,6 +271,7 @@ fn test_complex_nested_types() {
                     options: vec![],
                     span: Span::default(),
                 }),
+                personal: false,
                 span: Span::default(),
             })),
         ],
@@ -296,6 +299,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -304,6 +308,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -312,6 +317,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -320,6 +326,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -328,6 +335,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -336,6 +344,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -344,6 +353,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
             Statement::HasField(Box::new(HasField {
@@ -352,6 +362,7 @@ fn test_all_integer_types() {
                 default: None,
                 constraint: None,
                 crdt_annotation: None,
+                personal: false,
                 span: Span::default(),
             })),
         ],
@@ -507,6 +518,7 @@ fn test_option_type() {
                 options: vec![],
                 span: Span::default(),
             }),
+            personal: false,
             span: Span::default(),
         }))],
         exegesis: "With option".to_string(),

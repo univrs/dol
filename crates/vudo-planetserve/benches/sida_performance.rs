@@ -1,7 +1,7 @@
 //! Benchmarks for S-IDA fragmentation performance
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use vudo_planetserve::sida::{SidaConfig, SidaFragmenter};
+use vudo_planetserve::{sida::SidaFragmenter, SidaConfig};
 
 fn bench_fragmentation(c: &mut Criterion) {
     let mut group = c.benchmark_group("sida_fragmentation");

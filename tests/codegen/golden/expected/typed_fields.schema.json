@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "Container": {
+    "description": "A container with typed fields.",
+    "type": "object",
+    "properties": {
+      "id": { "type": "integer", "minimum": 0 },
+      "name": { "type": "string" },
+      "running": { "type": "boolean" },
+      "tags": { "type": "array", "items": { "type": "string" } },
+      "exit_code": { "oneOf": [{ "type": "integer" }, { "type": "null" }] },
+      "replicas": { "type": "integer" },
+      "image": { "type": "string" }
+    },
+    "required": ["id", "name", "running", "tags", "exit_code", "image"]
+  }
+  }
+}

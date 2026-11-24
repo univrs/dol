@@ -1,5 +1,16 @@
 # DOL Bootstrap Completion - Pragmatic Hybrid Approach
 
+> **Status (2026-11, v0.8.2): this is a task brief, not a completion report.
+> Self-hosting has NOT been achieved.**
+>
+> - `dol-build-crate dol/*.dol -o <dir>` generates a crate that fails
+>   `cargo build` with ~850 errors (851 measured on 2026-11-21).
+> - `stage1/` contains only a `Cargo.toml`; there is no `stage2/`.
+> - There is no `dol-compile` binary; the commands below that use it, and the
+>   `target/stage1` paths, do not reflect the current tree.
+>
+> See `docs/DOL-STATUS-2026-11.md` §5.8 for the current state.
+
 ## Mission
 
 Get the DOL self-hosting compiler to compile successfully. Perfection is NOT the goal - a working bootstrap is. Manual patches and pragmatic fixes are acceptable.

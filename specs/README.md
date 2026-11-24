@@ -49,7 +49,7 @@ This directory contains formal specifications and standards materials for the De
 ### Guides
 - [Implementation Guide](./dol-crdt-implementation-guide.md)
 - [Example Catalog](./dol-crdt-examples/)
-- [Developer Documentation](../docs/book/local-first/crdt-guide/)
+- [CRDT Examples](../examples/crdt/) and [ADR-001: CRDT Selection](../docs/ADRs/ADR-001-CRDT-SELECTION.md)
 
 ### Community
 - [GitHub Repository](https://github.com/univrs/dol)

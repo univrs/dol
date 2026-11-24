@@ -437,31 +437,35 @@ impl JsonSchemaCodegen {
         schema
     }
 
-    /// Extract properties from "has" statements.
+    /// Extract properties from "has" statements, in source order.
+    ///
+    /// Typed fields (`has x: T`) map their type; untyped `subject has x`
+    /// properties carry no type and fall back to a string schema.
     fn extract_properties(&self, statements: &[Statement]) -> Vec<(String, String)> {
         statements
             .iter()
-            .filter_map(|stmt| {
-                if let Statement::Has { property, .. } = stmt {
-                    // Since AST doesn't have type annotations, use generic schema
+            .filter_map(|stmt| match stmt {
+                Statement::Has { property, .. } => {
                     Some((property.clone(), "{ \"type\": \"string\" }".to_string()))
-                } else {
-                    None
                 }
+                Statement::HasField(field) => {
+                    Some((field.name.clone(), Self::map_type_expr(&field.type_)))
+                }
+                _ => None,
             })
             .collect()
     }
 
     /// Extract required field names from "has" statements.
+    ///
+    /// Typed fields with a default value (`has x: T = v`) are not required.
     fn extract_required(&self, statements: &[Statement]) -> Vec<String> {
         statements
             .iter()
-            .filter_map(|stmt| {
-                if let Statement::Has { property, .. } = stmt {
-                    Some(property.clone())
-                } else {
-                    None
-                }
+            .filter_map(|stmt| match stmt {
+                Statement::Has { property, .. } => Some(property.clone()),
+                Statement::HasField(field) if field.default.is_none() => Some(field.name.clone()),
+                _ => None,
             })
             .collect()
     }
@@ -550,13 +554,15 @@ impl TypeMapper for JsonSchemaCodegen {
     fn map_type_expr(ty: &TypeExpr) -> String {
         match ty {
             TypeExpr::Named(name) => match name.as_str() {
-                "Int8" | "Int16" | "Int32" | "Int64" => r#"{ "type": "integer" }"#.to_string(),
-                "UInt8" | "UInt16" | "UInt32" | "UInt64" => {
+                "Int8" | "Int16" | "Int32" | "Int64" | "i8" | "i16" | "i32" | "i64" => {
+                    r#"{ "type": "integer" }"#.to_string()
+                }
+                "UInt8" | "UInt16" | "UInt32" | "UInt64" | "u8" | "u16" | "u32" | "u64" => {
                     r#"{ "type": "integer", "minimum": 0 }"#.to_string()
                 }
-                "Float32" | "Float64" => r#"{ "type": "number" }"#.to_string(),
-                "String" => r#"{ "type": "string" }"#.to_string(),
-                "Bool" => r#"{ "type": "boolean" }"#.to_string(),
+                "Float32" | "Float64" | "f32" | "f64" => r#"{ "type": "number" }"#.to_string(),
+                "String" | "string" => r#"{ "type": "string" }"#.to_string(),
+                "Bool" | "bool" => r#"{ "type": "boolean" }"#.to_string(),
                 "Void" => r#"{ "type": "null" }"#.to_string(),
                 "Any" => r#"{ }"#.to_string(),
                 _ => format!(r##"{{ "$ref": "#/$defs/{}" }}"##, to_pascal_case(name)),
@@ -564,7 +570,7 @@ impl TypeMapper for JsonSchemaCodegen {
             TypeExpr::Generic { name, args } => {
                 let mapped_args: Vec<_> = args.iter().map(Self::map_type_expr).collect();
                 match name.as_str() {
-                    "List" => {
+                    "List" | "Vec" => {
                         if args.len() == 1 {
                             format!(r#"{{ "type": "array", "items": {} }}"#, mapped_args[0])
                         } else {

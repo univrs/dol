@@ -48,7 +48,7 @@ pub struct SearchResult {
 /// Search engine
 pub struct SearchEngine {
     index: Index,
-    writer: IndexWriter,
+    writer: parking_lot::Mutex<IndexWriter>,
     schema: Schema,
 }
 
@@ -79,7 +79,7 @@ impl SearchEngine {
 
         Ok(Self {
             index,
-            writer,
+            writer: parking_lot::Mutex::new(writer),
             schema,
         })
     }
@@ -95,17 +95,18 @@ impl SearchEngine {
 
         let keywords_str = index.keywords.iter().cloned().collect::<Vec<_>>().join(" ");
 
-        let mut doc = tantivy::Document::new();
+        let mut doc = tantivy::TantivyDocument::new();
         doc.add_text(module_id, &index.module_id);
         doc.add_text(name, &index.module_id); // Will be fetched from registry
         doc.add_text(description, "");
         doc.add_text(keywords, &keywords_str);
 
-        self.writer
+        let mut writer = self.writer.lock();
+        writer
             .add_document(doc)
             .map_err(|e| Error::SearchIndexError(e.to_string()))?;
 
-        self.writer
+        writer
             .commit()
             .map_err(|e| Error::SearchIndexError(e.to_string()))?;
 
@@ -131,13 +132,13 @@ impl SearchEngine {
         let keywords = self.schema.get_field("keywords").unwrap();
 
         let query_parser = QueryParser::for_index(&self.index, vec![name, description, keywords]);
-        let query = query_parser
+        let parsed_query = query_parser
             .parse_query(&query.text)
             .map_err(|e| Error::SearchIndexError(e.to_string()))?;
 
         // Execute search
         let top_docs = searcher
-            .search(&query, &TopDocs::with_limit(query.limit))
+            .search(&parsed_query, &TopDocs::with_limit(query.limit))
             .map_err(|e| Error::SearchIndexError(e.to_string()))?;
 
         // Convert results
@@ -145,12 +146,12 @@ impl SearchEngine {
         let mut results = Vec::new();
 
         for (score, doc_address) in top_docs {
-            let retrieved_doc = searcher
+            let retrieved_doc: tantivy::TantivyDocument = searcher
                 .doc(doc_address)
                 .map_err(|e| Error::SearchIndexError(e.to_string()))?;
 
             if let Some(module_id_value) = retrieved_doc.get_first(module_id_field) {
-                if let Some(module_id) = module_id_value.as_str() {
+                if let Some(module_id) = tantivy::schema::Value::as_str(&module_id_value) {
                     results.push(SearchResult {
                         module_id: module_id.to_string(),
                         name: module_id.to_string(), // Will be enriched from registry

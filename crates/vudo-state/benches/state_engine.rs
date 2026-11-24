@@ -1,6 +1,6 @@
 //! Benchmarks for the state engine.
 
-use automerge::ROOT;
+use automerge::{transaction::Transactable, ReadDoc, ROOT};
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use vudo_state::*;
 

@@ -7,7 +7,7 @@ use dol_reflect::dynamic_load::{process_schema_event, SchemaLoader};
 use std::path::Path;
 use tokio::time::{sleep, Duration};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("DOL Hot-Reload Example");
     println!("======================\n");

@@ -14,12 +14,22 @@
 //! # Dry run (preview changes without applying)
 //! dol-migrate 0.7-to-0.8 --dry-run src/
 //!
-//! # Show diff of changes
+//! # Show diff of changes (preview only; nothing is written)
 //! dol-migrate 0.7-to-0.8 --diff src/
+//!
+//! # Show diff and apply the changes
+//! dol-migrate 0.7-to-0.8 --diff --write src/
 //!
 //! # Modernize return statements
 //! dol-migrate 0.7-to-0.8 --modernize src/
 //! ```
+//!
+//! Files are written in place by default. `--dry-run` and `--diff` are
+//! preview-only unless `--write` is also given.
+//!
+//! Migrations are token-aware: only code positions are rewritten. Line
+//! comments (`//`, `--`), string literals, and the bodies of `docs { ... }` /
+//! `exegesis { ... }` blocks are never altered.
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -46,12 +56,16 @@ enum Commands {
         path: PathBuf,
 
         /// Preview changes without applying
-        #[arg(long)]
+        #[arg(long, conflicts_with = "write")]
         dry_run: bool,
 
-        /// Show diff of changes
+        /// Show diff of changes (preview only unless --write is given)
         #[arg(long)]
         diff: bool,
+
+        /// Write changes to files (the default unless --dry-run or --diff)
+        #[arg(long)]
+        write: bool,
 
         /// Modernize return statements (remove 'return' before final expression)
         #[arg(long)]
@@ -65,12 +79,16 @@ enum Commands {
         path: PathBuf,
 
         /// Preview changes without applying
-        #[arg(long)]
+        #[arg(long, conflicts_with = "write")]
         dry_run: bool,
 
-        /// Show diff of changes
+        /// Show diff of changes (preview only unless --write is given)
         #[arg(long)]
         diff: bool,
+
+        /// Write changes to files (the default unless --dry-run or --diff)
+        #[arg(long)]
+        write: bool,
     },
 }
 
@@ -247,45 +265,163 @@ impl MigrationResult {
     }
 }
 
+/// A slice of source text, tagged with whether migrations may rewrite it.
+struct Segment {
+    /// `true` for code positions; `false` for comments, string literals and
+    /// `docs`/`exegesis` block bodies, which must never be altered.
+    is_code: bool,
+    text: String,
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Split source into code and protected (prose) segments, mirroring the
+/// lexer: `//` and `--` line comments, `"..."` strings with `\` escapes, and
+/// raw `docs { ... }` / `exegesis { ... }` bodies with nested braces.
+fn split_segments(source: &str) -> Vec<Segment> {
+    let bytes = source.as_bytes();
+    let mut segments = Vec::new();
+    let mut code_start = 0;
+    let mut i = 0;
+
+    let push = |segments: &mut Vec<Segment>, is_code: bool, start: usize, end: usize| {
+        if start < end {
+            segments.push(Segment {
+                is_code,
+                text: source[start..end].to_string(),
+            });
+        }
+    };
+
+    while i < bytes.len() {
+        if !source.is_char_boundary(i) {
+            i += 1;
+            continue;
+        }
+        let rest = &source[i..];
+        let protected_end = if rest.starts_with("//") || rest.starts_with("--") {
+            Some(rest.find('\n').map_or(bytes.len(), |n| i + n))
+        } else if bytes[i] == b'"' {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'"' {
+                j += if bytes[j] == b'\\' { 2 } else { 1 };
+            }
+            Some((j + 1).min(bytes.len()))
+        } else {
+            None
+        };
+        if let Some(end) = protected_end {
+            push(&mut segments, true, code_start, i);
+            push(&mut segments, false, i, end);
+            i = end;
+            code_start = end;
+            continue;
+        }
+
+        // `docs {` / `exegesis {`: keyword stays code, body is protected.
+        let at_word_start = i == 0 || !is_ident_byte(bytes[i - 1]);
+        let keyword = ["docs", "exegesis"].into_iter().find(|kw| {
+            at_word_start
+                && rest.starts_with(kw)
+                && !rest
+                    .as_bytes()
+                    .get(kw.len())
+                    .is_some_and(|&b| is_ident_byte(b))
+        });
+        if let Some(kw) = keyword {
+            let after_kw = i + kw.len();
+            let brace = source[after_kw..]
+                .find(|c: char| !c.is_whitespace())
+                .map(|n| after_kw + n)
+                .filter(|&n| bytes[n] == b'{');
+            if let Some(brace) = brace {
+                let body_start = brace + 1;
+                let mut depth = 1;
+                let mut j = body_start;
+                while j < bytes.len() {
+                    match bytes[j] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                push(&mut segments, true, code_start, body_start);
+                push(&mut segments, false, body_start, j);
+                i = j;
+                code_start = j;
+                continue;
+            }
+        }
+
+        i += 1;
+    }
+    push(&mut segments, true, code_start, bytes.len());
+    segments
+}
+
+/// Apply `regex` to code segments only. Returns whether anything matched.
+fn replace_in_code(segments: &mut [Segment], regex: &Regex, replacement: &str) -> bool {
+    let mut matched = false;
+    for seg in segments.iter_mut().filter(|s| s.is_code) {
+        if regex.is_match(&seg.text) {
+            matched = true;
+            seg.text = regex.replace_all(&seg.text, replacement).to_string();
+        }
+    }
+    matched
+}
+
+fn join_segments(segments: &[Segment]) -> String {
+    segments.iter().map(|s| s.text.as_str()).collect()
+}
+
 /// Apply v0.7 to v0.8 migration rules
 fn migrate_v07_to_v08(source: &str, modernize: bool) -> (String, Vec<String>) {
-    let mut result = source.to_string();
+    let mut segments = split_segments(source);
     let mut changes = Vec::new();
 
     // Apply keyword and type migrations
     for (regex, description, replacement) in get_migrations_v07_to_v08() {
-        if regex.is_match(&result) {
+        if replace_in_code(&mut segments, &regex, &replacement) {
             changes.push(description.to_string());
-            result = regex.replace_all(&result, replacement.as_str()).to_string();
         }
     }
 
     // Apply return statement modernization if requested
-    if modernize {
-        let return_regex = get_return_modernization_regex();
-        if return_regex.is_match(&result) {
-            changes.push("return <expr> → <expr> (final expression)".to_string());
-            result = return_regex.replace_all(&result, "$1\n}").to_string();
-        }
+    if modernize && replace_in_code(&mut segments, &get_return_modernization_regex(), "$1\n}") {
+        changes.push("return <expr> → <expr> (final expression)".to_string());
     }
 
-    (result, changes)
+    (join_segments(&segments), changes)
 }
 
 /// Apply v0.2 to v0.3 migration rules
 fn migrate_v02_to_v03(source: &str) -> (String, Vec<String>) {
-    let mut result = source.to_string();
+    let mut segments = split_segments(source);
     let mut changes = Vec::new();
 
     for (pattern, replacement) in MIGRATIONS_V02_TO_V03 {
         let re = Regex::new(pattern).expect("Invalid regex pattern");
-        if re.is_match(&result) {
+        if replace_in_code(&mut segments, &re, replacement) {
             changes.push(format!("{} -> {}", pattern, replacement));
-            result = re.replace_all(&result, *replacement).to_string();
         }
     }
 
-    (result, changes)
+    (join_segments(&segments), changes)
+}
+
+/// Whether files should be written: explicitly with `--write`, otherwise by
+/// default unless a preview flag (`--dry-run`, `--diff`) was given.
+fn should_write(dry_run: bool, diff: bool, write: bool) -> bool {
+    write || !(dry_run || diff)
 }
 
 /// Migrate a single file
@@ -330,7 +466,7 @@ fn migrate_directory(
 }
 
 /// Process migration results
-fn process_results(results: Vec<MigrationResult>, dry_run: bool, show_diff: bool) -> Result<()> {
+fn process_results(results: Vec<MigrationResult>, write: bool, show_diff: bool) -> Result<()> {
     let mut total_files = 0;
     let mut changed_files = 0;
 
@@ -349,7 +485,7 @@ fn process_results(results: Vec<MigrationResult>, dry_run: bool, show_diff: bool
                 }
             }
 
-            if !dry_run {
+            if write {
                 fs::write(&result.path, &result.migrated)
                     .with_context(|| format!("Failed to write file: {}", result.path.display()))?;
             }
@@ -359,15 +495,15 @@ fn process_results(results: Vec<MigrationResult>, dry_run: bool, show_diff: bool
     }
 
     println!();
-    if dry_run {
+    if !write {
         println!(
             "{} {} files scanned, {} would be changed",
-            "DRY RUN:".yellow().bold(),
+            "PREVIEW:".yellow().bold(),
             total_files,
             changed_files
         );
         if changed_files > 0 {
-            println!("Run without {} to apply changes.", "--dry-run".cyan());
+            println!("Re-run with {} to apply changes.", "--write".cyan());
         }
     } else {
         println!(
@@ -389,8 +525,10 @@ fn main() -> Result<()> {
             path,
             dry_run,
             diff,
+            write,
             modernize,
         } => {
+            let write = should_write(dry_run, diff, write);
             println!(
                 "{} Migrating from {} to {}",
                 "→".blue().bold(),
@@ -398,8 +536,8 @@ fn main() -> Result<()> {
                 "v0.8.0".cyan()
             );
 
-            if dry_run {
-                println!("{}", "(dry run - no files will be modified)".yellow());
+            if !write {
+                println!("{}", "(preview - no files will be modified)".yellow());
             }
             if modernize {
                 println!("{}", "(modernizing return statements)".yellow());
@@ -414,14 +552,16 @@ fn main() -> Result<()> {
                 vec![migrate_file(&path, migration_fn)?]
             };
 
-            process_results(results, dry_run, diff)?;
+            process_results(results, write, diff)?;
         }
 
         Commands::V02ToV03 {
             path,
             dry_run,
             diff,
+            write,
         } => {
+            let write = should_write(dry_run, diff, write);
             println!(
                 "{} Migrating from {} to {} (legacy)",
                 "→".blue().bold(),
@@ -429,8 +569,8 @@ fn main() -> Result<()> {
                 "v0.3".cyan()
             );
 
-            if dry_run {
-                println!("{}", "(dry run - no files will be modified)".yellow());
+            if !write {
+                println!("{}", "(preview - no files will be modified)".yellow());
             }
             println!();
 
@@ -442,7 +582,7 @@ fn main() -> Result<()> {
                 vec![migrate_file(&path, migration_fn)?]
             };
 
-            process_results(results, dry_run, diff)?;
+            process_results(results, write, diff)?;
         }
     }
 
@@ -589,6 +729,49 @@ fun get_status() -> Int32 {
         assert!(result.contains("status: i32"));
         assert!(result.contains("-> i32"));
         assert!(!result.contains("return status"));
+    }
+
+    #[test]
+    fn test_should_write_semantics() {
+        assert!(should_write(false, false, false));
+        assert!(!should_write(true, false, false));
+        assert!(!should_write(false, true, false));
+        assert!(should_write(false, true, true));
+    }
+
+    #[test]
+    fn test_v08_docs_body_never_altered() {
+        let source = "docs {\n  A gene with String and constraint { nested gene }.\n}\n";
+        let (result, _) = migrate_v07_to_v08(source, true);
+        assert_eq!(
+            result,
+            "docs {\n  A gene with String and constraint { nested gene }.\n}\n"
+        );
+        let (result, _) = migrate_v07_to_v08("exegesis{ gene Int32 }\ngene x {", false);
+        assert_eq!(result, "docs{ gene Int32 }\ngen x {");
+    }
+
+    #[test]
+    fn test_v08_comments_and_strings_never_altered() {
+        let source = "gene a { // gene Int32\n-- constraint here\nhas s: \"gene \\\" Bool\" }";
+        let (result, _) = migrate_v07_to_v08(source, false);
+        assert_eq!(
+            result,
+            "gen a { // gene Int32\n-- constraint here\nhas s: \"gene \\\" Bool\" }"
+        );
+    }
+
+    #[test]
+    fn test_v08_non_ascii_prose_is_safe() {
+        let source = "// ünïcödé gene\ngene é { has x: Int32 }";
+        let (result, _) = migrate_v07_to_v08(source, false);
+        assert_eq!(result, "// ünïcödé gene\ngen é { has x: i32 }");
+    }
+
+    #[test]
+    fn test_v02_docs_body_never_altered() {
+        let (result, _) = migrate_v02_to_v03("exegesis {\n  then let it never matter\n}");
+        assert_eq!(result, "exegesis {\n  then let it never matter\n}");
     }
 
     #[test]

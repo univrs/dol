@@ -269,7 +269,7 @@ All need `--features cli`.
 | `dol-check` | Validation gate for CI: `--require-exegesis`, `--strict`, `--typecheck`, `--ci`. **Only the first declaration per file is checked.** |
 | `dol-test` | Generate Rust tests from `.dol.test` files (`generate`, `validate`, `plan`). |
 | `dol-codegen` | Generate Rust, TypeScript or JSON Schema (`--target rust\|typescript\|jsonschema`). |
-| `dol-migrate` | Rewrite syntax: `0.7-to-0.8` and `0.2-to-0.3`. Use `--dry-run --diff` to preview; without `--dry-run` files are rewritten in place. |
+| `dol-migrate` | Rewrite syntax: `0.7-to-0.8` and `0.2-to-0.3`. `--dry-run` / `--diff` preview only (add `--write` to apply with a diff); with neither flag files are rewritten in place. Comments, strings and `docs` bodies are never changed. |
 | `dol-mcp` | Model Context Protocol server over stdio (`dol-mcp serve`), plus `dol-mcp manifest` and `dol-mcp tool <name> key=value`. |
 | `dol-build` | Spirit project → Rust → `wasm32` + JS bindings. **Experimental:** it fails on all 9 example Spirits in `examples/spirits/`. |
 | `dol-build-crate` | Generate a Rust crate from DOL files (used by the self-hosting bootstrap). **Experimental.** |

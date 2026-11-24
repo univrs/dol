@@ -592,6 +592,14 @@ fn cmd_repl(args: ReplArgs, verbose: bool, _quiet: bool) -> Result<(), String> {
                         size_bytes, functions, has_memory
                     );
                 }
+                EvalResult::SpiritLoaded { name, declarations } => {
+                    println!(
+                        "{} spirit {} ({} declarations)",
+                        "Loaded".green(),
+                        name.yellow(),
+                        declarations
+                    );
+                }
             },
             Err(e) => {
                 eprintln!("{}: {}", "Error".red(), e);

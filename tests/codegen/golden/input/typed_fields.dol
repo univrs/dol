@@ -1,0 +1,13 @@
+gen Container {
+    has id: u64
+    has name: string
+    has running: bool
+    has tags: Vec<string>
+    has exit_code: Option<i32>
+    has replicas: i32 = 1
+    container has image
+}
+
+docs {
+    A container with typed fields.
+}
