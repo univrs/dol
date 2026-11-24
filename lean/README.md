@@ -19,8 +19,10 @@ lake build                      # type-check everything
 ./scripts/verify.sh --self-test # prove the gate rejects sorry and custom axioms
 ```
 
-The gate (`scripts/CheckAxioms.lean`) walks every theorem in modules under
-`DolLean` and allows only `propext`, `Classical.choice` and `Quot.sound`.
+The gate (`scripts/CheckAxioms.lean`) walks every declaration in modules under
+`DolLean`. Theorems may depend only on `propext`, `Classical.choice` and
+`Quot.sound`, which rejects `sorry`, `native_decide` and custom axioms.
+Definitions may not use `@[implemented_by]` or `@[extern]`.
 
 ## Contents
 
