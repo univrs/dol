@@ -64,7 +64,7 @@ RUSTFLAGS="-L $(pwd)" cargo build --release -p vudo-runtime-native
 **Verify the build:**
 ```bash
 RUSTFLAGS="-L $(pwd)" cargo test
-# Should show: 15 passed; 0 failed
+# Every suite should report 0 failed (32 tests at the host-ABI migration)
 ```
 
 ## Compile Your First Program
@@ -218,7 +218,7 @@ This directory contains 12 working examples that all compile and run:
 | `gene_structs.dol` | Gen declarations compiled to LLVM struct types |
 | `traits_rules.dol` | Trait/rule/system declarations (compile-time) |
 | `multi_target.dol` | Cross-compilation target demonstration |
-| `vudo_host.dol` | VUDO runtime host function interface |
+| `vudo_host.dol` | VUDO host ABI (`host_*` via bodiless `sex fun`), same source as the VM |
 | `program.dol` | **Comprehensive showcase** of all working features |
 
 ### Run all examples
@@ -268,20 +268,12 @@ done
 
 ### The VUDO Runtime
 
-DOL programs call host functions like `println()`, `alloc()`, `now()`, etc. These are provided by `libvudo_runtime_native.a`, a static library written in Rust that implements 24 host functions:
+`libvudo_runtime_native.a` is a static library written in Rust. It provides two kinds of function:
 
-| Category | Functions |
-|----------|-----------|
-| **I/O** | `print`, `println`, `log`, `error` |
-| **Memory** | `alloc`, `free`, `realloc` |
-| **Time** | `now`, `sleep`, `monotonic_now` |
-| **Strings** | `string_concat`, `i64_to_string` |
-| **Messaging** | `send`, `recv`, `pending`, `broadcast`, `free_message` |
-| **Effects** | `emit_effect`, `subscribe` |
-| **Random** | `random`, `random_bytes` |
-| **Debug** | `breakpoint`, `assert`, `panic` |
+- **The VUDO host ABI.** These are the VM's 15 `host_*` functions: `host_time_now`, `host_random_bytes`, `host_log`, `host_storage_read`/`write`/`delete`, `host_network_*` and `host_credit_*`. Declare them as bodiless `sex fun`s, as in `vudo_host.dol`. The same source then runs in the VUDO VM. Natively, storage is an in-process map. Network and credit calls always return -1, because there is no network or ledger. See `llvm-backend/README.md`.
+- **Native-only runtime intrinsics.** These support DOL built-ins: `print`, `println`, `alloc`, `free`, `realloc`, `assert`, `panic`, `breakpoint`, string `+` and `.to_string()`. The built-ins `log(level, msg)` and `now()` lower to `host_log` and `host_time_now`.
 
-When you write `println("Hello!")` in DOL, the compiler generates a call to `vudo_println(ptr, len)` which the runtime implements using Rust's standard I/O.
+When you write `println("Hello!")` in DOL, the compiler generates a call to `vudo_println(ptr, len)`. This intrinsic does not exist in the VM.
 
 ## Troubleshooting
 
