@@ -368,12 +368,11 @@ let optimized = pipeline.run_all(decls)?;
 ## Testing
 
 ```bash
-cargo test                                                   # default features
-cargo test --features cli,serde,wasm --lib --bins --tests    # with CLI and WASM
-cargo test --features cli,serde,wasm --doc
+cargo test                             # default features
+cargo test --features cli,serde,wasm   # CLI and WASM, including doctests
 ```
 
-On 2026-11-21, with `--features cli,serde,wasm`, the two commands above ran 2,512 tests (including doctests) with 0 failures. These counts cover the root crate only. The crates under `crates/`, `apps/`, `llvm-backend/` and `benchmarks/` are not part of a Cargo workspace and are not built in CI.
+On 2026-11-24, on `main`, `cargo test --features cli,serde,wasm` ran 2,567 tests (including doctests) with 0 failures. The v0.8.2 release had 2,512. These counts cover the root crate only. The crates under `crates/`, `apps/`, `llvm-backend/` and `benchmarks/` are not part of a Cargo workspace and are not built in CI.
 
 ---
 
