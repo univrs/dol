@@ -22,7 +22,7 @@ fn numeric_cases() -> Vec<(&'static str, Literal)> {
         ("0xFF_FF", Literal::Int(0xFFFF)),
         ("0b1010", Literal::Int(10)),
         ("0o17", Literal::Int(15)),
-        ("3.14", Literal::Float(3.14)),
+        ("2.5", Literal::Float(2.5)),
         ("1e9", Literal::Float(1e9)),
         ("1E9", Literal::Float(1e9)),
         ("3.0e8", Literal::Float(3.0e8)),
