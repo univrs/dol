@@ -417,3 +417,232 @@ sex fun bad() -> i64 {
     let err = compile(source).unwrap_err();
     assert!(err.contains("host_log"), "{err}");
 }
+
+// ---------------------------------------------------------------------------
+// Gene layouts with `string` and `u64` fields (task B2).
+//
+// Representation: a `string` field is a 4-byte i32 pointer to a
+// length-prefixed buffer `[len: u32 LE][utf-8 bytes]`; a `u64` field is an
+// 8-byte, 8-aligned i64 slot holding the raw 64 bits (never wrapped to i32).
+// ---------------------------------------------------------------------------
+
+const MESSAGE_SOURCE: &str = r#"
+gen Message {
+    has body: string
+    has sent_at: u64
+    has id: u64
+}
+
+docs { A broadcast message with a timestamp and id. }
+
+sex fun host_network_broadcast(msg: string) -> i64
+
+sex fun send() -> i64 {
+    let m = Message { body: "tick from a gene field", sent_at: 1, id: 2 }
+    return host_network_broadcast(m.body)
+}
+
+fun stamp() -> u64 {
+    let m = Message { body: "x", sent_at: 6000000000, id: 7 }
+    return m.sent_at
+}
+
+fun ident() -> u64 {
+    let m = Message { body: "x", sent_at: 1, id: 9223372036854775807 }
+    return m.id
+}
+
+fun bump(t: u64) -> u64 {
+    return t + 1
+}
+"#;
+
+fn instantiate_with_broadcast_stub(
+    wasm: &[u8],
+) -> (Store<()>, wasmtime::Instance, Arc<Mutex<Vec<String>>>) {
+    let engine = Engine::default();
+    let module = Module::new(&engine, wasm).expect("emitted module must validate");
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let log = seen.clone();
+    let mut linker: Linker<()> = Linker::new(&engine);
+    linker
+        .func_wrap(
+            "vudo",
+            "host_network_broadcast",
+            move |mut c: Caller<'_, ()>, p: i32, l: i32| -> i64 {
+                let m = String::from_utf8(read_guest(&mut c, p, l)).expect("utf-8");
+                log.lock().unwrap().push(m);
+                42
+            },
+        )
+        .unwrap();
+    let mut store = Store::new(&engine, ());
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("must link against the VM's host ABI");
+    (store, instance, seen)
+}
+
+#[test]
+fn gene_with_string_and_u64_fields_has_expected_layout() {
+    use metadol::wasm::layout::WasmFieldType;
+    let file = parse_dol_file(MESSAGE_SOURCE).expect("parse");
+    let mut compiler = WasmCompiler::new();
+    compiler.compile_file(&file).expect("compile");
+    let layout = compiler
+        .get_gene_layout("Message")
+        .expect("Message layout registered");
+    let body = layout.get_field("body").unwrap();
+    assert_eq!((body.offset, body.wasm_type), (0, WasmFieldType::Ptr));
+    let sent_at = layout.get_field("sent_at").unwrap();
+    assert_eq!((sent_at.offset, sent_at.wasm_type), (8, WasmFieldType::I64));
+    let id = layout.get_field("id").unwrap();
+    assert_eq!((id.offset, id.wasm_type), (16, WasmFieldType::I64));
+    assert_eq!((layout.total_size, layout.alignment), (24, 8));
+}
+
+/// Round trip: a string stored in a gene field reaches the host fn intact.
+#[test]
+fn string_gene_field_reaches_host_intact() {
+    let wasm = compile(MESSAGE_SOURCE).expect("compile");
+    let (mut store, instance, seen) = instantiate_with_broadcast_stub(&wasm);
+    let ret = instance
+        .get_typed_func::<(), i64>(&mut store, "send")
+        .unwrap()
+        .call(&mut store, ())
+        .unwrap();
+    assert_eq!(ret, 42);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["tick from a gene field".to_string()]
+    );
+}
+
+/// u64 values above u32::MAX survive a gene field store/load untruncated.
+#[test]
+fn u64_gene_field_is_not_truncated() {
+    let wasm = compile(MESSAGE_SOURCE).expect("compile");
+    let (mut store, instance, _) = instantiate_with_broadcast_stub(&wasm);
+    let stamp = instance
+        .get_typed_func::<(), i64>(&mut store, "stamp")
+        .expect("u64 return lowers to i64");
+    assert_eq!(stamp.call(&mut store, ()).unwrap(), 6_000_000_000);
+    let ident = instance
+        .get_typed_func::<(), i64>(&mut store, "ident")
+        .unwrap();
+    assert_eq!(ident.call(&mut store, ()).unwrap(), i64::MAX);
+}
+
+/// u64 parameters and results are i64 at the WASM boundary, full width.
+#[test]
+fn u64_param_and_result_lower_to_i64() {
+    let wasm = compile(MESSAGE_SOURCE).expect("compile");
+    let (mut store, instance, _) = instantiate_with_broadcast_stub(&wasm);
+    let bump = instance
+        .get_typed_func::<i64, i64>(&mut store, "bump")
+        .expect("bump exported as (i64) -> i64");
+    // u64 bit pattern 0xFFFF_FFFF_FFFF_FFFE + 1 == 0xFFFF_FFFF_FFFF_FFFF.
+    let max_u64_minus_1 = u64::MAX - 1;
+    let got = bump.call(&mut store, max_u64_minus_1 as i64).unwrap();
+    assert_eq!(got as u64, u64::MAX);
+    assert_eq!(bump.call(&mut store, 1 << 40).unwrap(), (1 << 40) + 1);
+}
+
+/// u64 host results/params keep all 64 bits through the ABI.
+#[test]
+fn u64_host_time_and_credit_round_trip() {
+    let source = r#"
+sex fun host_time_now() -> u64
+sex fun host_credit_consume(reservation: u64) -> i64
+
+sex fun tick() -> u64 {
+    return host_time_now()
+}
+
+sex fun spend(r: u64) -> i64 {
+    return host_credit_consume(r)
+}
+"#;
+    let wasm = compile(source).expect("compile");
+    let engine = Engine::default();
+    let imports = func_imports(&engine, &wasm);
+    assert!(imports.contains(&(
+        "vudo".to_string(),
+        "host_time_now".to_string(),
+        vec![],
+        names(&[ValType::I64])
+    )));
+    assert!(imports.contains(&(
+        "vudo".to_string(),
+        "host_credit_consume".to_string(),
+        names(&[ValType::I64]),
+        names(&[ValType::I32])
+    )));
+
+    let module = Module::new(&engine, &wasm).unwrap();
+    let seen: Arc<Mutex<Vec<i64>>> = Arc::default();
+    let log = seen.clone();
+    let mut linker: Linker<()> = Linker::new(&engine);
+    let now: u64 = 1_764_000_000_123_456_789; // ns timestamp > u32::MAX
+    linker
+        .func_wrap("vudo", "host_time_now", move || -> i64 { now as i64 })
+        .unwrap();
+    linker
+        .func_wrap("vudo", "host_credit_consume", move |r: i64| -> i32 {
+            log.lock().unwrap().push(r);
+            0
+        })
+        .unwrap();
+    let mut store = Store::new(&engine, ());
+    let instance = linker.instantiate(&mut store, &module).unwrap();
+    let tick = instance
+        .get_typed_func::<(), i64>(&mut store, "tick")
+        .unwrap();
+    assert_eq!(tick.call(&mut store, ()).unwrap() as u64, now);
+    let spend = instance
+        .get_typed_func::<i64, i64>(&mut store, "spend")
+        .unwrap();
+    let big = (u64::MAX - 5) as i64;
+    assert_eq!(spend.call(&mut store, big).unwrap(), 0);
+    assert_eq!(*seen.lock().unwrap(), vec![big]);
+}
+
+/// A gene method passing its own (implicit `self`) `string` field to the
+/// host: the host-built `[len][bytes]` buffer arrives intact.
+#[test]
+fn gene_method_passes_own_string_field_to_host() {
+    let source = r#"
+gen Note {
+    has text: string
+    has seq: u64
+
+    sex fun publish() -> i64 {
+        return host_network_broadcast(text)
+    }
+}
+
+docs { A note that broadcasts its own text. }
+
+sex fun host_network_broadcast(msg: string) -> i64
+"#;
+    let wasm = compile(source).expect("compile");
+    let (mut store, instance, seen) = instantiate_with_broadcast_stub(&wasm);
+
+    // Host writes a length-prefixed string into guest memory.
+    let text = "héllo, mycelium";
+    let at: usize = 60_000;
+    let mem = instance.get_memory(&mut store, "memory").unwrap();
+    let mut buf = (text.len() as u32).to_le_bytes().to_vec();
+    buf.extend_from_slice(text.as_bytes());
+    mem.write(&mut store, at, &buf).unwrap();
+
+    let new_note = instance
+        .get_typed_func::<(i32, i64), i32>(&mut store, "new_Note")
+        .expect("constructor takes (string ptr: i32, seq: i64)");
+    let note = new_note.call(&mut store, (at as i32, 1 << 50)).unwrap();
+    let publish = instance
+        .get_typed_func::<i32, i64>(&mut store, "Note.publish")
+        .unwrap();
+    assert_eq!(publish.call(&mut store, note).unwrap(), 42);
+    assert_eq!(*seen.lock().unwrap(), vec![text.to_string()]);
+}
