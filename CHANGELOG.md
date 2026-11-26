@@ -32,6 +32,10 @@ entries; see `git log` between the tags for their changes. Dates below are git t
   - Type names in field, parameter, return and `const` types that are declared nowhere. `dol-check` resolves names across all files it checks. Files with `use` imports are skipped. Single capital letters are taken to be type variables, because `gen` generic parameters are not kept in the AST.
   - The type checker now understands the lowercase type names the parser emits (`i32`, `u64`, `f64`, `bool`, `string`, `()`). Before this it mapped them to unknown generic types.
 - `validator::validate_declarations` and `validator::declared_type_names`. `TypeChecker::gradual`, `TypeChecker::bind`, `TypeChecker::check_function`, `Type::primitive_or_unknown`.
+- WASM: `string` and `u64` in gene layouts and signatures. Before this, `has f: string` failed with `Unknown type: string` and any `u64` was `Unsupported type`.
+  - A `string` field is a 4-byte i32 pointer to `[len: u32 LE][utf-8 bytes]` in linear memory, the same format as string literals. `String`, `string` and `str` are accepted.
+  - `u64` / `UInt64` is an 8-byte, 8-aligned `i64` slot holding the raw 64 bits, and `i64` in parameters, results, locals and host calls. It is never narrowed to `i32`. Arithmetic and comparisons still use signed `i64` instructions, so values ≥ 2^63 compare and divide as negative numbers.
+  - A `string` gene field (`m.body`, or `body` inside a method) can be passed straight to a `vudo` host function. It lowers to the ABI's `(ptr + 4, len)` pair, like `string` literals and parameters.
 
 ### Not yet enforced (type checking)
 Each item below has an `#[ignore]`d test in `tests/type_enforcement.rs`, except where noted.
@@ -41,6 +45,7 @@ Each item below has an `#[ignore]`d test in `tests/type_enforcement.rs`, except 
 - Not covered by a test: implicit (trailing-expression) returns, effect/purity checking, and names brought in by `use`.
 
 ### Fixed
+- WASM: struct literals in a module with host imports called the first import instead of the allocator. The allocator sits after the imports, but struct literals always emitted `call 0`. Any gene used alongside a `sex fun` import failed validation.
 - Numeric literals `1e9`, `3.0e8`, `1_000`, `0x10`, `0b1010` and `0o17` were split into a number followed by an identifier.
 - A `{` or `}` inside a `docs { }` / `exegesis { }` block ended the block early. An unterminated docs block is now an error.
 - A `use` line before an `evo` declaration, or mid-file before a `const`, swallowed that declaration. `use` lines are now parsed rather than skipped token by token, and junk after a use path is an error. `parse_dol_file` keeps mid-file `use` declarations.

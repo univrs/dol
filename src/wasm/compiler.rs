@@ -45,11 +45,15 @@ use crate::wasm::layout::{EnumRegistry, GeneLayout, GeneLayoutRegistry};
 #[cfg(feature = "wasm-compile")]
 use crate::wasm::WasmError;
 #[cfg(feature = "wasm-compile")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(feature = "wasm-compile")]
 use std::path::Path;
 #[cfg(feature = "wasm-compile")]
 use wasm_encoder;
+
+/// Internal call-resolution name of the bump allocator (not a DOL identifier).
+#[cfg(feature = "wasm-compile")]
+const ALLOC_FUNC_NAME: &str = "__dol_alloc";
 
 /// WASM compiler for Metal DOL modules.
 ///
@@ -81,6 +85,9 @@ pub struct WasmCompiler {
     /// Host imports of the file being compiled, keyed by name, used to convert
     /// DOL-typed arguments/results to the host ABI types at call sites.
     host_imports: HashMap<String, WasmImport>,
+    /// `(gene, field)` pairs declared as `string`. Their slots hold a pointer
+    /// to `[len: u32][bytes]`, which host calls lower to `(ptr + 4, len)`.
+    string_fields: HashSet<(String, String)>,
 }
 
 /// Represents a WASM import declaration.
@@ -413,7 +420,7 @@ impl LocalsTable {
         match ty {
             TypeExpr::Named(name) => match name.as_str() {
                 "i32" | "Int32" => wasm_encoder::ValType::I32,
-                "i64" | "Int64" => wasm_encoder::ValType::I64,
+                "i64" | "Int64" | "u64" | "UInt64" => wasm_encoder::ValType::I64,
                 "f32" | "Float32" => wasm_encoder::ValType::F32,
                 "f64" | "Float64" => wasm_encoder::ValType::F64,
                 "bool" | "Bool" => wasm_encoder::ValType::I32, // booleans as i32
@@ -609,6 +616,7 @@ impl WasmCompiler {
             gene_layouts: GeneLayoutRegistry::new(),
             enum_registry: EnumRegistry::new(),
             host_imports: HashMap::new(),
+            string_fields: HashSet::new(),
         }
     }
 
@@ -808,9 +816,61 @@ impl WasmCompiler {
                     // Compute the layout using the registry (for nested types)
                     if let Ok(layout) = compute_gene_layout(gene, &self.gene_layouts) {
                         self.gene_layouts.register(layout);
+                        self.record_string_fields(gene);
                     }
                 }
             }
+        }
+    }
+
+    /// Remember which fields of `gene` (own and inherited) are `string`.
+    fn record_string_fields(&mut self, gene: &crate::ast::Gen) {
+        if let Some(parent) = &gene.extends {
+            let inherited: Vec<String> = self
+                .string_fields
+                .iter()
+                .filter(|(g, _)| g == parent)
+                .map(|(_, f)| f.clone())
+                .collect();
+            for field in inherited {
+                self.string_fields.insert((gene.name.clone(), field));
+            }
+        }
+        for stmt in &gene.statements {
+            if let crate::ast::Statement::HasField(field) = stmt {
+                if Self::is_string_type(&field.type_) {
+                    self.string_fields
+                        .insert((gene.name.clone(), field.name.clone()));
+                }
+            }
+        }
+    }
+
+    /// Whether `expr` is a side-effect-free read of a `string` value: a
+    /// `string` local/param, `obj.field` / implicit `field` naming a `string`
+    /// gene field. Such an expression can be evaluated twice (for ptr and len).
+    fn is_string_place(&self, expr: &crate::ast::Expr, locals: &LocalsTable) -> bool {
+        use crate::ast::Expr;
+        let is_field = |gene: Option<&str>, field: &str| {
+            gene.is_some_and(|g| {
+                self.string_fields
+                    .contains(&(g.to_string(), field.to_string()))
+            })
+        };
+        match expr {
+            Expr::Identifier(name) => match name.split_once('.') {
+                Some((obj, field)) => is_field(locals.lookup_dol_type(obj), field),
+                None => {
+                    locals.lookup_dol_type(name) == Some("String")
+                        || (locals.is_gene_field(name)
+                            && is_field(locals.get_gene_name_for_field(name), name))
+                }
+            },
+            Expr::Member { object, field } => match object.as_ref() {
+                Expr::Identifier(obj) => is_field(locals.lookup_dol_type(obj), field),
+                _ => false,
+            },
+            _ => false,
         }
     }
 
@@ -1389,6 +1449,10 @@ impl WasmCompiler {
         for (i, import) in imports.iter().enumerate() {
             func_name_map.insert(import.name.clone(), i as u32);
         }
+        // Register the allocator, which sits after the imports (not at index 0)
+        if let Some(alloc_idx) = alloc_func_idx {
+            func_name_map.insert(ALLOC_FUNC_NAME.to_string(), alloc_idx);
+        }
 
         // Register local functions
         for (i, f) in functions.iter().enumerate() {
@@ -1536,6 +1600,7 @@ impl WasmCompiler {
                 match compute_gene_layout(gene, &self.gene_layouts) {
                     Ok(layout) => {
                         self.gene_layouts.register(layout);
+                        self.record_string_fields(gene);
                     }
                     Err(e) => {
                         return Err(WasmError::new(format!(
@@ -1802,18 +1867,27 @@ impl WasmCompiler {
                     function.instruction(&Instruction::I32Const((offset + 4) as i32));
                     function.instruction(&Instruction::I32Const(len as i32));
                 }
-                (HostArg::Str, Expr::Identifier(name))
-                    if locals.lookup_dol_type(name) == Some("String") =>
-                {
-                    let idx = locals
-                        .lookup(name)
-                        .ok_or_else(|| WasmError::new(format!("Unknown identifier: {}", name)))?;
+                (HostArg::Str, place) if self.is_string_place(place, locals) => {
+                    // `place` is a pure read yielding the length-prefixed
+                    // pointer `s` (an i32), so it is evaluated once per half.
+                    let emit_s = |function: &mut wasm_encoder::Function| match place {
+                        Expr::Identifier(name)
+                            if locals.lookup_dol_type(name) == Some("String") =>
+                        {
+                            let idx = locals.lookup(name).ok_or_else(|| {
+                                WasmError::new(format!("Unknown identifier: {}", name))
+                            })?;
+                            function.instruction(&Instruction::LocalGet(idx));
+                            Ok(())
+                        }
+                        _ => self.emit_expression(function, place, locals, loop_ctx, string_pool),
+                    };
                     // ptr = s + 4 (skip the length prefix)
-                    function.instruction(&Instruction::LocalGet(idx));
+                    emit_s(function)?;
                     function.instruction(&Instruction::I32Const(4));
                     function.instruction(&Instruction::I32Add);
                     // len = load32(s)
-                    function.instruction(&Instruction::LocalGet(idx));
+                    emit_s(function)?;
                     function.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
                         offset: 0,
                         align: 2,
@@ -1822,8 +1896,8 @@ impl WasmCompiler {
                 }
                 (HostArg::Str, _) => {
                     return Err(WasmError::new(format!(
-                        "Host function `{}` argument {} must be a string literal or a \
-                         `string` variable",
+                        "Host function `{}` argument {} must be a string literal, a \
+                         `string` variable, or a `string` gene field",
                         import.name, i
                     )));
                 }
@@ -2030,6 +2104,8 @@ impl WasmCompiler {
                 // First check primitive types (lowercase comparison)
                 match name.to_lowercase().as_str() {
                     "i32" | "i64" | "int" | "int32" | "int64" => Ok(ValType::I64),
+                    // u64 is the same 64 bits as i64 at the WASM level.
+                    "u64" | "uint64" => Ok(ValType::I64),
                     "f32" | "f64" | "float" | "float32" | "float64" => Ok(ValType::F64),
                     "bool" | "boolean" => Ok(ValType::I32),
                     // String is represented as a single i32 pointer to length-prefixed data
@@ -3360,7 +3436,9 @@ impl WasmCompiler {
                     // Alloc signature: (size: i32, align: i32) -> i32 (pointer)
                     function.instruction(&Instruction::I32Const(layout.total_size as i32));
                     function.instruction(&Instruction::I32Const(layout.alignment as i32));
-                    function.instruction(&Instruction::Call(0)); // alloc is at index 0 when memory is enabled
+                    // alloc follows the host imports; index 0 only when there are none
+                    let alloc_idx = locals.lookup_function(ALLOC_FUNC_NAME).unwrap_or(0);
+                    function.instruction(&Instruction::Call(alloc_idx));
 
                     // Store the pointer in the temp local (__struct_ptr should be declared)
                     let ptr_local = locals.lookup("__struct_ptr").ok_or_else(|| {

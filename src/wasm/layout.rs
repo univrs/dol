@@ -15,11 +15,18 @@
 //! |--------------|-----------|--------------|-----------|
 //! | `Int32`      | `i32`     | 4            | 4         |
 //! | `Int64`      | `i64`     | 8            | 8         |
+//! | `u64`        | `i64`     | 8            | 8         |
 //! | `Float32`    | `f32`     | 4            | 4         |
 //! | `Float64`    | `f64`     | 8            | 8         |
 //! | `Bool`       | `i32`     | 4            | 4         |
 //! | `Char`       | `i32`     | 4            | 4         |
 //! | `Gene` (ref) | `i32`     | 4            | 4         |
+//! | `string`     | `i32`     | 4            | 4         |
+//!
+//! A `string` field holds a pointer to `[len: u32 LE][utf-8 bytes]` in linear
+//! memory (the format of the compiler's string pool). Host calls receive it as
+//! the ABI pair `(ptr + 4, len)`. A `u64` field stores the raw 64 bits in an
+//! `i64` slot; it is never narrowed to `i32`.
 //!
 //! ## Layout Rules
 //!
@@ -639,7 +646,9 @@ fn type_to_wasm_info(
                 is_reference: false,
                 nested_layout: None,
             }),
-            "Int64" | "i64" => Ok(TypeInfo {
+            // `u64` shares i64's 8-byte slot; the 64 bits are stored verbatim
+            // (WASM has no unsigned types, only unsigned operators).
+            "Int64" | "i64" | "UInt64" | "u64" => Ok(TypeInfo {
                 wasm_type: WasmFieldType::I64,
                 size: 8,
                 alignment: 8,
@@ -676,8 +685,9 @@ fn type_to_wasm_info(
                 is_reference: false,
                 nested_layout: None,
             }),
-            // String is a pointer
-            "String" => Ok(TypeInfo {
+            // String is an i32 pointer to a length-prefixed buffer
+            // `[len: u32 LE][utf-8 bytes]` (the compiler's string pool format).
+            "String" | "string" | "str" => Ok(TypeInfo {
                 wasm_type: WasmFieldType::Ptr,
                 size: 4,
                 alignment: 4,
@@ -1196,6 +1206,28 @@ mod tests {
         assert_eq!(descriptor.size, 16);
         assert!(descriptor.has_references);
         assert_eq!(descriptor.pointer_offsets, vec![8, 12]);
+    }
+
+    #[test]
+    fn test_string_and_u64_layout() {
+        // gen Msg { has flag: Bool  has body: string  has ts: u64 }
+        let gene = make_gene(
+            "Msg",
+            vec![
+                make_field("flag", "Bool"),
+                make_field("body", "string"),
+                make_field("ts", "u64"),
+            ],
+        );
+        let layout = compute_gene_layout(&gene, &GeneLayoutRegistry::new()).unwrap();
+        let body = layout.get_field("body").unwrap();
+        assert_eq!((body.offset, body.size), (4, 4));
+        assert_eq!(body.wasm_type, WasmFieldType::Ptr);
+        let ts = layout.get_field("ts").unwrap();
+        // u64 is a full 8-byte, 8-aligned i64 slot (never narrowed to i32)
+        assert_eq!((ts.offset, ts.size, ts.alignment), (8, 8, 8));
+        assert_eq!(ts.wasm_type, WasmFieldType::I64);
+        assert_eq!((layout.total_size, layout.alignment), (16, 8));
     }
 
     #[test]
