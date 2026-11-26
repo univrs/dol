@@ -174,6 +174,24 @@ impl Type {
                 "Float32" => Type::Float32,
                 "Float64" => Type::Float64,
                 "String" => Type::String,
+                // Lowercase names are what the v0.8 parser actually emits
+                // (it normalises the deprecated PascalCase keywords to these).
+                "bool" => Type::Bool,
+                "i8" => Type::Int8,
+                "i16" => Type::Int16,
+                "i32" => Type::Int32,
+                "i64" => Type::Int64,
+                // No 128-bit variants: checked as 64-bit. Numeric types are
+                // mutually compatible, so this does not change any verdict.
+                "i128" => Type::Int64,
+                "u8" => Type::UInt8,
+                "u16" => Type::UInt16,
+                "u32" => Type::UInt32,
+                "u64" => Type::UInt64,
+                "u128" => Type::UInt64,
+                "f32" => Type::Float32,
+                "f64" => Type::Float64,
+                "string" => Type::String,
                 _ => Type::Generic {
                     name: name.clone(),
                     args: vec![],
@@ -190,6 +208,8 @@ impl Type {
                 params: params.iter().map(Type::from_type_expr).collect(),
                 return_type: Box::new(Type::from_type_expr(return_type)),
             },
+            // `()` (and the deprecated `Void`, which the parser maps to `()`)
+            TypeExpr::Tuple(types) if types.is_empty() => Type::Void,
             TypeExpr::Tuple(types) => Type::Tuple(types.iter().map(Type::from_type_expr).collect()),
             TypeExpr::Never => Type::Never,
             TypeExpr::Enum { variants } => Type::Generic {
@@ -203,6 +223,29 @@ impl Type {
                     .collect(),
             },
         }
+    }
+}
+
+impl Type {
+    /// Like [`Type::from_type_expr`], but keeps only the types the checker can
+    /// enforce today: numeric types, `bool`, `string` and `()`. Every other
+    /// type (user-defined, generic, tuple, function, enum) becomes
+    /// [`Type::Unknown`], which is compatible with everything.
+    ///
+    /// Used for annotations in gradual mode, where comparing user-defined or
+    /// generic types structurally would give false errors.
+    pub fn primitive_or_unknown(expr: &TypeExpr) -> Type {
+        match Type::from_type_expr(expr) {
+            t if t.is_numeric() => t,
+            t @ (Type::Bool | Type::String | Type::Void) => t,
+            _ => Type::Unknown,
+        }
+    }
+
+    /// True for types that carry no information (unknown, any, error, type
+    /// variables). Operators on these are not reported.
+    fn is_indeterminate(&self) -> bool {
+        matches!(self, Type::Unknown | Type::Any | Type::Error | Type::Var(_))
     }
 }
 
@@ -375,6 +418,12 @@ pub struct TypeChecker {
     effect_context: EffectContext,
     /// Effect context stack for nested contexts
     effect_stack: Vec<EffectContext>,
+    /// Gradual mode: unbound identifiers (and `this`) infer as `Unknown`
+    /// instead of failing, operators on unknown operands are not reported,
+    /// and annotations are resolved with [`Type::primitive_or_unknown`].
+    gradual: bool,
+    /// Declared return type of the function body being checked, if any.
+    return_type: Option<Type>,
 }
 
 impl Default for TypeChecker {
@@ -392,7 +441,74 @@ impl TypeChecker {
             errors: Vec::new(),
             effect_context: EffectContext::Pure,
             effect_stack: Vec::new(),
+            gradual: false,
+            return_type: None,
         }
+    }
+
+    /// Creates a type checker in gradual mode.
+    ///
+    /// This is what the validator uses: a single declaration cannot resolve
+    /// builtins, host functions or imports, so those names are typed as
+    /// `Unknown` rather than reported as undefined. Only mismatches between
+    /// known types are errors.
+    pub fn gradual() -> Self {
+        Self {
+            gradual: true,
+            ..Self::new()
+        }
+    }
+
+    /// Binds a name in the current scope.
+    pub fn bind(&mut self, name: impl Into<String>, ty: Type) {
+        self.env.bind(name, ty);
+    }
+
+    /// Resolves a type annotation (see the `gradual` field).
+    fn annotation_type(&self, ty: &TypeExpr) -> Type {
+        if self.gradual {
+            Type::primitive_or_unknown(ty)
+        } else {
+            Type::from_type_expr(ty)
+        }
+    }
+
+    /// Records an error unless the checker is in gradual mode and one of the
+    /// operand types is indeterminate.
+    fn operand_error(&mut self, types: &[&Type], err: TypeError) {
+        if !(self.gradual && types.iter().any(|t| t.is_indeterminate())) {
+            self.error(err);
+        }
+    }
+
+    /// Type-checks a function body against its signature.
+    ///
+    /// Parameters are bound to their annotated types, `let` annotations and
+    /// `return` expressions are checked against the declared types, and all
+    /// errors are collected (see [`TypeChecker::errors`]).
+    pub fn check_function(
+        &mut self,
+        params: &[crate::ast::FunctionParam],
+        return_type: Option<&TypeExpr>,
+        body: &[Stmt],
+    ) {
+        let old_env = std::mem::take(&mut self.env);
+        self.env = old_env.child();
+        for p in params {
+            let ty = self.annotation_type(&p.type_ann);
+            self.env.bind(p.name.clone(), ty);
+        }
+        let declared = return_type.map(|t| self.annotation_type(t));
+        let old_ret = std::mem::replace(&mut self.return_type, declared);
+
+        for stmt in body {
+            if let Err(e) = self.check_stmt(stmt) {
+                self.error(e);
+            }
+        }
+
+        self.return_type = old_ret;
+        self.env = old_env;
     }
 
     /// Returns collected errors.
@@ -457,11 +573,11 @@ impl TypeChecker {
             },
 
             // Identifiers
-            Expr::Identifier(name) => self
-                .env
-                .lookup(name)
-                .cloned()
-                .ok_or_else(|| TypeError::undefined(name)),
+            Expr::Identifier(name) => match self.env.lookup(name) {
+                Some(ty) => Ok(ty.clone()),
+                None if self.gradual => Ok(Type::Unknown),
+                None => Err(TypeError::undefined(name)),
+            },
 
             // Unary expressions
             Expr::Unary { op, operand } => self.infer_unary(op, operand),
@@ -673,9 +789,13 @@ impl TypeChecker {
             // This - reference to current instance
             Expr::This => {
                 // Look up 'this' type in the environment
-                self.env.lookup("this").cloned().ok_or_else(|| {
-                    TypeError::new("'this' used outside of method context".to_string())
-                })
+                match self.env.lookup("this") {
+                    Some(ty) => Ok(ty.clone()),
+                    None if self.gradual => Ok(Type::Unknown),
+                    None => Err(TypeError::new(
+                        "'this' used outside of method context".to_string(),
+                    )),
+                }
             }
         }
     }
@@ -687,10 +807,9 @@ impl TypeChecker {
         match op {
             UnaryOp::Neg => {
                 if !operand_type.is_numeric() {
-                    self.error(TypeError::new(format!(
-                        "cannot negate non-numeric type {}",
-                        operand_type
-                    )));
+                    let err =
+                        TypeError::new(format!("cannot negate non-numeric type {}", operand_type));
+                    self.operand_error(&[&operand_type], err);
                     Ok(Type::Error)
                 } else {
                     Ok(operand_type)
@@ -698,10 +817,11 @@ impl TypeChecker {
             }
             UnaryOp::Not => {
                 if operand_type != Type::Bool {
-                    self.error(TypeError::new(format!(
+                    let err = TypeError::new(format!(
                         "logical not requires Bool, found {}",
                         operand_type
-                    )));
+                    ));
+                    self.operand_error(&[&operand_type], err);
                     Ok(Type::Error)
                 } else {
                     Ok(Type::Bool)
@@ -738,12 +858,24 @@ impl TypeChecker {
 
         match op {
             // Arithmetic operators
+            // String concatenation: `"n = " + n` (supported by the backends)
+            BinaryOp::Add
+                if self.gradual && (left_type == Type::String || right_type == Type::String) =>
+            {
+                Ok(Type::String)
+            }
             BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
                 if !left_type.is_numeric() || !right_type.is_numeric() {
-                    self.error(TypeError::new(format!(
+                    let err = TypeError::new(format!(
                         "arithmetic requires numeric types, found {} and {}",
                         left_type, right_type
-                    )));
+                    ));
+                    if self.gradual
+                        && (left_type.is_indeterminate() || right_type.is_indeterminate())
+                    {
+                        return Ok(Type::Unknown);
+                    }
+                    self.error(err);
                     return Ok(Type::Error);
                 }
                 // Promote to larger type
@@ -764,10 +896,11 @@ impl TypeChecker {
 
             BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
                 if !left_type.is_numeric() || !right_type.is_numeric() {
-                    self.error(TypeError::new(format!(
+                    let err = TypeError::new(format!(
                         "comparison requires numeric types, found {} and {}",
                         left_type, right_type
-                    )));
+                    ));
+                    self.operand_error(&[&left_type, &right_type], err);
                 }
                 Ok(Type::Bool)
             }
@@ -775,10 +908,17 @@ impl TypeChecker {
             // Logical operators
             BinaryOp::And | BinaryOp::Or => {
                 if left_type != Type::Bool || right_type != Type::Bool {
-                    self.error(TypeError::new(format!(
+                    let err = TypeError::new(format!(
                         "logical operators require Bool, found {} and {}",
                         left_type, right_type
-                    )));
+                    ));
+                    // Only report the operand that is known not to be Bool.
+                    let bad = [&left_type, &right_type]
+                        .into_iter()
+                        .any(|t| *t != Type::Bool && !t.is_indeterminate());
+                    if !self.gradual || bad {
+                        self.error(err);
+                    }
                 }
                 Ok(Type::Bool)
             }
@@ -926,10 +1066,11 @@ impl TypeChecker {
             // Range operator
             BinaryOp::Range => {
                 if !left_type.is_numeric() || !right_type.is_numeric() {
-                    self.error(TypeError::new(format!(
+                    let err = TypeError::new(format!(
                         "range requires numeric types, found {} and {}",
                         left_type, right_type
-                    )));
+                    ));
+                    self.operand_error(&[&left_type, &right_type], err);
                 }
                 // Return a Range type (for now, use a tuple representation)
                 Ok(Type::Tuple(vec![left_type, right_type]))
@@ -976,6 +1117,14 @@ impl TypeChecker {
                 }
                 Ok(Type::Unknown)
             }
+            // The parser represents indexing (`xs[i]`) as a call, so in gradual
+            // mode a non-function callee is not an error.
+            _ if self.gradual => {
+                for arg in args {
+                    let _ = self.infer(arg)?;
+                }
+                Ok(Type::Unknown)
+            }
             _ => {
                 self.error(TypeError::new(format!(
                     "cannot call non-function type {}",
@@ -1009,8 +1158,12 @@ impl TypeChecker {
             })
             .collect();
 
-        // Infer body type
-        let body_type = self.infer(body)?;
+        // Infer body type (a `return` inside the lambda is not the enclosing
+        // function's return)
+        let outer_ret = self.return_type.take();
+        let body_type = self.infer(body);
+        self.return_type = outer_ret;
+        let body_type = body_type?;
 
         // Restore environment
         self.env = old_env;
@@ -1041,7 +1194,7 @@ impl TypeChecker {
     ) -> Result<Type, TypeError> {
         // Condition must be bool
         let cond_type = self.infer(condition)?;
-        if cond_type != Type::Bool && cond_type != Type::Unknown {
+        if cond_type != Type::Bool && !cond_type.is_indeterminate() {
             self.error(TypeError::mismatch(Type::Bool, cond_type));
         }
 
@@ -1175,9 +1328,33 @@ impl TypeChecker {
     /// Type checks a statement.
     fn check_stmt(&mut self, stmt: &Stmt) -> Result<(), TypeError> {
         match stmt {
-            Stmt::Let { name, value, .. } => {
-                let ty = self.infer(value)?;
+            Stmt::Let {
+                name,
+                type_ann,
+                value,
+            } => {
+                let inferred = self.infer(value)?;
+                let ty = match type_ann {
+                    Some(ann) => {
+                        let declared = self.annotation_type(ann);
+                        if !self.types_compatible(&inferred, &declared) {
+                            self.error(TypeError::new(format!(
+                                "type mismatch: let {}: expected {}, found {}",
+                                name, declared, inferred
+                            )));
+                        }
+                        declared
+                    }
+                    None => inferred,
+                };
                 self.env.bind(name.clone(), ty);
+            }
+            Stmt::Assign { target, value } => {
+                let target_type = self.infer(target)?;
+                let value_type = self.infer(value)?;
+                if !self.types_compatible(&value_type, &target_type) {
+                    self.error(TypeError::mismatch(target_type, value_type));
+                }
             }
             Stmt::Expr(expr) => {
                 let _ = self.infer(expr)?;
@@ -1213,7 +1390,7 @@ impl TypeChecker {
             }
             Stmt::While { condition, body } => {
                 let cond_type = self.infer(condition)?;
-                if cond_type != Type::Bool && cond_type != Type::Unknown {
+                if cond_type != Type::Bool && !cond_type.is_indeterminate() {
                     self.error(TypeError::mismatch(Type::Bool, cond_type));
                 }
                 for s in body {
@@ -1227,10 +1404,17 @@ impl TypeChecker {
             }
             Stmt::Break | Stmt::Continue => {}
             Stmt::Return(Some(e)) => {
-                let _ = self.infer(e)?;
+                let actual = self.infer(e)?;
+                if let Some(expected) = self.return_type.clone() {
+                    if !self.types_compatible(&actual, &expected) {
+                        self.error(TypeError::new(format!(
+                            "return type mismatch: expected {}, found {}",
+                            expected, actual
+                        )));
+                    }
+                }
             }
             Stmt::Return(None) => {}
-            _ => {} // Other statements (DOL-specific)
         }
         Ok(())
     }

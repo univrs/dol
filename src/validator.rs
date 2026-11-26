@@ -128,6 +128,43 @@ pub struct ValidationOptions {
 ///
 /// A `ValidationResult` containing any errors or warnings.
 pub fn validate_with_options(decl: &Declaration, options: &ValidationOptions) -> ValidationResult {
+    validate_in_context(decl, options, &TypeContext::default())
+}
+
+/// Validates every declaration of a file with options.
+///
+/// Unlike calling [`validate_with_options`] per declaration, type checking
+/// (`typecheck: true`) sees the whole file: top-level function signatures and
+/// typed constants are visible to every declaration, and type names that are
+/// declared nowhere in the file are reported (only when the file has no `use`
+/// imports, since imported names cannot be resolved here).
+///
+/// `other_types` are type names declared elsewhere (e.g. in sibling files,
+/// see [`declared_type_names`]); they are not reported as undefined.
+///
+/// Module and `use` declarations are not validated; see
+/// [`validate_file_with_options`] for that.
+pub fn validate_declarations(
+    file: &DolFile,
+    options: &ValidationOptions,
+    other_types: &HashSet<String>,
+) -> Vec<ValidationResult> {
+    let ctx = if options.typecheck {
+        TypeContext::for_file(file, other_types)
+    } else {
+        TypeContext::default()
+    };
+    file.declarations
+        .iter()
+        .map(|decl| validate_in_context(decl, options, &ctx))
+        .collect()
+}
+
+fn validate_in_context(
+    decl: &Declaration,
+    options: &ValidationOptions,
+    ctx: &TypeContext,
+) -> ValidationResult {
     let mut result = ValidationResult::new(decl.name());
 
     // Validate exegesis
@@ -152,7 +189,7 @@ pub fn validate_with_options(decl: &Declaration, options: &ValidationOptions) ->
 
     // DOL 2.0 Type checking (if enabled)
     if options.typecheck {
-        validate_types(decl, &mut result);
+        validate_types(decl, ctx, &mut result);
     }
 
     result
@@ -209,10 +246,7 @@ pub fn validate_file_with_options(
     validate_use_declarations(&file.uses, &mut result);
 
     // Validate each declaration
-    for decl in &file.declarations {
-        let decl_result = validate_with_options(decl, options);
-        result.declaration_results.push(decl_result);
-    }
+    result.declaration_results = validate_declarations(file, options, &HashSet::new());
 
     // Cross-reference validation: check that uses reference valid declarations
     validate_use_references(file, &mut result);
@@ -733,128 +767,346 @@ fn validate_evolution(evolution: &Evo, result: &mut ValidationResult) {
 }
 
 // === DOL 2.0 Type Validation ===
+//
+// Enforced (gradual: anything the validator cannot resolve is `Unknown` and
+// accepted):
+// - `has field: T = default` and `where` constraints (must be bool)
+// - `const`/`var` values against their annotations
+// - `fun` bodies: `let` annotations, `return` vs the declared return type,
+//   argument types and arity of calls to known functions, `if`/`while`
+//   conditions, operator operand types
+// - type names in signatures that are declared nowhere in the file
+//
+// TODO(types): only primitive types (numeric, bool, string, unit) are
+// compared. User-defined and generic types are `Unknown`; numeric widths and
+// signedness are not enforced; field access (`a.b`) is untyped; implicit
+// (trailing-expression) returns are not checked; names brought in by `use`
+// are not resolved.
 
-/// Validates types in DOL 2.0 expressions.
-///
-/// This function type-checks expressions found in the declaration,
-/// including let bindings, lambda expressions, and control flow.
-fn validate_types(decl: &Declaration, result: &mut ValidationResult) {
-    let mut checker = TypeChecker::new();
-    let span = decl.span();
+/// File-level information available while type checking one declaration.
+#[derive(Debug, Default)]
+struct TypeContext {
+    /// Top-level function signatures and typed constants.
+    globals: Vec<(String, Type)>,
+    /// Type names declared in the file. `None` when type names cannot be
+    /// resolved (single-declaration API, or the file has `use` imports).
+    known_types: Option<HashSet<String>>,
+}
 
-    // Currently, DOL 2.0 expressions can appear in evolution additions
-    // and potentially in future extended statement types
-    if let Declaration::Evolution(evolution) = decl {
-        for stmt in &evolution.additions {
-            validate_statement_types(stmt, &mut checker, result, span);
+impl TypeContext {
+    fn for_file(file: &DolFile, other_types: &HashSet<String>) -> Self {
+        let mut globals = Vec::new();
+        for decl in &file.declarations {
+            match decl {
+                Declaration::Function(f) => globals.push((f.name.clone(), function_type(f))),
+                Declaration::Const(ConstDecl {
+                    name,
+                    type_ann: Some(ty),
+                    ..
+                })
+                | Declaration::SexVar(VarDecl {
+                    name,
+                    type_ann: Some(ty),
+                    ..
+                }) => globals.push((name.clone(), Type::primitive_or_unknown(ty))),
+                _ => {}
+            }
         }
-        for stmt in &evolution.deprecations {
-            validate_statement_types(stmt, &mut checker, result, span);
+
+        let known_types = file.uses.is_empty().then(|| {
+            let mut names = declared_type_names(file);
+            names.extend(other_types.iter().cloned());
+            names
+        });
+
+        Self {
+            globals,
+            known_types,
         }
     }
+}
 
-    // Convert any accumulated type errors to validation errors
+/// Names a file declares, usable as type names elsewhere: each declaration's
+/// full name and, for dotted names, its last segment.
+pub fn declared_type_names(file: &DolFile) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for decl in &file.declarations {
+        let name = decl.name();
+        names.insert(name.to_string());
+        if let Some(last) = name.rsplit('.').next() {
+            names.insert(last.to_string());
+        }
+    }
+    names
+}
+
+/// The checkable signature of a function. Parameters and return types that
+/// are not primitive are `Unknown`; a missing return type is `Unknown` too.
+fn function_type(f: &FunctionDecl) -> Type {
+    Type::Function {
+        params: f
+            .params
+            .iter()
+            .map(|p| Type::primitive_or_unknown(&p.type_ann))
+            .collect(),
+        return_type: Box::new(
+            f.return_type
+                .as_ref()
+                .map(Type::primitive_or_unknown)
+                .unwrap_or(Type::Unknown),
+        ),
+    }
+}
+
+/// Validates types in a declaration (`ValidationOptions::typecheck`).
+fn validate_types(decl: &Declaration, ctx: &TypeContext, result: &mut ValidationResult) {
+    let mut checker = TypeChecker::gradual();
+    for (name, ty) in &ctx.globals {
+        checker.bind(name.clone(), ty.clone());
+    }
+    let span = decl.span();
+
+    match decl {
+        Declaration::Gene(Gen { statements, .. })
+        | Declaration::Trait(Trait { statements, .. })
+        | Declaration::Constraint(Rule { statements, .. })
+        | Declaration::System(System { statements, .. }) => {
+            // Fields and sibling functions are visible inside method bodies.
+            for stmt in statements {
+                match stmt {
+                    Statement::HasField(field) => {
+                        checker.bind(field.name.clone(), Type::primitive_or_unknown(&field.type_))
+                    }
+                    Statement::Function(f) => checker.bind(f.name.clone(), function_type(f)),
+                    _ => {}
+                }
+            }
+            for stmt in statements {
+                validate_statement_types(stmt, &mut checker, ctx, result);
+            }
+        }
+        Declaration::Evolution(evolution) => {
+            for stmt in evolution.additions.iter().chain(&evolution.deprecations) {
+                validate_statement_types(stmt, &mut checker, ctx, result);
+            }
+        }
+        Declaration::Function(f) => validate_function_types(f, &mut checker, ctx, result),
+        Declaration::Const(c) => validate_value_types(
+            &c.name,
+            c.type_ann.as_ref(),
+            Some(&c.value),
+            &mut checker,
+            ctx,
+            result,
+            c.span,
+        ),
+        Declaration::SexVar(v) => validate_value_types(
+            &v.name,
+            v.type_ann.as_ref(),
+            v.value.as_ref(),
+            &mut checker,
+            ctx,
+            result,
+            v.span,
+        ),
+    }
+
+    flush_type_errors(&mut checker, result, span);
+}
+
+/// Moves the checker's accumulated errors into `result`.
+fn flush_type_errors(checker: &mut TypeChecker, result: &mut ValidationResult, span: Span) {
     for error in checker.errors() {
         result.add_type_error(error, span);
     }
+    checker.clear_errors();
 }
 
-/// Type-checks a statement for DOL 2.0 expressions.
+/// Type-checks one statement of a gen, trait, rule, system or evo body.
 fn validate_statement_types(
-    _stmt: &Statement,
-    _checker: &mut TypeChecker,
-    _result: &mut ValidationResult,
-    _span: Span,
-) {
-    // Current Statement enum doesn't embed DOL 2.0 expressions directly.
-    // This is a placeholder for when statements can contain typed expressions.
-    // For now, type checking happens when parsing DOL 2.0 expression blocks.
-}
-
-/// Type-checks an expression and reports any errors.
-#[allow(dead_code)]
-fn validate_expr_types(
-    expr: &Expr,
+    stmt: &Statement,
     checker: &mut TypeChecker,
+    ctx: &TypeContext,
     result: &mut ValidationResult,
-    span: Span,
-) {
-    if let Err(error) = checker.infer(expr) {
-        result.add_type_error(&error, span);
-    }
-}
-
-/// Type-checks a statement and reports any errors.
-#[allow(dead_code)]
-fn validate_stmt_types(
-    stmt: &Stmt,
-    checker: &mut TypeChecker,
-    result: &mut ValidationResult,
-    span: Span,
 ) {
     match stmt {
-        Stmt::Let {
-            name,
-            type_ann,
-            value,
-        } => {
-            // Infer the value's type
-            match checker.infer(value) {
-                Ok(inferred_type) => {
-                    // If there's a type annotation, verify it matches
-                    if let Some(ann) = type_ann {
-                        let expected = Type::from_type_expr(ann);
-                        if !types_match(&inferred_type, &expected) {
-                            result.add_type_error(
-                                &TypeError::mismatch(expected, inferred_type),
-                                span,
-                            );
-                        }
-                    }
-                    // Bind the variable (would need to track in checker's env)
-                    let _ = name; // Suppress unused warning
-                }
-                Err(error) => {
-                    result.add_type_error(&error, span);
-                }
+        Statement::HasField(field) => {
+            let what = format!("field '{}'", field.name);
+            check_type_names(&field.type_, ctx, &[], &what, field.span, result);
+            let expected = Type::primitive_or_unknown(&field.type_);
+            if let Some(default) = &field.default {
+                check_expr_against(default, &expected, &what, checker, result, field.span);
+            }
+            if let Some(constraint) = &field.constraint {
+                let what = format!("constraint on field '{}'", field.name);
+                check_expr_against(constraint, &Type::Bool, &what, checker, result, field.span);
             }
         }
-        Stmt::Expr(expr) => {
-            validate_expr_types(expr, checker, result, span);
-        }
-        Stmt::For {
-            binding: _,
-            iterable,
-            body,
-        } => {
-            validate_expr_types(iterable, checker, result, span);
-            for s in body {
-                validate_stmt_types(s, checker, result, span);
-            }
-        }
-        Stmt::While { condition, body } => {
-            // Condition must be Bool
-            if let Err(error) = checker.check(condition, &Type::Bool) {
+        Statement::Function(f) => validate_function_types(f, checker, ctx, result),
+        // The remaining statements are untyped predicates over names.
+        _ => {}
+    }
+}
+
+/// Type-checks a function signature and body.
+fn validate_function_types(
+    f: &FunctionDecl,
+    checker: &mut TypeChecker,
+    ctx: &TypeContext,
+    result: &mut ValidationResult,
+) {
+    let type_params: Vec<&str> = f
+        .type_params
+        .iter()
+        .flat_map(|tp| tp.params.iter().map(|p| p.name.as_str()))
+        .collect();
+    for p in &f.params {
+        let what = format!("parameter '{}' of '{}'", p.name, f.name);
+        check_type_names(&p.type_ann, ctx, &type_params, &what, f.span, result);
+    }
+    if let Some(ret) = &f.return_type {
+        let what = format!("return type of '{}'", f.name);
+        check_type_names(ret, ctx, &type_params, &what, f.span, result);
+    }
+
+    checker.check_function(&f.params, f.return_type.as_ref(), &f.body);
+    flush_type_errors(checker, result, f.span);
+}
+
+/// Type-checks a `const`/`var` value against its annotation.
+fn validate_value_types(
+    name: &str,
+    type_ann: Option<&TypeExpr>,
+    value: Option<&Expr>,
+    checker: &mut TypeChecker,
+    ctx: &TypeContext,
+    result: &mut ValidationResult,
+    span: Span,
+) {
+    let what = format!("'{}'", name);
+    if let Some(ty) = type_ann {
+        check_type_names(ty, ctx, &[], &what, span, result);
+    }
+    if let Some(value) = value {
+        let expected = type_ann
+            .map(Type::primitive_or_unknown)
+            .unwrap_or(Type::Unknown);
+        check_expr_against(value, &expected, &what, checker, result, span);
+    }
+}
+
+/// Infers `expr` and reports a mismatch with `expected` (prefixed by `what`).
+fn check_expr_against(
+    expr: &Expr,
+    expected: &Type,
+    what: &str,
+    checker: &mut TypeChecker,
+    result: &mut ValidationResult,
+    span: Span,
+) {
+    match checker.infer(expr) {
+        Ok(actual) => {
+            if !types_match(&actual, expected) {
+                let mut error = TypeError::mismatch(expected.clone(), actual);
+                error.message = format!("{}: {}", what, error.message);
                 result.add_type_error(&error, span);
             }
-            for s in body {
-                validate_stmt_types(s, checker, result, span);
+        }
+        Err(error) => result.add_type_error(&error, span),
+    }
+    flush_type_errors(checker, result, span);
+}
+
+/// Reports type names in `ty` that are neither built in, declared in the
+/// file, nor type parameters. Does nothing when names cannot be resolved.
+fn check_type_names(
+    ty: &TypeExpr,
+    ctx: &TypeContext,
+    type_params: &[&str],
+    what: &str,
+    span: Span,
+    result: &mut ValidationResult,
+) {
+    let Some(known) = &ctx.known_types else {
+        return;
+    };
+    let check_name = |name: &str, result: &mut ValidationResult| {
+        // TODO(types): generic parameters of a `gen` (`gen Box<T>`) are not
+        // kept in the AST, so single capital letters are taken to be type
+        // variables.
+        let type_var = name.len() == 1 && name.chars().all(|c| c.is_ascii_uppercase());
+        if !is_builtin_type_name(name)
+            && !known.contains(name)
+            && !type_params.contains(&name)
+            && !type_var
+        {
+            result.add_type_error(
+                &TypeError::new(format!("{}: undefined type '{}'", what, name)),
+                span,
+            );
+        }
+    };
+    let mut stack = vec![ty];
+    while let Some(ty) = stack.pop() {
+        match ty {
+            TypeExpr::Named(name) => check_name(name, result),
+            TypeExpr::Generic { name, args } => {
+                check_name(name, result);
+                stack.extend(args);
             }
-        }
-        Stmt::Loop { body } => {
-            for s in body {
-                validate_stmt_types(s, checker, result, span);
+            TypeExpr::Function {
+                params,
+                return_type,
+            } => {
+                stack.extend(params);
+                stack.push(return_type);
             }
-        }
-        Stmt::Return(Some(expr)) => {
-            validate_expr_types(expr, checker, result, span);
-        }
-        Stmt::Return(None) | Stmt::Break | Stmt::Continue => {}
-        Stmt::Assign { target, value } => {
-            validate_expr_types(target, checker, result, span);
-            validate_expr_types(value, checker, result, span);
+            TypeExpr::Tuple(items) => stack.extend(items),
+            TypeExpr::Never => {}
+            TypeExpr::Enum { variants } => {
+                for v in variants {
+                    stack.extend(v.fields.iter().map(|(_, t)| t));
+                    stack.extend(&v.tuple_types);
+                }
+            }
         }
     }
+}
+
+/// Type names that need no declaration.
+fn is_builtin_type_name(name: &str) -> bool {
+    matches!(
+        name,
+        "bool"
+            | "string"
+            | "char"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "f32"
+            | "f64"
+            | "Self"
+            | "Any"
+            | "List"
+            | "Vec"
+            | "Option"
+            | "Optional"
+            | "Result"
+            | "Map"
+            | "HashMap"
+            | "Set"
+            | "HashSet"
+            | "Array"
+            | "Box"
+            | "Tuple"
+    )
 }
 
 /// Checks if two types match (considering Any and Unknown as wildcards).
