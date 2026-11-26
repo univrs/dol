@@ -25,6 +25,20 @@ entries; see `git log` between the tags for their changes. Dates below are git t
 - `exists x: T. p` in expression position (L0.2).
 - `law name { ... }` without a parameter list (L0.3). Quantifiers accept several binders: `forall a: A, b: B. p` is `forall a: A. forall b: B. p`.
 - Trait laws are kept in the AST, and `dol-parse` shows them (L0.4).
+- Type enforcement under `dol-check --typecheck` / `ValidationOptions { typecheck: true }`. Before this, the validator's type pass was an empty placeholder and type-incorrect programs passed. Checking is gradual: names the validator cannot resolve (builtins, host functions, imports) are typed as unknown and accepted. Now enforced:
+  - `has field: T = default` against `T`; `where` constraints must be `bool`.
+  - `const` / `var` values against their annotation.
+  - `fun` bodies (top-level and inside `gen`/`trait`/`rule`/`system`): `let x: T = e`, `return e` against the declared return type, assignment, `if`/`while` conditions, operator operands, and arity and argument types of calls to functions declared in the same file. Fields and sibling functions are visible in method bodies.
+  - Type names in field, parameter, return and `const` types that are declared nowhere. `dol-check` resolves names across all files it checks. Files with `use` imports are skipped. Single capital letters are taken to be type variables, because `gen` generic parameters are not kept in the AST.
+  - The type checker now understands the lowercase type names the parser emits (`i32`, `u64`, `f64`, `bool`, `string`, `()`). Before this it mapped them to unknown generic types.
+- `validator::validate_declarations` and `validator::declared_type_names`. `TypeChecker::gradual`, `TypeChecker::bind`, `TypeChecker::check_function`, `Type::primitive_or_unknown`.
+
+### Not yet enforced (type checking)
+Each item below has an `#[ignore]`d test in `tests/type_enforcement.rs`, except where noted.
+- Only primitive types (numeric, `bool`, `string`, `()`) are compared. User-defined, generic, tuple and function types are treated as unknown, so `Vec<i64>` vs `Vec<string>` is not caught.
+- Numeric widths and signedness: all numeric types are mutually compatible (`has n: u32 = -1` passes).
+- Field access (`a.b`, `this.x`) is untyped.
+- Not covered by a test: implicit (trailing-expression) returns, effect/purity checking, and names brought in by `use`.
 
 ### Fixed
 - Numeric literals `1e9`, `3.0e8`, `1_000`, `0x10`, `0b1010` and `0o17` were split into a number followed by an identifier.

@@ -27,8 +27,11 @@ use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use metadol::validator::{validate_with_options, ValidationOptions};
+use metadol::validator::{
+    declared_type_names, validate_declarations, ValidationOptions, ValidationResult,
+};
 use metadol::{parse_dol_file, Declaration};
+use std::collections::HashSet;
 
 /// Validate DOL files and check coverage
 #[derive(Parser, Debug)]
@@ -150,10 +153,18 @@ fn run_checks(args: &Args) -> CheckResults {
     // Collect DOL files
     let files = collect_dol_files(&args.paths);
 
+    // With --typecheck, a type declared in any checked file is defined:
+    // DOL files refer to sibling files' declarations without `use`.
+    let project_types = if args.typecheck {
+        project_type_names(&files)
+    } else {
+        HashSet::new()
+    };
+
     for path in files {
         results.files_checked += 1;
 
-        match check_file(&path, args) {
+        match check_file(&path, args, &project_types) {
             Ok((decl_infos, warnings)) => {
                 results.files_passed += 1;
                 results.declarations.extend(decl_infos);
@@ -210,11 +221,27 @@ fn collect_dol_files_recursive(dir: &PathBuf, files: &mut Vec<PathBuf>) {
     }
 }
 
+/// Type names declared across `files` (files that fail to parse are skipped;
+/// `check_file` reports them).
+fn project_type_names(files: &[PathBuf]) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for path in files {
+        if let Ok(file) = std::fs::read_to_string(path)
+            .map_err(|_| ())
+            .and_then(|src| parse_dol_file(&src).map_err(|_| ()))
+        {
+            names.extend(declared_type_names(&file));
+        }
+    }
+    names
+}
+
 /// Parses the whole file (every declaration; trailing content is an error)
 /// and checks each declaration.
 fn check_file(
     path: &PathBuf,
     args: &Args,
+    project_types: &HashSet<String>,
 ) -> Result<(Vec<DeclarationInfo>, Vec<CheckWarning>), Vec<CheckError>> {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -245,11 +272,19 @@ fn check_file(
         }
     };
 
+    // Validate with optional type checking. Declarations are validated
+    // together so the type checker sees file-level signatures.
+    let validation_options = ValidationOptions {
+        typecheck: args.typecheck,
+    };
+    let validations = validate_declarations(&file, &validation_options, project_types);
+
     let mut infos = Vec::new();
-    for decl in &file.declarations {
+    for (decl, validation) in file.declarations.iter().zip(&validations) {
         infos.push(check_declaration(
             path,
             decl,
+            validation,
             args,
             &mut errors,
             &mut warnings,
@@ -267,16 +302,11 @@ fn check_file(
 fn check_declaration(
     path: &Path,
     decl: &Declaration,
+    validation: &ValidationResult,
     args: &Args,
     errors: &mut Vec<CheckError>,
     warnings: &mut Vec<CheckWarning>,
 ) -> DeclarationInfo {
-    // Validate with optional type checking
-    let validation_options = ValidationOptions {
-        typecheck: args.typecheck,
-    };
-    let validation = validate_with_options(decl, &validation_options);
-
     // Check validation errors
     for error in &validation.errors {
         errors.push(CheckError {
