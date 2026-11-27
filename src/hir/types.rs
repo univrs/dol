@@ -228,7 +228,7 @@ pub enum HirStatementKind {
     },
 }
 
-/// Expression forms (12 total).
+/// Expression forms (17 total).
 #[derive(Debug, Clone, PartialEq)]
 pub enum HirExpr {
     /// Literal value
@@ -255,6 +255,16 @@ pub enum HirExpr {
     Match(Box<HirMatchExpr>),
     /// Lambda/closure
     Lambda(Box<HirLambdaExpr>),
+    /// Unconditional loop: `loop { body }` (exits via `break`/`return`)
+    Loop(Box<HirLoopExpr>),
+    /// Conditional loop: `while cond { body }`
+    While(Box<HirWhileExpr>),
+    /// Iteration: `for pat in iter { body }`
+    For(Box<HirForExpr>),
+    /// Tuple construction: `(a, b, ...)` (non-empty; `()` is `Literal(Unit)`)
+    Tuple(Vec<HirExpr>),
+    /// List construction: `[a, b, ...]`
+    List(Vec<HirExpr>),
 }
 
 /// Literal values.
@@ -421,7 +431,34 @@ pub struct HirLambdaExpr {
     pub body: HirExpr,
 }
 
-/// Statement forms (6 total).
+/// `loop { body }` expression.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirLoopExpr {
+    /// Loop body, re-executed until a `break` or `return`
+    pub body: HirExpr,
+}
+
+/// `while cond { body }` expression.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirWhileExpr {
+    /// Condition, evaluated before every iteration
+    pub cond: HirExpr,
+    /// Loop body
+    pub body: HirExpr,
+}
+
+/// `for pat in iter { body }` expression.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirForExpr {
+    /// Pattern bound to each element
+    pub pat: HirPat,
+    /// Iterable expression (evaluated once)
+    pub iter: HirExpr,
+    /// Loop body, executed once per element
+    pub body: HirExpr,
+}
+
+/// Statement forms (7 total).
 #[derive(Debug, Clone, PartialEq)]
 pub enum HirStmt {
     /// Immutable binding
@@ -436,6 +473,8 @@ pub enum HirStmt {
     Return(Option<HirExpr>),
     /// Break statement
     Break(Option<HirExpr>),
+    /// Continue statement (skip to the next loop iteration)
+    Continue,
 }
 
 /// Immutable binding statement.

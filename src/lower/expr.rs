@@ -129,26 +129,14 @@ impl LoweringContext {
             }
 
             ast::Expr::List(items) => {
-                // Lower list to a call to a 'list' constructor
-                let args: Vec<HirExpr> = items.iter().map(|e| self.lower_ast_expr(e)).collect();
-                HirExpr::Call(Box::new(HirCallExpr {
-                    func: HirExpr::Var(self.intern("list")),
-                    args,
-                }))
+                HirExpr::List(items.iter().map(|e| self.lower_ast_expr(e)).collect())
             }
 
             ast::Expr::Tuple(items) => {
-                // Lower tuple to a block with the last item as the expression
-                // For proper tuple support, we'd need HirExpr::Tuple
                 if items.is_empty() {
                     HirExpr::Literal(HirLiteral::Unit)
                 } else {
-                    // Create a call to 'tuple' constructor
-                    let args: Vec<HirExpr> = items.iter().map(|e| self.lower_ast_expr(e)).collect();
-                    HirExpr::Call(Box::new(HirCallExpr {
-                        func: HirExpr::Var(self.intern("tuple")),
-                        args,
-                    }))
+                    HirExpr::Tuple(items.iter().map(|e| self.lower_ast_expr(e)).collect())
                 }
             }
 
@@ -526,6 +514,12 @@ impl LoweringContext {
         }
     }
 
+    /// Lower a loop body (a statement list) to a block expression.
+    fn lower_loop_body(&mut self, body: &[ast::Stmt]) -> HirExpr {
+        let stmts: Vec<HirStmt> = body.iter().map(|s| self.lower_block_stmt(s)).collect();
+        HirExpr::Block(Box::new(HirBlockExpr { stmts, expr: None }))
+    }
+
     /// Lower a block statement (from function bodies)
     pub fn lower_block_stmt(&mut self, stmt: &ast::Stmt) -> HirStmt {
         match stmt {
@@ -554,100 +548,26 @@ impl LoweringContext {
                 iterable,
                 body,
             } => {
-                // Desugar for loop to loop + match
-                // for x in xs { body } -> loop { match iter.next() { Some(x) => body, None => break } }
-                let iter_expr = self.lower_ast_expr(iterable);
-                let body_stmts: Vec<HirStmt> =
-                    body.iter().map(|s| self.lower_block_stmt(s)).collect();
-
-                // Create the match arms
-                let some_pat = HirPat::Constructor(HirConstructorPat {
-                    name: self.intern("Some"),
-                    fields: vec![HirPat::Var(self.intern(binding))],
-                });
-                let some_arm = HirMatchArm {
-                    pat: some_pat,
-                    guard: None,
-                    body: HirExpr::Block(Box::new(HirBlockExpr {
-                        stmts: body_stmts,
-                        expr: None,
-                    })),
-                };
-
-                let none_arm = HirMatchArm {
-                    pat: HirPat::Constructor(HirConstructorPat {
-                        name: self.intern("None"),
-                        fields: vec![],
-                    }),
-                    guard: None,
-                    body: HirExpr::Block(Box::new(HirBlockExpr {
-                        stmts: vec![HirStmt::Break(None)],
-                        expr: None,
-                    })),
-                };
-
-                // Create the loop expression
-                // This is simplified - a real implementation would need an iterator variable
-                let match_expr = HirExpr::Match(Box::new(HirMatchExpr {
-                    scrutinee: HirExpr::Call(Box::new(HirCallExpr {
-                        func: HirExpr::Var(self.intern("next")),
-                        args: vec![iter_expr],
-                    })),
-                    arms: vec![some_arm, none_arm],
-                }));
-
-                HirStmt::Expr(HirExpr::Block(Box::new(HirBlockExpr {
-                    stmts: vec![HirStmt::Expr(match_expr)],
-                    expr: None,
-                })))
+                let iter = self.lower_ast_expr(iterable);
+                let pat = HirPat::Var(self.intern(binding));
+                let body = self.lower_loop_body(body);
+                HirStmt::Expr(HirExpr::For(Box::new(HirForExpr { pat, iter, body })))
             }
 
             ast::Stmt::While { condition, body } => {
-                // Desugar while to loop + if
-                // while cond { body } -> loop { if cond { body } else { break } }
                 let cond = self.lower_ast_expr(condition);
-                let body_stmts: Vec<HirStmt> =
-                    body.iter().map(|s| self.lower_block_stmt(s)).collect();
-
-                let if_expr = HirExpr::If(Box::new(HirIfExpr {
-                    cond,
-                    then_branch: HirExpr::Block(Box::new(HirBlockExpr {
-                        stmts: body_stmts,
-                        expr: None,
-                    })),
-                    else_branch: Some(HirExpr::Block(Box::new(HirBlockExpr {
-                        stmts: vec![HirStmt::Break(None)],
-                        expr: None,
-                    }))),
-                }));
-
-                HirStmt::Expr(HirExpr::Block(Box::new(HirBlockExpr {
-                    stmts: vec![HirStmt::Expr(if_expr)],
-                    expr: None,
-                })))
+                let body = self.lower_loop_body(body);
+                HirStmt::Expr(HirExpr::While(Box::new(HirWhileExpr { cond, body })))
             }
 
             ast::Stmt::Loop { body } => {
-                let body_stmts: Vec<HirStmt> =
-                    body.iter().map(|s| self.lower_block_stmt(s)).collect();
-
-                // Loop is represented as a block that loops
-                HirStmt::Expr(HirExpr::Block(Box::new(HirBlockExpr {
-                    stmts: body_stmts,
-                    expr: None,
-                })))
+                let body = self.lower_loop_body(body);
+                HirStmt::Expr(HirExpr::Loop(Box::new(HirLoopExpr { body })))
             }
 
             ast::Stmt::Break => HirStmt::Break(None),
 
-            ast::Stmt::Continue => {
-                // Continue is lowered as a special marker
-                // For now, represent as a call to 'continue'
-                HirStmt::Expr(HirExpr::Call(Box::new(HirCallExpr {
-                    func: HirExpr::Var(self.intern("continue")),
-                    args: vec![],
-                })))
-            }
+            ast::Stmt::Continue => HirStmt::Continue,
 
             ast::Stmt::Return(expr) => {
                 let hir_expr = expr.as_ref().map(|e| self.lower_ast_expr(e));
@@ -1056,6 +976,99 @@ mod tests {
             }
             _ => panic!("Expected If from implies desugaring"),
         }
+    }
+
+    fn ident(name: &str) -> ast::Expr {
+        ast::Expr::Identifier(name.to_string())
+    }
+
+    fn call_stmt(name: &str) -> ast::Stmt {
+        ast::Stmt::Expr(ast::Expr::Call {
+            callee: Box::new(ident(name)),
+            args: vec![],
+        })
+    }
+
+    /// Regression: loops used to lower to a plain block (body ran once).
+    #[test]
+    fn test_lower_loop_stmts_preserve_loop_structure() {
+        let mut ctx = LoweringContext::new();
+
+        let stmt = ast::Stmt::Loop {
+            body: vec![call_stmt("tick"), ast::Stmt::Break],
+        };
+        match ctx.lower_block_stmt(&stmt) {
+            HirStmt::Expr(HirExpr::Loop(l)) => match &l.body {
+                HirExpr::Block(b) => {
+                    assert_eq!(b.stmts.len(), 2);
+                    assert!(matches!(b.stmts[1], HirStmt::Break(None)));
+                }
+                other => panic!("expected block body, got {:?}", other),
+            },
+            other => panic!("expected Loop, got {:?}", other),
+        }
+
+        let stmt = ast::Stmt::While {
+            condition: ident("go"),
+            body: vec![call_stmt("tick"), ast::Stmt::Continue],
+        };
+        match ctx.lower_block_stmt(&stmt) {
+            HirStmt::Expr(HirExpr::While(w)) => {
+                assert!(matches!(w.cond, HirExpr::Var(_)));
+                match &w.body {
+                    HirExpr::Block(b) => assert!(matches!(b.stmts[1], HirStmt::Continue)),
+                    other => panic!("expected block body, got {:?}", other),
+                }
+            }
+            other => panic!("expected While, got {:?}", other),
+        }
+
+        let stmt = ast::Stmt::For {
+            binding: "i".to_string(),
+            iterable: ident("xs"),
+            body: vec![call_stmt("tick")],
+        };
+        match ctx.lower_block_stmt(&stmt) {
+            HirStmt::Expr(HirExpr::For(f)) => {
+                assert_eq!(f.pat, HirPat::Var(ctx.intern("i")));
+                assert_eq!(f.iter, HirExpr::Var(ctx.intern("xs")));
+            }
+            other => panic!("expected For, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_lower_continue_is_a_statement() {
+        let mut ctx = LoweringContext::new();
+        assert_eq!(
+            ctx.lower_block_stmt(&ast::Stmt::Continue),
+            HirStmt::Continue
+        );
+    }
+
+    #[test]
+    fn test_lower_tuple_and_list() {
+        let mut ctx = LoweringContext::new();
+        let one = || ast::Expr::Literal(ast::Literal::Int(1));
+        let two = || ast::Expr::Literal(ast::Literal::Int(2));
+        let lit = |n| HirExpr::Literal(HirLiteral::Int(n));
+
+        assert_eq!(
+            ctx.lower_ast_expr(&ast::Expr::Tuple(vec![one(), two()])),
+            HirExpr::Tuple(vec![lit(1), lit(2)])
+        );
+        assert_eq!(
+            ctx.lower_ast_expr(&ast::Expr::Tuple(vec![])),
+            HirExpr::Literal(HirLiteral::Unit)
+        );
+        assert_eq!(
+            ctx.lower_ast_expr(&ast::Expr::List(vec![one(), two()])),
+            HirExpr::List(vec![lit(1), lit(2)])
+        );
+        assert_eq!(
+            ctx.lower_ast_expr(&ast::Expr::List(vec![])),
+            HirExpr::List(vec![])
+        );
     }
 
     #[test]

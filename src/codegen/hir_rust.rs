@@ -457,6 +457,31 @@ impl HirRustCodegen {
                 let body = self.gen_expr(&lambda.body);
                 format!("|{}| {}", params.join(", "), body)
             }
+            // Loop bodies are always blocks, so `gen_expr` already emits braces.
+            HirExpr::Loop(loop_expr) => format!("loop {}", self.gen_expr(&loop_expr.body)),
+            HirExpr::While(while_expr) => format!(
+                "while {} {}",
+                self.gen_expr(&while_expr.cond),
+                self.gen_expr(&while_expr.body)
+            ),
+            HirExpr::For(for_expr) => format!(
+                "for {} in {} {}",
+                self.gen_pat(&for_expr.pat),
+                self.gen_expr(&for_expr.iter),
+                self.gen_expr(&for_expr.body)
+            ),
+            HirExpr::Tuple(items) => {
+                let parts: Vec<_> = items.iter().map(|e| self.gen_expr(e)).collect();
+                if parts.len() == 1 {
+                    format!("({},)", parts[0])
+                } else {
+                    format!("({})", parts.join(", "))
+                }
+            }
+            HirExpr::List(items) => {
+                let parts: Vec<_> = items.iter().map(|e| self.gen_expr(e)).collect();
+                format!("vec![{}]", parts.join(", "))
+            }
         }
     }
 
@@ -503,6 +528,7 @@ impl HirRustCodegen {
                     "break;".to_string()
                 }
             }
+            HirStmt::Continue => "continue;".to_string(),
         }
     }
 
@@ -738,6 +764,46 @@ mod tests {
             }),
         ]);
         assert_eq!(gen.gen_type(&tuple_type), "(bool, String)");
+    }
+
+    #[test]
+    fn test_gen_tuple_list_and_loops() {
+        let mut gen = HirRustCodegen::new();
+        let lit = |n| HirExpr::Literal(HirLiteral::Int(n));
+        let x = gen.intern("x");
+        let body = HirExpr::Block(Box::new(HirBlockExpr {
+            stmts: vec![HirStmt::Continue, HirStmt::Break(None)],
+            expr: None,
+        }));
+
+        assert_eq!(
+            gen.gen_expr(&HirExpr::Tuple(vec![lit(1), lit(2)])),
+            "(1, 2)"
+        );
+        assert_eq!(gen.gen_expr(&HirExpr::Tuple(vec![lit(1)])), "(1,)");
+        assert_eq!(
+            gen.gen_expr(&HirExpr::List(vec![lit(1), lit(2)])),
+            "vec![1, 2]"
+        );
+        assert_eq!(
+            gen.gen_expr(&HirExpr::Loop(Box::new(HirLoopExpr { body: body.clone() }))),
+            "loop { continue; break; }"
+        );
+        assert_eq!(
+            gen.gen_expr(&HirExpr::While(Box::new(HirWhileExpr {
+                cond: HirExpr::Literal(HirLiteral::Bool(true)),
+                body: body.clone(),
+            }))),
+            "while true { continue; break; }"
+        );
+        assert_eq!(
+            gen.gen_expr(&HirExpr::For(Box::new(HirForExpr {
+                pat: HirPat::Var(x),
+                iter: HirExpr::List(vec![lit(1)]),
+                body,
+            }))),
+            "for x in vec![1] { continue; break; }"
+        );
     }
 
     #[test]

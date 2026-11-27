@@ -269,6 +269,11 @@ impl<'c> HirToMlirLowering<'c> {
             HirExpr::Lambda(_) => Err(MlirError::new(
                 "lambda expression lowering not yet implemented",
             )),
+            HirExpr::Loop(_) | HirExpr::While(_) | HirExpr::For(_) => {
+                Err(MlirError::new("loop lowering not yet implemented"))
+            }
+            HirExpr::Tuple(_) => Err(MlirError::new("tuple lowering not yet implemented")),
+            HirExpr::List(_) => Err(MlirError::new("list lowering not yet implemented")),
         }
     }
 
@@ -540,6 +545,9 @@ impl<'c> HirToMlirLowering<'c> {
             }
             HirStmt::Break(_) => Err(MlirError::new(
                 "break statement lowering not yet implemented",
+            )),
+            HirStmt::Continue => Err(MlirError::new(
+                "continue statement lowering not yet implemented",
             )),
         }
     }

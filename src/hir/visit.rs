@@ -223,6 +223,23 @@ pub fn walk_expr<V: HirVisitor>(visitor: &mut V, expr: &HirExpr) {
             }
             visitor.visit_expr(&lambda.body);
         }
+        HirExpr::Loop(loop_expr) => {
+            visitor.visit_expr(&loop_expr.body);
+        }
+        HirExpr::While(while_expr) => {
+            visitor.visit_expr(&while_expr.cond);
+            visitor.visit_expr(&while_expr.body);
+        }
+        HirExpr::For(for_expr) => {
+            visitor.visit_pat(&for_expr.pat);
+            visitor.visit_expr(&for_expr.iter);
+            visitor.visit_expr(&for_expr.body);
+        }
+        HirExpr::Tuple(items) | HirExpr::List(items) => {
+            for item in items {
+                visitor.visit_expr(item);
+            }
+        }
     }
 }
 
@@ -260,6 +277,7 @@ pub fn walk_stmt<V: HirVisitor>(visitor: &mut V, stmt: &HirStmt) {
                 visitor.visit_expr(expr);
             }
         }
+        HirStmt::Continue => {}
     }
 }
 
@@ -462,6 +480,23 @@ pub fn walk_expr_mut<V: HirMutVisitor>(visitor: &mut V, expr: &mut HirExpr) {
             }
             visitor.visit_expr_mut(&mut lambda.body);
         }
+        HirExpr::Loop(loop_expr) => {
+            visitor.visit_expr_mut(&mut loop_expr.body);
+        }
+        HirExpr::While(while_expr) => {
+            visitor.visit_expr_mut(&mut while_expr.cond);
+            visitor.visit_expr_mut(&mut while_expr.body);
+        }
+        HirExpr::For(for_expr) => {
+            visitor.visit_pat_mut(&mut for_expr.pat);
+            visitor.visit_expr_mut(&mut for_expr.iter);
+            visitor.visit_expr_mut(&mut for_expr.body);
+        }
+        HirExpr::Tuple(items) | HirExpr::List(items) => {
+            for item in items {
+                visitor.visit_expr_mut(item);
+            }
+        }
     }
 }
 
@@ -499,6 +534,7 @@ pub fn walk_stmt_mut<V: HirMutVisitor>(visitor: &mut V, stmt: &mut HirStmt) {
                 visitor.visit_expr_mut(expr);
             }
         }
+        HirStmt::Continue => {}
     }
 }
 
