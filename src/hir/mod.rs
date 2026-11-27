@@ -14,8 +14,8 @@
 //!
 //! - [`HirModule`] - Top-level compilation unit
 //! - [`HirDecl`] - 4 declaration forms (Type, Trait, Function, Module)
-//! - [`HirExpr`] - 12 expression forms
-//! - [`HirStmt`] - 6 statement forms (Val, Var, Assign, Expr, Return, Break)
+//! - [`HirExpr`] - 17 expression forms (incl. Loop, While, For, Tuple, List)
+//! - [`HirStmt`] - 7 statement forms (Val, Var, Assign, Expr, Return, Break, Continue)
 //! - [`HirType`] - 8 type forms
 //! - [`HirPat`] - 6 pattern forms
 

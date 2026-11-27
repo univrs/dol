@@ -631,11 +631,33 @@ impl<'a, 'b> HirVisitor for DeclarationValidator<'a, 'b> {
                 // Set up context for lambda body
                 let old_return_type = self.ctx.current_return_type.take();
                 self.ctx.current_return_type = lambda.return_type.clone();
+                // A lambda body is not inside the enclosing loop.
+                let was_in_loop = std::mem::replace(&mut self.ctx.in_loop, false);
 
                 self.visit_expr(&lambda.body);
 
+                self.ctx.in_loop = was_in_loop;
                 self.ctx.current_return_type = old_return_type;
                 self.ctx.pop_scope();
+            }
+            HirExpr::Loop(loop_expr) => {
+                self.visit_loop_body(&loop_expr.body);
+            }
+            HirExpr::While(while_expr) => {
+                self.visit_expr(&while_expr.cond);
+                self.visit_loop_body(&while_expr.body);
+            }
+            HirExpr::For(for_expr) => {
+                self.visit_expr(&for_expr.iter);
+                self.ctx.push_scope();
+                self.validate_pattern(&for_expr.pat, None, HirId::new());
+                self.visit_loop_body(&for_expr.body);
+                self.ctx.pop_scope();
+            }
+            HirExpr::Tuple(items) | HirExpr::List(items) => {
+                for item in items {
+                    self.visit_expr(item);
+                }
             }
             HirExpr::Literal(_) => {
                 // Literals are always valid
@@ -690,7 +712,24 @@ impl<'a, 'b> HirVisitor for DeclarationValidator<'a, 'b> {
                     self.visit_expr(expr);
                 }
             }
+            HirStmt::Continue => {
+                if !self.ctx.in_loop {
+                    self.ctx.error(
+                        ValidationError::error("`continue` outside of loop")
+                            .with_suggestion("continue can only be used inside a loop"),
+                    );
+                }
+            }
         }
+    }
+}
+
+impl<'a, 'b> DeclarationValidator<'a, 'b> {
+    /// Visit a loop body with `in_loop` set, restoring the outer state after.
+    fn visit_loop_body(&mut self, body: &HirExpr) {
+        let was_in_loop = std::mem::replace(&mut self.ctx.in_loop, true);
+        self.visit_expr(body);
+        self.ctx.in_loop = was_in_loop;
     }
 }
 
@@ -1109,6 +1148,97 @@ mod tests {
 
         let result = validate_module(&module, &symbols, &spans);
         assert!(result.is_ok());
+    }
+
+    /// Validate a module holding one `fn f() -> Int` with the given body.
+    fn validate_fn_body(
+        body: HirExpr,
+        symbols: &mut SymbolTable,
+    ) -> Result<(), Vec<ValidationError>> {
+        let spans = SpanMap::new();
+        let mut module = HirModule::new(symbols.intern("test_module"));
+        module.decls.push(HirDecl::Function(HirFunctionDecl {
+            visibility: crate::ast::Visibility::default(),
+            id: HirId::new(),
+            name: symbols.intern("f"),
+            type_params: vec![],
+            params: vec![],
+            return_type: HirType::Named(HirNamedType {
+                name: symbols.intern("Int"),
+                args: vec![],
+            }),
+            body: Some(body),
+        }));
+        validate_module(&module, symbols, &spans)
+    }
+
+    fn block_of(stmts: Vec<HirStmt>) -> HirExpr {
+        HirExpr::Block(Box::new(HirBlockExpr { stmts, expr: None }))
+    }
+
+    #[test]
+    fn test_break_continue_inside_loops_are_valid() {
+        let mut symbols = SymbolTable::new();
+        let body = || block_of(vec![HirStmt::Continue, HirStmt::Break(None)]);
+        let loops = vec![
+            HirExpr::Loop(Box::new(HirLoopExpr { body: body() })),
+            HirExpr::While(Box::new(HirWhileExpr {
+                cond: HirExpr::Literal(HirLiteral::Bool(true)),
+                body: body(),
+            })),
+            HirExpr::For(Box::new(HirForExpr {
+                pat: HirPat::Var(symbols.intern("x")),
+                iter: HirExpr::List(vec![HirExpr::Literal(HirLiteral::Int(1))]),
+                body: body(),
+            })),
+        ];
+        for l in loops {
+            let result = validate_fn_body(block_of(vec![HirStmt::Expr(l)]), &mut symbols);
+            assert!(result.is_ok(), "unexpected errors: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_break_continue_outside_loop_are_errors() {
+        let mut symbols = SymbolTable::new();
+        let result = validate_fn_body(
+            block_of(vec![HirStmt::Continue, HirStmt::Break(None)]),
+            &mut symbols,
+        );
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.message.contains("`break` outside")));
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("`continue` outside")));
+    }
+
+    #[test]
+    fn test_for_binding_is_scoped_to_body() {
+        let mut symbols = SymbolTable::new();
+        let x = symbols.intern("x");
+        let for_expr = HirExpr::For(Box::new(HirForExpr {
+            pat: HirPat::Var(x),
+            iter: HirExpr::List(vec![]),
+            body: block_of(vec![HirStmt::Expr(HirExpr::Var(x))]),
+        }));
+        let ok = validate_fn_body(
+            block_of(vec![HirStmt::Expr(for_expr.clone())]),
+            &mut symbols,
+        );
+        assert!(
+            ok.is_ok(),
+            "loop var should be visible in body: {:?}",
+            ok.err()
+        );
+
+        let leaked = validate_fn_body(
+            block_of(vec![
+                HirStmt::Expr(for_expr),
+                HirStmt::Expr(HirExpr::Var(x)),
+            ]),
+            &mut symbols,
+        );
+        assert!(leaked.is_err(), "loop var must not leak past the loop");
     }
 
     #[test]

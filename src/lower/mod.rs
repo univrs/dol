@@ -12,8 +12,8 @@
 //! - `var x = e` -> `Var { name: x, value: e }` (new in v0.3.0)
 //!
 //! ## Control Flow
-//! - `for x in xs { body }` -> `loop { match iter.next() { Some(x) => body, None => break } }`
-//! - `while cond { body }` -> `loop { if cond { body } else { break } }`
+//! - `for x in xs { body }` -> `HirExpr::For` (pattern, iterable, body)
+//! - `while cond { body }` -> `HirExpr::While`; `loop { body }` -> `HirExpr::Loop`
 //! - `if a { b }` -> `if a { b } else { () }`
 //!
 //! ## Operators

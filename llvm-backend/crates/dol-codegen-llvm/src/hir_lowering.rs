@@ -590,6 +590,12 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
                         .into(),
                 ))
             }
+            HirExpr::Loop(_) | HirExpr::While(_) | HirExpr::For(_) => Err(
+                CodegenError::LlvmError("loops not yet supported in native codegen".to_string()),
+            ),
+            HirExpr::Tuple(_) | HirExpr::List(_) => Err(CodegenError::LlvmError(
+                "tuple/list literals not yet supported in native codegen".to_string(),
+            )),
         }
     }
 
@@ -1400,6 +1406,9 @@ impl<'a, 'ctx> HirLowering<'a, 'ctx> {
                 // Break requires loop context tracking (future)
                 Ok(())
             }
+            HirStmt::Continue => Err(CodegenError::LlvmError(
+                "continue not yet supported in native codegen".to_string(),
+            )),
         }
     }
 }

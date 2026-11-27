@@ -36,6 +36,7 @@ entries; see `git log` between the tags for their changes. Dates below are git t
   - A `string` field is a 4-byte i32 pointer to `[len: u32 LE][utf-8 bytes]` in linear memory, the same format as string literals. `String`, `string` and `str` are accepted.
   - `u64` / `UInt64` is an 8-byte, 8-aligned `i64` slot holding the raw 64 bits, and `i64` in parameters, results, locals and host calls. It is never narrowed to `i32`. Arithmetic and comparisons still use signed `i64` instructions, so values ≥ 2^63 compare and divide as negative numbers.
   - A `string` gene field (`m.body`, or `body` inside a method) can be passed straight to a `vudo` host function. It lowers to the ABI's `(ptr + 4, len)` pair, like `string` literals and parameters.
+- HIR: `HirExpr::Loop`, `HirExpr::While`, `HirExpr::For`, `HirExpr::Tuple`, `HirExpr::List` and `HirStmt::Continue` (with `HirLoopExpr`, `HirWhileExpr`, `HirForExpr`). `HirExpr` has 17 variants, `HirStmt` 7; code matching on them exhaustively must add arms. The HIR validator reports `continue` outside a loop, and a `for` binding is scoped to the loop body. The MLIR path and the native LLVM backend return a "not yet supported" error for these nodes. The WASM backend still compiles from the AST and is unchanged.
 
 ### Not yet enforced (type checking)
 Each item below has an `#[ignore]`d test in `tests/type_enforcement.rs`, except where noted.
@@ -45,6 +46,8 @@ Each item below has an `#[ignore]`d test in `tests/type_enforcement.rs`, except 
 - Not covered by a test: implicit (trailing-expression) returns, effect/purity checking, and names brought in by `use`.
 
 ### Fixed
+- Loops ran once after AST→HIR lowering. `loop`, `while` and `for` were lowered to plain blocks, so the body ran at most once and the `break` that ended the loop sat outside any loop. `continue` became a call to a function named `continue`. They now lower to the new HIR loop nodes, and HIR→Rust codegen (`HirRustCodegen`, used by `dol-build`) emits real `loop` / `while` / `for` / `continue`. `tests/hir_loop_execution.rs` compiles the generated Rust with `rustc` and checks the body runs N times.
+- HIR lowering turned `[a, b]` and `(a, b)` into calls to functions named `list` and `tuple`. They now lower to `HirExpr::List` / `HirExpr::Tuple`, which `HirRustCodegen` emits as `vec![a, b]` and `(a, b)`.
 - WASM: struct literals in a module with host imports called the first import instead of the allocator. The allocator sits after the imports, but struct literals always emitted `call 0`. Any gene used alongside a `sex fun` import failed validation.
 - Numeric literals `1e9`, `3.0e8`, `1_000`, `0x10`, `0b1010` and `0o17` were split into a number followed by an identifier.
 - A `{` or `}` inside a `docs { }` / `exegesis { }` block ended the block early. An unterminated docs block is now an error.
