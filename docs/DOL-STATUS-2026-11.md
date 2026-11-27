@@ -1,5 +1,34 @@
 # DOL Language Status — Ground Truth (2026-11-20)
 
+> **Update 2026-11-26 — reconciled against the Spirit-Hosting fleet wave.** This audit was
+> written 2026-11-20 (before the DOL+Lean4 / DOLOS wave merged). Several §5 items are now
+> CLOSED; this header + inline **[UPDATED 2026-11-26]** tags mark what changed. Still-open
+> items are cross-referenced to the Wave 3 queue (`univrs/sepah: orchestration/WAVE-3-REVIEW.md`).
+>
+> **Closed since 2026-11-20:**
+> - **§5.1 CLI whole-file parse** — `dol-parse` / `dol-check` now call `parse_dol_file` (whole
+>   file), not the first-declaration-only `parse_file`. CLI pass-rate inflation is gone. (The
+>   low-level `parse_file` still returns the first decl for callers that opt into it.)
+> - **§5.2 type enforcement** — `validate_statement_types` is implemented behind
+>   `dol-check --typecheck` (PR #49). Type errors now fail. Scope: the parsed type subset; see
+>   CHANGELOG for enforced-vs-deferred.
+> - **§5.5 gene layouts** — `u64` and `string` are now supported in gene layouts and host calls
+>   (PR #50). Remaining §5.5 gaps (lambdas, tuples, lists, `for`-over-collections, HIR routing)
+>   are **Wave 3 task W3-3**.
+> - **NEW capability: Lean 4 verification gate in CI** — `.github/workflows/lean.yml` (PR #48)
+>   runs `lake build` + the axiom gate (rejects sorry/native_decide/custom axioms) on the DOL
+>   Lean proofs. Proven so far: LWW CRDT merge; the next proof (**Credit Conservation**) is
+>   **Wave 3 task W3-2**.
+> - **DOLOS now consumes DOL** — the network Spirit host compiles + runs a real DOL-authored
+>   Spirit in CI (univrs-network PR #42), closing the "DOLOS does not consume DOL yet" gap in
+>   §1 / §4. The CLI author→network loop (`vudo sign/publish/summon`) is **Wave 3 task W3-1**.
+>
+> **Still open (tracked):** HIR-routed codegen + collections/lambdas (W3-3), Credit-Conservation
+> Lean proof (W3-2), `vudo sign/publish/summon` (W3-1), v0.9 deprecation cut (§4), CI blind
+> spot / no root `[workspace]` (§5.9), self-hosting (§5.8), doc hygiene (§6). These remain
+> accurate as written below.
+
+
 > Audit of `univrs/dol` at **origin/main `117e236` = tag v0.8.2 = crates.io `dol` 0.8.2**, plus consumer repos
 > (univrs-vudo, univrs-network, vudo.univrs.io, nexus, orchestration, enr), learn.univrs.io, book.univrs.io and the
 > published crate. "Verified" means a command was run or code was read at that commit; "Inferred" is marked.
@@ -20,7 +49,7 @@
 | What actually runs in production? | **Only `univrs/vudo` (VUDO VM + `vudo` CLI) uses DOL as a compiler**: it pins `dol = "0.8.2"` (`wasm-compile`) from crates.io, and CI compiles a DOL `sex fun host_log` program to WASM and runs it in the VM (`e2e_spirit_lifecycle::test_h0_*`, green 2026-11-20). |
 | vudo.univrs.io | Ships an **in-browser dol 0.8.0** parser/compiler (`dol_wasm_bg.wasm`, built 2026-01-17). It cannot run 0.8.2 host-calling Spirits because there is no `vudo` import module in the worker. The UI says "DOL v0.8.0", "Built with DOL v0.8.1" and "DOL 2.0" in different places. |
 | nexus.univrs.io | **No DOL dependency at all.** The site returns 401 behind Cloudflare. The nexus repo uses OWL/TTL ontologies; archived docs mention DOL v0.4/v0.5. |
-| DOLOS | It is a naming/architecture layer (L6, renamed from "VUDO OS" in PR #33). The `univrs-network` Spirit host runs `vudo_vm` but **does not depend on the DOL compiler**; its tests use hand-written WAT. **DOLOS does not consume DOL yet.** |
+| DOLOS | It is a naming/architecture layer (L6, renamed from "VUDO OS" in PR #33). The `univrs-network` Spirit host runs `vudo_vm`. **[UPDATED 2026-11-26] DOLOS now consumes DOL:** network CI compiles + runs a real DOL-authored Spirit (univrs-network PR #42). Some edge-case oracles still use hand-written WAT for ABI corners DOL does not express. |
 | Is the crates.io README accurate? | **No, it is the least accurate public source.** It is the never-updated "DOL 2.0" README with v0.7-era syntax, a nonexistent `dol build` command, nonexistent `--format rust/typescript` flags, wrong MCP tool names, wrong `use dol::` paths, stale test counts, broken links, and no mention of the 0.8.2 changes. Details in §6. |
 
 ---
@@ -90,7 +119,7 @@ CHANGELOG defects:
 |---|---|
 | **Spirit Hosting plan** | H0 shipped in dol 0.8.2. H1a/H1c work is landing in `univrs-vudo` / `univrs-network` (fuel limits, Spirit host). **H1+ is not defined anywhere in the dol repo.** |
 | **v0.9 deprecation cut** | Planned: old keywords and PascalCase types become errors; `dol-abi::standard_host_functions()` (22 `vudo_*` names) is deprecated in favour of `vm_host_functions()` (15). **Blocker:** 127+ ontology `.dol` files across repos (orchestration 108, vudo 8, enr 6, network 4) are still pre-0.8 syntax and would stop parsing. |
-| **DOLOS integration** | Renamed in docs only (PR #33). Network Spirit host runs signed `.spirit` WASM via `vudo_vm`; no DOL compile step in network CI. The rename is not on the live vudo.univrs.io site. |
+| **DOLOS integration** | **[UPDATED 2026-11-26]** Network Spirit host runs signed `.spirit` WASM via `vudo_vm`, and **network CI now compiles + runs a real DOL-authored Spirit** (univrs-network PR #42) — the DOL compile step exists. Next: the `vudo sign/publish/summon` CLI loop (Wave 3 W3-1). The DOLOS rename is still not on the live vudo.univrs.io site. |
 | **learn.univrs.io v0.8.2 update** | Committed (`7f574e4`), **not deployed**: the live bundle still says v0.8.1. `/dol` returns HTTP 404 status (the SPA shell still renders). |
 | **CRDT → Automerge codegen** | Lives in `crates/dol-codegen-rust` (29 tests, string-`contains` assertions). Not wired into any CLI, and its output is never compiled. |
 | **Local-first stack** (`vudo-state`, `-storage`, `-p2p`, `-credit`, `-privacy`, `-identity`, `planetserve`, `vudo-ai`) | Libraries mostly pass their unit tests, but **none are in CI** (no root `[workspace]`). Several test targets don't compile. P2P discovery, BFT voting and registry sync are simulated. |
@@ -100,11 +129,11 @@ CHANGELOG defects:
 
 ## 5. What's broken or misleading in the shipped toolchain (verified)
 
-1. **`dol-parse` and `dol-check` only see the first declaration in a file.**
+1. **`dol-parse` and `dol-check` only see the first declaration in a file.** — **[UPDATED 2026-11-26: FIXED]** both CLIs now call `parse_dol_file` (whole-file); the first-decl-only behavior below describes the low-level `parse_file`, which callers can still opt into.
    - The call path is `parse_file` (`src/lib.rs:250`) → `Parser::parse()`, which returns after the first declaration (`src/parser.rs:83-91`: "For now, we just return the first declaration").
    - Everything after it is silently ignored, including garbage. This inflates every CLI pass rate. Real whole-file parse rates: spirits **12/53** (CLI reports 39/53), stdlib 1/8, v0.8 examples 1/4, tests/corpus 1/5.
    - `parse_file_all` exists but the CLIs don't use it.
-2. **No type enforcement.**
+2. **No type enforcement.** — **[UPDATED 2026-11-26: FIXED behind `--typecheck`, PR #49]** `validate_statement_types` is implemented; the example below now fails type-checking. The description is retained as the pre-fix baseline.
    - `fun f() -> i64 { return "hello" + true }` passes validate, `dol-check --typecheck`, HIR lowering and WASM compilation.
    - `validate_statement_types` is an empty placeholder (`src/validator.rs:741-772`).
 3. **Parsed but discarded:**
@@ -119,9 +148,9 @@ CHANGELOG defects:
    - `with IO` effects, backtick/`~` quasi-quote
    - `gene name @1.0.0 {` (versioned header used throughout tutorial 02)
    - float exponents `1e9`
-5. **WASM backend gaps:**
-   - Unsupported: lambdas, tuples, lists, `sex {}` blocks, `?`, quote/meta, idioms, `this`, casts, and `for` over anything other than a range.
-   - Gene layouts reject `u64` and `string`.
+5. **WASM backend gaps:** — **[UPDATED 2026-11-26]** `u64`/`string` in gene layouts: **FIXED (PR #50)**. The rest (lambdas, tuples, lists, `for`-over-collections, HIR routing) is **Wave 3 task W3-3**.
+   - Unsupported: lambdas, tuples, lists, `sex {}` blocks, `?`, quote/meta, idioms, `this`, casts, and `for` over anything other than a range. *(W3-3)*
+   - ~~Gene layouts reject `u64` and `string`.~~ **FIXED (PR #50).**
    - `println` is unknown, so `examples/native` compiles 0/12 to WASM.
    - Declarative-only files compile to an empty 17-byte module.
 6. **`dol-build`** (Spirit → Rust → wasm32) fails on **all 9** example Spirits.
